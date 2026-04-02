@@ -508,7 +508,7 @@ snapfzz-stream-pipeline/    # SSE consume, 16ms batch, multiplex, Channel emit
 
 ```
 @snapfzz/plugin-sdk/        # TS manifest types, definePlugin(), contribution types
-@snapfzz/plugin-host-web/   # Plugin loader, Worker host, bus client, ErrorBoundary
+@snapfzz/plugin-host/       # Plugin loader, bus client, ContributionStore, ErrorBoundary
 @snapfzz/shared/            # Entities, components/ui, lib, hooks, workers, theme
 @snapfzz/launcher/          # Thin shell: plugin host + launcher layout
 @snapfzz/project/           # Thin shell: plugin host + project layout

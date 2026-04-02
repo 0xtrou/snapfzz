@@ -54,6 +54,25 @@ importers:
         specifier: ^6.0.0
         version: 6.4.1(jiti@1.21.7)
 
+  packages/plugin-host:
+    dependencies:
+      '@snapfzz/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../shared
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/plugin-sdk:
     dependencies:
       react:
