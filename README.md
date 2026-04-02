@@ -5,7 +5,7 @@
     <strong>Your startup bootstrapping intelligence.</strong>
   </p>
   <p align="center">
-    <a href="https://github.com/0xtrou/snapfzz-startup-launcher/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+    <a href="https://github.com/0xtrou/snapfzz/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   </p>
 </p>
 
@@ -20,8 +20,8 @@ Built with [Tauri](https://tauri.app/), [AgentScope](https://github.com/agentsco
 ## Getting Started
 
 ```bash
-git clone https://github.com/0xtrou/snapfzz-startup-launcher.git
-cd snapfzz-startup-launcher
+git clone https://github.com/0xtrou/snapfzz.git
+cd snapfzz
 
 # Frontend
 cd frontend && pnpm install && cd ..
