@@ -395,6 +395,34 @@ Auto-fix: agent reads the failures, applies targeted fixes (optimize image, add 
 
 ---
 
+### 13. Instant Loading — The Launcher Itself
+
+```
+ENFORCED (for the Launcher app, not user's app):
+✓ App window visible in < 200ms (Tauri native + skeleton UI)
+✓ Workspace browsable in < 200ms (local disk read, projects list)
+✓ Chat input active in < 500ms (ClarifyAgent snapshot restore)
+✓ Background agents pre-warmed while user works
+✓ Lazy boot for later-stage agents
+✓ First run: honest setup screen with progress bar
+✓ Every subsequent run: snapshot restore < 50ms per VM
+✓ No spinner on stage transitions (next agent pre-warmed)
+
+HOW:
+BoxLite micro-VMs boot in < 50ms (hardware virtualization).
+Snapshot/restore makes Python cold start < 50ms after first run.
+Workspace data rendered before intelligence layer connects.
+Lazy agent boot: only the current stage's agent runs at startup.
+Next-stage agent pre-warmed in background while user works.
+
+EVAL:
+- Time-to-interactive < 500ms (measured, not estimated)
+- Stage transition < 200ms (next agent already booted)
+- No visible spinner after first run
+```
+
+---
+
 ## The Promise
 
-> Every app shipped through Snapfzz Startup Launcher is responsive, fast, accessible, secure, SEO-ready, error-handled, dark-mode capable, i18n-ready, analytics-tracked, legally compliant, and deployment-ready. Not because the user asked for each one. Because the system enforces all twelve. Perfectly from day 1.
+> Every app shipped through Snapfzz Startup Launcher is responsive, fast, accessible, secure, SEO-ready, error-handled, dark-mode capable, i18n-ready, analytics-tracked, legally compliant, deployment-ready, and instant-loading. Not because the user asked for each one. Because the system enforces all thirteen. Perfectly from day 1.
