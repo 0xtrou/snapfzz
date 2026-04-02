@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+// Spec: 003-feat-state-management-architecture.md, 009-feat-plugin-architecture.md
+// Sections: Reactive Store Reads, React Integration, Crash Isolation
+// Verifies: useSyncExternalStore integration, PluginHostProvider context, ErrorBoundary fallback rendering
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, renderHook, act } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
@@ -36,7 +39,7 @@ class MemoryStorage implements Storage {
   }
 }
 
-describe('useContributionStore', () => {
+describe('003/react: useContributionStore reactive reads', () => {
   beforeEach(() => {
     Object.defineProperty(globalThis, 'localStorage', {
       value: new MemoryStorage(),
@@ -45,7 +48,7 @@ describe('useContributionStore', () => {
     });
   });
 
-  it('re-renders on store change', () => {
+  it('003/react: re-renders hook when ContributionStore is updated', () => {
     const store = new ContributionStore();
 
     const { result } = renderHook(() => useContributionStore(() => store));
@@ -65,7 +68,7 @@ describe('useContributionStore', () => {
     expect(result.current.leftPanelTabs[0].id).toBe('test.tab');
   });
 
-  it('returns snapshot from store', () => {
+  it('003/react: returns ContributionSnapshot from store via useSyncExternalStore', () => {
     const store = new ContributionStore();
 
     store.registerWorkspaceTab({
@@ -82,7 +85,7 @@ describe('useContributionStore', () => {
   });
 });
 
-describe('usePluginHost + PluginHostProvider', () => {
+describe('010/react: usePluginHost + PluginHostProvider', () => {
   beforeEach(() => {
     Object.defineProperty(globalThis, 'localStorage', {
       value: new MemoryStorage(),
@@ -91,7 +94,7 @@ describe('usePluginHost + PluginHostProvider', () => {
     });
   });
 
-  it('provides PluginHost via context', () => {
+  it('010/react: provides PluginHost instance via React context', () => {
     const mockHost = {
       register: vi.fn(),
       getPlugin: vi.fn(),
@@ -110,14 +113,14 @@ describe('usePluginHost + PluginHostProvider', () => {
     expect(result.current).toBe(mockHost);
   });
 
-  it('throws when used outside provider', () => {
+  it('010/react: throws descriptive error when used outside provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     expect(() => renderHook(() => usePluginHost())).toThrow(/PluginHostProvider/i);
   });
 });
 
-describe('PluginErrorBoundary', () => {
+describe('009/isolation: PluginErrorBoundary crash containment', () => {
   beforeEach(() => {
     Object.defineProperty(globalThis, 'localStorage', {
       value: new MemoryStorage(),
@@ -127,7 +130,7 @@ describe('PluginErrorBoundary', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
-  it('catches render error and shows fallback', () => {
+  it('009/isolation: catches render error and shows configured fallback component', () => {
     const ErrorComponent = () => {
       throw new Error('Plugin crashed');
     };
@@ -145,7 +148,7 @@ describe('PluginErrorBoundary', () => {
     expect(container.textContent).toContain('Error: Plugin crashed');
   });
 
-  it('renders children when no error', () => {
+  it('009/isolation: renders children normally when no error occurs', () => {
     const { container } = render(
       createElement(
         PluginErrorBoundary,

@@ -216,13 +216,55 @@ ENGINEERING_GUIDE.md                          # This file (how to build)
 CONTRIBUTING.md                               # How to contribute
 ```
 
-## Spec Numbers (Quick Reference)
+## Full Spec Registry
+
+### Architecture Specs (`docs/plans/`)
 
 | Number | Spec | Key Decisions |
 |---|---|---|
 | `002` | Performance Architecture | 60fps, child WebViews, react-resizable-panels, Monaco, HMR, CSS containment |
-| `003` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. 16ms batch budget. |
+| `003` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. 16ms batch budget |
 | `006` | Instant Loading | BoxLite <50ms boot, snapshots, lazy agent boot, <500ms to interactive |
 | `007` | Workspace Architecture | .snapfzz/ folder-first, human-readable JSON/MD, append-only logs |
-| `009` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication. |
-| `010` | Core Runtime | Plugin host, shell layout, Rust IPC. Boot sequence. What's core vs plugin. |
+| `009` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication |
+| `010` | Core Runtime | Plugin host, shell layout, Rust IPC. Boot sequence. What's core vs plugin |
+
+### UI Specs (`docs/ui-specs/`)
+
+| Number | Spec | Key Decisions |
+|---|---|---|
+| `UI-00` | Navigation Index | Two-window model. Spec file map. |
+| `UI-10` | Responsive | 3 breakpoints (mobile/tablet/desktop), touch targets, typography scale |
+| `UI-11` | Perfectly From Day 1 | 13 quality standards. Responsive, 60fps, accessible, fast, secure, SEO, errors, dark mode, i18n, analytics, legal, deploy-ready, instant loading |
+| `UI-12` | User Journey | Launch → splash → launcher → project → agents → ship → back |
+| `UI-13` | Launcher Window | Project list, cards (Live/Progress/Paused), new project, settings, eval, memory |
+| `UI-14` | Project Window | Left panel (Chat+Team), right panel (KB/Code/Preview/Deploy/ID/Compliance), Agent Network, mini apps, orchestrator as co-creator |
+| `UI-15` | Preview & Build Engine | HMR pipeline, triple viewport, console capture, responsive enforcement, quality gate |
+| `UI-16` | Eval System | Hard eval + LLM-as-judge, 4 benchmark sources, auto-extraction, context accumulation |
+| `UI-17` | Design System | Ant Design 5 + shadcn, Inter font, zinc palette, dark/light themes, Monaco theme, logo |
+| `UI-18` | Git Inspector | Git sub-views in Code tab (files/diff/log/branches/blame), git2-rs, Monaco diff |
+
+### How to Reference
+
+```
+// Architecture specs — use the number directly
+// Per 009/Isolation: plugins wrapped in ErrorBoundary
+// Per 002/Performance: CSS flexbox resize for 60fps
+
+// UI specs — prefix with UI-
+// Per UI-14/LeftPanel: Chat and Team as separate tabs
+// Per UI-17/Theme: zinc palette, no custom colors
+// Per UI-11/Standard3: WCAG AA accessible, axe-core 0 violations
+```
+
+### Checklist Before Every Code Change
+
+1. Which architecture spec(s) does this code implement? → reference in test names + inline comments
+2. Which UI spec(s) does this code render? → reference in component comments
+3. Does this code violate any spec? → if yes, update the spec first or don't write the code
+4. Are tests named with spec prefixes? → `{spec}/{section}: {behavior}`
+5. Are architectural decisions commented? → `// Per {spec}/{section}: {why}`
+6. Is TRACEABILITY.md updated? → new rows for new code
+7. No TODOs? → `grep -rn "TODO\|FIXME" frontend/packages/` must be clean
+8. Tests pass? → `npx vitest run`
+9. App boots? → `pnpm dev:launcher` returns 200

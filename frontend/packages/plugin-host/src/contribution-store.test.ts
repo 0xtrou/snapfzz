@@ -1,3 +1,6 @@
+// Spec: 009-feat-plugin-architecture.md, 003-feat-state-management-architecture.md
+// Sections: Contribution Registry, Reactive Store Snapshots
+// Verifies: registration/disposal behavior, subscription notifications, immutable snapshot contract
 import { describe, expect, it, vi } from 'vitest';
 import type {
   CommandContribution,
@@ -44,8 +47,8 @@ const createSetting = (id: string): SettingsContribution => ({
   schema: { type: 'string' },
 });
 
-describe('ContributionStore', () => {
-  it('registers a left panel tab', () => {
+describe('009/store: ContributionStore registration + snapshot behavior', () => {
+  it('009/store: registers a left panel tab contribution', () => {
     const store = new ContributionStore();
     const tab = createTab('tab.one');
 
@@ -54,7 +57,7 @@ describe('ContributionStore', () => {
     expect(store.getLeftPanelTabs()).toEqual([tab]);
   });
 
-  it('removes a tab when disposed', () => {
+  it('009/store: removes a registered tab contribution when disposer is called', () => {
     const store = new ContributionStore();
     const tab = createTab('tab.one');
 
@@ -64,7 +67,7 @@ describe('ContributionStore', () => {
     expect(store.getLeftPanelTabs()).toEqual([]);
   });
 
-  it('fires subscribers on register', () => {
+  it('003/store-reactivity: notifies subscribers when contributions are registered', () => {
     const store = new ContributionStore();
     const listener = vi.fn();
 
@@ -74,7 +77,7 @@ describe('ContributionStore', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('fires subscribers on dispose', () => {
+  it('003/store-reactivity: notifies subscribers when contributions are disposed', () => {
     const store = new ContributionStore();
     const listener = vi.fn();
 
@@ -87,7 +90,7 @@ describe('ContributionStore', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('returns an immutable snapshot', () => {
+  it('003/store-reactivity: returns immutable snapshot objects for concurrent-safe consumers', () => {
     const store = new ContributionStore();
     store.registerLeftPanelTab(createTab('tab.one'));
     store.registerWorkspaceTab(createTab('tab.two'));
@@ -109,7 +112,7 @@ describe('ContributionStore', () => {
     expect(Object.isFrozen(snapshot.settings)).toBe(true);
   });
 
-  it('keeps multiple registrations', () => {
+  it('009/store: preserves insertion order for multiple registrations of the same contribution type', () => {
     const store = new ContributionStore();
     const first = createTab('tab.one');
     const second = createTab('tab.two');

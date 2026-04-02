@@ -1,3 +1,6 @@
+// Spec: 009-feat-plugin-architecture.md, 010-feat-core-runtime.md
+// Sections: Plugin Context, Plugin Communication, Isolation
+// Verifies: PluginContext shape, namespaced bus, command registry, logger prefixing, settings/storage namespacing
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContributionStore } from './contribution-store';
 import { createPluginContext } from './plugin-context-factory';
@@ -30,7 +33,7 @@ class MemoryStorage implements Storage {
   }
 }
 
-describe('createPluginContext', () => {
+describe('009/context: PluginContext factory and isolation boundaries', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     Object.defineProperty(globalThis, 'localStorage', {
@@ -40,7 +43,7 @@ describe('createPluginContext', () => {
     });
   });
 
-  it('creates PluginContext with all required fields', () => {
+  it('010/context: creates PluginContext with all required fields from plugin-sdk contract', () => {
     const context = createPluginContext('plugin.alpha', 'project', new ContributionStore(), '/tmp/project');
 
     expect(context.surface).toBe('project');
@@ -55,7 +58,7 @@ describe('createPluginContext', () => {
     expect(context.logger).toBeDefined();
   });
 
-  it('supports namespaced EventBus emit/on', () => {
+  it('009/communication: provides namespaced EventBus that isolates plugin topics', () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
     const handler = vi.fn();
 
@@ -69,7 +72,7 @@ describe('createPluginContext', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('supports CommandBus register/execute', async () => {
+  it('009/communication: CommandBus allows register/execute within same host boundary', async () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
     const dispose = context.commands.register('demo.command', async (args) => ({ args }));
 
@@ -81,7 +84,7 @@ describe('createPluginContext', () => {
     await expect(context.commands.execute('demo.command')).rejects.toThrow(/not registered/i);
   });
 
-  it('prefixes logger output with plugin id', () => {
+  it('009/isolation: Logger output is prefixed with plugin id to prevent cross-plugin log confusion', () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -100,7 +103,7 @@ describe('createPluginContext', () => {
     expect(errorSpy).toHaveBeenCalledWith('[plugin.alpha]', 'e');
   });
 
-  it('stores settings under a plugin namespace', () => {
+  it('009/isolation: SettingsRegistry stores under plugin-namespaced key', () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
 
     context.settings.set('theme', { mode: 'dark' });
