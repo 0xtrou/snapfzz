@@ -37,10 +37,17 @@ LAUNCHER WINDOW                     PROJECT WINDOW
 |---|---|
 | [15-preview-and-build-engine.md](15-preview-and-build-engine.md) | Preview tab: HMR pipeline, triple viewport, console capture, responsive enforcement, quality gate |
 
-### Cross-Cutting
+### Intelligence Quality
 
 | File | Content |
 |---|---|
+| [16-eval-system.md](16-eval-system.md) | Eval: hard eval + LLM-as-judge, benchmark database (built-in/community/local/custom), auto-extraction, cross-project accumulation |
+
+### Design & Cross-Cutting
+
+| File | Content |
+|---|---|
+| [17-design-system.md](17-design-system.md) | Design system: Ant Design 5 + shadcn aesthetic, Inter font, zinc palette, dark/light themes, logo usage, Monaco theme, component overrides |
 | [10-responsive.md](10-responsive.md) | Responsive rules, breakpoints, touch targets, typography, testing matrix |
 | [11-perfectly-from-day-1.md](11-perfectly-from-day-1.md) | 13 quality standards manifesto |
 | [12-user-journey.md](12-user-journey.md) | Complete flow: launch → launcher → project → agents → ship → back |
