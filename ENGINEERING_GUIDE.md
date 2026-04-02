@@ -10,15 +10,15 @@ Every test name starts with the spec ID and section it verifies:
 
 ```typescript
 // Good — traces to spec
-describe('009/PluginHost', () => {
-  it('009/resolve: sorts plugins by dependency order', () => { ... });
-  it('009/activate: calls plugin.activate with PluginContext', () => { ... });
-  it('009/isolation: plugin crash does not crash host', () => { ... });
+describe('A005/PluginHost', () => {
+  it('A005/resolve: sorts plugins by dependency order', () => { ... });
+  it('A005/activate: calls plugin.activate with PluginContext', () => { ... });
+  it('A005/isolation: plugin crash does not crash host', () => { ... });
 });
 
-describe('002/StreamPipeline', () => {
-  it('002/batching: flushes every 16ms for 60fps budget', () => { ... });
-  it('002/zones: SSE parsing runs in Rust, not JS', () => { ... });
+describe('A001/StreamPipeline', () => {
+  it('A001/batching: flushes every 16ms for 60fps budget', () => { ... });
+  it('A001/zones: SSE parsing runs in Rust, not JS', () => { ... });
 });
 
 // Bad — no traceability
@@ -30,37 +30,37 @@ describe('PluginHost', () => {
 Format: `{spec-number}/{section}: {what it verifies}`
 
 Spec numbers:
-- `002` = Performance Architecture
-- `003` = State Management
-- `006` = Instant Loading
-- `007` = Workspace Architecture
-- `009` = Plugin Architecture
-- `010` = Core Runtime
+- `A001` = Performance Architecture
+- `A002` = State Management
+- `A003` = Instant Loading
+- `A004` = Workspace Architecture
+- `A005` = Plugin Architecture
+- `A006` = Core Runtime
 
 ### Layer 2: Inline Code Comments Reference Specs
 
 Every non-obvious technical decision in source code references the spec that mandated it:
 
 ```typescript
-// Per 002/Performance: use CSS flexbox resize, not JS pixel manipulation
+// Per A001/Performance: use CSS flexbox resize, not JS pixel manipulation
 // react-resizable-panels gives 60fps via flexGrow, no React re-renders during drag
 <PanelResizeHandle />
 
-// Per 003/Zone1: SSE parsing happens in Rust, not JS main thread
+// Per A002/Zone1: SSE parsing happens in Rust, not JS main thread
 // Data arrives pre-parsed via Tauri Channel API
 const bridge = createTauriBridge();
 
-// Per 009/Isolation: each plugin's UI wrapped in ErrorBoundary
+// Per A005/Isolation: each plugin's UI wrapped in ErrorBoundary
 // Plugin crash shows fallback, does not crash the shell
 <PluginErrorBoundary fallback={...}>
   <PluginComponent />
 </PluginErrorBoundary>
 
-// Per 006/InstantLoading: only activate critical plugins at startup
+// Per A003/InstantLoading: only activate critical plugins at startup
 // Others lazy-load on first tab open via onViewVisible activation event
 if (event === 'onStartupFinished') { ... }
 
-// Per 009/Communication: plugins never import from each other
+// Per A005/Communication: plugins never import from each other
 // All cross-plugin communication goes through EventBus
 ctx.bus.emit('topic', payload);
 ```
@@ -85,13 +85,13 @@ File: `docs/TRACEABILITY.md` — maps every spec requirement to its implementati
 
 | Requirement | Code | Tests |
 |---|---|---|
-| Manifest-driven plugin discovery | plugin-host/src/plugin-host.ts:resolve() | plugin-host.test.ts:009/resolve |
-| Topological dependency sort | plugin-host/src/plugin-host.ts:resolve() | plugin-host.test.ts:009/resolve:sorts by deps |
-| Lazy activation on events | plugin-host/src/plugin-host.ts:activate() | plugin-host.test.ts:009/activate |
-| PluginContext with all fields | plugin-host/src/plugin-context-factory.ts | plugin-context-factory.test.ts:009/context |
-| Crash isolation via ErrorBoundary | plugin-host/src/plugin-error-boundary.tsx | plugin-host-react.test.tsx:009/isolation |
-| Bus-only communication | plugin-host/src/plugin-context-factory.ts:EventBus | plugin-context-factory.test.ts:009/EventBus |
-| ContributionStore reactive | plugin-host/src/contribution-store.ts | contribution-store.test.ts:009/store |
+| Manifest-driven plugin discovery | plugin-host/src/plugin-host.ts:resolve() | plugin-host.test.ts:A005/resolve |
+| Topological dependency sort | plugin-host/src/plugin-host.ts:resolve() | plugin-host.test.ts:A005/resolve:sorts by deps |
+| Lazy activation on events | plugin-host/src/plugin-host.ts:activate() | plugin-host.test.ts:A005/activate |
+| PluginContext with all fields | plugin-host/src/plugin-context-factory.ts | plugin-context-factory.test.ts:A005/context |
+| Crash isolation via ErrorBoundary | plugin-host/src/plugin-error-boundary.tsx | plugin-host-react.test.tsx:A005/isolation |
+| Bus-only communication | plugin-host/src/plugin-context-factory.ts:EventBus | plugin-context-factory.test.ts:A005/EventBus |
+| ContributionStore reactive | plugin-host/src/contribution-store.ts | contribution-store.test.ts:A005/store |
 ```
 
 Updated every time code or specs change.
@@ -120,14 +120,14 @@ frontend/packages/<package>/src/
 
 Examples:
 ```
-009/PluginHost/resolve: returns plugins in dependency order
-009/PluginHost/resolve: throws when dependency is missing
-009/PluginHost/activate: calls plugin.activate with PluginContext
-009/ContributionStore/register: adds tab to store
-009/ContributionStore/dispose: removes tab from store
-002/Performance/batching: flushes token batch every 16ms
-003/StateManagement/zones: SSE consumer runs in Rust not JS
-006/InstantLoading/boot: critical plugins activate within 200ms
+A005/PluginHost/resolve: returns plugins in dependency order
+A005/PluginHost/resolve: throws when dependency is missing
+A005/PluginHost/activate: calls plugin.activate with PluginContext
+A005/ContributionStore/register: adds tab to store
+A005/ContributionStore/dispose: removes tab from store
+A001/Performance/batching: flushes token batch every 16ms
+A002/StateManagement/zones: SSE consumer runs in Rust not JS
+A003/InstantLoading/boot: critical plugins activate within 200ms
 ```
 
 ### What Every Test File Must Have
@@ -141,8 +141,8 @@ Examples:
 
 import { describe, it, expect } from 'vitest';
 
-describe('009/PluginHost/activate', () => {
-  it('009/activate: calls plugin.activate with PluginContext', () => {
+describe('A005/PluginHost/activate', () => {
+  it('A005/activate: calls plugin.activate with PluginContext', () => {
     // arrange → act → assert
   });
 });
@@ -222,39 +222,39 @@ CONTRIBUTING.md                               # How to contribute
 
 | Number | Spec | Key Decisions |
 |---|---|---|
-| `002` | Performance Architecture | 60fps, child WebViews, react-resizable-panels, Monaco, HMR, CSS containment |
-| `003` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. 16ms batch budget |
-| `006` | Instant Loading | BoxLite <50ms boot, snapshots, lazy agent boot, <500ms to interactive |
-| `007` | Workspace Architecture | .snapfzz/ folder-first, human-readable JSON/MD, append-only logs |
-| `009` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication |
-| `010` | Core Runtime | Plugin host, shell layout, Rust IPC. Boot sequence. What's core vs plugin |
+| `A001` | Performance Architecture | 60fps, child WebViews, react-resizable-panels, Monaco, HMR, CSS containment |
+| `A002` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. 16ms batch budget |
+| `A003` | Instant Loading | BoxLite <50ms boot, snapshots, lazy agent boot, <500ms to interactive |
+| `A004` | Workspace Architecture | .snapfzz/ folder-first, human-readable JSON/MD, append-only logs |
+| `A005` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication |
+| `A006` | Core Runtime | Plugin host, shell layout, Rust IPC. Boot sequence. What's core vs plugin |
 
 ### UI Specs (`docs/ui-specs/`)
 
 | Number | Spec | Key Decisions |
 |---|---|---|
-| `UI-00` | Navigation Index | Two-window model. Spec file map. |
-| `UI-10` | Responsive | 3 breakpoints (mobile/tablet/desktop), touch targets, typography scale |
-| `UI-11` | Perfectly From Day 1 | 13 quality standards. Responsive, 60fps, accessible, fast, secure, SEO, errors, dark mode, i18n, analytics, legal, deploy-ready, instant loading |
-| `UI-12` | User Journey | Launch → splash → launcher → project → agents → ship → back |
-| `UI-13` | Launcher Window | Project list, cards (Live/Progress/Paused), new project, settings, eval, memory |
-| `UI-14` | Project Window | Left panel (Chat+Team), right panel (KB/Code/Preview/Deploy/ID/Compliance), Agent Network, mini apps, orchestrator as co-creator |
-| `UI-15` | Preview & Build Engine | HMR pipeline, triple viewport, console capture, responsive enforcement, quality gate |
-| `UI-16` | Eval System | Hard eval + LLM-as-judge, 4 benchmark sources, auto-extraction, context accumulation |
-| `UI-17` | Design System | Ant Design 5 + shadcn, Inter font, zinc palette, dark/light themes, Monaco theme, logo |
-| `UI-18` | Git Inspector | Git sub-views in Code tab (files/diff/log/branches/blame), git2-rs, Monaco diff |
+| `U001` | Navigation Index | Two-window model. Spec file map. |
+| `U002` | Responsive | 3 breakpoints (mobile/tablet/desktop), touch targets, typography scale |
+| `U003` | Perfectly From Day 1 | 13 quality standards. Responsive, 60fps, accessible, fast, secure, SEO, errors, dark mode, i18n, analytics, legal, deploy-ready, instant loading |
+| `U004` | User Journey | Launch → splash → launcher → project → agents → ship → back |
+| `U005` | Launcher Window | Project list, cards (Live/Progress/Paused), new project, settings, eval, memory |
+| `U006` | Project Window | Left panel (Chat+Team), right panel (KB/Code/Preview/Deploy/ID/Compliance), Agent Network, mini apps, orchestrator as co-creator |
+| `U007` | Preview & Build Engine | HMR pipeline, triple viewport, console capture, responsive enforcement, quality gate |
+| `U008` | Eval System | Hard eval + LLM-as-judge, 4 benchmark sources, auto-extraction, context accumulation |
+| `U009` | Design System | Ant Design 5 + shadcn, Inter font, zinc palette, dark/light themes, Monaco theme, logo |
+| `U010` | Git Inspector | Git sub-views in Code tab (files/diff/log/branches/blame), git2-rs, Monaco diff |
 
 ### How to Reference
 
 ```
 // Architecture specs — use the number directly
-// Per 009/Isolation: plugins wrapped in ErrorBoundary
-// Per 002/Performance: CSS flexbox resize for 60fps
+// Per A005/Isolation: plugins wrapped in ErrorBoundary
+// Per A001/Performance: CSS flexbox resize for 60fps
 
 // UI specs — prefix with UI-
-// Per UI-14/LeftPanel: Chat and Team as separate tabs
-// Per UI-17/Theme: zinc palette, no custom colors
-// Per UI-11/Standard3: WCAG AA accessible, axe-core 0 violations
+// Per U006/LeftPanel: Chat and Team as separate tabs
+// Per U009/Theme: zinc palette, no custom colors
+// Per U003/Standard3: WCAG AA accessible, axe-core 0 violations
 ```
 
 ### Checklist Before Every Code Change

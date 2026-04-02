@@ -15,12 +15,12 @@ Read the task description. Map it to spec files:
 
 | Spec | When Relevant |
 |---|---|
-| `docs/plans/2026-04-02-009-feat-plugin-architecture.md` | Any plugin work, contribution types, plugin API, lifecycle |
-| `docs/plans/2026-04-02-010-feat-core-runtime.md` | Core shell, plugin host, boot sequence |
-| `docs/plans/2026-04-02-002-feat-performance-architecture.md` | 60fps, child WebViews, HMR, split pane, Monaco, CSS containment |
-| `docs/plans/2026-04-02-003-feat-state-management-architecture.md` | Workers, Rust SSE, zones, batching |
-| `docs/plans/2026-04-02-006-feat-instant-loading-architecture.md` | Startup budget, lazy loading, BoxLite snapshots |
-| `docs/plans/2026-04-02-007-feat-workspace-architecture.md` | .snapfzz/ folders, config format, file storage |
+| `docs/plans/A005-plugin-architecture.md` | Any plugin work, contribution types, plugin API, lifecycle |
+| `docs/plans/A006-core-runtime.md` | Core shell, plugin host, boot sequence |
+| `docs/plans/A001-performance-architecture.md` | 60fps, child WebViews, HMR, split pane, Monaco, CSS containment |
+| `docs/plans/A002-state-management.md` | Workers, Rust SSE, zones, batching |
+| `docs/plans/A003-instant-loading.md` | Startup budget, lazy loading, BoxLite snapshots |
+| `docs/plans/A004-workspace-architecture.md` | .snapfzz/ folders, config format, file storage |
 | `docs/ui-specs/14-project-window.md` | Project window layout, left/right panels, Agent Network |
 | `docs/ui-specs/13-launcher-window.md` | Launcher window, project list |
 | `docs/ui-specs/17-design-system.md` | Ant Design + shadcn, Inter, zinc, dark/light |
@@ -70,8 +70,8 @@ Follow /absolute/path/to/ENGINEERING_GUIDE.md:
 ## MUST DO
 - Read ALL spec and code files listed above before writing any code
 - Write tests first (TDD)
-- Test names reference specs: 009/PluginHost: resolves dependencies
-- Inline comments reference specs: // Per 002/Performance: 16ms batch
+- Test names reference specs: A005/PluginHost: resolves dependencies
+- Inline comments reference specs: // Per A001/Performance: 16ms batch
 - Update docs/TRACEABILITY.md with new rows
 - Verify pnpm dev:launcher still works
 - Verify npx vitest run passes
@@ -109,11 +109,11 @@ Update @snapfzz/project shell to render tabs dynamically from ContributionStore.
 Left panel tabs + right panel tabs + bottom panel + status bar.
 
 ## SPEC REFERENCES (read before coding)
-- /Users/mrk/.../docs/plans/2026-04-02-009-feat-plugin-architecture.md
+- /Users/mrk/.../docs/plans/A005-plugin-architecture.md
   (sections: Registration Points, Plugin Lifecycle)
-- /Users/mrk/.../docs/plans/2026-04-02-010-feat-core-runtime.md
+- /Users/mrk/.../docs/plans/A006-core-runtime.md
   (section: Shell Layout — Dynamic Rendering)
-- /Users/mrk/.../docs/plans/2026-04-02-002-feat-performance-architecture.md
+- /Users/mrk/.../docs/plans/A001-performance-architecture.md
   (section: Split Pane — react-resizable-panels)
 - /Users/mrk/.../docs/ui-specs/14-project-window.md
   (full document — the layout spec)
@@ -147,15 +147,15 @@ Build the Chat system plugin at frontend/plugins/chat/.
 Uses definePlugin() to register a leftPanelTab with orchestrator conversation UI.
 
 ## SPEC REFERENCES (read before coding)
-- /Users/mrk/.../docs/plans/2026-04-02-009-feat-plugin-architecture.md
+- /Users/mrk/.../docs/plans/A005-plugin-architecture.md
   (sections: Plugin Manifest, PluginContext, Intelligence Contributions)
 - /Users/mrk/.../docs/ui-specs/14-project-window.md
   (section: LEFT PANEL — Communication, Chat tab)
 - /Users/mrk/.../docs/ui-specs/17-design-system.md
   (Ant Design + shadcn aesthetic)
-- /Users/mrk/.../docs/plans/2026-04-02-002-feat-performance-architecture.md
+- /Users/mrk/.../docs/plans/A001-performance-architecture.md
   (section: Chat — react-virtuoso, streaming)
-- /Users/mrk/.../docs/plans/2026-04-02-003-feat-state-management-architecture.md
+- /Users/mrk/.../docs/plans/A002-state-management.md
   (section: Zone 2 — StateWorker for chat state)
 
 ## EXISTING CODE (read before coding)

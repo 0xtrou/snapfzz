@@ -1,4 +1,4 @@
-// Spec: 009-feat-plugin-architecture.md, 010-feat-core-runtime.md
+// Spec: A005-feat-plugin-architecture.md, 010-feat-core-runtime.md
 // Sections: Plugin Lifecycle, Dependency Resolution, Plugin Context
 // Verifies: plugin registration, surface filtering, dependency ordering, activation, deactivation
 import { describe, expect, it, vi } from 'vitest';
@@ -15,8 +15,8 @@ const defineTestPlugin = (overrides: Partial<PluginDefinition> & { id: string })
   ...overrides,
 });
 
-describe('009/lifecycle: PluginHost registration, resolution, and lifecycle control', () => {
-  it('009/lifecycle: registers a plugin and retrieves it by id', () => {
+describe('A005/lifecycle: PluginHost registration, resolution, and lifecycle control', () => {
+  it('A005/lifecycle: registers a plugin and retrieves it by id', () => {
     const host = new PluginHost(new ContributionStore());
     const plugin = defineTestPlugin({ id: 'test-plugin' });
 
@@ -25,7 +25,7 @@ describe('009/lifecycle: PluginHost registration, resolution, and lifecycle cont
     expect(host.getPlugin('test-plugin')).toBe(plugin);
   });
 
-  it('009/lifecycle: filters registered plugins by requested host surface', () => {
+  it('A005/lifecycle: filters registered plugins by requested host surface', () => {
     const host = new PluginHost(new ContributionStore());
     const launcherPlugin = defineTestPlugin({ id: 'lp', surface: ['launcher'] });
     const projectPlugin = defineTestPlugin({ id: 'pp', surface: ['project'] });
@@ -38,7 +38,7 @@ describe('009/lifecycle: PluginHost registration, resolution, and lifecycle cont
     expect(launcherPlugins[0].id).toBe('lp');
   });
 
-  it('009/resolve: returns all plugins when no dependencies are declared', () => {
+  it('A005/resolve: returns all plugins when no dependencies are declared', () => {
     const host = new PluginHost(new ContributionStore());
     host.register(defineTestPlugin({ id: 'a' }));
     host.register(defineTestPlugin({ id: 'b' }));
@@ -50,7 +50,7 @@ describe('009/lifecycle: PluginHost registration, resolution, and lifecycle cont
     expect(order.map((p) => p.id)).toContain('b');
   });
 
-  it('009/resolve: orders plugins so dependencies come before dependents', () => {
+  it('A005/resolve: orders plugins so dependencies come before dependents', () => {
     const host = new PluginHost(new ContributionStore());
     host.register(defineTestPlugin({ id: 'a', dependencies: { b: '1.0.0' } }));
     host.register(defineTestPlugin({ id: 'b' }));
@@ -61,14 +61,14 @@ describe('009/lifecycle: PluginHost registration, resolution, and lifecycle cont
     expect(ids.indexOf('b')).toBeLessThan(ids.indexOf('a'));
   });
 
-  it('009/resolve: throws when a required dependency is missing', () => {
+  it('A005/resolve: throws when a required dependency is missing', () => {
     const host = new PluginHost(new ContributionStore());
     host.register(defineTestPlugin({ id: 'a', dependencies: { missing: '1.0.0' } }));
 
     expect(() => host.resolve()).toThrow(/missing dependency/i);
   });
 
-  it('010/context: activates plugin with full PluginContext contract', async () => {
+  it('A006/context: activates plugin with full PluginContext contract', async () => {
     const host = new PluginHost(new ContributionStore());
     const mockActivate = vi.fn().mockResolvedValue({});
     const plugin = defineTestPlugin({
@@ -93,7 +93,7 @@ describe('009/lifecycle: PluginHost registration, resolution, and lifecycle cont
     expect(handle).toBeDefined();
   });
 
-  it('009/lifecycle: calls plugin handle deactivate during host deactivation', async () => {
+  it('A005/lifecycle: calls plugin handle deactivate during host deactivation', async () => {
     const host = new PluginHost(new ContributionStore());
     const mockDeactivate = vi.fn().mockResolvedValue(undefined);
     const plugin = defineTestPlugin({

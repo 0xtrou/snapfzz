@@ -1,4 +1,4 @@
-// Per 003/StateManagement: useSyncExternalStore for reactive reads — React 18+ concurrent-safe, no re-render overhead.
+// Per A002/StateManagement: useSyncExternalStore for reactive reads — React 18+ concurrent-safe, no re-render overhead.
 import { useSyncExternalStore } from 'react';
 import type { ContributionSnapshot } from './contribution-store';
 import type { ContributionStore } from './contribution-store';

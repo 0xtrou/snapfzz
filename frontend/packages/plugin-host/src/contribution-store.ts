@@ -18,7 +18,7 @@ export interface ContributionSnapshot {
 }
 
 export class ContributionStore {
-  // Per 010/ShellLayout: store is the runtime-owned source for shell slots that plugins populate dynamically.
+  // Per A006/ShellLayout: store is the runtime-owned source for shell slots that plugins populate dynamically.
   private leftPanelTabs: TabContribution[] = [];
   private workspaceTabs: TabContribution[] = [];
   private bottomPanels: PanelContribution[] = [];
@@ -27,7 +27,7 @@ export class ContributionStore {
   private shortcuts: ShortcutContribution[] = [];
   private settings: SettingsContribution[] = [];
   private listeners: Set<() => void> = new Set();
-  // Per 003/StateManagement: snapshot pattern enables useSyncExternalStore reactive reads without re-render overhead.
+  // Per A002/StateManagement: snapshot pattern enables useSyncExternalStore reactive reads without re-render overhead.
   private snapshot: ContributionSnapshot = this.createSnapshot();
 
   registerLeftPanelTab(tab: TabContribution) {
@@ -91,7 +91,7 @@ export class ContributionStore {
   }
 
   private createSnapshot(): ContributionSnapshot {
-    // Per 003/StateManagement: frozen snapshot prevents consumers from mutating store internals
+    // Per A002/StateManagement: frozen snapshot prevents consumers from mutating store internals
     return Object.freeze({
       leftPanelTabs: Object.freeze([...this.leftPanelTabs]),
       workspaceTabs: Object.freeze([...this.workspaceTabs]),

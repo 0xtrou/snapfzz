@@ -1,4 +1,4 @@
-// Per 009/Isolation: plugin UI contributions wrapped in ErrorBoundary — crash shows fallback, does not crash the shell.
+// Per A005/Isolation: plugin UI contributions wrapped in ErrorBoundary — crash shows fallback, does not crash the shell.
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface PluginErrorBoundaryProps {

@@ -1,4 +1,4 @@
-// Spec: 009-feat-plugin-architecture.md, 003-feat-state-management-architecture.md
+// Spec: A005-feat-plugin-architecture.md, 003-feat-state-management-architecture.md
 // Sections: Contribution Registry, Reactive Store Snapshots
 // Verifies: registration/disposal behavior, subscription notifications, immutable snapshot contract
 import { describe, expect, it, vi } from 'vitest';
@@ -47,8 +47,8 @@ const createSetting = (id: string): SettingsContribution => ({
   schema: { type: 'string' },
 });
 
-describe('009/store: ContributionStore registration + snapshot behavior', () => {
-  it('009/store: registers a left panel tab contribution', () => {
+describe('A005/store: ContributionStore registration + snapshot behavior', () => {
+  it('A005/store: registers a left panel tab contribution', () => {
     const store = new ContributionStore();
     const tab = createTab('tab.one');
 
@@ -57,7 +57,7 @@ describe('009/store: ContributionStore registration + snapshot behavior', () => 
     expect(store.getLeftPanelTabs()).toEqual([tab]);
   });
 
-  it('009/store: removes a registered tab contribution when disposer is called', () => {
+  it('A005/store: removes a registered tab contribution when disposer is called', () => {
     const store = new ContributionStore();
     const tab = createTab('tab.one');
 
@@ -67,7 +67,7 @@ describe('009/store: ContributionStore registration + snapshot behavior', () => 
     expect(store.getLeftPanelTabs()).toEqual([]);
   });
 
-  it('003/store-reactivity: notifies subscribers when contributions are registered', () => {
+  it('A002/store-reactivity: notifies subscribers when contributions are registered', () => {
     const store = new ContributionStore();
     const listener = vi.fn();
 
@@ -77,7 +77,7 @@ describe('009/store: ContributionStore registration + snapshot behavior', () => 
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('003/store-reactivity: notifies subscribers when contributions are disposed', () => {
+  it('A002/store-reactivity: notifies subscribers when contributions are disposed', () => {
     const store = new ContributionStore();
     const listener = vi.fn();
 
@@ -90,7 +90,7 @@ describe('009/store: ContributionStore registration + snapshot behavior', () => 
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it('003/store-reactivity: returns immutable snapshot objects for concurrent-safe consumers', () => {
+  it('A002/store-reactivity: returns immutable snapshot objects for concurrent-safe consumers', () => {
     const store = new ContributionStore();
     store.registerLeftPanelTab(createTab('tab.one'));
     store.registerWorkspaceTab(createTab('tab.two'));
@@ -112,7 +112,7 @@ describe('009/store: ContributionStore registration + snapshot behavior', () => 
     expect(Object.isFrozen(snapshot.settings)).toBe(true);
   });
 
-  it('009/store: preserves insertion order for multiple registrations of the same contribution type', () => {
+  it('A005/store: preserves insertion order for multiple registrations of the same contribution type', () => {
     const store = new ContributionStore();
     const first = createTab('tab.one');
     const second = createTab('tab.two');

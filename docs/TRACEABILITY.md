@@ -8,33 +8,33 @@ Every spec requirement → code → tests. Updated with every change.
 
 | Requirement | Code | Tests |
 |---|---|---|
-| Plugin registration stores manifest definitions by id | frontend/packages/plugin-host/src/plugin-host.ts:register() | frontend/packages/plugin-host/src/plugin-host.test.ts:009/lifecycle: registers a plugin and retrieves it by id |
-| Surface filtering returns only plugins for target host surface | frontend/packages/plugin-host/src/plugin-host.ts:getPlugins() | frontend/packages/plugin-host/src/plugin-host.test.ts:009/lifecycle: filters registered plugins by requested host surface |
-| Dependency resolution uses topological ordering | frontend/packages/plugin-host/src/plugin-host.ts:resolve() | frontend/packages/plugin-host/src/plugin-host.test.ts:009/resolve: orders plugins so dependencies come before dependents |
-| Missing dependency detection fails resolution | frontend/packages/plugin-host/src/plugin-host.ts:resolve() | frontend/packages/plugin-host/src/plugin-host.test.ts:009/resolve: throws when a required dependency is missing |
-| Activation calls plugin activate with PluginContext | frontend/packages/plugin-host/src/plugin-host.ts:activate() | frontend/packages/plugin-host/src/plugin-host.test.ts:010/context: activates plugin with full PluginContext contract |
-| Deactivation calls plugin handle deactivate and disposes runtime context | frontend/packages/plugin-host/src/plugin-host.ts:deactivate() + frontend/packages/plugin-host/src/plugin-context-factory.ts:disposePluginContext() | frontend/packages/plugin-host/src/plugin-host.test.ts:009/lifecycle: calls plugin handle deactivate during host deactivation |
-| Event communication is namespaced per plugin | frontend/packages/plugin-host/src/plugin-context-factory.ts:normalizeTopic() + createPluginContext().bus | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:009/communication: provides namespaced EventBus that isolates plugin topics |
-| Command communication goes through shared command registry | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext().commands | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:009/communication: CommandBus allows register/execute within same host boundary |
-| Settings and storage are namespaced per plugin for isolation | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext().settings + .storage | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:009/isolation: SettingsRegistry stores under plugin-namespaced key |
-| API broker is token-based (no direct plugin imports) | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext().apis | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:010/context: creates PluginContext with all required fields from plugin-sdk contract |
-| ContributionStore registers and disposes UI contributions | frontend/packages/plugin-host/src/contribution-store.ts:registerLeftPanelTab/registerWorkspaceTab/registerBottomPanel/registerStatusItem | frontend/packages/plugin-host/src/contribution-store.test.ts:009/store: registers a left panel tab contribution; 009/store: removes a registered tab contribution when disposer is called |
-| Crash isolation wraps plugin UI in error boundary fallback | frontend/packages/plugin-host/src/plugin-error-boundary.tsx | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:009/isolation: catches render error and shows configured fallback component |
+| Plugin registration stores manifest definitions by id | frontend/packages/plugin-host/src/plugin-host.ts:register() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle: registers a plugin and retrieves it by id |
+| Surface filtering returns only plugins for target host surface | frontend/packages/plugin-host/src/plugin-host.ts:getPlugins() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle: filters registered plugins by requested host surface |
+| Dependency resolution uses topological ordering | frontend/packages/plugin-host/src/plugin-host.ts:resolve() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/resolve: orders plugins so dependencies come before dependents |
+| Missing dependency detection fails resolution | frontend/packages/plugin-host/src/plugin-host.ts:resolve() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/resolve: throws when a required dependency is missing |
+| Activation calls plugin activate with PluginContext | frontend/packages/plugin-host/src/plugin-host.ts:activate() | frontend/packages/plugin-host/src/plugin-host.test.ts:A006/context: activates plugin with full PluginContext contract |
+| Deactivation calls plugin handle deactivate and disposes runtime context | frontend/packages/plugin-host/src/plugin-host.ts:deactivate() + frontend/packages/plugin-host/src/plugin-context-factory.ts:disposePluginContext() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle: calls plugin handle deactivate during host deactivation |
+| Event communication is namespaced per plugin | frontend/packages/plugin-host/src/plugin-context-factory.ts:normalizeTopic() + createPluginContext().bus | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:A005/communication: provides namespaced EventBus that isolates plugin topics |
+| Command communication goes through shared command registry | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext().commands | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:A005/communication: CommandBus allows register/execute within same host boundary |
+| Settings and storage are namespaced per plugin for isolation | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext().settings + .storage | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:A005/isolation: SettingsRegistry stores under plugin-namespaced key |
+| API broker is token-based (no direct plugin imports) | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext().apis | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:A006/context: creates PluginContext with all required fields from plugin-sdk contract |
+| ContributionStore registers and disposes UI contributions | frontend/packages/plugin-host/src/contribution-store.ts:registerLeftPanelTab/registerWorkspaceTab/registerBottomPanel/registerStatusItem | frontend/packages/plugin-host/src/contribution-store.test.ts:A005/store: registers a left panel tab contribution; A005/store: removes a registered tab contribution when disposer is called |
+| Crash isolation wraps plugin UI in error boundary fallback | frontend/packages/plugin-host/src/plugin-error-boundary.tsx | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A005/isolation: catches render error and shows configured fallback component |
 
 ## 010 Core Runtime
 
 | Requirement | Code | Tests |
 |---|---|---|
-| Core plugin host supports registration, resolution, activation, deactivation lifecycle | frontend/packages/plugin-host/src/plugin-host.ts | frontend/packages/plugin-host/src/plugin-host.test.ts:009/lifecycle + 009/resolve + 010/context tests |
-| PluginContext factory provides runtime contracts (bus, commands, registry, settings, storage, apis, rust, logger, surface, projectPath) | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext() | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:010/context: creates PluginContext with all required fields from plugin-sdk contract |
-| React integration kept separate from runtime core | frontend/packages/plugin-host/src/use-contribution-store.ts + frontend/packages/plugin-host/src/use-plugin-host.ts | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:003/react and 010/react tests |
-| Shell reads ContributionStore dynamically (via reactive hook) | frontend/packages/plugin-host/src/use-contribution-store.ts | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:003/react: re-renders hook when ContributionStore is updated |
+| Core plugin host supports registration, resolution, activation, deactivation lifecycle | frontend/packages/plugin-host/src/plugin-host.ts | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle + A005/resolve + A006/context tests |
+| PluginContext factory provides runtime contracts (bus, commands, registry, settings, storage, apis, rust, logger, surface, projectPath) | frontend/packages/plugin-host/src/plugin-context-factory.ts:createPluginContext() | frontend/packages/plugin-host/src/plugin-context-factory.test.ts:A006/context: creates PluginContext with all required fields from plugin-sdk contract |
+| React integration kept separate from runtime core | frontend/packages/plugin-host/src/use-contribution-store.ts + frontend/packages/plugin-host/src/use-plugin-host.ts | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react and A006/react tests |
+| Shell reads ContributionStore dynamically (via reactive hook) | frontend/packages/plugin-host/src/use-contribution-store.ts | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react: re-renders hook when ContributionStore is updated |
 
 ## 002 Performance Architecture
 
 | Requirement | Code | Tests |
 |---|---|---|
-| Reactive shell reads should avoid unnecessary re-renders | frontend/packages/plugin-host/src/use-contribution-store.ts (useSyncExternalStore) | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:003/react: returns ContributionSnapshot from store via useSyncExternalStore |
+| Reactive shell reads should avoid unnecessary re-renders | frontend/packages/plugin-host/src/use-contribution-store.ts (useSyncExternalStore) | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react: returns ContributionSnapshot from store via useSyncExternalStore |
 | No heavy compute in plugin-host main thread paths | frontend/packages/plugin-host/src/plugin-host.ts + frontend/packages/plugin-host/src/contribution-store.ts + frontend/packages/plugin-host/src/plugin-context-factory.ts (registry/context wiring only) | Covered indirectly by all plugin-host unit tests (no batching/compute loops present in this package) |
 | 16ms batching / resize zones / child webviews | Not implemented in @snapfzz/plugin-host (belongs to stream pipeline/shell runtime packages) | — |
 
@@ -42,14 +42,14 @@ Every spec requirement → code → tests. Updated with every change.
 
 | Requirement | Code | Tests |
 |---|---|---|
-| useSyncExternalStore for reactive contribution reads | frontend/packages/plugin-host/src/use-contribution-store.ts | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:003/react: re-renders hook when ContributionStore is updated; 003/react: returns ContributionSnapshot from store via useSyncExternalStore |
+| useSyncExternalStore for reactive contribution reads | frontend/packages/plugin-host/src/use-contribution-store.ts | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react: re-renders hook when ContributionStore is updated; A002/react: returns ContributionSnapshot from store via useSyncExternalStore |
 | Core runtime logic remains React-free | frontend/packages/plugin-host/src/plugin-host.ts + frontend/packages/plugin-host/src/contribution-store.ts + frontend/packages/plugin-host/src/plugin-context-factory.ts | frontend/packages/plugin-host/src/plugin-host.test.ts + frontend/packages/plugin-host/src/contribution-store.test.ts + frontend/packages/plugin-host/src/plugin-context-factory.test.ts |
-| React-specific integration isolated to dedicated files | frontend/packages/plugin-host/src/use-contribution-store.ts + frontend/packages/plugin-host/src/use-plugin-host.ts + frontend/packages/plugin-host/src/plugin-error-boundary.tsx | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:003/react + 010/react + 009/isolation tests |
+| React-specific integration isolated to dedicated files | frontend/packages/plugin-host/src/use-contribution-store.ts + frontend/packages/plugin-host/src/use-plugin-host.ts + frontend/packages/plugin-host/src/plugin-error-boundary.tsx | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react + A006/react + A005/isolation tests |
 | Worker-based state reducers / Rust SSE consumer | Not implemented in @snapfzz/plugin-host (belongs to other runtime/shell packages) | — |
 
 ## Spec Gaps / Unimplemented-in-Code Requirements (within plugin-host scope)
 
-| Requirement from specs 009/010 | Current status | Code evidence |
+| Requirement from specs A005/010 | Current status | Code evidence |
 |---|---|---|
 | Manifest discovery from plugin packages (not manual register only) | Missing | frontend/packages/plugin-host/src/plugin-host.ts (register() only; TODO comment) |
 | Activation-event driven lazy loading (`onStartupFinished`, `onViewVisible:*`, etc.) | Missing | frontend/packages/plugin-host/src/plugin-host.ts:activate()/activateAll() (no activationEvent gating; TODO comment) |

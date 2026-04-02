@@ -1,4 +1,4 @@
-// Spec: 009-feat-plugin-architecture.md, 010-feat-core-runtime.md
+// Spec: A005-feat-plugin-architecture.md, 010-feat-core-runtime.md
 // Sections: Plugin Context, Plugin Communication, Isolation
 // Verifies: PluginContext shape, namespaced bus, command registry, logger prefixing, settings/storage namespacing
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,7 +33,7 @@ class MemoryStorage implements Storage {
   }
 }
 
-describe('009/context: PluginContext factory and isolation boundaries', () => {
+describe('A005/context: PluginContext factory and isolation boundaries', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     Object.defineProperty(globalThis, 'localStorage', {
@@ -43,7 +43,7 @@ describe('009/context: PluginContext factory and isolation boundaries', () => {
     });
   });
 
-  it('010/context: creates PluginContext with all required fields from plugin-sdk contract', () => {
+  it('A006/context: creates PluginContext with all required fields from plugin-sdk contract', () => {
     const context = createPluginContext('plugin.alpha', 'project', new ContributionStore(), '/tmp/project');
 
     expect(context.surface).toBe('project');
@@ -58,7 +58,7 @@ describe('009/context: PluginContext factory and isolation boundaries', () => {
     expect(context.logger).toBeDefined();
   });
 
-  it('009/communication: provides namespaced EventBus that isolates plugin topics', () => {
+  it('A005/communication: provides namespaced EventBus that isolates plugin topics', () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
     const handler = vi.fn();
 
@@ -72,7 +72,7 @@ describe('009/context: PluginContext factory and isolation boundaries', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('009/communication: CommandBus allows register/execute within same host boundary', async () => {
+  it('A005/communication: CommandBus allows register/execute within same host boundary', async () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
     const dispose = context.commands.register('demo.command', async (args) => ({ args }));
 
@@ -84,7 +84,7 @@ describe('009/context: PluginContext factory and isolation boundaries', () => {
     await expect(context.commands.execute('demo.command')).rejects.toThrow(/not registered/i);
   });
 
-  it('009/isolation: Logger output is prefixed with plugin id to prevent cross-plugin log confusion', () => {
+  it('A005/isolation: Logger output is prefixed with plugin id to prevent cross-plugin log confusion', () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -103,7 +103,7 @@ describe('009/context: PluginContext factory and isolation boundaries', () => {
     expect(errorSpy).toHaveBeenCalledWith('[plugin.alpha]', 'e');
   });
 
-  it('009/isolation: SettingsRegistry stores under plugin-namespaced key', () => {
+  it('A005/isolation: SettingsRegistry stores under plugin-namespaced key', () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
 
     context.settings.set('theme', { mode: 'dark' });
