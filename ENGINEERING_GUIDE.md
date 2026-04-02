@@ -181,6 +181,18 @@ When delegating work to an agent, ALWAYS include:
 
 ---
 
+## No TODOs — Ever
+
+Never write `// TODO`, `// FIXME`, `// HACK`, `// XXX`, or any placeholder comment in code.
+
+- If it's within the scope of current work → **implement it now**
+- If it's genuinely out of scope → **don't mention it in code**. It belongs in a spec or a task, not a code comment.
+- If you're unsure whether it's in scope → **ask**, don't defer with a TODO
+
+Verification: `grep -rn "TODO\|FIXME\|HACK\|XXX" frontend/packages/ || echo "Clean"` must return clean.
+
+---
+
 ## Code Review Checklist
 
 Before any PR merges:

@@ -1,6 +1,7 @@
 import { createContext, createElement, useContext, type ReactNode } from 'react';
 import type { PluginHost } from './plugin-host';
 
+// Per 003/StateManagement: React integration is isolated to hook/provider file, core host stays framework-agnostic.
 const PluginHostContext = createContext<PluginHost | null>(null);
 
 export function usePluginHost(): PluginHost {

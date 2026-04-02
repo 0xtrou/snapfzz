@@ -14,6 +14,7 @@ import type { HostSurface } from '@snapfzz/plugin-sdk';
 import { createEventBus, createTauriBridge } from '@snapfzz/shared';
 import type { ContributionStore } from './contribution-store';
 
+// Per 009/Communication: plugins communicate through host-managed bus/registries, never direct imports.
 const sharedEventBus = createEventBus();
 const sharedCommandHandlers = new Map<string, (args?: unknown) => Promise<unknown>>();
 const sharedApis = new Map<string, unknown>();
@@ -23,6 +24,7 @@ const contextDisposables = new WeakMap<PluginContext, Set<Disposable>>();
 const inMemoryStorage = new Map<string, string>();
 
 function getStorageLike() {
+  // Per 010/CoreRuntime: host must run in shell + tests; fallback keeps context creation deterministic outside browser storage.
   if (typeof localStorage !== 'undefined') {
     return localStorage;
   }
@@ -41,6 +43,7 @@ function getStorageLike() {
 }
 
 function normalizeTopic(pluginId: string, topic: string): string {
+  // Per 009/Communication: implicit namespacing prevents accidental topic collisions across plugins.
   return topic.includes(':') ? topic : `${pluginId}:${topic}`;
 }
 
@@ -53,6 +56,7 @@ function attachDisposable(context: PluginContext, dispose: Disposable) {
 }
 
 export function disposePluginContext(context: PluginContext): void {
+  // Per 009/PluginLifecycle: host-owned disposables guarantee contribution teardown on deactivation.
   const disposables = contextDisposables.get(context);
   if (!disposables) {
     return;
@@ -74,6 +78,7 @@ export function createPluginContext(
   const storageLike = getStorageLike();
   const settingsListeners = new Map<string, Set<(value: unknown) => void>>();
 
+  // Per 010/PluginContextFactory: construct full PluginContext contract from plugin-sdk before activation.
   const context: PluginContext = {
     bus: {} as EventBus,
     commands: {} as CommandRegistry,
@@ -136,6 +141,7 @@ export function createPluginContext(
       return dispose;
     },
     registerComponent(_component) {
+      // TODO(009/Contributions): generic components are in PluginContributions but ContributionStore has no backing registry yet.
       const dispose = () => {};
       attachDisposable(context, dispose);
       return dispose;
@@ -144,6 +150,7 @@ export function createPluginContext(
 
   context.settings = {
     get<T>(key: string): T | undefined {
+      // Per 009/Isolation: settings keyed with plugin namespace to prevent cross-plugin access.
       const value = storageLike.getItem(`snapfzz:plugin:${pluginId}:settings:${key}`);
       if (value === null) {
         return undefined;
@@ -184,6 +191,7 @@ export function createPluginContext(
 
   context.storage = {
     async get<T>(key: string): Promise<T | undefined> {
+      // Per 009/Isolation: storage keys prefixed with plugin id — plugin A cannot read plugin B's data.
       const value = storageLike.getItem(`snapfzz:plugin:${pluginId}:storage:${key}`);
       if (value === null) {
         return undefined;
@@ -207,6 +215,7 @@ export function createPluginContext(
       return sharedApis.get(token) as T;
     },
     provide<T>(token: string, impl: T): void {
+      // Per 009/Communication: token-based API broker replaces direct plugin imports.
       sharedApis.set(token, impl);
       sharedApiOwners.set(token, pluginId);
       attachDisposable(context, () => {
@@ -218,6 +227,7 @@ export function createPluginContext(
     },
   };
 
+  // Per 010/RustIPC: plugins reach native capabilities only through the Rust bridge abstraction.
   const tauriBridge = createTauriBridge();
   context.rust = {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {

@@ -8,10 +8,14 @@ interface ActivatedPlugin {
 }
 
 export class PluginHost {
+  // Per 010/PluginHost: runtime owns manifest registry keyed by plugin id for lookup + lifecycle ops.
   private plugins: Map<string, PluginDefinition> = new Map();
   private activatedPlugins: Map<string, ActivatedPlugin> = new Map();
   private store: ContributionStore;
   private surface: HostSurface;
+
+  // TODO(009/Manifest + 010/PluginHost): this host currently receives pre-imported plugin definitions via register().
+  // Spec-required manifest discovery + lazy JS chunk loading by activationEvents is not implemented yet.
 
   constructor(store: ContributionStore, surface?: HostSurface) {
     this.store = store;
@@ -19,6 +23,7 @@ export class PluginHost {
   }
 
   register(plugin: PluginDefinition) {
+    // Per 009/PluginLifecycle: registration stores manifest for later resolution/activation
     this.plugins.set(plugin.id, plugin);
   }
 
@@ -34,6 +39,7 @@ export class PluginHost {
   }
 
   resolve(): PluginDefinition[] {
+    // Per 009/PluginLifecycle: topological sort ensures dependencies activate before dependents
     const plugins = this.getPlugins();
     const pluginMap = new Map(plugins.map((p) => [p.id, p]));
     const result: PluginDefinition[] = [];
@@ -76,6 +82,7 @@ export class PluginHost {
   }
 
   async activate(pluginId: string): Promise<PluginHandle> {
+    // TODO(009/PluginLifecycle): activationEvents are declared in manifest but host does not gate activation by event.
     const plugin = this.plugins.get(pluginId);
     if (!plugin) {
       throw new Error(`Plugin not found: ${pluginId}`);
@@ -86,8 +93,11 @@ export class PluginHost {
       return existing.handle;
     }
 
+    // Per 003/StateManagement: host core stays React-free; activation wires plain runtime services only.
     const context = createPluginContext(pluginId, this.surface, this.store);
     const handle = plugin.activate ? await plugin.activate(context) : {};
+
+    // TODO(009/Isolation): spec calls for worker-hosted plugin logic + crash supervision; current host activates on main thread.
 
     this.activatedPlugins.set(pluginId, { handle, context });
     return handle;
@@ -109,8 +119,10 @@ export class PluginHost {
 
   async activateAll(surface: HostSurface): Promise<void> {
     const ordered = this.resolve().filter((p) => p.surface.includes(surface));
+    // Per 009/PluginLifecycle: activation runs serially in dependency order for deterministic startup.
     for (const plugin of ordered) {
       await this.activate(plugin.id);
     }
   }
 }
+
