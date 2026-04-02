@@ -1,5 +1,6 @@
 import type {
   CommandContribution,
+  ComponentContribution,
   PanelContribution,
   SettingsContribution,
   ShortcutContribution,
@@ -15,6 +16,7 @@ export interface ContributionSnapshot {
   commands: readonly CommandContribution[];
   shortcuts: readonly ShortcutContribution[];
   settings: readonly SettingsContribution[];
+  genericComponents: readonly ComponentContribution[];
 }
 
 export class ContributionStore {
@@ -26,6 +28,7 @@ export class ContributionStore {
   private commands: CommandContribution[] = [];
   private shortcuts: ShortcutContribution[] = [];
   private settings: SettingsContribution[] = [];
+  private genericComponents: ComponentContribution[] = [];
   private listeners: Set<() => void> = new Set();
   // Per A002/StateManagement: snapshot pattern enables useSyncExternalStore reactive reads without re-render overhead.
   private snapshot: ContributionSnapshot = this.createSnapshot();
@@ -58,6 +61,10 @@ export class ContributionStore {
     return this.registerArrayContribution('settings', setting, (entry) => entry.id === setting.id);
   }
 
+  registerGenericComponent(component: ComponentContribution) {
+    return this.registerArrayContribution('genericComponents', component, (entry) => entry.id === component.id);
+  }
+
   getLeftPanelTabs() {
     return [...this.leftPanelTabs];
   }
@@ -86,6 +93,10 @@ export class ContributionStore {
     return [...this.settings];
   }
 
+  getGenericComponents() {
+    return [...this.genericComponents];
+  }
+
   getSnapshot(): ContributionSnapshot {
     return this.snapshot;
   }
@@ -100,6 +111,7 @@ export class ContributionStore {
       commands: Object.freeze([...this.commands]),
       shortcuts: Object.freeze([...this.shortcuts]),
       settings: Object.freeze([...this.settings]),
+      genericComponents: Object.freeze([...this.genericComponents]),
     });
   }
 
@@ -138,6 +150,7 @@ type ArrayPropertyKey =
   | 'statusItems'
   | 'commands'
   | 'shortcuts'
-  | 'settings';
+  | 'settings'
+  | 'genericComponents';
 
 type ArrayElement<T> = T extends Array<infer Item> ? Item : never;

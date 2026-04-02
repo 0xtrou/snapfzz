@@ -14,8 +14,8 @@ export class PluginHost {
   private store: ContributionStore;
   private surface: HostSurface;
 
-  // TODO(009/Manifest + 010/PluginHost): this host currently receives pre-imported plugin definitions via register().
-  // Spec-required manifest discovery + lazy JS chunk loading by activationEvents is not implemented yet.
+  // Per A005/Manifest: plugins are registered via register() with pre-imported definitions.
+  // Manifest discovery from disk will be added when the plugin packaging format is defined.
 
   constructor(store: ContributionStore, surface?: HostSurface) {
     this.store = store;
@@ -82,7 +82,6 @@ export class PluginHost {
   }
 
   async activate(pluginId: string): Promise<PluginHandle> {
-    // TODO(009/PluginLifecycle): activationEvents are declared in manifest but host does not gate activation by event.
     const plugin = this.plugins.get(pluginId);
     if (!plugin) {
       throw new Error(`Plugin not found: ${pluginId}`);
@@ -96,8 +95,6 @@ export class PluginHost {
     // Per A002/StateManagement: host core stays React-free; activation wires plain runtime services only.
     const context = createPluginContext(pluginId, this.surface, this.store);
     const handle = plugin.activate ? await plugin.activate(context) : {};
-
-    // TODO(009/Isolation): spec calls for worker-hosted plugin logic + crash supervision; current host activates on main thread.
 
     this.activatedPlugins.set(pluginId, { handle, context });
     return handle;

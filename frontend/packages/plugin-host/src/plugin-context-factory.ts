@@ -140,9 +140,8 @@ export function createPluginContext(
       attachDisposable(context, dispose);
       return dispose;
     },
-    registerComponent(_component) {
-      // TODO(009/Contributions): generic components are in PluginContributions but ContributionStore has no backing registry yet.
-      const dispose = () => {};
+    registerComponent(component) {
+      const dispose = store.registerGenericComponent(component);
       attachDisposable(context, dispose);
       return dispose;
     },
