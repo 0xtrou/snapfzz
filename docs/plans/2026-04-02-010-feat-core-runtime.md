@@ -88,6 +88,32 @@ PluginContext {
         → other plugins activate on first tab open (onViewVisible)
 ```
 
+## Packages
+
+### Frontend
+
+| Package | What It Does |
+|---|---|
+| `@snapfzz/plugin-sdk` | `definePlugin()`, all TypeScript types, contribution interfaces |
+| `@snapfzz/plugin-host` | `PluginHost` class, `ContributionStore`, manifest discovery, dep resolution, lazy loading, activation, PluginContext factory, ErrorBoundary wrapping |
+| `@snapfzz/shared` | Entities (Project, Agent), lib (EventBus, TauriBridge, formatters), hooks (useTheme, useTauriEvent), theme (Ant Design zinc tokens) |
+| `@snapfzz/launcher` | Thin shell: reads ContributionStore, renders registered content. Header + main + status bar slots. |
+| `@snapfzz/project` | Thin shell: reads ContributionStore. Left panel tabs + right panel tabs + bottom panel + status bar. Resizable split pane. |
+
+### Rust Crates
+
+| Crate | What It Does |
+|---|---|
+| `snapfzz-core` | PluginManifest, HostSurface, BusMessage types |
+| `snapfzz-tauri-shell` | Window management, IPC invoke/event handlers, EventBus bridge |
+| `snapfzz-plugin-host` | Manifest registry (Rust side), capability checking |
+| `snapfzz-plugin-bridge` | Schema validation (serde ↔ zod), typed command routing |
+| `snapfzz-box-manager` | BoxLite integration, VM lifecycle, port mapping, health checks |
+| `snapfzz-agent-orchestrator` | Agent registry, MsgHub routing, session management |
+| `snapfzz-stream-pipeline` | SSE consumer, 16ms batcher, Channel emitter, multiplexer |
+
+---
+
 ## Building the Core Runtime
 
 ### Plugin Host — Full Implementation
