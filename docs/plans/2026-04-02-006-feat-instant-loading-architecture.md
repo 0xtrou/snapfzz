@@ -1,7 +1,6 @@
 ---
 title: "Instant Loading Architecture"
 type: feat
-status: active
 date: 2026-04-02
 ---
 

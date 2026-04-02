@@ -1,7 +1,6 @@
 ---
 title: "Performance Architecture — Technical Decisions"
 type: feat
-status: active
 date: 2026-04-02
 source: "7-agent parallel research on Tauri + React + live preview performance"
 ---

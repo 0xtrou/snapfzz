@@ -1,7 +1,6 @@
 ---
 title: "Core Runtime — The Bones Before Plugins"
 type: feat
-status: active
 date: 2026-04-02
 ---
 
@@ -89,35 +88,11 @@ PluginContext {
         → other plugins activate on first tab open (onViewVisible)
 ```
 
-## Implementation Status
+## Building the Core Runtime
 
-### Packages
+### Plugin Host — Full Implementation
 
-| Package | Status | What It Does |
-|---|---|---|
-| `@snapfzz/plugin-sdk` | ✅ Done | `definePlugin()`, all TypeScript types, contribution interfaces |
-| `@snapfzz/plugin-host` | 🔨 Stub | `PluginHost` class (register/get), `ContributionStore` (register/subscribe). Needs: manifest discovery, dep resolution, lazy loading, activation, PluginContext factory. |
-| `@snapfzz/shared` | ✅ Done | Entities (Project, Agent), lib (EventBus, TauriBridge, formatters), hooks (useTheme, useTauriEvent), theme (Ant Design zinc tokens) |
-| `@snapfzz/launcher` | ✅ Shell | Boots with splash → header + empty body + status bar. Needs: read ContributionStore, render registered tabs/panels dynamically. |
-| `@snapfzz/project` | ✅ Shell | Boots with resizable split pane. Needs: left panel tabs from store, right panel tabs from store, bottom panel from store, status items from store. |
-
-### Rust Crates
-
-| Crate | Status | What It Does |
-|---|---|---|
-| `snapfzz-core` | ✅ Done | PluginManifest, HostSurface, BusMessage types |
-| `snapfzz-tauri-shell` | 📝 Stub | Needs: window management, IPC invoke/event handlers, EventBus bridge |
-| `snapfzz-plugin-host` | 📝 Stub | Needs: manifest registry (Rust side), capability checking |
-| `snapfzz-plugin-bridge` | 📝 Stub | Needs: schema validation (serde ↔ zod), typed command routing |
-| `snapfzz-box-manager` | 📝 Stub | Needs: BoxLite integration, VM lifecycle, port mapping, health checks |
-| `snapfzz-agent-orchestrator` | 📝 Stub | Needs: agent registry, MsgHub routing, session management |
-| `snapfzz-stream-pipeline` | 📝 Stub | Needs: SSE consumer, 16ms batcher, Channel emitter, multiplexer |
-
-## What Needs to Be Built (Core Runtime Completion)
-
-### Step 1: Plugin Host — Full Implementation
-
-Upgrade `@snapfzz/plugin-host` from stub to working:
+`@snapfzz/plugin-host` needs:
 
 - **Manifest discovery**: scan plugin packages, read manifests
 - **Dependency resolution**: topological sort, validate deps exist
@@ -127,9 +102,9 @@ Upgrade `@snapfzz/plugin-host` from stub to working:
 - **Crash containment**: ErrorBoundary wrapper for each plugin's UI contributions
 - **React integration**: `useContributionStore()` hook for shells to reactively read registered content
 
-### Step 2: Shell Layout — Dynamic Rendering
+### Shell Layout — Dynamic Rendering
 
-Upgrade both shells to read from ContributionStore:
+Both shells read from ContributionStore:
 
 **@snapfzz/project shell:**
 ```
@@ -158,43 +133,10 @@ Upgrade both shells to read from ContributionStore:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Step 3: Rust IPC — Wired for Real
+### Rust IPC — Wired for Real
 
-Upgrade `snapfzz-tauri-shell`:
+`snapfzz-tauri-shell` needs:
 
 - **Invoke handlers**: register Tauri commands that plugins call via `ctx.rust.invoke()`
 - **Event bridge**: Rust emits events → JS EventBus receives. JS emits → Rust receives → forwards to other WebViews.
 - **Window management**: create project windows, track open windows
-
-## Delegation Plan
-
-All three steps delegate to a **single deep agent** for integration coherence:
-
-```
-task(
-  category="deep",
-  load_skills=["ce:work"],
-  description="Build core runtime: plugin host + shell layout + Rust IPC",
-  prompt="<full context from this doc + plugin-architecture spec + existing code>"
-)
-```
-
-The agent receives:
-1. This document (core runtime spec)
-2. The plugin architecture spec (009)
-3. The existing code (plugin-sdk types, plugin-host stub, both shells, Rust crates)
-4. Clear success criteria: a plugin can be registered, activated, and render a tab in the project shell
-
-## Success Criteria
-
-Core runtime is DONE when:
-
-- [ ] A test plugin with `definePlugin({ id: 'test', contributes: { leftPanelTabs: [...] } })` loads and renders a tab in the project window's left panel
-- [ ] A test plugin's workspaceTab renders in the right panel
-- [ ] Clicking tabs switches between plugin components
-- [ ] Plugin crash (throw in render) shows fallback UI, doesn't crash the shell
-- [ ] EventBus: plugin A emits → plugin B receives
-- [ ] ContributionStore updates trigger React re-renders in the shell
-- [ ] Status bar renders items from registered plugins
-- [ ] Launcher shell renders registered main content
-- [ ] All without importing anything from a plugin package — pure manifest + dynamic import

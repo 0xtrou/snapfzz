@@ -1,7 +1,6 @@
 ---
 title: "Plugin Architecture — Core + System Plugins + Third-Party"
 type: feat
-status: active
 date: 2026-04-02
 source: "Oracle consultation + founder refinement"
 ---

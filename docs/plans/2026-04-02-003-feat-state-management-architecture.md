@@ -1,7 +1,6 @@
 ---
 title: "State Management Architecture — Worker-First for 60fps"
 type: feat
-status: active
 date: 2026-04-02
 source: "4-agent parallel research on Worker state management, Tauri IPC, SSE offloading"
 ---

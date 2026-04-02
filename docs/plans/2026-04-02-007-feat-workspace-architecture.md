@@ -1,7 +1,6 @@
 ---
 title: "Workspace Architecture — Folder-First Like VS Code"
 type: feat
-status: active
 date: 2026-04-02
 ---
 
