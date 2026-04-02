@@ -3,7 +3,7 @@
 // Verifies: PluginContext shape, namespaced bus, command registry, logger prefixing, settings/storage namespacing
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContributionStore } from './contribution-store';
-import { createPluginContext } from './plugin-context-factory';
+import { createPluginContext, type ContextStorageAdapter } from './plugin-context-factory';
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -34,17 +34,15 @@ class MemoryStorage implements Storage {
 }
 
 describe('A005/context: PluginContext factory and isolation boundaries', () => {
+  let storage: ContextStorageAdapter & MemoryStorage;
+
   beforeEach(() => {
     vi.restoreAllMocks();
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: new MemoryStorage(),
-      writable: true,
-      configurable: true,
-    });
+    storage = new MemoryStorage();
   });
 
   it('A006/context: creates PluginContext with all required fields from plugin-sdk contract', () => {
-    const context = createPluginContext('plugin.alpha', 'project', new ContributionStore(), '/tmp/project');
+    const context = createPluginContext('plugin.alpha', 'project', new ContributionStore(), '/tmp/project', storage);
 
     expect(context.surface).toBe('project');
     expect(context.projectPath).toBe('/tmp/project');
@@ -59,7 +57,7 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
   });
 
   it('A005/communication: provides namespaced EventBus that isolates plugin topics', () => {
-    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
     const handler = vi.fn();
 
     const dispose = context.bus.on('topic.ready', handler);
@@ -73,7 +71,7 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
   });
 
   it('A005/communication: CommandBus allows register/execute within same host boundary', async () => {
-    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
     const dispose = context.commands.register('demo.command', async (args) => ({ args }));
 
     const result = await context.commands.execute<{ args?: unknown }>('demo.command', { value: 42 });
@@ -90,7 +88,7 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
 
-    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
 
     context.logger.debug('d');
     context.logger.info('i');
@@ -104,13 +102,11 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
   });
 
   it('A005/isolation: SettingsRegistry stores under plugin-namespaced key', () => {
-    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore());
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
 
     context.settings.set('theme', { mode: 'dark' });
 
     expect(context.settings.get<{ mode: string }>('theme')).toEqual({ mode: 'dark' });
-    expect(globalThis.localStorage.getItem('snapfzz:plugin:plugin.alpha:settings:theme')).toBe(
-      JSON.stringify({ mode: 'dark' }),
-    );
+    expect(storage.getItem('snapfzz:plugin:plugin.alpha:settings:theme')).toBe(JSON.stringify({ mode: 'dark' }));
   });
 });

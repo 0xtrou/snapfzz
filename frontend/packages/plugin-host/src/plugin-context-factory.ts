@@ -14,6 +14,12 @@ import type { HostSurface } from '@snapfzz/plugin-sdk';
 import { createEventBus, createTauriBridge } from '@snapfzz/shared';
 import type { ContributionStore } from './contribution-store';
 
+export interface ContextStorageAdapter {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
 // Per A005/Communication: plugins communicate through host-managed bus/registries, never direct imports.
 const sharedEventBus = createEventBus();
 const sharedCommandHandlers = new Map<string, (args?: unknown) => Promise<unknown>>();
@@ -23,12 +29,7 @@ const contextDisposables = new WeakMap<PluginContext, Set<Disposable>>();
 
 const inMemoryStorage = new Map<string, string>();
 
-function getStorageLike() {
-  // Per A006/CoreRuntime: host must run in shell + tests; fallback keeps context creation deterministic outside browser storage.
-  if (typeof localStorage !== 'undefined') {
-    return localStorage;
-  }
-
+function createInMemoryStorage(): ContextStorageAdapter {
   return {
     getItem(key: string) {
       return inMemoryStorage.get(key) ?? null;
@@ -40,6 +41,11 @@ function getStorageLike() {
       inMemoryStorage.delete(key);
     },
   };
+}
+
+function resolveStorage(storage?: ContextStorageAdapter): ContextStorageAdapter {
+  // Per A002/Zone2: context persistence uses injected storage so lifecycle code stays worker-ready.
+  return storage ?? createInMemoryStorage();
 }
 
 function normalizeTopic(pluginId: string, topic: string): string {
@@ -74,8 +80,9 @@ export function createPluginContext(
   surface: HostSurface,
   store: ContributionStore,
   projectPath?: string,
+  storage?: ContextStorageAdapter,
 ): PluginContext {
-  const storageLike = getStorageLike();
+  const storageLike = resolveStorage(storage);
   const settingsListeners = new Map<string, Set<(value: unknown) => void>>();
 
   // Per A006/PluginContextFactory: construct full PluginContext contract from plugin-sdk before activation.

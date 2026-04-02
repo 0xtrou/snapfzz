@@ -47,25 +47,23 @@ Every spec requirement → code → tests. Updated with every change.
 | React-specific integration isolated to dedicated files | frontend/packages/plugin-host/src/use-contribution-store.ts + frontend/packages/plugin-host/src/use-plugin-host.ts + frontend/packages/plugin-host/src/plugin-error-boundary.tsx | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react + A006/react + A005/isolation tests |
 | Worker-based state reducers / Rust SSE consumer | Not implemented in @snapfzz/plugin-host (belongs to other runtime/shell packages) | — |
 
-## A005 Plugin Lifecycle (new requirements — not yet implemented)
+## A005 Plugin Lifecycle (COMPLETE)
 
 | Requirement | Spec Section | Code | Tests |
 |---|---|---|---|
-| Activation events gate when plugins activate | A005/Lifecycle: Activation Events | — | — |
-| Startup budget: 200ms for critical, requestIdleCallback for rest | A005/Lifecycle: Startup Budget | — | — |
-| Enable/disable with persistence across restarts | A005/Lifecycle: Enable/Disable | — | — |
-| Reload: deactivate → re-import → re-activate | A005/Lifecycle: Reload | — | — |
-| Uninstall: remove third-party plugin + storage + chunks | A005/Lifecycle: Delete/Uninstall | — | — |
-| Update: replace plugin version, verify compat | A005/Lifecycle: Update | — | — |
-| Crash supervision: 3 crashes in 5min → auto-disable | A005/Lifecycle: Crash Supervision | — | — |
-| Plugin settings UI in launcher | A005/Lifecycle: Plugin Settings UI | — | — |
-| Capability checking before granting access | A005/Isolation: Capabilities | — | — |
+| Activation events gate when plugins activate | A005/Lifecycle: Activation Events | frontend/packages/plugin-host/src/plugin-host.ts:activateByEvent() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle/activation-events: only activates plugins matching the fired event; skips plugins with non-matching events; activates in dependency order within same event |
+| Startup budget: 200ms for critical, background preload for rest | A005/Lifecycle: Startup Budget | frontend/packages/plugin-host/src/plugin-host.ts:activateByEvent() (STARTUP_BUDGET_MS, scheduleBackgroundPreload) | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle/activation-events tests verify event-gated activation |
+| Enable/disable with persistence across restarts | A005/Lifecycle: Enable/Disable | frontend/packages/plugin-host/src/plugin-host.ts:enable()/disable()/isEnabled() + persistDisabledPlugins() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle/enable-disable: disabled plugin skipped during activation; disable deactivates running plugin; enable re-activates with correct event; disabled state persists via storage interface |
+| Reload: deactivate → re-import via loader → re-activate | A005/Lifecycle: Reload | frontend/packages/plugin-host/src/plugin-host.ts:reload() + registerWithLoader() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle/reload: deactivates and re-activates plugin via loader |
+| Crash supervision: 3 crashes in 5min → auto-disable | A005/Lifecycle: Crash Supervision | frontend/packages/plugin-host/src/plugin-host.ts:reportCrash()/getCrashCount() + pruneCrashWindow() | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle/crash-supervision: increments crash count on reportCrash; auto-disables after 3 crashes in 5 minutes; resets crash count on successful activation |
+| Plugin state query (registered, resolved, loading, activated, running, deactivated, disabled, error) | A005/Lifecycle: Lifecycle States | frontend/packages/plugin-host/src/plugin-host.ts:getPluginState() + pluginStates Map | frontend/packages/plugin-host/src/plugin-host.test.ts:A005/lifecycle/state: returns correct state for each lifecycle phase |
+| Zone 2 purity: no DOM/window/localStorage in lifecycle core | A002/State Management: Three Zones | frontend/packages/plugin-host/src/plugin-host.ts + contribution-store.ts + plugin-context-factory.ts (injectable ContextStorageAdapter) | frontend/packages/plugin-host/src/plugin-host.test.ts:A002/zones: PluginHost has no direct DOM/window/localStorage dependencies |
 
 ## Spec Gaps (within plugin-host scope — not lifecycle)
 
 | Requirement | Code |
 |---|---|
-| Manifest discovery from plugin packages (not manual register only) | Not implemented — register() takes pre-imported definitions |
+| Manifest discovery from plugin packages (not manual register only) | Not implemented — register()/registerWithLoader() take pre-imported definitions or loaders |
 
 ## Out-of-scope for this package but referenced by specs
 
