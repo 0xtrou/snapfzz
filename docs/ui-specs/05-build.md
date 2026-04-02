@@ -259,12 +259,13 @@ This is the core product experience. The Lovable/Bolt UX people love, but smarte
 ## Responsive Preview Controls
 
 ```
-                              PREVIEW     [↗] [📱] [🖥] [▣]
-                              ─────────────────────────────
-                              ↗  = open in real browser
-                              📱 = mobile viewport (375px)
-                              🖥  = desktop viewport (1280px)
-                              ▣  = responsive (drag to resize)
+                              PREVIEW     [↗] [📱] [📱↔] [🖥] [▣]
+                              ────────────────────────────────────
+                              ↗   = open in real browser
+                              📱  = mobile  (375px)
+                              📱↔ = tablet  (768px)
+                              🖥   = desktop (1280px)
+                              ▣   = custom  (drag to resize)
 ```
 
 ## Live Interactive Preview
@@ -456,6 +457,163 @@ The preview pane is a **real, fully interactive iframe** pointing at the running
 │      │ └──────────────────────────────┘ │                            │
 ```
 
+## Multi-Viewport Live Preview
+
+The built app must be responsive from the first line of code. The preview enforces this — the user sees all three layouts and catches responsive bugs during building, not after shipping.
+
+### Single Viewport (Default)
+
+```
+│      │                                  │ PREVIEW  [↗] [📱] [📱↔] [🖥] [▣] │
+│      │                                  │ ┌──────────────────────────┐  │
+│      │                                  │ │                          │  │
+│      │                                  │ │   (app at selected       │  │
+│      │                                  │ │    viewport width)       │  │
+│      │                                  │ │                          │  │
+│      │                                  │ └──────────────────────────┘  │
+│      │                                  │                                │
+│      │                                  │  📱 375px │ ● Live             │
+```
+
+### Triple Viewport Mode (Click [▣▣▣] or keyboard shortcut)
+
+All three viewports visible simultaneously. User tests mobile, tablet, and desktop at once. Agent sees all three — if one breaks, it's caught instantly.
+
+```
+┌──────┬──────────────────┬──────────────────────────────────────────────┐
+│      │                  │ PREVIEW                        [▣▣▣ Triple] │
+│  S   │  Chat + Code     │                                             │
+│  I   │                  │ ┌─────────┐  ┌───────────┐  ┌────────────┐ │
+│  D   │ ┌─ 🤖 ────────┐│ │ 📱 375px │  │ 📱↔ 768px  │  │ 🖥 1280px   │ │
+│  E   │ │ Building the ││ │         │  │           │  │            │ │
+│  B   │ │ pricing page ││ │ ┌─────┐ │  │ ┌───────┐ │  │ ┌────────┐ │ │
+│  A   │ │ with 3 tiers ││ │ │     │ │  │ │       │ │  │ │        │ │ │
+│  R   │ │ now...       ││ │ │ SEA │ │  │ │  SEA  │ │  │ │  SEA Atlas│ │
+│      │ └──────────────┘│ │ │Atlas│ │  │ │ Atlas │ │  │ │        │ │ │
+│      │                  │ │ │     │ │  │ │       │ │  │ │ Incorp.│ │ │
+│      │                  │ │ │ 🇸🇬  │ │  │ │🇸🇬 🇻🇳 🇹🇭│ │  │ │ your   │ │ │
+│      │                  │ │ │ 🇻🇳  │ │  │ │       │ │  │ │ company│ │ │
+│      │                  │ │ │ 🇹🇭  │ │  │ │[Start]│ │  │ │ in SEA │ │ │
+│      │                  │ │ │ 🇮🇩  │ │  │ │       │ │  │ │        │ │ │
+│      │                  │ │ │     │ │  │ │       │ │  │ │🇸🇬 🇻🇳 🇹🇭 🇮🇩│ │
+│      │                  │ │ │[Go] │ │  │ │ ───── │ │  │ │        │ │ │
+│      │                  │ │ │     │ │  │ │ Feat  │ │  │ │[Start→]│ │ │
+│      │                  │ │ │ ─── │ │  │ │ grid  │ │  │ │        │ │ │
+│      │                  │ │ │Feat │ │  │ │ 2-col │ │  │ │ Features│ │ │
+│      │                  │ │ │stack│ │  │ │       │ │  │ │ 3-col  │ │ │
+│      │                  │ │ │1-col│ │  │ └───────┘ │  │ └────────┘ │ │
+│      │                  │ │ └─────┘ │  │           │  │            │ │
+│      │                  │ └─────────┘  └───────────┘  └────────────┘ │
+│      │                  │                                             │
+│      │                  │  All 3 viewports are interactive iframes.  │
+│      │                  │  User can click/type in any of them.       │
+│      │                  │  All hot-reload simultaneously.            │
+│      │ ┌──────────┬────┐│                                             │
+│      │ │ Type...  │Send││  🔄 HMR: all 3 synced │ ● Live            │
+│      │ └──────────┴────┘│                                             │
+├──────┴──────────────────┴──────────────────────────────────────────────┤
+│ AgentScope ● │ claude-sonnet │ Tokens: 34K │ Files: 18 changed       │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Responsive Bug Detected — Agent Auto-Fixes
+
+```
+│      │                  │ ┌─────────┐  ┌───────────┐  ┌────────────┐ │
+│      │                  │ │ 📱 375px │  │ 📱↔ 768px  │  │ 🖥 1280px   │ │
+│      │                  │ │         │  │           │  │            │ │
+│      │                  │ │ ┌─────┐ │  │ ┌───────┐ │  │ ┌────────┐ │ │
+│      │                  │ │ │ ⚠️  │ │  │ │  ✓    │ │  │ │  ✓     │ │ │
+│      │                  │ │ │Text │ │  │ │       │ │  │ │        │ │ │
+│      │                  │ │ │over-│ │  │ │ Looks │ │  │ │ Looks  │ │ │
+│      │                  │ │ │flows│ │  │ │ good  │ │  │ │ good   │ │ │
+│      │                  │ │ │here!│ │  │ │       │ │  │ │        │ │ │
+│      │                  │ │ └─────┘ │  │ └───────┘ │  │ └────────┘ │ │
+│      │                  │ │ ⚠ overflow│ │           │  │            │ │
+│      │                  │ └─────────┘  └───────────┘  └────────────┘ │
+│      │                  │                                             │
+│      │ ┌─ 🤖 ────────┐│  ⚠ 1 responsive issue detected              │
+│      │ │ I see the    ││                                             │
+│      │ │ pricing table││                                             │
+│      │ │ overflows on ││                                             │
+│      │ │ mobile. The  ││                                             │
+│      │ │ 3-col grid   ││                                             │
+│      │ │ doesn't stack││                                             │
+│      │ │ to 1-col.    ││                                             │
+│      │ │              ││                                             │
+│      │ │ Fixing: add  ││                                             │
+│      │ │ `grid-cols-1 ││                                             │
+│      │ │  md:grid-    ││                                             │
+│      │ │  cols-3`     ││                                             │
+│      │ │              ││                                             │
+│      │ │ Done. Check  ││                                             │
+│      │ │ mobile now → ││                                             │
+│      │ └──────────────┘│                                             │
+```
+
+### After Fix — All Three Pass
+
+```
+│      │                  │ ┌─────────┐  ┌───────────┐  ┌────────────┐ │
+│      │                  │ │ 📱  ✓   │  │ 📱↔  ✓    │  │ 🖥   ✓     │ │
+│      │                  │ │         │  │           │  │            │ │
+│      │                  │ │ ┌─────┐ │  │ ┌───────┐ │  │ ┌────────┐ │ │
+│      │                  │ │ │Price│ │  │ │ Pricing│ │  │ │Pricing │ │ │
+│      │                  │ │ │     │ │  │ │       │ │  │ │        │ │ │
+│      │                  │ │ │[Fr] │ │  │ │[Fr][Pr]│ │  │ │[Fr][Pr]│ │ │
+│      │                  │ │ │[Pr] │ │  │ │[En]   │ │  │ │[Ent]  │ │ │
+│      │                  │ │ │[En] │ │  │ │       │ │  │ │        │ │ │
+│      │                  │ │ │     │ │  │ │ 2-col │ │  │ │ 3-col  │ │ │
+│      │                  │ │ │1-col│ │  │ └───────┘ │  │ └────────┘ │ │
+│      │                  │ │ └─────┘ │  │           │  │            │ │
+│      │                  │ └─────────┘  └───────────┘  └────────────┘ │
+│      │                  │                                             │
+│      │                  │  ✓ All 3 viewports passing                 │
+```
+
+## Responsive-First Build Enforcement
+
+The agent doesn't just build features — it builds them responsive. This is enforced, not optional.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ RESPONSIVE-FIRST BUILD RULES (enforced by BuildAgent)            │
+│                                                                  │
+│ 1. EVERY component the agent creates uses Tailwind responsive:  │
+│    `flex flex-col md:flex-row` not `flex flex-row`              │
+│    `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3`            │
+│    `text-sm md:text-base lg:text-lg`                            │
+│    `p-4 md:p-6 lg:p-8`                                         │
+│                                                                  │
+│ 2. AFTER every component, agent runs responsive check:          │
+│    - Renders at 375px, 768px, 1280px                            │
+│    - Checks for horizontal overflow (scrollbar detection)       │
+│    - Checks for text truncation / overlap                       │
+│    - Checks touch target sizes (≥ 44px on mobile)              │
+│    - If any check fails → auto-fix before continuing           │
+│                                                                  │
+│ 3. USER sees triple viewport by default during build            │
+│    Can switch to single viewport anytime                        │
+│    Agent flags responsive issues with ⚠ in the viewport        │
+│                                                                  │
+│ 4. CHECKPOINT includes responsive report:                       │
+│    "All pages tested at 3 viewports. 0 overflow issues."       │
+│    If issues remain → checkpoint is blocked until fixed         │
+│                                                                  │
+│ 5. EVAL benchmark (ME) includes responsive metrics:             │
+│    - No horizontal scrollbar at 375px                           │
+│    - No overlapping elements at any viewport                    │
+│    - Touch targets ≥ 44px at ≤ 640px                           │
+│    - Text readable (≥ 13px) at all viewports                   │
+│    - Images don't exceed container width                        │
+│                                                                  │
+│ THE APP SHIPS RESPONSIVE BECAUSE IT WAS BUILT RESPONSIVE.       │
+│ NOT "responsive later." NOT "mobile version in v2."             │
+│ RESPONSIVE FROM THE FIRST COMPONENT.                            │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
 ## Preview Technical Implementation
 
 ```
@@ -477,6 +635,7 @@ The preview pane is a **real, fully interactive iframe** pointing at the running
 │    iframe is fully interactive — real DOM, real JS, real state.  │
 │    User can: click, type, navigate, submit forms, scroll.       │
 │    State persists across HMR updates (React Fast Refresh).      │
+│    ALL viewports in triple mode are independently interactive.  │
 │                                                                  │
 │ 4. ERROR CAPTURE                                                 │
 │    Tauri injects a small script into the iframe that captures    │
@@ -484,15 +643,25 @@ The preview pane is a **real, fully interactive iframe** pointing at the running
 │    Errors are forwarded to the agent automatically.             │
 │    Agent can self-heal: detect error → fix code → HMR fires.   │
 │                                                                  │
-│ 5. CONCURRENT WORK                                               │
+│ 5. RESPONSIVE VALIDATION                                         │
+│    After each file write, agent programmatically checks:        │
+│    - document.documentElement.scrollWidth > viewport width?     │
+│    - Any element with getBoundingClientRect() outside viewport? │
+│    - Touch targets < 44px on mobile viewport?                   │
+│    If any fail → auto-fix before proceeding.                    │
+│    Reports results to chat: "✓ 375px ✓ 768px ✓ 1280px"        │
+│                                                                  │
+│ 6. CONCURRENT WORK                                               │
 │    Agent writes code AND user uses the app simultaneously.      │
 │    No lock. No "please wait." Agent avoids editing files the    │
 │    user is currently viewing (detected via iframe URL path).    │
 │                                                                  │
-│ 6. RESPONSIVE TESTING                                            │
-│    Viewport buttons resize the iframe container CSS:            │
-│    📱 = width: 375px   🖥 = width: 1280px   ▣ = user drags     │
-│    The app inside responds via its own media queries.           │
+│ 7. TRIPLE VIEWPORT SYNC                                          │
+│    In triple mode, 3 iframes point to same :3000 server.       │
+│    Each iframe has a CSS container width override.              │
+│    HMR pushes to all 3 simultaneously via shared WebSocket.    │
+│    Navigation in one does NOT sync to others (independent).     │
+│    User can test mobile checkout while viewing desktop home.    │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -513,6 +682,13 @@ The preview pane is a **real, fully interactive iframe** pointing at the running
 │      │ │  ✓ Dark theme applied       │ │ │                      │  │
 │      │ │  ✓ 14 tests passing         │ │ │                      │  │
 │      │ │  ✓ No lint errors           │ │ │                      │  │
+│      │ │                              │ │ │                      │  │
+│      │ │  Responsive:                 │ │ │                      │  │
+│      │ │  ✓ 📱 375px  — no overflow  │ │ │                      │  │
+│      │ │  ✓ 📱↔ 768px — no overflow  │ │ │                      │  │
+│      │ │  ✓ 🖥 1280px — no overflow   │ │ │                      │  │
+│      │ │  ✓ Touch targets ≥ 44px     │ │ │                      │  │
+│      │ │  ✓ All text ≥ 13px          │ │ │                      │  │
 │      │ │                              │ │ │                      │  │
 │      │ │  22 files │ +486 -73 lines  │ │ │                      │  │
 │      │ │                              │ │ │                      │  │
@@ -551,10 +727,15 @@ This loop continues until the user clicks "Ship It" or closes the project.
 ## Key UX Principles
 
 1. **Preview is always visible** — right pane never disappears during build
-2. **Hot reload** — every file save triggers instant preview refresh
-3. **Chat is the steering wheel** — natural language to direct the agent
-4. **Code is inspectable** — Code tab lets you see/edit what the agent wrote
-5. **Diff is the safety net** — see exactly what changed, approve or revert
-6. **Infinite iteration** — no forced exit from build mode
-7. **Checkpoints are optional** — agents propose them, user decides when to move on
-8. **Responsive preview** — test mobile/desktop instantly
+2. **Preview is fully interactive** — real app, real DOM, real forms, real navigation
+3. **Hot reload** — every file save triggers instant preview refresh (~200ms)
+4. **Triple viewport mode** — see mobile + tablet + desktop simultaneously
+5. **Responsive-first enforced** — agent builds with Tailwind responsive classes from the first component, auto-checks all 3 viewports after every change
+6. **Chat is the steering wheel** — natural language to direct the agent
+7. **User tests while agent builds** — find bugs by using the app, report them in chat, agent fixes instantly
+8. **Code is inspectable** — Code tab lets you see/edit what the agent wrote
+9. **Diff is the safety net** — see exactly what changed, approve or revert
+10. **Infinite iteration** — no forced exit from build mode
+11. **Checkpoints are optional** — agents propose them, user decides when to move on
+12. **Checkpoint includes responsive audit** — build can't move to Ship unless all 3 viewports pass
+13. **The shipped app is perfect from day 1** — because it was tested at every viewport during every build step, not retrofitted after launch
