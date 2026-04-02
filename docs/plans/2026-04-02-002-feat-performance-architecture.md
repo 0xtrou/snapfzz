@@ -181,18 +181,18 @@ console.error = (...args) => {
 
 ---
 
-## Code Editor: CodeMirror 6
+## Code Editor: Monaco
 
-**Decision:** CodeMirror 6 for editable code, Shiki for read-only code blocks in chat.
+**Decision:** Monaco Editor for the Code tab (full VS Code editing), Shiki for read-only code blocks in chat.
 
 | Use case | Library | Bundle |
 |---|---|---|
-| Editable code (Code tab) | `@uiw/react-codemirror` | ~50-200KB (tree-shakeable) |
+| Editable code (Code tab) | `monaco-editor` | ~5MB (lazy-loaded, chunked) |
 | Read-only code blocks (chat) | `shiki` (Web Worker) | ~200KB, zero runtime JS |
 
-**Why not Monaco:** 5MB gzipped, overkill when we don't need full IntelliSense. We're not building an IDE — CodeMirror covers syntax highlighting + basic editing.
+**Why Monaco over CodeMirror:** This IS an IDE. Full IntelliSense, multi-cursor, go-to-definition, built-in diff editor, minimap. The 5MB is lazy-loaded (only when Code tab opens) so it doesn't affect startup.
 
-**Shiki in Web Worker:** Offload syntax highlighting to keep main thread free during streaming.
+**Shiki in Web Worker:** Offload syntax highlighting for chat code blocks to keep main thread free during streaming.
 
 ---
 
@@ -270,9 +270,7 @@ await invoke('watch_files', { path: '/src', onEvent: hmrChannel });
 
 | Platform | WebView Engine | Notes |
 |---|---|---|
-| macOS | WKWebView | 60fps cap by default. Use `tauri-plugin-macos-fps` to unlock 120Hz on Apple Silicon. |
-| Windows | WebView2 (Chromium) | Full DevTools. Best HMR support. iframe IPC broken (use child WebViews). |
-| Linux | WebKitGTK | Resize bug after ~6 resizes (Issue #10131). Monitor and workaround. |
+| macOS | WKWebView | Primary target. 60fps cap by default. Use `tauri-plugin-macos-fps` to unlock 120Hz on Apple Silicon. |
 
 ---
 
@@ -283,7 +281,7 @@ await invoke('watch_files', { path: '/src', onEvent: hmrChannel });
   "dependencies": {
     "react-virtuoso": "^4.7",
     "react-resizable-panels": "^2.1",
-    "@uiw/react-codemirror": "^4.23",
+    "monaco-editor": "^0.52",
     "shiki": "^3.0",
     "motion": "^12.0",
     "@formkit/auto-animate": "^0.8",

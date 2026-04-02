@@ -139,13 +139,14 @@ reqwest-eventsource = "0.6"
 
 ## Zone 2: Web Worker — Processing Pipeline
 
-### Three Workers, Each Dedicated
+### Two Workers
 
 | Worker | Responsibility | Library |
 |---|---|---|
 | **StateWorker** | App state reducer, action dispatch | `use-workerized-reducer` + `comlink` |
 | **HighlightWorker** | Syntax highlighting for code blocks in chat | `shiki` |
-| **DiffWorker** | Compute diffs for file change display | Custom (unified diff parser) |
+
+Note: Diff and git operations run in Rust (`git2-rs`) + Monaco's built-in diff editor. No JS workers needed for those.
 
 ### StateWorker — The Brain
 
