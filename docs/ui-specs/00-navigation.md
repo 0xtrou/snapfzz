@@ -1,6 +1,8 @@
 # Navigation & App Shell
 
-## Desktop Window (Tauri)
+Fully responsive from day 1. See [10-responsive.md](10-responsive.md) for full spec.
+
+## Desktop (≥ 1025px) — Full sidebar
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -8,6 +10,7 @@
 ├──────────┬──────────────────────────────────────────────────────────┤
 │          │                                                          │
 │ SIDEBAR  │                    MAIN CONTENT                          │
+│ 240px    │                                                          │
 │          │                                                          │
 │ ┌──────┐ │                                                          │
 │ │ ⚡   │ │                                                          │
@@ -23,11 +26,6 @@
 │ ▸ API    │                                                          │
 │   Gateway│                                                          │
 │          │                                                          │
-│          │                                                          │
-│          │                                                          │
-│          │                                                          │
-│          │                                                          │
-│          │                                                          │
 │ ──────── │                                                          │
 │ ⚙ Settings                                                         │
 │ 📊 Eval  │                                                          │
@@ -38,10 +36,54 @@
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Sidebar States
+## Tablet (641–1024px) — Icon bar + overlay sidebar
 
 ```
-COLLAPSED (icon-only):           EXPANDED (full):
+┌────┬────────────────────────────────────────────────────────────────┐
+│    │                                                                │
+│ ⚡ │                       MAIN CONTENT                             │
+│    │                       (full width minus 56px icon bar)        │
+│ 📁 │                                                                │
+│ 📁 │                                                                │
+│ 📁 │                                                                │
+│    │                                                                │
+│ ⚙  │                                                                │
+│ 📊 │                                                                │
+│ 🧠 │                                                                │
+│    │                                                                │
+├────┴────────────────────────────────────────────────────────────────┤
+│  ● Connected  │  claude-sonnet  │  12.4K tokens                    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Mobile (≤ 640px) — Bottom nav, no sidebar
+
+```
+┌─────────────────────────────────────┐
+│  Snapfzz Startup Launcher     [☰]  │
+├─────────────────────────────────────┤
+│                                     │
+│         MAIN CONTENT                │
+│         (full width, full height)   │
+│                                     │
+│                                     │
+│                                     │
+│                                     │
+│                                     │
+│                                     │
+│                                     │
+├─────────────────────────────────────┤
+│  ● claude-sonnet │ 12.4K tokens    │
+├─────────────────────────────────────┤
+│  [⚡]  [📁]  [⚙]  [📊]  [🧠]     │
+│  New   Proj  Set  Eval  Mem        │
+└─────────────────────────────────────┘
+```
+
+## Sidebar States (Desktop)
+
+```
+COLLAPSED (icon-only, 56px):     EXPANDED (full, 240px):
 ┌────┐                           ┌──────────┐
 │ ⚡ │                           │ ⚡ New    │
 │    │                           │          │
@@ -59,10 +101,21 @@ COLLAPSED (icon-only):           EXPANDED (full):
 ## Status Bar
 
 ```
+Desktop:
 ┌─────────────────────────────────────────────────────────────────────┐
 │  AgentScope ● Connected  │  LLM: claude-sonnet  │  Tokens: 12.4K  │
 │  [disconnected = red ○]  │  [model name]        │  [session total] │
 └─────────────────────────────────────────────────────────────────────┘
+
+Tablet:
+┌─────────────────────────────────────────────────────────────────────┐
+│  ● Connected  │  claude-sonnet  │  12.4K tokens                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+Mobile:
+┌─────────────────────────────────────┐
+│  ● claude-sonnet │ 12.4K tokens    │
+└─────────────────────────────────────┘
 ```
 
 ## Navigation Flow
