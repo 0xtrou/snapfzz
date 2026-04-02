@@ -1,0 +1,17 @@
+{
+  "name": "snapfzz-startup-launcher",
+  "private": true,
+  "scripts": {
+    "dev:launcher": "pnpm --filter @snapfzz/launcher dev",
+    "dev:project": "pnpm --filter @snapfzz/project dev",
+    "build": "pnpm -r build",
+    "build:launcher": "pnpm --filter @snapfzz/launcher build",
+    "build:project": "pnpm --filter @snapfzz/project build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

@@ -1,0 +1,33 @@
+node_modules/
+dist/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Rust
+target/
+Cargo.lock
+
+# Frontend build
+frontend/dist/
+frontend/.vite/
+
+# Tauri
+src-tauri/target/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# OS
+Thumbs.db
+
+# Snapfzz project data (user data, not source)
+.snapfzz-global/
