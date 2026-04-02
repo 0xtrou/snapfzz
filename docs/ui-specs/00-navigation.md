@@ -1,143 +1,68 @@
-# Navigation & App Shell
+# Navigation & App Architecture
 
-Fully responsive from day 1. See [10-responsive.md](10-responsive.md) for full spec.
+Two windows. Launcher for managing projects. Project window for working on one project with agent tabs.
 
-## Desktop (≥ 1025px) — Full sidebar
+## Core Model
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  ○ ○ ○                    Snapfzz Startup Launcher                 │
-├──────────┬──────────────────────────────────────────────────────────┤
-│          │                                                          │
-│ SIDEBAR  │                    MAIN CONTENT                          │
-│ 240px    │                                                          │
-│          │                                                          │
-│ ┌──────┐ │                                                          │
-│ │ ⚡   │ │                                                          │
-│ │ New  │ │                                                          │
-│ └──────┘ │                                                          │
-│          │                                                          │
-│ PROJECTS │                                                          │
-│ ──────── │                                                          │
-│ ▸ SaaS   │                                                          │
-│   Toolkit│                                                          │
-│ ▸ Landing│                                                          │
-│   Page AI│                                                          │
-│ ▸ API    │                                                          │
-│   Gateway│                                                          │
-│          │                                                          │
-│ ──────── │                                                          │
-│ ⚙ Settings                                                         │
-│ 📊 Eval  │                                                          │
-│ 🧠 Memory│                                                          │
-│          │                                                          │
-├──────────┴──────────────────────────────────────────────────────────┤
-│  AgentScope ● Connected    LLM: claude-sonnet    Tokens: 12.4K     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+**Tab = Agent = Conversation = BoxLite VM**
 
-## Tablet (641–1024px) — Icon bar + overlay sidebar
+Each tab is a dedicated agent with its own chat, workspace, and isolated process. Agents coordinate via AgentScope MsgHub, visible in the bottom Agent Network panel.
+
+## Two Window Types
 
 ```
-┌────┬────────────────────────────────────────────────────────────────┐
-│    │                                                                │
-│ ⚡ │                       MAIN CONTENT                             │
-│    │                       (full width minus 56px icon bar)        │
-│ 📁 │                                                                │
-│ 📁 │                                                                │
-│ 📁 │                                                                │
-│    │                                                                │
-│ ⚙  │                                                                │
-│ 📊 │                                                                │
-│ 🧠 │                                                                │
-│    │                                                                │
-├────┴────────────────────────────────────────────────────────────────┤
-│  ● Connected  │  claude-sonnet  │  12.4K tokens                    │
-└─────────────────────────────────────────────────────────────────────┘
+LAUNCHER WINDOW (720x600)              PROJECT WINDOW (1440x900)
+┌───────────────────────────┐          ┌──────────────────────────────────────────┐
+│ Project list               │          │ Tabs: Clarify│Specs│Disc│Rate│Build│Ship│
+│ New project input          │  open ►  │ ┌────────────────┬───────────────────┐  │
+│ Settings / Eval / Memory   │          │ │ Agent Chat     │ Agent Workspace   │  │
+│                           │          │ └────────────────┴───────────────────┘  │
+│                           │          │ ▲ Agent Network (bottom panel)          │
+│                           │          │ Status bar                              │
+└───────────────────────────┘          └──────────────────────────────────────────┘
 ```
 
-## Mobile (≤ 640px) — Bottom nav, no sidebar
+## Spec Documents
+
+| Spec | Covers |
+|---|---|
+| [13-launcher-window.md](13-launcher-window.md) | Launcher: project list, new project, settings, eval, memory |
+| [14-project-window.md](14-project-window.md) | Project: all agent tabs, chat+workspace, Agent Network panel, specs versioning |
+| [12-user-journey.md](12-user-journey.md) | Complete flow from app launch to shipped business |
+| [05-build.md](05-build.md) | Build tab deep-dive: live preview, triple viewport, HMR, responsive enforcement |
+| [10-responsive.md](10-responsive.md) | Responsive rules for all screens |
+| [11-perfectly-from-day-1.md](11-perfectly-from-day-1.md) | 13 quality standards manifesto |
+
+## Superseded Specs
+
+Files 01-04, 06-09 contain early designs with the old sidebar + stage model. The current architecture is defined in files 13 and 14. The old files are preserved for historical reference but **14-project-window.md is the source of truth** for all tab/agent designs.
+
+## Navigation Flows
 
 ```
-┌─────────────────────────────────────┐
-│  Snapfzz Startup Launcher     [☰]  │
-├─────────────────────────────────────┤
-│                                     │
-│         MAIN CONTENT                │
-│         (full width, full height)   │
-│                                     │
-│                                     │
-│                                     │
-│                                     │
-│                                     │
-│                                     │
-│                                     │
-├─────────────────────────────────────┤
-│  ● claude-sonnet │ 12.4K tokens    │
-├─────────────────────────────────────┤
-│  [⚡]  [📁]  [⚙]  [📊]  [🧠]     │
-│  New   Proj  Set  Eval  Mem        │
-└─────────────────────────────────────┘
-```
+Launcher: [→ Start] with idea text
+    └─► Creates project folder + .snapfzz/
+    └─► Project Window opens → Clarify tab (agent interviews user)
 
-## Sidebar States (Desktop)
+Launcher: [Open] on project card
+    └─► Project Window opens → last active tab (with full history)
 
-```
-COLLAPSED (icon-only, 56px):     EXPANDED (full, 240px):
-┌────┐                           ┌──────────┐
-│ ⚡ │                           │ ⚡ New    │
-│    │                           │          │
-│ 📁 │                           │ PROJECTS │
-│ 📁 │                           │ ▸ SaaS..│
-│ 📁 │                           │ ▸ Land..│
-│    │                           │ ▸ API ..│
-│ ⚙  │                           │          │
-│ 📊 │                           │ ⚙ Settings│
-│ 🧠 │                           │ 📊 Eval   │
-└────┘                           │ 🧠 Memory │
-                                 └──────────┘
-```
+Launcher: [Resume] on in-progress project
+    └─► Project Window opens → last active tab
 
-## Status Bar
+Project: Click any tab
+    └─► Agent chat + workspace loads for that tab
+    └─► Build tab adds Preview WebView (split pane)
+    └─► All other tabs: chat (left) + workspace (right), full width
 
-```
-Desktop:
-┌─────────────────────────────────────────────────────────────────────┐
-│  AgentScope ● Connected  │  LLM: claude-sonnet  │  Tokens: 12.4K  │
-│  [disconnected = red ○]  │  [model name]        │  [session total] │
-└─────────────────────────────────────────────────────────────────────┘
+Project: Agent Network panel (bottom)
+    └─► Live view of AgentScope MsgHub
+    └─► Human can intervene with @agent messages
+    └─► Filter by agent
 
-Tablet:
-┌─────────────────────────────────────────────────────────────────────┐
-│  ● Connected  │  claude-sonnet  │  12.4K tokens                    │
-└─────────────────────────────────────────────────────────────────────┘
+Project: [+] tab
+    └─► Add custom agent (Analytics, Test, Content, Security, or custom)
 
-Mobile:
-┌─────────────────────────────────────┐
-│  ● claude-sonnet │ 12.4K tokens    │
-└─────────────────────────────────────┘
-```
-
-## Navigation Flow
-
-```
-Sidebar "New" button
-    └─→ 01-idea.md (Idea Input screen)
-        └─→ 02-clarify.md (Interview)
-            └─→ 03-discover.md (OSS Search)
-                └─→ 04-rate.md (P1-P4 Scoring)
-                    └─→ 05-build.md (Multi-Agent Build)
-                        └─→ 06-ship.md (Deploy/Legal/Pay)
-
-Sidebar project list
-    └─→ Project detail (shows current stage + history)
-
-Sidebar Settings
-    └─→ 07-settings.md
-
-Sidebar Eval
-    └─→ 08-eval-dashboard.md
-
-Sidebar Memory
-    └─→ 09-memory.md
+Project: Close [✕]
+    └─► All state saved to .snapfzz/ → back to Launcher
 ```
