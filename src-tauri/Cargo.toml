@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  ".",
   "crates/snapfzz-core",
   "crates/snapfzz-tauri-shell",
   "crates/snapfzz-plugin-host",
@@ -12,5 +13,26 @@ resolver = "2"
 
 [workspace.package]
 version = "0.0.1"
-edition = "2024"
+edition = "2021"
 license = "Apache-2.0"
+
+[package]
+name = "snapfzz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "Snapfzz"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
