@@ -47,15 +47,25 @@ Every spec requirement → code → tests. Updated with every change.
 | React-specific integration isolated to dedicated files | frontend/packages/plugin-host/src/use-contribution-store.ts + frontend/packages/plugin-host/src/use-plugin-host.ts + frontend/packages/plugin-host/src/plugin-error-boundary.tsx | frontend/packages/plugin-host/src/plugin-host-react.test.tsx:A002/react + A006/react + A005/isolation tests |
 | Worker-based state reducers / Rust SSE consumer | Not implemented in @snapfzz/plugin-host (belongs to other runtime/shell packages) | — |
 
-## Spec Gaps / Unimplemented-in-Code Requirements (within plugin-host scope)
+## A005 Plugin Lifecycle (new requirements — not yet implemented)
 
-| Requirement from specs A005/010 | Current status | Code evidence |
-|---|---|---|
-| Manifest discovery from plugin packages (not manual register only) | Missing | frontend/packages/plugin-host/src/plugin-host.ts (register() only; TODO comment) |
-| Activation-event driven lazy loading (`onStartupFinished`, `onViewVisible:*`, etc.) | Missing | frontend/packages/plugin-host/src/plugin-host.ts:activate()/activateAll() (no activationEvent gating; TODO comment) |
-| Worker-hosted plugin logic + crash supervision (3-strike auto-disable) | Missing | frontend/packages/plugin-host/src/plugin-host.ts:activate() (main-thread activation; TODO comment) |
-| Generic component contribution registry wiring | Missing | frontend/packages/plugin-host/src/plugin-context-factory.ts:registry.registerComponent() (noop; TODO comment) |
-| Capability checking before granting access | Missing in frontend host implementation | No capability gate in frontend/packages/plugin-host/src/plugin-host.ts or plugin-context-factory.ts |
+| Requirement | Spec Section | Code | Tests |
+|---|---|---|---|
+| Activation events gate when plugins activate | A005/Lifecycle: Activation Events | — | — |
+| Startup budget: 200ms for critical, requestIdleCallback for rest | A005/Lifecycle: Startup Budget | — | — |
+| Enable/disable with persistence across restarts | A005/Lifecycle: Enable/Disable | — | — |
+| Reload: deactivate → re-import → re-activate | A005/Lifecycle: Reload | — | — |
+| Uninstall: remove third-party plugin + storage + chunks | A005/Lifecycle: Delete/Uninstall | — | — |
+| Update: replace plugin version, verify compat | A005/Lifecycle: Update | — | — |
+| Crash supervision: 3 crashes in 5min → auto-disable | A005/Lifecycle: Crash Supervision | — | — |
+| Plugin settings UI in launcher | A005/Lifecycle: Plugin Settings UI | — | — |
+| Capability checking before granting access | A005/Isolation: Capabilities | — | — |
+
+## Spec Gaps (within plugin-host scope — not lifecycle)
+
+| Requirement | Code |
+|---|---|
+| Manifest discovery from plugin packages (not manual register only) | Not implemented — register() takes pre-imported definitions |
 
 ## Out-of-scope for this package but referenced by specs
 

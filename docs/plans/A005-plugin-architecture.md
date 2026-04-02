@@ -653,6 +653,253 @@ One plugin. Provides: identity connector + agent tools + agent skills + complian
 
 ---
 
+## Plugin Lifecycle — Complete Specification
+
+### Lifecycle States
+
+```
+REGISTERED → RESOLVED → LOADING → ACTIVATED → RUNNING → DEACTIVATING → DEACTIVATED
+                                                 ↕
+                                             DISABLED
+```
+
+| State | Description |
+|---|---|
+| `registered` | Manifest read, plugin known to host. Not loaded. |
+| `resolved` | Dependencies validated, activation order determined. |
+| `loading` | JS chunk being dynamically imported. |
+| `activated` | `activate(ctx)` called, contributions registered. |
+| `running` | Plugin operational, handling events. |
+| `deactivating` | `deactivate()` called, cleaning up contributions. |
+| `deactivated` | All contributions removed, resources released. |
+| `disabled` | Explicitly disabled by user. Skipped during activation. Persisted across restarts. |
+
+### Activation Events — Lazy Loading
+
+The host MUST respect `activationEvents` from the manifest. A plugin is NOT activated until one of its events fires.
+
+| Event | When It Fires | Use Case |
+|---|---|---|
+| `onStartupFinished` | After core shell renders | Critical plugins: Chat, Agent Network |
+| `onViewVisible:{tabId}` | When user first opens a tab | Most plugins: Code, KB, Preview, Deployments |
+| `onCommand:{commandId}` | When a command is executed | Plugins triggered by other plugins or user actions |
+| `onEvent:{topic}` | When an EventBus topic fires | Reactive plugins that respond to system events |
+| `onWorkspaceOpened` | When a project window opens | Project-scoped plugins |
+
+```
+Boot sequence with activation events:
+
+0ms     Shell renders skeleton
+50ms    Plugin host reads all manifests, resolves dependencies
+100ms   Activate plugins with "onStartupFinished" ONLY
+        (e.g., Chat + Agent Network — the minimum viable UI)
+200ms   User sees Chat tab, can type. App feels ready.
+
+500ms+  requestIdleCallback: preload JS chunks for "onViewVisible" plugins
+        (import the code but don't activate yet)
+
+User clicks "Code" tab:
+        → fires onViewVisible:code
+        → Code plugin activates
+        → registers workspace tab
+        → tab renders
+```
+
+### Startup Budget Enforcement
+
+The host enforces a budget for startup activation:
+
+```
+CRITICAL_BUDGET = 200ms   (plugins with onStartupFinished)
+BACKGROUND_PRELOAD = true (use requestIdleCallback for non-critical)
+ACTIVATION_TIMEOUT = 5000ms (per plugin — if activate() takes longer, kill it)
+```
+
+If a critical plugin exceeds the budget:
+- Log a warning with timing
+- Continue activation (don't block other plugins)
+- Report in status bar: "Plugin X took Nms to activate"
+
+### Enable / Disable
+
+Users can disable plugins. Disabled plugins:
+- Are NOT activated during boot or on events
+- Have their contributions removed from the store
+- Keep their persistent storage intact (not deleted)
+- Can be re-enabled without reinstalling
+
+```typescript
+interface PluginHost {
+  enable(pluginId: string): void;
+  disable(pluginId: string): Promise<void>;
+  isEnabled(pluginId: string): boolean;
+  getDisabledPlugins(): string[];
+}
+```
+
+Persistence:
+
+```
+// Stored in localStorage (launcher) or .snapfzz/config.json (project)
+{
+  "disabledPlugins": ["snapfzz.compliance", "community.supabase"]
+}
+```
+
+Disable flow:
+```
+User clicks "Disable" on plugin in settings
+  → host.disable(pluginId)
+  → if running: deactivate (remove all contributions)
+  → add to disabledPlugins in storage
+  → shell re-renders: plugin's tabs/panels disappear
+```
+
+Re-enable flow:
+```
+User clicks "Enable" on plugin in settings
+  → host.enable(pluginId)
+  → remove from disabledPlugins in storage
+  → activate plugin (respecting its activationEvents)
+  → shell re-renders: plugin's tabs/panels appear
+```
+
+### Reload
+
+For development and crash recovery. Reload = deactivate → re-import → re-activate.
+
+```typescript
+interface PluginHost {
+  reload(pluginId: string): Promise<void>;
+}
+```
+
+Reload flow:
+```
+host.reload(pluginId)
+  → deactivate plugin (remove contributions, call handle.deactivate)
+  → invalidate the JS module cache for the plugin's chunk
+  → re-import the plugin module (fresh code)
+  → re-activate with new PluginContext
+  → contributions re-registered, shell re-renders
+```
+
+Use cases:
+- **Development**: plugin code changed, hot-reload it without restarting the app
+- **Crash recovery**: plugin crashed (ErrorBoundary caught it), user clicks "Retry" → reload
+- **Update**: new version of plugin downloaded, reload to apply
+
+### Delete / Uninstall
+
+For third-party plugins. System plugins cannot be deleted.
+
+```typescript
+interface PluginHost {
+  uninstall(pluginId: string): Promise<void>;
+  isSystemPlugin(pluginId: string): boolean;
+}
+```
+
+Uninstall flow:
+```
+host.uninstall(pluginId)
+  → verify not a system plugin (throw if it is)
+  → deactivate if running
+  → remove plugin's persistent storage
+  → remove plugin's manifest from registry
+  → remove plugin's JS chunks from disk/cache
+  → shell re-renders: all traces of plugin gone
+```
+
+### Update
+
+For third-party plugins. Replace a plugin with a new version.
+
+```typescript
+interface PluginHost {
+  update(pluginId: string, newDefinition: PluginDefinition): Promise<void>;
+}
+```
+
+Update flow:
+```
+host.update(pluginId, newDefinition)
+  → verify new version satisfies all dependents' version constraints
+  → deactivate old version
+  → replace manifest in registry
+  → activate new version
+  → verify contributions are compatible (no missing tabs that others depend on)
+```
+
+### Plugin Settings UI
+
+The launcher's settings panel shows all plugins with their state:
+
+```
+PLUGINS                                    [Reload All]
+
+SYSTEM PLUGINS
+┌─────────────────────────────────────────────────────┐
+│ 💬 Chat                              ● Running      │
+│ snapfzz.chat v1.0.0                                │
+│ [Reload]                                            │
+├─────────────────────────────────────────────────────┤
+│ 👥 Team                              ● Running      │
+│ snapfzz.team v1.0.0                                │
+│ [Reload]                                            │
+├─────────────────────────────────────────────────────┤
+│ 📚 Knowledge Base                    ◌ Lazy         │
+│ snapfzz.knowledge-base v1.0.0                      │
+│ Activates: onViewVisible:kb                        │
+│ [Reload]                                            │
+└─────────────────────────────────────────────────────┘
+
+THIRD-PARTY PLUGINS
+┌─────────────────────────────────────────────────────┐
+│ ⚡ Supabase                           ● Running      │
+│ community.supabase v0.1.0                           │
+│ [Disable] [Reload] [Uninstall]                      │
+├─────────────────────────────────────────────────────┤
+│ 🔒 SOC2 Compliance                   ○ Disabled     │
+│ community.soc2 v0.2.0                               │
+│ [Enable] [Uninstall]                                │
+└─────────────────────────────────────────────────────┘
+```
+
+### Crash Supervision
+
+Per A005/Isolation, the host supervises plugin health:
+
+```
+MAX_CRASH_COUNT = 3
+CRASH_WINDOW = 300000ms (5 minutes)
+
+On plugin crash (ErrorBoundary catches):
+  → increment crash count for this plugin
+  → if crash count >= MAX_CRASH_COUNT within CRASH_WINDOW:
+    → auto-disable the plugin
+    → show notification: "Plugin X disabled after repeated crashes"
+    → user can manually re-enable in settings
+  → else:
+    → show fallback UI with [Retry] button
+    → Retry calls host.reload(pluginId)
+```
+
+### Theme
+
+Theme is NOT a plugin. Theme is core infrastructure in `@snapfzz/shared/src/theme/`.
+
+Plugins receive theme tokens via CSS variables (`:root[data-theme="dark"]`). Plugins do NOT control the theme — they consume it.
+
+The `useTheme()` hook toggles dark/light and persists to localStorage. This is core behavior, not pluggable.
+
+Why not a plugin:
+- Every plugin depends on theme tokens at render time
+- Theme must be available BEFORE any plugin loads (it's in the blocking `<script>` tag)
+- Making theme a plugin creates a circular dependency: plugins need theme, but theme would be a plugin
+
+---
+
 ## Key Design Decisions
 
 1. **JS-only plugins.** No Rust plugins. Simplicity. Worker-hosted for isolation. If a plugin needs native performance, it calls core Rust capabilities via the bridge.
@@ -663,3 +910,8 @@ One plugin. Provides: identity connector + agent tools + agent skills + complian
 6. **Capabilities gate access.** Third-party plugins must declare what they need. Users approve.
 7. **Mini apps are a contribution type.** Any plugin can provide mini apps. The mini-app-runtime plugin hosts them.
 8. **Generic components are shareable.** A plugin can provide reusable components other plugins consume via the registry.
+9. **Activation events are enforced.** Plugins only activate when their declared events fire. Startup budget is 200ms for critical plugins.
+10. **Enable/disable persists across restarts.** Disabled plugins are skipped. Storage is preserved.
+11. **Reload for dev and crash recovery.** Deactivate → re-import → re-activate without restarting the app.
+12. **Crash supervision auto-disables.** 3 crashes in 5 minutes → plugin disabled automatically.
+13. **Theme is core, not a plugin.** Available before plugins load. Plugins consume tokens via CSS variables.

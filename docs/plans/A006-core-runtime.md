@@ -120,13 +120,22 @@ PluginContext {
 
 `@snapfzz/plugin-host` needs:
 
-- **Manifest discovery**: scan plugin packages, read manifests
+Already implemented:
 - **Dependency resolution**: topological sort, validate deps exist
-- **Lazy loading**: dynamic import of plugin JS chunks on activation event
-- **Activation**: call `plugin.activate(ctx)`, handle errors
-- **PluginContext factory**: create EventBus, CommandBus, ContributionRegistry, SettingsRegistry, PluginStorage, ApiBroker, RustBridge, Logger per plugin (all namespaced)
+- **Activation/deactivation**: call `plugin.activate(ctx)`, cleanup on deactivate
+- **PluginContext factory**: creates namespaced EventBus, CommandBus, ContributionRegistry, SettingsRegistry, PluginStorage, ApiBroker, RustBridge, Logger
 - **Crash containment**: ErrorBoundary wrapper for each plugin's UI contributions
-- **React integration**: `useContributionStore()` hook for shells to reactively read registered content
+- **React integration**: `useContributionStore()` hook (useSyncExternalStore)
+
+Needs implementation (per A005/Lifecycle):
+- **Activation events**: gate activation by `onStartupFinished`, `onViewVisible`, `onCommand`, `onEvent`
+- **Startup budget**: 200ms for critical plugins, `requestIdleCallback` for background preload
+- **Enable/disable**: persist disabled state, skip during activation, re-enable flow
+- **Reload**: deactivate → invalidate module cache → re-import → re-activate
+- **Uninstall**: remove third-party plugin + storage + chunks
+- **Update**: replace plugin version, verify compatibility
+- **Crash supervision**: 3 crashes in 5min → auto-disable
+- **Capability checking**: verify plugin has required capabilities before granting access
 
 ### Shell Layout — Dynamic Rendering
 

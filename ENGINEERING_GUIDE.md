@@ -226,7 +226,7 @@ CONTRIBUTING.md                               # How to contribute
 | `A002` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. 16ms batch budget |
 | `A003` | Instant Loading | BoxLite <50ms boot, snapshots, lazy agent boot, <500ms to interactive |
 | `A004` | Workspace Architecture | .snapfzz/ folder-first, human-readable JSON/MD, append-only logs |
-| `A005` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication |
+| `A005` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication. Lifecycle: lazy activation, enable/disable, reload, uninstall, crash supervision. Theme is core not plugin. |
 | `A006` | Core Runtime | Plugin host, shell layout, Rust IPC. Boot sequence. What's core vs plugin |
 
 ### UI Specs (`docs/ui-specs/`)
