@@ -39,10 +39,38 @@
   <body>
     <!-- Per A003/InstantLoading: static skeleton visible at 0ms, replaced when React hydrates -->
     <div id="skeleton">
-      <svg class="logo" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapfzz logo">
-        <circle cx="64" cy="64" r="60" stroke="#3f3f46" stroke-width="2"/>
-        <path d="M64 24L80 56L64 48L48 56L64 24Z" fill="#71717a"/>
-        <path d="M64 104L48 72L64 80L80 72L64 104Z" fill="#a1a1aa"/>
+      <svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapfzz logo">
+        <defs>
+          <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#222222" />
+            <stop offset="100%" stop-color="#0a0a0a" />
+          </linearGradient>
+          <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff9900" />
+            <stop offset="100%" stop-color="#e65c00" />
+          </linearGradient>
+        </defs>
+        <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bgGrad)" />
+        <g stroke="#ff7300" stroke-width="4" opacity="0.5" stroke-linecap="round">
+          <line x1="280" y1="180" x2="380" y2="150" />
+          <line x1="380" y1="150" x2="420" y2="240" />
+          <line x1="280" y1="180" x2="420" y2="240" />
+          <line x1="360" y1="280" x2="420" y2="240" />
+          <line x1="160" y1="360" x2="280" y2="420" />
+          <line x1="280" y1="420" x2="380" y2="360" />
+          <line x1="280" y1="300" x2="380" y2="360" />
+        </g>
+        <g fill="#ff9900">
+          <circle cx="380" cy="150" r="8" />
+          <circle cx="420" cy="240" r="10" />
+          <circle cx="280" cy="180" r="6" />
+          <circle cx="360" cy="280" r="7" />
+          <circle cx="160" cy="360" r="8" />
+          <circle cx="280" cy="420" r="12" />
+          <circle cx="380" cy="360" r="8" />
+          <circle cx="280" cy="300" r="6" />
+        </g>
+        <path d="M 290 110 L 150 270 L 250 270 L 210 430 L 370 230 L 260 230 Z" fill="url(#boltGrad)" />
       </svg>
       <p class="title">Snapfzz</p>
       <p class="subtitle">Your startup bootstrapping intelligence</p>
