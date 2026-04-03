@@ -2,7 +2,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface PluginErrorBoundaryProps {
-  children: ReactNode;
+  children?: ReactNode;
   FallbackComponent?: (props: { error: Error }) => ReactNode;
 }
 

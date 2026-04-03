@@ -4,7 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Snapfzz Startup Launcher</title>
+    <!-- Per A003/InstantLoading: skeleton renders before JS, visible at 0ms -->
+    <style>
+      /* Per A001/Performance: skeleton uses only transform/opacity for fade-out */
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root, #skeleton { height: 100%; width: 100%; }
+      body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; }
+
+      #skeleton {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #09090b;
+        transition: opacity 150ms ease-out;
+      }
+      #skeleton.fade-out { opacity: 0; pointer-events: none; }
+      #skeleton .logo { width: 128px; height: 128px; }
+      #skeleton .title { margin-top: 32px; color: #a1a1aa; font-size: 14px; font-weight: 500; }
+      #skeleton .subtitle { margin-top: 6px; color: #52525b; font-size: 12px; }
+
+      /* Hide skeleton once React hydrates */
+      html[data-app-ready="true"] #skeleton { display: none; }
+    </style>
     <script>
+      // Per A003/InstantLoading: theme detection before paint, no FOUC
       const t = localStorage.getItem('snapfzz-theme');
       document.documentElement.setAttribute('data-theme',
         t === 'dark' || t === 'light' ? t :
@@ -13,6 +37,16 @@
     </script>
   </head>
   <body>
+    <!-- Per A003/InstantLoading: static skeleton visible at 0ms, replaced when React hydrates -->
+    <div id="skeleton">
+      <svg class="logo" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapfzz logo">
+        <circle cx="64" cy="64" r="60" stroke="#3f3f46" stroke-width="2"/>
+        <path d="M64 24L80 56L64 48L48 56L64 24Z" fill="#71717a"/>
+        <path d="M64 104L48 72L64 80L80 72L64 104Z" fill="#a1a1aa"/>
+      </svg>
+      <p class="title">Snapfzz</p>
+      <p class="subtitle">Your startup bootstrapping intelligence</p>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

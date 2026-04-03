@@ -140,7 +140,9 @@ describe('A005/isolation: PluginErrorBoundary crash containment', () => {
     const { container } = render(
       createElement(
         PluginErrorBoundary,
-        { FallbackComponent: Fallback },
+        {
+          FallbackComponent: Fallback,
+        },
         createElement(ErrorComponent),
       ),
     );

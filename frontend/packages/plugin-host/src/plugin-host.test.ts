@@ -2,7 +2,8 @@
 // Sections: Plugin Lifecycle, Dependency Resolution, Plugin Context, Activation Events, Enable/Disable, Crash Supervision, Reload, State
 // Verifies: plugin registration, surface filtering, dependency ordering, activation, deactivation, activation events, enable/disable, crash supervision, reload, plugin state
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { PluginDefinition, PluginContext, HostSurface } from '@snapfzz/plugin-sdk';
+import type { PluginContext, HostSurface } from '@snapfzz/plugin-sdk';
+import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PluginHost } from './plugin-host';

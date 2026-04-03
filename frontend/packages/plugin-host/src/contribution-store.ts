@@ -129,28 +129,33 @@ export class ContributionStore {
 
   private registerArrayContribution<K extends ArrayPropertyKey>(
     key: K,
-    contribution: ArrayElement<ContributionStore[K]>,
-    predicate: (item: ArrayElement<ContributionStore[K]>) => boolean,
+    contribution: ArrayElement<ContributionArrays[K]>,
+    predicate: (item: ArrayElement<ContributionArrays[K]>) => boolean,
   ) {
-    this[key].push(contribution as never);
+    const storeArrays = this as unknown as ContributionArrays;
+
+    storeArrays[key].push(contribution as never);
     this.notify();
 
     return () => {
-      this[key] = this[key].filter((item) => !predicate(item as ArrayElement<ContributionStore[K]>)) as ContributionStore[K];
+      storeArrays[key] = storeArrays[key].filter((item) => !predicate(item as ArrayElement<ContributionArrays[K]>)) as ContributionArrays[K];
       this.notify();
     };
   }
 
 }
 
-type ArrayPropertyKey =
-  | 'leftPanelTabs'
-  | 'workspaceTabs'
-  | 'bottomPanels'
-  | 'statusItems'
-  | 'commands'
-  | 'shortcuts'
-  | 'settings'
-  | 'genericComponents';
+type ContributionArrays = {
+  leftPanelTabs: TabContribution[];
+  workspaceTabs: TabContribution[];
+  bottomPanels: PanelContribution[];
+  statusItems: StatusItemContribution[];
+  commands: CommandContribution[];
+  shortcuts: ShortcutContribution[];
+  settings: SettingsContribution[];
+  genericComponents: ComponentContribution[];
+};
+
+type ArrayPropertyKey = keyof ContributionArrays;
 
 type ArrayElement<T> = T extends Array<infer Item> ? Item : never;

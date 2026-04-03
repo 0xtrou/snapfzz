@@ -72,7 +72,7 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
 
   it('A005/communication: CommandBus allows register/execute within same host boundary', async () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
-    const dispose = context.commands.register('demo.command', async (args) => ({ args }));
+    const dispose = context.commands.register('demo.command', async (args: unknown) => ({ args }));
 
     const result = await context.commands.execute<{ args?: unknown }>('demo.command', { value: 42 });
 

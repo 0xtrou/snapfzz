@@ -1,4 +1,5 @@
-import type { ActivationEvent, PluginDefinition, PluginContext, PluginHandle, HostSurface } from '@snapfzz/plugin-sdk';
+import type { ActivationEvent, PluginContext, PluginHandle, HostSurface } from '@snapfzz/plugin-sdk';
+import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 import { ContributionStore } from './contribution-store';
 import { createPluginContext, disposePluginContext } from './plugin-context-factory';
 

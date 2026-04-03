@@ -1,16 +1,20 @@
 import type {
   ApiBroker,
   CommandRegistry,
+  ComponentContribution,
   ContributionRegistry,
   Disposable,
   EventBus,
-  Logger,
+  PanelContribution,
   PluginContext,
   PluginStorage,
   RustBridge,
   SettingsRegistry,
+  StatusItemContribution,
+  TabContribution,
 } from '@snapfzz/plugin-sdk';
 import type { HostSurface } from '@snapfzz/plugin-sdk';
+import type { Logger } from '@snapfzz/plugin-sdk/types';
 import { createEventBus, createTauriBridge } from '@snapfzz/shared';
 import type { ContributionStore } from './contribution-store';
 
@@ -102,10 +106,10 @@ export function createPluginContext(
   contextDisposables.set(context, new Set());
 
   context.bus = {
-    emit(topic, payload) {
+    emit(topic: string, payload: unknown) {
       sharedEventBus.emit(normalizeTopic(pluginId, topic), payload);
     },
-    on(topic, handler) {
+    on(topic: string, handler: (payload: unknown) => void) {
       const dispose = sharedEventBus.on(normalizeTopic(pluginId, topic), handler);
       attachDisposable(context, dispose);
       return dispose;
@@ -131,23 +135,23 @@ export function createPluginContext(
   };
 
   context.registry = {
-    registerTab(registrySurface, tab) {
+    registerTab(registrySurface: 'workspace' | 'leftPanel', tab: TabContribution) {
       const dispose =
         registrySurface === 'leftPanel' ? store.registerLeftPanelTab(tab) : store.registerWorkspaceTab(tab);
       attachDisposable(context, dispose);
       return dispose;
     },
-    registerBottomPanel(panel) {
+    registerBottomPanel(panel: PanelContribution) {
       const dispose = store.registerBottomPanel(panel);
       attachDisposable(context, dispose);
       return dispose;
     },
-    registerStatusItem(item) {
+    registerStatusItem(item: StatusItemContribution) {
       const dispose = store.registerStatusItem(item);
       attachDisposable(context, dispose);
       return dispose;
     },
-    registerComponent(component) {
+    registerComponent(component: ComponentContribution) {
       const dispose = store.registerGenericComponent(component);
       attachDisposable(context, dispose);
       return dispose;

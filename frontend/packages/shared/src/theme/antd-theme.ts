@@ -1,4 +1,5 @@
 import { theme } from 'antd';
+import type { ThemeConfig } from 'antd';
 
 const sharedTokens = {
   fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -16,7 +17,7 @@ const sharedTokens = {
   colorInfo: '#3b82f6',
 };
 
-export const darkTheme = {
+export const darkTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {
     ...sharedTokens,
@@ -32,7 +33,7 @@ export const darkTheme = {
   },
 };
 
-export const lightTheme = {
+export const lightTheme: ThemeConfig = {
   algorithm: theme.defaultAlgorithm,
   token: {
     ...sharedTokens,

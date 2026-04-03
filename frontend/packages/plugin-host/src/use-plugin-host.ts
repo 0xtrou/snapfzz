@@ -15,7 +15,7 @@ export function usePluginHost(): PluginHost {
 
 interface PluginHostProviderProps {
   host: PluginHost;
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export function PluginHostProvider({ host, children }: PluginHostProviderProps) {
