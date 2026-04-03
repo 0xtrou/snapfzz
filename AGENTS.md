@@ -127,15 +127,30 @@ For EVERY piece of code you're about to write, answer these questions:
 
 ---
 
-## Engineering Standards
+## Two Guides — Builder vs Reviewer
 
-Full details in `ENGINEERING_GUIDE.md`. Summary:
+| Role | Guide | What It Does |
+|---|---|---|
+| **Builder** | `ENGINEERING_GUIDE.md` | How to implement: TDD, spec traceability, inline comments, no-TODO |
+| **Reviewer** | `REVIEW_GUIDE.md` | How to verify: spec compliance, zone check, test traceability, boundary check |
+
+Both guides point to the same specs. The specs are the single source of truth. If builder and reviewer disagree, the spec is the tiebreaker. If the spec is wrong, update the spec first — then the code follows.
+
+### Builder Summary (ENGINEERING_GUIDE.md)
 
 - **TDD**: Failing test first. Test names: `{spec}/{section}: {behavior}`.
 - **Inline comments**: `// Per {spec}/{section}: {why}` for architectural decisions.
 - **Traceability**: Update `docs/TRACEABILITY.md` after implementation.
 - **No TODOs**: Within scope = implement now. Out of scope = don't mention in code.
-- **No spec violations**: Code matches what specs describe. If the spec is wrong, update the spec first.
+- **No spec violations**: Code matches what specs describe.
+
+### Reviewer Summary (REVIEW_GUIDE.md)
+
+- **Spec compliance**: Does the code do what the spec says, and nothing else?
+- **Zone verification**: Is computation off main thread? No browser globals in Zone 2 files?
+- **Test traceability**: Do all test names reference specs? Are requirements covered?
+- **Boundary check**: Is feature code in plugins, not core? No cross-plugin imports?
+- **Verdict**: APPROVE or REJECT with specific spec violations.
 
 ---
 
