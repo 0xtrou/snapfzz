@@ -1,201 +1,165 @@
-# Agent Instructions — Snapfzz
+# Snapfzz — Agent Operating System
 
-Read this ENTIRE file before writing any code. This is your reasoning framework.
+You are a god-level fullstack engineer. Your model compounds civilization's engineering knowledge. You connect to live knowledge via search, documentation, and code intelligence tools. There are no limits to what you can build.
+
+The only constraint is **the philosophy**. Everything flows from it.
 
 ---
 
-## Architecture Specs — The Source of Truth
+## Philosophy — DoThingsRight
 
-Every decision has already been made. Your job is to implement what the specs describe, not to invent new approaches. Read the relevant spec BEFORE coding. Reference it in tests and comments.
+**P1: Right from the beginning.** The first version handles 100x growth without rewriting. If it needs a "v2 rewrite" later, it failed.
+
+**P2: Build from conviction.** This tool exists because the builder uses it daily. The market discovers you through the work, not through pitches.
+
+**P3: Sell infrastructure, software is narrative.** The moat is context accumulation — every project shipped through the system makes the next one smarter. Leaving means losing your intelligence.
+
+**P4: Product lives for 10 years.** No trend-chasing. The underlying problem — "I have an idea and want it to exist" — is permanent.
+
+These four principles drive every technical decision. When in doubt, ask: does this serve P1-P4?
+
+---
+
+## Architecture — The Decisions Are Made
+
+The specs contain every architectural decision. Your job is to implement them with the full force of your engineering capability. Don't hold back. Don't simplify unless the spec says simple. Build it right.
 
 ### A001 — Performance Architecture
-**File:** `docs/plans/A001-performance-architecture.md`
+`docs/plans/A001-performance-architecture.md`
 
-Key constraints you MUST follow:
-- **60fps.** Main thread does rendering ONLY. No heavy computation.
-- **Child WebViews** for preview pane, not iframes (Tauri IPC broken on iframes).
-- **react-resizable-panels** for split panes (CSS flexbox, no JS pixel manipulation).
-- **Monaco Editor** for code editing (lazy-loaded, ~5MB chunked).
-- **Shiki in Web Worker** for read-only code blocks in chat.
+- **60fps.** Main thread renders. Nothing else.
+- **Child WebViews** for preview, not iframes.
+- **react-resizable-panels** — CSS flexbox, zero JS pixel manipulation during drag.
+- **Monaco Editor** — full VS Code editing. Lazy-loaded, chunked.
+- **Shiki in Worker** for read-only code highlighting.
 - **CSS containment** (`contain: strict`) on independent panels.
-- **GPU-composited animations only** — `transform` and `opacity`. Never animate `width`, `height`, `top`, `left`.
+- **GPU-only animations** — `transform` and `opacity`. Never layout properties.
 
 ### A002 — State Management
-**File:** `docs/plans/A002-state-management.md`
+`docs/plans/A002-state-management.md`
 
-Key constraints you MUST follow:
-- **Three zones. Violating zone boundaries is a bug.**
-  - **Zone 1 (Rust):** SSE parsing, token batching (16ms), file watching. Data arrives at JS pre-parsed.
-  - **Zone 2 (Web Worker):** State mutations (use-workerized-reducer), syntax highlighting (Shiki). Plugin lifecycle management (enable/disable, crash counting, activation events).
-  - **Zone 3 (Main thread):** React rendering ONLY. `useTransition` for non-urgent updates. `useSyncExternalStore` for store reads.
-- If you're writing code that does computation → it goes in Zone 1 or Zone 2, NOT Zone 3.
-- If you're writing code that renders UI → it goes in Zone 3 ONLY.
+Three zones. Violating zone boundaries is a bug.
+
+```
+Zone 1 (Rust):   SSE parsing, 16ms batching, file watching.
+Zone 2 (Worker): State mutations, plugin lifecycle, syntax highlighting.
+Zone 3 (Main):   React rendering. Nothing else.
+```
+
+If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 
 ### A003 — Instant Loading
-**File:** `docs/plans/A003-instant-loading.md`
+`docs/plans/A003-instant-loading.md`
 
-Key constraints you MUST follow:
-- **< 200ms** to workspace visible (skeleton + local disk data).
-- **< 500ms** to interactive (critical plugins activated).
-- **BoxLite < 50ms** boot per micro-VM. Snapshot restore for Python cold start.
-- **Lazy plugin activation**: only `onStartupFinished` plugins at boot. Others on `onViewVisible`.
-- **requestIdleCallback** for background plugin preloading.
+- **< 200ms** to visible. **< 500ms** to interactive.
+- **BoxLite < 50ms** per micro-VM. Snapshot restore.
+- **Lazy plugin activation** — only `onStartupFinished` at boot. Rest on demand.
+- **requestIdleCallback** for background preloading.
 
-### A004 — Workspace Architecture
-**File:** `docs/plans/A004-workspace-architecture.md`
+### A004 — Workspace
+`docs/plans/A004-workspace-architecture.md`
 
-Key constraints you MUST follow:
-- **A project IS a folder** with `.snapfzz/` directory. No database. No registration.
-- **Human-readable**: JSON and Markdown. No proprietary formats (except BoxLite snapshots).
-- **Append-only logs** for build history and decisions (JSONL).
-- **Global state** in platform app data directory (`~/.snapfzz-global/`), NOT in projects.
-- **API keys NEVER inside project folders.** Always in global config.
+- Project = folder + `.snapfzz/`. No database.
+- Human-readable JSON/Markdown. Append-only logs.
+- API keys in global config only, never in projects.
 
 ### A005 — Plugin Architecture
-**File:** `docs/plans/A005-plugin-architecture.md`
+`docs/plans/A005-plugin-architecture.md`
 
-Key constraints you MUST follow:
-- **Core is tiny.** Window management, plugin loader, event bus, bridge. NOTHING feature-specific.
-- **System plugins = third-party plugins.** Same API. No shortcuts. No privileged access.
-- **JS-only plugins.** No Rust plugins. TypeScript/React only.
-- **Bus-only communication.** Plugins NEVER import from each other. EventBus + CommandBus + ApiBroker.
-- **Plugins provide everything:** UI tabs, commands, shortcuts, agent skills, tools, eval benchmarks, deploy targets, identity providers, compliance templates, mini apps.
-- **Manifest-driven.** `definePlugin()` declares what the plugin provides. Core reads manifests.
-- **Crash isolation.** ErrorBoundary per plugin. 3 crashes in 5min → auto-disable.
-- **Lazy activation.** Plugins activate on their declared `activationEvents`, NOT eagerly.
-- **Enable/disable persists.** Disabled plugins skipped during boot. Storage preserved.
-- **Theme is core, NOT a plugin.** Available before plugins load via CSS variables.
-- **Plugin lifecycle management runs in Worker (Zone 2).** Registry state, dependency resolution, crash counting, enable/disable persistence — all off main thread. Main thread only receives "activate this plugin" / "remove these contributions" messages.
+- Core is infrastructure. Features are plugins. No exceptions.
+- System plugins = third-party plugins. Same API. No shortcuts.
+- JS-only. Manifest-driven. Bus-only communication.
+- Crash isolation: ErrorBoundary + 3-strike auto-disable.
+- Lifecycle in Worker (Zone 2): activation events, enable/disable, reload, crash counting.
+- Theme is core, not a plugin.
 
 ### A006 — Core Runtime
-**File:** `docs/plans/A006-core-runtime.md`
+`docs/plans/A006-core-runtime.md`
 
-Key constraints you MUST follow:
-- **Plugin host, shell layout, Rust IPC** are core. Everything else is a plugin.
-- **Shells are empty until plugins register content.** Launcher and project shells read from ContributionStore.
-- **Boot sequence:** 0ms window → 50ms skeleton → 100ms manifests → 150ms critical plugins → 200ms interactive.
-- **`@snapfzz/plugin-sdk` is the stable contract.** NEVER modify it without explicit approval.
+- Plugin host + shell layout + Rust IPC = core. Everything else = plugin.
+- Shells are empty until plugins register content.
+- Boot: 0ms window → 50ms skeleton → 100ms manifests → 150ms critical plugins → 200ms interactive.
+- `@snapfzz/plugin-sdk` is the stable contract. Never modify without approval.
 
 ---
 
 ## UI Specs
 
-### U001 — Navigation Index → `docs/ui-specs/U001-navigation.md`
-Two-window model. Launcher + Project windows. Spec file map.
-
-### U002 — Responsive → `docs/ui-specs/U002-responsive.md`
-3 breakpoints: mobile ≤640, tablet 641-1024, desktop ≥1025. Touch targets ≥44px.
-
-### U003 — Perfectly From Day 1 → `docs/ui-specs/U003-perfectly-from-day-1.md`
-13 quality standards enforced on every shipped app. Responsive, 60fps, accessible, fast, secure, SEO, error handling, dark mode, i18n, analytics, legal, deploy-ready, instant loading.
-
-### U004 — User Journey → `docs/ui-specs/U004-user-journey.md`
-Launch → splash → launcher → project → agents → ship → back to launcher.
-
-### U005 — Launcher Window → `docs/ui-specs/U005-launcher-window.md`
-Project list, cards (Live/In Progress/Paused), new project input, settings, eval, memory.
-
-### U006 — Project Window → `docs/ui-specs/U006-project-window.md`
-Left panel: Chat tab (orchestrator) + Team tab (agent dashboard). Right panel: KB, Code, Preview, Deployments, Identities, Compliance tabs. Bottom panel: Agent Network. Mini apps in generic tabs. Orchestrator is the co-creator.
-
-### U007 — Preview & Build Engine → `docs/ui-specs/U007-preview-and-build-engine.md`
-HMR pipeline via BoxLite port-forward. Triple viewport. Console capture. Responsive enforcement. 13-standard quality gate.
-
-### U008 — Eval System → `docs/ui-specs/U008-eval-system.md`
-Hard eval (MetricBase) + LLM-as-judge (OpenJudge). 4 benchmark sources: built-in, community, local, custom.
-
-### U009 — Design System → `docs/ui-specs/U009-design-system.md`
-Ant Design 5 + shadcn aesthetic. Inter font. Zinc palette. Dark/light themes. Monaco theme. No custom colors.
-
-### U010 — Git Inspector → `docs/ui-specs/U010-git-inspector.md`
-Git sub-views in Code tab: files, diff, log, branches, blame. git2-rs in Rust. Monaco built-in diff editor.
-
----
-
-## Before You Write Code — Mandatory Reasoning
-
-For EVERY piece of code you're about to write, answer these questions:
-
-1. **Which spec(s) mandate this code?** → If none, question whether it should exist.
-2. **Which zone does this code run in?**
-   - Computation/state → Zone 1 (Rust) or Zone 2 (Worker)
-   - Rendering → Zone 3 (Main thread)
-   - If you're putting computation in Zone 3, you're violating A002. Stop and redesign.
-3. **Is this core or plugin?** → If it's feature-specific, it's a plugin. Core is only infrastructure.
-4. **Does this follow the existing pattern?** → Read existing code in the same package first.
-5. **Can you write the test name with a spec reference?** → If not, the code isn't traceable. Find the spec or don't write the code.
-
----
-
-## Two Guides — Builder vs Reviewer
-
-| Role | Guide | What It Does |
+| Spec | File | One-Line |
 |---|---|---|
-| **Builder** | `ENGINEERING_GUIDE.md` | How to implement: TDD, spec traceability, inline comments, no-TODO |
-| **Reviewer** | `REVIEW_GUIDE.md` | How to verify: spec compliance, zone check, test traceability, boundary check |
-
-Both guides point to the same specs. The specs are the single source of truth. If builder and reviewer disagree, the spec is the tiebreaker. If the spec is wrong, update the spec first — then the code follows.
-
-### Builder Summary (ENGINEERING_GUIDE.md)
-
-- **TDD**: Failing test first. Test names: `{spec}/{section}: {behavior}`.
-- **Inline comments**: `// Per {spec}/{section}: {why}` for architectural decisions.
-- **Traceability**: Update `docs/TRACEABILITY.md` after implementation.
-- **No TODOs**: Within scope = implement now. Out of scope = don't mention in code.
-- **No spec violations**: Code matches what specs describe.
-
-### Reviewer Summary (REVIEW_GUIDE.md)
-
-- **Spec compliance**: Does the code do what the spec says, and nothing else?
-- **Zone verification**: Is computation off main thread? No browser globals in Zone 2 files?
-- **Test traceability**: Do all test names reference specs? Are requirements covered?
-- **Boundary check**: Is feature code in plugins, not core? No cross-plugin imports?
-- **Verdict**: APPROVE or REJECT with specific spec violations.
+| U001 | `docs/ui-specs/U001-navigation.md` | Two-window model. Launcher + Project. |
+| U002 | `docs/ui-specs/U002-responsive.md` | 3 breakpoints. Touch targets ≥44px. |
+| U003 | `docs/ui-specs/U003-perfectly-from-day-1.md` | 13 quality standards. All enforced. |
+| U004 | `docs/ui-specs/U004-user-journey.md` | Launch → splash → launcher → project → agents → ship. |
+| U005 | `docs/ui-specs/U005-launcher-window.md` | Project list, settings, eval, memory. |
+| U006 | `docs/ui-specs/U006-project-window.md` | Left: Chat+Team. Right: KB/Code/Preview/Deploy/ID/Compliance. Bottom: Agent Network. |
+| U007 | `docs/ui-specs/U007-preview-and-build-engine.md` | HMR, triple viewport, quality gate. |
+| U008 | `docs/ui-specs/U008-eval-system.md` | Hard eval + LLM-as-judge. 4 benchmark sources. |
+| U009 | `docs/ui-specs/U009-design-system.md` | Ant Design 5 + shadcn. Inter. Zinc. Dark/light. |
+| U010 | `docs/ui-specs/U010-git-inspector.md` | Git sub-views. git2-rs. Monaco diff. |
 
 ---
 
-## Project Structure
+## Before Writing Code
+
+Five questions. Answer all five. If any answer is unclear, read the spec again.
+
+1. **Which spec?** — Every line of code traces to a spec. No orphan code.
+2. **Which zone?** — Computation → 1 or 2. Rendering → 3. Wrong zone = bug.
+3. **Core or plugin?** — Feature-specific = plugin. Infrastructure = core.
+4. **Existing pattern?** — Read the package first. Match what's there.
+5. **Test name?** — `{spec}/{section}: {behavior}`. If you can't name it, you can't build it.
+
+---
+
+## Two Guides
+
+| Role | Guide | Purpose |
+|---|---|---|
+| **Builder** | `ENGINEERING_GUIDE.md` | TDD, traceability, inline comments, no-TODO |
+| **Reviewer** | `REVIEW_GUIDE.md` | Spec compliance, zone check, boundary check, verdict |
+
+Both serve the specs. Disagreement = the spec wins.
+
+---
+
+## Structure
 
 ```
-frontend/                      # pnpm monorepo
-├── packages/
-│   ├── @snapfzz/shared        # Entities, lib, hooks, theme (CORE)
-│   ├── @snapfzz/plugin-sdk    # Plugin contract (STABLE — DO NOT MODIFY)
-│   ├── @snapfzz/plugin-host   # Plugin loader + ContributionStore (CORE)
-│   ├── @snapfzz/launcher      # Launcher window shell (CORE — reads from store)
-│   └── @snapfzz/project       # Project window shell (CORE — reads from store)
-└── plugins/                   # System plugins (each is a package, same API as third-party)
+frontend/packages/
+  @snapfzz/shared          Core: entities, lib, hooks, theme
+  @snapfzz/plugin-sdk      Core: stable contract — NEVER MODIFY
+  @snapfzz/plugin-host     Core: plugin loader, ContributionStore
+  @snapfzz/launcher        Core: thin shell, reads from store
+  @snapfzz/project         Core: thin shell, reads from store
+  plugins/                  Features: each is a package
 
-src-tauri/                     # Rust workspace
-├── crates/                    # Core Rust crates (Zone 1)
-└── tauri.conf.json
+src-tauri/crates/           Rust: Zone 1
 
-docs/plans/                    # Architecture specs (A001-A006)
-docs/ui-specs/                 # UI specs (U001-U010)
-docs/TRACEABILITY.md           # Spec → Code → Test matrix
-ENGINEERING_GUIDE.md           # How to build (TDD, traceability, no-TODO)
+docs/plans/                 A001-A006: architecture specs
+docs/ui-specs/              U001-U010: UI specs
+docs/TRACEABILITY.md        Spec → Code → Test
 ```
 
 ## Commands
 
 ```bash
-cd frontend && pnpm install              # Install deps
-cd frontend && npx vitest run            # Run all tests
-cd frontend && pnpm dev:launcher         # Dev server for launcher
-cd frontend && pnpm dev:project          # Dev server for project
-cd src-tauri && cargo build              # Build Rust
-cargo tauri dev                          # Full Tauri app (from project root)
+cd frontend && pnpm install && npx vitest run    # Install + test
+cd frontend && pnpm dev:launcher                  # Dev launcher
+cd frontend && pnpm dev:project                   # Dev project
+cd src-tauri && cargo build                       # Rust
+cargo tauri dev                                   # Full app
 ```
 
 ## Hard Rules
 
-- **NEVER** modify `@snapfzz/plugin-sdk` — it is the stable API contract
-- **NEVER** write `// TODO`, `// FIXME`, `// HACK`, `// XXX`
-- **NEVER** put computation on the main thread (Zone 3 = rendering only)
-- **NEVER** put feature code in core packages (features are plugins)
-- **NEVER** let plugins import from each other (bus-only communication)
-- **NEVER** add npm dependencies without justification
-- **NEVER** skip tests
-- **NEVER** write code without a spec reference
-- **NEVER** animate layout properties (`width`, `height`, `top`, `left`)
-- **NEVER** store API keys in project folders (global config only)
+- Never modify `@snapfzz/plugin-sdk`
+- Never `// TODO` / `// FIXME` / `// HACK`
+- Never computation on main thread
+- Never feature code in core packages
+- Never cross-plugin imports
+- Never new dependencies without justification
+- Never skip tests
+- Never code without a spec reference
+- Never animate layout properties
+- Never API keys in project folders
