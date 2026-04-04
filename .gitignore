@@ -31,3 +31,5 @@ Thumbs.db
 
 # Snapfzz project data (user data, not source)
 .snapfzz-global/
+intelligence/__pycache__/
+**/__pycache__/
