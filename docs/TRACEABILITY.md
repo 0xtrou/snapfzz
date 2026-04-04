@@ -19,6 +19,7 @@ Every spec requirement → code → tests. Updated with every change.
 | API broker is token-based (no direct plugin imports) | plugin-context-factory.ts:createPluginContext().apis | plugin-context-factory.test.ts:A006/context: creates PluginContext with all required fields |
 | ContributionStore registers and disposes UI contributions | contribution-store.ts:registerLeftPanelTab/registerWorkspaceTab/registerBottomPanel/registerStatusItem | contribution-store.test.ts:A005/store: registers + removes contributions |
 | Crash isolation wraps plugin UI in error boundary fallback | plugin-error-boundary.tsx | plugin-host-react.test.tsx:A005/isolation: catches render error and shows configured fallback component |
+| ErrorBoundary crash → host.reportCrash() supervision loop | plugin-error-boundary.tsx (pluginId+onCrash props) + launcher/project App.tsx (handleCrash→host.reportCrash) | plugin-host-react.test.tsx:A005/isolation: calls onCrash with pluginId; default fallback includes retry; custom FallbackComponent receives onRetry |
 | Activation events gate when plugins activate | plugin-host.ts:activateByEvent() | plugin-host.test.ts:A005/lifecycle/activation-events: only activates matching; skips non-matching; dependency order |
 | Startup budget: 200ms for critical, requestIdleCallback preload for rest | plugin-host.ts:activateByEvent() + scheduleBackgroundPreload() + scheduleDuringIdle() | plugin-host.test.ts:A003/instant-loading/background-preload: uses requestIdleCallback |
 | Activation timeout: 5s kill via Promise.race | plugin-host.ts:activate() (ACTIVATION_TIMEOUT_MS) | plugin-host.test.ts:A005/lifecycle/activation-timeout: rejects activation when plugin exceeds 5000ms |
@@ -76,7 +77,7 @@ Every spec requirement → code → tests. Updated with every change.
 
 | Requirement | Status |
 |---|---|
-| ErrorBoundary → crash supervision wiring (pluginId + onCrash callback) | Open — boundary currently logs only, no host.reportCrash() callback |
+| ErrorBoundary → crash supervision wiring (pluginId + onCrash callback) | **Done** — boundary accepts pluginId/onCrash, shells wire host.reportCrash(), retry resets boundary |
 | Dynamic manifest discovery from Tauri IPC | Open — plugin-discovery.ts returns empty list |
 | Capability checking (requiredCapabilities gate) | Open — SDK types exist, host does not enforce |
 | RustBridge.channel\<T\>() for high-frequency streaming | Open — SDK only has invoke + listen |

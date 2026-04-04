@@ -11,7 +11,7 @@ import {
   PluginErrorBoundary,
   registerDiscoveredPlugins,
 } from '@snapfzz/plugin-host';
-import { lazy, Suspense, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
 import type { ComponentContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
 
 // Per A003/InstantLoading: measure TTI and LCP on every boot.
@@ -76,18 +76,23 @@ export function App() {
     });
   }, [host]);
 
+  // Per A005/Isolation: crash callback routes through host crash supervision (3-strike auto-disable).
+  const handleCrash = useCallback((pluginId: string, _error: Error) => {
+    host.reportCrash(pluginId);
+  }, [host]);
+
   return (
     <PluginHostProvider host={host}>
       <ConfigProvider theme={antdTheme}>
         <PluginErrorBoundary>
-          <LauncherShell contributions={contributions} />
+          <LauncherShell contributions={contributions} onCrash={handleCrash} />
         </PluginErrorBoundary>
       </ConfigProvider>
     </PluginHostProvider>
   );
 }
 
-function LauncherShell({ contributions }: { contributions: ContributionSnapshot }) {
+function LauncherShell({ contributions, onCrash }: { contributions: ContributionSnapshot; onCrash: (pluginId: string, error: Error) => void }) {
   const launcherContributions = contributions as LauncherContributionSnapshot;
 
   const headerItems =
@@ -106,13 +111,13 @@ function LauncherShell({ contributions }: { contributions: ContributionSnapshot 
           Snapfzz
         </span>
         <div className="flex items-center gap-2">
-          <RenderComponentContributions items={headerItems} />
+          <RenderComponentContributions items={headerItems} onCrash={onCrash} />
         </div>
       </header>
 
       <main className="flex-1">
         {mainContent.length > 0 ? (
-          <RenderComponentContributions items={mainContent} />
+          <RenderComponentContributions items={mainContent} onCrash={onCrash} />
         ) : (
           <div className="h-full flex items-center justify-center">
             <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
@@ -122,12 +127,12 @@ function LauncherShell({ contributions }: { contributions: ContributionSnapshot 
         )}
       </main>
 
-      <StatusBar statusItems={contributions.statusItems} />
+      <StatusBar statusItems={contributions.statusItems} onCrash={onCrash} />
     </div>
   );
 }
 
-function RenderComponentContributions({ items }: { items: readonly ComponentContribution[] }) {
+function RenderComponentContributions({ items, onCrash }: { items: readonly ComponentContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
   const resolved = useMemo(
     () => items.map((item) => ({ id: item.id, Component: lazy(item.component) })),
     [items],
@@ -137,14 +142,16 @@ function RenderComponentContributions({ items }: { items: readonly ComponentCont
     <>
       {resolved.map(({ id, Component }) => (
         <Suspense key={id} fallback={null}>
-          <Component />
+          <PluginErrorBoundary pluginId={id} onCrash={onCrash}>
+            <Component />
+          </PluginErrorBoundary>
         </Suspense>
       ))}
     </>
   );
 }
 
-function StatusBar({ statusItems }: { statusItems: readonly StatusItemContribution[] }) {
+function StatusBar({ statusItems, onCrash }: { statusItems: readonly StatusItemContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
   const leftItems = statusItems.filter((item) => item.position === 'left');
   const rightItems = statusItems.filter((item) => item.position === 'right');
 
@@ -155,19 +162,19 @@ function StatusBar({ statusItems }: { statusItems: readonly StatusItemContributi
     >
       <div className="flex items-center gap-2">
         {leftItems.length > 0 ? (
-          <RenderStatusContributions items={leftItems} />
+          <RenderStatusContributions items={leftItems} onCrash={onCrash} />
         ) : (
           <span>● Ready</span>
         )}
       </div>
       <div className="flex items-center gap-2">
-        <RenderStatusContributions items={rightItems} />
+        <RenderStatusContributions items={rightItems} onCrash={onCrash} />
       </div>
     </footer>
   );
 }
 
-function RenderStatusContributions({ items }: { items: readonly StatusItemContribution[] }) {
+function RenderStatusContributions({ items, onCrash }: { items: readonly StatusItemContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
   const resolved = useMemo(
     () => items.map((item) => ({ id: item.id, Component: lazy(item.component) })),
     [items],
@@ -177,7 +184,9 @@ function RenderStatusContributions({ items }: { items: readonly StatusItemContri
     <>
       {resolved.map(({ id, Component }) => (
         <Suspense key={id} fallback={null}>
-          <Component />
+          <PluginErrorBoundary pluginId={id} onCrash={onCrash}>
+            <Component />
+          </PluginErrorBoundary>
         </Suspense>
       ))}
     </>

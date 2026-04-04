@@ -182,4 +182,53 @@ describe('A005/isolation: PluginErrorBoundary crash containment', () => {
 
     expect(onCrash).toHaveBeenCalledWith('crashy-plugin', expect.any(Error));
   });
+
+  it('A005/isolation: default fallback includes retry button that resets error state', () => {
+    const shouldThrow = { current: true };
+    const MaybeCrash = () => {
+      if (shouldThrow.current) throw new Error('crash');
+      return createElement('div', null, 'recovered');
+    };
+
+    const { container } = render(
+      createElement(PluginErrorBoundary, {}, createElement(MaybeCrash)),
+    );
+
+    expect(container.textContent).toContain('Plugin failed to render.');
+    expect(container.textContent).toContain('Retry');
+
+    shouldThrow.current = false;
+    act(() => {
+      container.querySelector('button')?.click();
+    });
+
+    expect(container.textContent).toContain('recovered');
+  });
+
+  it('A005/isolation: custom FallbackComponent receives onRetry callback', () => {
+    const shouldThrow = { current: true };
+    const MaybeCrash = () => {
+      if (shouldThrow.current) throw new Error('crash');
+      return createElement('div', null, 'back');
+    };
+
+    const CustomFallback = ({ error, onRetry }: { error: Error; onRetry: () => void }) =>
+      createElement('div', null,
+        createElement('span', null, error.message),
+        createElement('button', { type: 'button', onClick: onRetry }, 'Try again'),
+      );
+
+    const { container } = render(
+      createElement(PluginErrorBoundary, { FallbackComponent: CustomFallback }, createElement(MaybeCrash)),
+    );
+
+    expect(container.textContent).toContain('crash');
+
+    shouldThrow.current = false;
+    act(() => {
+      container.querySelector('button')?.click();
+    });
+
+    expect(container.textContent).toContain('back');
+  });
 });

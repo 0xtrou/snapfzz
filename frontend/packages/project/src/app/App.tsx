@@ -1,7 +1,7 @@
 // Per A006/CoreRuntime: Project shell renders contributions from ContributionStore via PluginHost.
 // Per A005/PluginArchitecture: shells remain empty of feature-plugin imports — runtime discovery registers plugins.
 // Per SNA-4: Integrate with @snapfzz/plugin-host for plugin-driven UI.
-import { useState, lazy, Suspense, useMemo, useEffect, type ComponentType } from 'react';
+import { useState, lazy, Suspense, useMemo, useEffect, useCallback, type ComponentType } from 'react';
 import { ConfigProvider } from 'antd';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { useTheme, darkTheme, lightTheme } from '@snapfzz/shared';
@@ -15,11 +15,15 @@ import {
 } from '@snapfzz/plugin-host';
 import type { TabContribution, PanelContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
 
-function LazyComponent({ loader }: { loader: () => Promise<{ default: ComponentType }> }) {
+function LazyComponent({ loader, pluginId, onCrash }: {
+  loader: () => Promise<{ default: ComponentType }>;
+  pluginId?: string;
+  onCrash?: (pluginId: string, error: Error) => void;
+}) {
   const Component = lazy(loader);
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">Loading...</div>}>
-      <PluginErrorBoundary>
+      <PluginErrorBoundary pluginId={pluginId} onCrash={onCrash}>
         <Component />
       </PluginErrorBoundary>
     </Suspense>
@@ -61,10 +65,11 @@ function TabBar({ tabs, activeTabId, onTabClick }: {
   );
 }
 
-function LeftPanel({ tabs, activeTabId, onTabChange }: {
+function LeftPanel({ tabs, activeTabId, onTabChange, onCrash }: {
   tabs: readonly TabContribution[];
   activeTabId: string;
   onTabChange: (id: string) => void;
+  onCrash: (pluginId: string, error: Error) => void;
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -73,7 +78,7 @@ function LeftPanel({ tabs, activeTabId, onTabChange }: {
       <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
       <div className="flex-1 overflow-hidden">
         {activeTab ? (
-          <LazyComponent loader={activeTab.component} />
+          <LazyComponent loader={activeTab.component} pluginId={activeTab.id} onCrash={onCrash} />
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
             Select a tab to view content
@@ -84,10 +89,11 @@ function LeftPanel({ tabs, activeTabId, onTabChange }: {
   );
 }
 
-function RightPanel({ tabs, activeTabId, onTabChange }: {
+function RightPanel({ tabs, activeTabId, onTabChange, onCrash }: {
   tabs: readonly TabContribution[];
   activeTabId: string;
   onTabChange: (id: string) => void;
+  onCrash: (pluginId: string, error: Error) => void;
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -96,7 +102,7 @@ function RightPanel({ tabs, activeTabId, onTabChange }: {
       <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
       <div className="flex-1 overflow-hidden">
         {activeTab ? (
-          <LazyComponent loader={activeTab.component} />
+          <LazyComponent loader={activeTab.component} pluginId={activeTab.id} onCrash={onCrash} />
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
             Select a workspace tab to view content
@@ -107,7 +113,7 @@ function RightPanel({ tabs, activeTabId, onTabChange }: {
   );
 }
 
-function BottomPanel({ panels }: { panels: readonly PanelContribution[] }) {
+function BottomPanel({ panels, onCrash }: { panels: readonly PanelContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
   if (panels.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-[var(--text-muted)] text-sm">
@@ -120,14 +126,14 @@ function BottomPanel({ panels }: { panels: readonly PanelContribution[] }) {
     <div className="h-full flex">
       {panels.map((panel) => (
         <div key={panel.id} className="flex-1 min-w-0">
-          <LazyComponent loader={panel.component} />
+          <LazyComponent loader={panel.component} pluginId={panel.id} onCrash={onCrash} />
         </div>
       ))}
     </div>
   );
 }
 
-function StatusBar({ items }: { items: readonly StatusItemContribution[] }) {
+function StatusBar({ items, onCrash }: { items: readonly StatusItemContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
   const leftItems = items.filter((item) => item.position === 'left');
   const rightItems = items.filter((item) => item.position === 'right');
 
@@ -136,20 +142,20 @@ function StatusBar({ items }: { items: readonly StatusItemContribution[] }) {
       <div className="flex items-center gap-2">
         <span className="text-[var(--accent)]">●</span>
         {leftItems.map((item) => (
-          <StatusItemWrapper key={item.id} item={item} />
+          <StatusItemWrapper key={item.id} item={item} onCrash={onCrash} />
         ))}
       </div>
       <div className="ml-auto flex items-center gap-4">
         {rightItems.map((item) => (
-          <StatusItemWrapper key={item.id} item={item} />
+          <StatusItemWrapper key={item.id} item={item} onCrash={onCrash} />
         ))}
       </div>
     </footer>
   );
 }
 
-function StatusItemWrapper({ item }: { item: StatusItemContribution }) {
-  return <LazyComponent loader={item.component} />;
+function StatusItemWrapper({ item, onCrash }: { item: StatusItemContribution; onCrash: (pluginId: string, error: Error) => void }) {
+  return <LazyComponent loader={item.component} pluginId={item.id} onCrash={onCrash} />;
 }
 
 function createPluginHost(store: ContributionStore): PluginHost {
@@ -170,6 +176,11 @@ export function App() {
 
   const leftPanelTabs = contributions.leftPanelTabs;
   const workspaceTabs = contributions.workspaceTabs;
+
+  // Per A005/Isolation: crash callback routes through host crash supervision (3-strike auto-disable).
+  const handleCrash = useCallback((pluginId: string, _error: Error) => {
+    host.reportCrash(pluginId);
+  }, [host]);
 
   useEffect(() => {
     if (leftPanelActiveTab === null && leftPanelTabs.length > 0) {
@@ -217,6 +228,7 @@ export function App() {
                 tabs={leftPanelTabs}
                 activeTabId={leftPanelActiveTab || ''}
                 onTabChange={setLeftPanelActiveTab}
+                onCrash={handleCrash}
               />
             </Panel>
             <PanelResizeHandle 
@@ -228,16 +240,17 @@ export function App() {
                 tabs={workspaceTabs}
                 activeTabId={workspaceActiveTab || ''}
                 onTabChange={setWorkspaceActiveTab}
+                onCrash={handleCrash}
               />
             </Panel>
           </PanelGroup>
 
           {/* Per U006: Bottom panel - Agent Network area */}
           <div className="h-48 border-t border-[var(--border-default)]" style={{ contain: 'strict' }}>
-            <BottomPanel panels={contributions.bottomPanels} />
+            <BottomPanel panels={contributions.bottomPanels} onCrash={handleCrash} />
           </div>
 
-          <StatusBar items={contributions.statusItems} />
+          <StatusBar items={contributions.statusItems} onCrash={handleCrash} />
         </div>
       </PluginHostProvider>
     </ConfigProvider>

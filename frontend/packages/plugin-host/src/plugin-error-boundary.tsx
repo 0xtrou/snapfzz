@@ -3,7 +3,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface PluginErrorBoundaryProps {
   children?: ReactNode;
-  FallbackComponent?: (props: { error: Error }) => ReactNode;
+  FallbackComponent?: (props: { error: Error; onRetry: () => void }) => ReactNode;
   pluginId?: string;
   onCrash?: (pluginId: string, error: Error) => void;
 }
@@ -22,6 +22,7 @@ export class PluginErrorBoundary extends Component<PluginErrorBoundaryProps, Plu
     return { error };
   }
 
+  // Per A005/Isolation: crash notification feeds into host crash supervision (3-strike auto-disable).
   componentDidCatch(error: Error, _errorInfo: ErrorInfo) {
     const { pluginId, onCrash } = this.props;
     if (pluginId && onCrash) {
@@ -30,15 +31,31 @@ export class PluginErrorBoundary extends Component<PluginErrorBoundaryProps, Plu
     console.error('[PluginErrorBoundary] Plugin render error', error);
   }
 
+  private handleRetry = () => {
+    this.setState({ error: null });
+  };
+
   render() {
     const { error } = this.state;
     const { children, FallbackComponent } = this.props;
 
     if (error) {
       if (FallbackComponent) {
-        return FallbackComponent({ error });
+        return FallbackComponent({ error, onRetry: this.handleRetry });
       }
-      return <div>Plugin failed to render.</div>;
+      // Per A005/Isolation: default fallback includes retry so users can attempt recovery.
+      return (
+        <div style={{ padding: 16, color: 'var(--text-muted)' }}>
+          <p>Plugin failed to render.</p>
+          <button
+            type="button"
+            onClick={this.handleRetry}
+            style={{ marginTop: 8, cursor: 'pointer', textDecoration: 'underline', color: 'var(--color-accent)' }}
+          >
+            Retry
+          </button>
+        </div>
+      );
     }
 
     return children;
