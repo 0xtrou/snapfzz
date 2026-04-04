@@ -134,6 +134,11 @@ export class ContributionStore {
   ) {
     const storeArrays = this as unknown as ContributionArrays;
 
+    const alreadyExists = storeArrays[key].some((item) => predicate(item as ArrayElement<ContributionArrays[K]>));
+    if (alreadyExists) {
+      return () => {};
+    }
+
     storeArrays[key].push(contribution as never);
     this.notify();
 

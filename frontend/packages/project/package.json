@@ -10,6 +10,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.1.1",
     "@snapfzz/plugin-host": "workspace:*",
     "@snapfzz/plugin-sdk": "workspace:*",
     "@snapfzz/shared": "workspace:*",

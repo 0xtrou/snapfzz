@@ -1,8 +1,9 @@
 // Per A006/CoreRuntime: Project shell renders contributions from ContributionStore via PluginHost.
 // Per A005/PluginArchitecture: shells remain empty of feature-plugin imports — runtime discovery registers plugins.
 // Per SNA-4: Integrate with @snapfzz/plugin-host for plugin-driven UI.
-import { useState, lazy, Suspense, useMemo, useEffect, useCallback, type ComponentType } from 'react';
-import { ConfigProvider } from 'antd';
+import { useState, useRef, lazy, Suspense, useMemo, useEffect, useCallback, type ComponentType } from 'react';
+import { ConfigProvider, Button } from 'antd';
+import { SunOutlined, MoonOutlined } from '@ant-design/icons';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { useTheme, darkTheme, lightTheme } from '@snapfzz/shared';
 import {
@@ -133,22 +134,48 @@ function BottomPanel({ panels, onCrash }: { panels: readonly PanelContribution[]
   );
 }
 
-function StatusBar({ items, onCrash }: { items: readonly StatusItemContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
+function FpsCounter() {
+  const [fps, setFps] = useState(0);
+  const framesRef = useRef(0);
+  const lastTimeRef = useRef(performance.now());
+
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      framesRef.current++;
+      const now = performance.now();
+      if (now - lastTimeRef.current >= 1000) {
+        setFps(framesRef.current);
+        framesRef.current = 0;
+        lastTimeRef.current = now;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const color = fps >= 55 ? '#22c55e' : fps >= 30 ? '#eab308' : '#ef4444';
+  return <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{fps} fps</span>;
+}
+
+function StatusBar({ items, pluginCount, onCrash }: { items: readonly StatusItemContribution[]; pluginCount: number; onCrash: (pluginId: string, error: Error) => void }) {
   const leftItems = items.filter((item) => item.position === 'left');
   const rightItems = items.filter((item) => item.position === 'right');
 
   return (
     <footer className="h-8 flex items-center px-4 text-xs border-t border-[var(--border-default)] bg-[var(--bg-default)]">
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--accent)]">●</span>
+      <div className="flex items-center gap-3">
         {leftItems.map((item) => (
           <StatusItemWrapper key={item.id} item={item} onCrash={onCrash} />
         ))}
+        <span className="text-[var(--text-muted)]">{pluginCount} plugin{pluginCount !== 1 ? 's' : ''}</span>
       </div>
       <div className="ml-auto flex items-center gap-4">
         {rightItems.map((item) => (
           <StatusItemWrapper key={item.id} item={item} onCrash={onCrash} />
         ))}
+        <FpsCounter />
       </div>
     </footer>
   );
@@ -162,12 +189,13 @@ function createPluginHost(store: ContributionStore): PluginHost {
   return new PluginHost(store, 'project');
 }
 
-export function App() {
-  const { theme } = useTheme();
-  const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
+const store = new ContributionStore();
+const host = createPluginHost(store);
+let pluginsInitialized = false;
 
-  const store = useMemo(() => new ContributionStore(), []);
-  const host = useMemo(() => createPluginHost(store), [store]);
+export function App() {
+  const { theme, toggleTheme } = useTheme();
+  const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
 
   const contributions = useContributionStore(() => store);
 
@@ -180,7 +208,41 @@ export function App() {
   // Per A005/Isolation: crash callback routes through host crash supervision (3-strike auto-disable).
   const handleCrash = useCallback((pluginId: string, _error: Error) => {
     host.reportCrash(pluginId);
-  }, [host]);
+  }, []);
+
+  const titleBarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const tauriInvoke = (cmd: string, args?: Record<string, unknown>) => {
+      const tauri = (window as Record<string, unknown>).__TAURI_INTERNALS__ as
+        | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+        | undefined;
+      if (tauri) tauri.invoke(cmd, args).catch(() => {});
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!titleBarRef.current?.contains(target)) return;
+      if (target.closest('input, textarea, button, a, select')) return;
+      if (e.button !== 0) return;
+      e.preventDefault();
+      tauriInvoke('plugin:window|start_dragging', { label: 'launcher' });
+    };
+
+    const handleDblClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!titleBarRef.current?.contains(target)) return;
+      if (target.closest('input, textarea, button, a, select')) return;
+      tauriInvoke('plugin:window|toggle_maximize', { label: 'launcher' });
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('dblclick', handleDblClick);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('dblclick', handleDblClick);
+    };
+  }, []);
 
   useEffect(() => {
     if (leftPanelActiveTab === null && leftPanelTabs.length > 0) {
@@ -205,21 +267,31 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Per A006/BootSequence: discover manifests → register → activate critical plugins.
+    if (pluginsInitialized) return;
+    pluginsInitialized = true;
     registerDiscoveredPlugins(host, 'project').then(() => {
       void host.activateByEvent('onStartupFinished');
     });
-  }, [host]);
+  }, []);
 
   return (
     <ConfigProvider theme={antdTheme}>
       <PluginHostProvider host={host}>
-        <div className="flex flex-col min-h-screen">
-          <header className="h-10 flex items-center px-4 border-b border-[var(--border-default)] bg-[var(--bg-default)]">
-            <span className="text-sm font-semibold">Project Window</span>
-            <span className="ml-auto text-xs text-[var(--text-muted)]">
-              {contributions.leftPanelTabs.length + contributions.workspaceTabs.length} plugins loaded
-            </span>
+        <div className="flex flex-col h-screen overflow-hidden">
+          <header
+            ref={titleBarRef}
+            className="flex items-center gap-2 px-4 pr-3 border-b border-[var(--border-default)] bg-[var(--bg-default)] select-none cursor-default"
+            style={{ paddingLeft: 78, height: 38 }}
+          >
+            <div className="ml-auto flex items-center gap-1 pointer-events-auto">
+              <Button
+                type="text"
+                size="small"
+                icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+                onClick={toggleTheme}
+              />
+              <img src="/logo.svg" alt="Snapfzz" className="w-5 h-5" />
+            </div>
           </header>
 
           <PanelGroup direction="horizontal" className="flex-1" style={{ contain: 'strict' }}>
@@ -250,7 +322,7 @@ export function App() {
             <BottomPanel panels={contributions.bottomPanels} onCrash={handleCrash} />
           </div>
 
-          <StatusBar items={contributions.statusItems} onCrash={handleCrash} />
+          <StatusBar items={contributions.statusItems} pluginCount={contributions.leftPanelTabs.length + contributions.workspaceTabs.length} onCrash={handleCrash} />
         </div>
       </PluginHostProvider>
     </ConfigProvider>

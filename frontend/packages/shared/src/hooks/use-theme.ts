@@ -28,6 +28,13 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+
+    const tauri = (window as Record<string, unknown>).__TAURI_INTERNALS__ as
+      | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+      | undefined;
+    if (tauri) {
+      tauri.invoke('plugin:window|set_theme', { label: 'launcher', value: theme }).catch(() => {});
+    }
   }, [theme]);
 
   return { theme, setTheme, toggleTheme };

@@ -33,3 +33,5 @@ Thumbs.db
 .snapfzz-global/
 intelligence/__pycache__/
 **/__pycache__/
+intelligence/.venv/
+intelligence/uv.lock

@@ -14,6 +14,10 @@
     "node": ">=20",
     "pnpm": ">=9"
   },
+  "dependencies": {
+    "@ant-design/icons": "^6.1.1",
+    "@snapfzz/chat-plugin": "workspace:*"
+  },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
     "jsdom": "^29.0.1",

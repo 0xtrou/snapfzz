@@ -187,7 +187,7 @@ export class PluginHost {
       visited.add(pluginId);
       result.push(plugin);
       if (!this.disabledPlugins.has(plugin.id)) {
-        this.pluginStates.set(plugin.id, 'resolved');
+        this.pluginStates.set(plugin.id, 'registered');
       }
     };
 
@@ -242,8 +242,8 @@ export class PluginHost {
 
       this.activatedPlugins.set(pluginId, { handle, context });
       this.pluginStates.set(pluginId, 'running');
+      this.registerManifestContributions(plugin);
 
-      // Per A005/Lifecycle: successful activation resets crash supervision window.
       this.crashTimestamps.delete(pluginId);
       return handle;
     } catch (error) {
@@ -339,6 +339,42 @@ export class PluginHost {
     this.disabledPlugins.delete(pluginId);
     this.crashTimestamps.delete(pluginId);
     this.persistDisabledPlugins();
+  }
+
+  private registerManifestContributions(plugin: PluginDefinition): void {
+    const c = plugin.contributes;
+    if (!c) return;
+
+    if (c.leftPanelTabs) {
+      for (const tab of c.leftPanelTabs) {
+        this.store.registerLeftPanelTab(tab as import('@snapfzz/plugin-sdk').TabContribution);
+      }
+    }
+    if (c.workspaceTabs) {
+      for (const tab of c.workspaceTabs) {
+        this.store.registerWorkspaceTab(tab as import('@snapfzz/plugin-sdk').TabContribution);
+      }
+    }
+    if (c.bottomPanels) {
+      for (const panel of c.bottomPanels) {
+        this.store.registerBottomPanel(panel as import('@snapfzz/plugin-sdk').PanelContribution);
+      }
+    }
+    if (c.statusItems) {
+      for (const item of c.statusItems) {
+        this.store.registerStatusItem(item as import('@snapfzz/plugin-sdk').StatusItemContribution);
+      }
+    }
+    if (c.commands) {
+      for (const cmd of c.commands) {
+        this.store.registerCommand(cmd as import('@snapfzz/plugin-sdk').CommandContribution);
+      }
+    }
+    if (c.shortcuts) {
+      for (const shortcut of c.shortcuts) {
+        this.store.registerShortcut(shortcut as import('@snapfzz/plugin-sdk').ShortcutContribution);
+      }
+    }
   }
 
   async update(pluginId: string, loader: PluginLoader): Promise<void> {

@@ -15,17 +15,28 @@ export interface DiscoveredManifest {
  * Current implementation: returns an empty list (no plugins shipped yet).
  * Future: reads manifests from .snapfzz/plugins/ or Tauri IPC.
  */
-export async function discoverPlugins(_surface: HostSurface): Promise<DiscoveredManifest[]> {
-  // Per A006/CoreRuntime: plugin discovery is async to support future Tauri IPC manifest reads.
-  return [];
+export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredManifest[]> {
+  // Ugly phase: hardcoded plugin list. Production: Rust reads .snapfzz/plugins/ manifests.
+  const registry: DiscoveredManifest[] = [];
+
+  if (surface === 'project') {
+    try {
+      const chatModule = await import('@snapfzz/chat-plugin');
+      const manifest = chatModule.default;
+      console.log('[PluginDiscovery] Loaded chat plugin:', manifest.id);
+      registry.push({ manifest, loader: async () => manifest });
+    } catch (e) {
+      console.error('[PluginDiscovery] Failed to load @snapfzz/chat-plugin:', e);
+    }
+  }
+
+  return registry;
 }
 
-/**
- * Per A006/BootSequence: registers all discovered plugins into the host before activation.
- */
 export async function registerDiscoveredPlugins(host: PluginHost, surface: HostSurface): Promise<void> {
   const discovered = await discoverPlugins(surface);
-  for (const { manifest, loader } of discovered) {
-    await host.registerWithLoader(manifest, loader);
+  console.log(`[PluginDiscovery] Registering ${discovered.length} plugins for surface: ${surface}`);
+  for (const { manifest } of discovered) {
+    host.register(manifest);
   }
 }

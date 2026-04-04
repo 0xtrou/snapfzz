@@ -13,6 +13,9 @@
     "@snapfzz/shared": "workspace:*",
     "react": "^19.0.0"
   },
+  "optionalDependencies": {
+    "@snapfzz/chat-plugin": "workspace:*"
+  },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
     "@testing-library/react-hooks": "^8.0.1",
