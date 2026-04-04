@@ -6,7 +6,7 @@ members = [
   "crates/snapfzz-plugin-host",
   "crates/snapfzz-plugin-bridge",
   "crates/snapfzz-box-manager",
-  "crates/snapfzz-agent-orchestrator",
+  "crates/snapfzz-agent-supervisor",
   "crates/snapfzz-stream-pipeline",
 ]
 resolver = "2"

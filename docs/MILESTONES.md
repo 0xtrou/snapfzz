@@ -286,7 +286,7 @@ Messages saved on send (user) and on stream-complete (agent). JSONL format — o
 
 | Component | What It Does |
 |---|---|
-| `snapfzz-agent-orchestrator` | Agent registry, MsgHub routing, session per agent |
+| `snapfzz-agent-supervisor` | AgentScope process lifecycle via `uv` — start, health check, restart. Orchestration is AgentScope's job (proven at 1M agents). |
 | `snapfzz-plugin-host` (Rust) | Manifest discovery from `.snapfzz/plugins/` |
 | `snapfzz-plugin-bridge` | Schema validation, capability checking |
 | `snapfzz-box-manager` | BoxLite VM lifecycle, snapshot restore, port forwarding |
