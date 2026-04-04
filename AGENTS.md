@@ -85,7 +85,19 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 
 ---
 
-## UI Specs
+## Milestones
+
+`docs/MILESTONES.md` — The release plan. Read this FIRST to know what to build NOW.
+
+```
+Alpha:   Single agent. Clean chat. Build a project. ← CURRENT
+Beta:    Multi agent. Team coordination. Agent network.
+V1:      Workflow. Ship button. Eval. Memory. The full promise.
+```
+
+Performance specs (A001-A003) are non-negotiable at every milestone. Feature specs are phased — check MILESTONES.md for what's in scope.
+
+## UI Specs (Full — milestoned in MILESTONES.md)
 
 | Spec | File | One-Line |
 |---|---|---|
