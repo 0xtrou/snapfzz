@@ -4,6 +4,9 @@
   --bg-primary: #09090b;
   --bg-secondary: #18181b;
   --bg-tertiary: #27272a;
+  /* Per U009/DesignSystem: semantic aliases for component-level usage */
+  --bg-default: #18181b;
+  --bg-subtle: #27272a;
   --bg-input: #18181b;
   --border-default: #27272a;
   --border-strong: #3f3f46;
@@ -15,6 +18,7 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
   --color-accent: #fafafa;
+  --accent: #fafafa;
   --color-accent-hover: #e4e4e7;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -24,6 +28,9 @@
   --bg-primary: #ffffff;
   --bg-secondary: #fafafa;
   --bg-tertiary: #f4f4f5;
+  /* Per U009/DesignSystem: semantic aliases for component-level usage */
+  --bg-default: #ffffff;
+  --bg-subtle: #f4f4f5;
   --bg-input: #ffffff;
   --border-default: #e4e4e7;
   --border-strong: #d4d4d8;
@@ -35,6 +42,7 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
   --color-accent: #18181b;
+  --accent: #18181b;
   --color-accent-hover: #27272a;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.06);

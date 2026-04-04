@@ -1,4 +1,4 @@
-// Spec: A005-feat-plugin-architecture.md, 010-feat-core-runtime.md
+// Spec: A005-feat-plugin-architecture.md, A006-core-runtime.md
 // Sections: Plugin Context, Plugin Communication, Isolation
 // Verifies: PluginContext shape, namespaced bus, command registry, logger prefixing, settings/storage namespacing
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -108,5 +108,24 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
 
     expect(context.settings.get<{ mode: string }>('theme')).toEqual({ mode: 'dark' });
     expect(storage.getItem('snapfzz:plugin:plugin.alpha:settings:theme')).toBe(JSON.stringify({ mode: 'dark' }));
+  });
+
+  it('A005/activation-events: fires onActivationEvent callback when command is executed', async () => {
+    const onEvent = vi.fn();
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage, onEvent);
+
+    context.commands.register('test.cmd', async () => 'ok');
+    await context.commands.execute('test.cmd');
+
+    expect(onEvent).toHaveBeenCalledWith('onCommand:test.cmd');
+  });
+
+  it('A005/activation-events: fires onActivationEvent callback when bus event is emitted', () => {
+    const onEvent = vi.fn();
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage, onEvent);
+
+    context.bus.emit('something', {});
+
+    expect(onEvent).toHaveBeenCalledWith(expect.stringContaining('onEvent:'));
   });
 });

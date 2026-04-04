@@ -1,4 +1,4 @@
-// Spec: A005-feat-plugin-architecture.md, 010-feat-core-runtime.md
+// Spec: A005-feat-plugin-architecture.md, A006-core-runtime.md
 // Sections: Plugin Lifecycle, Dependency Resolution, Plugin Context, Activation Events, Enable/Disable, Crash Supervision, Reload, State
 // Verifies: plugin registration, surface filtering, dependency ordering, activation, deactivation, activation events, enable/disable, crash supervision, reload, plugin state
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -119,7 +119,62 @@ describe('A005/lifecycle: PluginHost registration, resolution, and lifecycle con
   });
 });
 
+describe('A005/lifecycle/activation-timeout: kills plugin that exceeds timeout', () => {
+  it('A005/lifecycle/activation-timeout: rejects activation when plugin exceeds 5000ms', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+      const host = new PluginHost(new ContributionStore(), 'launcher', storage);
+
+      const neverResolve = defineTestPlugin({
+        id: 'slow-plugin',
+        activate: () => new Promise(() => {}),
+      });
+      host.register(neverResolve);
+
+      const activatePromise = host.activate('slow-plugin');
+      const activationAssertion = expect(activatePromise).rejects.toThrow(/timed out/i);
+
+      vi.advanceTimersByTime(5001);
+      await vi.runAllTimersAsync();
+
+      await activationAssertion;
+      expect(host.getPluginState('slow-plugin')).toBe('error');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('A005/lifecycle/activation-events: lazy loading', () => {
+  it('A003/instant-loading/background-preload: uses requestIdleCallback for non-startup background preload', async () => {
+    const originalRequestIdleCallback = globalThis.requestIdleCallback;
+    const requestIdleCallbackSpy = vi.fn((callback: IdleRequestCallback) => {
+      callback({ didTimeout: false, timeRemaining: () => 50 } as IdleDeadline);
+      return 1;
+    });
+
+    globalThis.requestIdleCallback = requestIdleCallbackSpy;
+
+    try {
+      const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+      const host = new PluginHost(new ContributionStore(), 'launcher', storage);
+
+      host.register(defineTestPlugin({ id: 'lazy-plugin', activationEvents: ['onViewVisible:code'] }));
+
+      await host.activateByEvent('onCommand:run.something');
+
+      expect(requestIdleCallbackSpy).toHaveBeenCalled();
+    } finally {
+      if (originalRequestIdleCallback) {
+        globalThis.requestIdleCallback = originalRequestIdleCallback;
+      } else {
+        delete (globalThis as { requestIdleCallback?: typeof requestIdleCallback }).requestIdleCallback;
+      }
+    }
+  });
+
   it('A005/lifecycle/activation-events: only activates plugins matching the fired event', async () => {
     const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
     const host = new PluginHost(new ContributionStore(), 'launcher', storage);
@@ -312,8 +367,8 @@ describe('A005/lifecycle/reload: deactivate and re-activate via loader', () => {
   });
 });
 
-describe('A005/lifecycle/state: plugin state query', () => {
-  it('A005/lifecycle/state: returns correct state for each lifecycle phase', async () => {
+describe('A005/lifecycle/state: plugin state query (5-state model)', () => {
+  it('A005/lifecycle/state: registered → running → ready → disabled', async () => {
     const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
     const host = new PluginHost(new ContributionStore(), 'launcher', storage);
 
@@ -326,17 +381,62 @@ describe('A005/lifecycle/state: plugin state query', () => {
 
     expect(host.getPluginState('stateful')).toBe('registered');
 
-    host.resolve();
-    expect(host.getPluginState('stateful')).toBe('resolved');
-
     await host.activate('stateful');
     expect(host.getPluginState('stateful')).toBe('running');
 
+    // After deactivation, code is still cached → ready (not registered)
     await host.deactivate('stateful');
-    expect(host.getPluginState('stateful')).toBe('deactivated');
+    expect(host.getPluginState('stateful')).toBe('ready');
 
     host.disable('stateful');
     expect(host.getPluginState('stateful')).toBe('disabled');
+  });
+
+  it('A005/lifecycle/state: deactivate returns to ready when code was preloaded', async () => {
+    const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    const store = new ContributionStore();
+    const host = new PluginHost(store, 'launcher', storage);
+
+    let callCount = 0;
+    const loader = async () => {
+      callCount++;
+      return {
+        ...defineTestPlugin({ id: 'preloaded' }),
+        activate: async () => ({ deactivate: async () => {} }),
+      };
+    };
+
+    await host.registerWithLoader(defineTestPlugin({ id: 'preloaded' }), loader);
+    await host.activate('preloaded');
+    expect(host.getPluginState('preloaded')).toBe('running');
+
+    await host.deactivate('preloaded');
+    expect(host.getPluginState('preloaded')).toBe('ready');
+  });
+
+  it('A005/lifecycle/state: uninstall removes plugin state entirely', async () => {
+    const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    const host = new PluginHost(new ContributionStore(), 'launcher', storage);
+
+    host.register(defineTestPlugin({ id: 'removable', activate: async () => ({}) }));
+    await host.activate('removable');
+    await host.uninstall('removable');
+
+    expect(host.getPluginState('removable')).toBeUndefined();
+    expect(host.getPlugin('removable')).toBeUndefined();
+  });
+
+  it('A005/lifecycle/state: error state on failed activation', async () => {
+    const storage: StorageInterface = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    const host = new PluginHost(new ContributionStore(), 'launcher', storage);
+
+    host.register(defineTestPlugin({
+      id: 'broken',
+      activate: async () => { throw new Error('boom'); },
+    }));
+
+    await expect(host.activate('broken')).rejects.toThrow('boom');
+    expect(host.getPluginState('broken')).toBe('error');
   });
 });
 

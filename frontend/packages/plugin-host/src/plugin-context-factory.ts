@@ -85,6 +85,7 @@ export function createPluginContext(
   store: ContributionStore,
   projectPath?: string,
   storage?: ContextStorageAdapter,
+  onActivationEvent?: (event: string) => void,
 ): PluginContext {
   const storageLike = resolveStorage(storage);
   const settingsListeners = new Map<string, Set<(value: unknown) => void>>();
@@ -107,7 +108,9 @@ export function createPluginContext(
 
   context.bus = {
     emit(topic: string, payload: unknown) {
-      sharedEventBus.emit(normalizeTopic(pluginId, topic), payload);
+      const normalizedTopic = normalizeTopic(pluginId, topic);
+      onActivationEvent?.(`onEvent:${normalizedTopic}`);
+      sharedEventBus.emit(normalizedTopic, payload);
     },
     on(topic: string, handler: (payload: unknown) => void) {
       const dispose = sharedEventBus.on(normalizeTopic(pluginId, topic), handler);
@@ -122,6 +125,7 @@ export function createPluginContext(
       if (!handler) {
         throw new Error(`Command '${commandId}' is not registered`);
       }
+      onActivationEvent?.(`onCommand:${commandId}`);
       return handler(args) as Promise<T>;
     },
     register(commandId: string, handler: (args?: unknown) => Promise<unknown>) {

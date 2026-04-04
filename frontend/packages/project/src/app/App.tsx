@@ -5,7 +5,14 @@ import { useState, lazy, Suspense, useMemo, useEffect, type ComponentType } from
 import { ConfigProvider } from 'antd';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { useTheme, darkTheme, lightTheme } from '@snapfzz/shared';
-import { PluginHost, ContributionStore, useContributionStore, PluginHostProvider, PluginErrorBoundary } from '@snapfzz/plugin-host';
+import {
+  PluginHost,
+  ContributionStore,
+  useContributionStore,
+  PluginHostProvider,
+  PluginErrorBoundary,
+  registerDiscoveredPlugins,
+} from '@snapfzz/plugin-host';
 import type { TabContribution, PanelContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
 
 function LazyComponent({ loader }: { loader: () => Promise<{ default: ComponentType }> }) {
@@ -109,11 +116,13 @@ function BottomPanel({ panels }: { panels: readonly PanelContribution[] }) {
     );
   }
 
-  const panel = panels[0];
-
   return (
-    <div className="h-full">
-      <LazyComponent loader={panel.component} />
+    <div className="h-full flex">
+      {panels.map((panel) => (
+        <div key={panel.id} className="flex-1 min-w-0">
+          <LazyComponent loader={panel.component} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -140,13 +149,7 @@ function StatusBar({ items }: { items: readonly StatusItemContribution[] }) {
 }
 
 function StatusItemWrapper({ item }: { item: StatusItemContribution }) {
-  return (
-    <Suspense fallback={<span className="text-[var(--text-muted)]">Loading...</span>}>
-      <PluginErrorBoundary>
-        <LazyComponent loader={item.component} />
-      </PluginErrorBoundary>
-    </Suspense>
-  );
+  return <LazyComponent loader={item.component} />;
 }
 
 function createPluginHost(store: ContributionStore): PluginHost {
@@ -191,8 +194,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Per A005/Lifecycle: activate critical plugins on startup.
-    host.activateByEvent('onStartupFinished');
+    // Per A006/BootSequence: discover manifests → register → activate critical plugins.
+    registerDiscoveredPlugins(host, 'project').then(() => {
+      void host.activateByEvent('onStartupFinished');
+    });
   }, [host]);
 
   return (

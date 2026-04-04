@@ -4,6 +4,8 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 interface PluginErrorBoundaryProps {
   children?: ReactNode;
   FallbackComponent?: (props: { error: Error }) => ReactNode;
+  pluginId?: string;
+  onCrash?: (pluginId: string, error: Error) => void;
 }
 
 interface PluginErrorBoundaryState {
@@ -21,6 +23,10 @@ export class PluginErrorBoundary extends Component<PluginErrorBoundaryProps, Plu
   }
 
   componentDidCatch(error: Error, _errorInfo: ErrorInfo) {
+    const { pluginId, onCrash } = this.props;
+    if (pluginId && onCrash) {
+      onCrash(pluginId, error);
+    }
     console.error('[PluginErrorBoundary] Plugin render error', error);
   }
 

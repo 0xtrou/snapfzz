@@ -9,6 +9,7 @@ import {
   useContributionStore,
   PluginHostProvider,
   PluginErrorBoundary,
+  registerDiscoveredPlugins,
 } from '@snapfzz/plugin-host';
 import { lazy, Suspense, useEffect, useMemo } from 'react';
 import type { ComponentContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
@@ -69,8 +70,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Per A005/Lifecycle: activate critical plugins on startup.
-    host.activateByEvent('onStartupFinished');
+    // Per A006/BootSequence: discover manifests → register → activate critical plugins.
+    registerDiscoveredPlugins(host, 'launcher').then(() => {
+      void host.activateByEvent('onStartupFinished');
+    });
   }, [host]);
 
   return (

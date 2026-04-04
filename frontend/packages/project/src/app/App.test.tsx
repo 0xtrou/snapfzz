@@ -47,6 +47,7 @@ vi.mock('@snapfzz/plugin-host', () => ({
   },
   PluginHostProvider: ({ children }: { children: React.ReactNode }) => createElement('div', { 'data-testid': 'plugin-host-provider' }, children),
   PluginErrorBoundary: ({ children }: { children: React.ReactNode }) => createElement('div', null, children),
+  registerDiscoveredPlugins: () => Promise.resolve(),
   useContributionStore: () => snapshot,
 }));
 

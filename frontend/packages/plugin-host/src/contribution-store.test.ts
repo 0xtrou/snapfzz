@@ -1,4 +1,4 @@
-// Spec: A005-feat-plugin-architecture.md, 003-feat-state-management-architecture.md
+// Spec: A005-feat-plugin-architecture.md, A002-state-management.md
 // Sections: Contribution Registry, Reactive Store Snapshots
 // Verifies: registration/disposal behavior, subscription notifications, immutable snapshot contract
 import { describe, expect, it, vi } from 'vitest';

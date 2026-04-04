@@ -3,20 +3,28 @@ import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 import { ContributionStore } from './contribution-store';
 import { createPluginContext, disposePluginContext } from './plugin-context-factory';
 
+const scheduleDuringIdle = (callback: () => void): void => {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => callback());
+    return;
+  }
+
+  setTimeout(callback, 0);
+};
+
 interface ActivatedPlugin {
   handle: PluginHandle;
   context: PluginContext;
 }
 
+// Per A005/Lifecycle: 4 actions (install/uninstall/activate/deactivate) produce 5 observable states.
+// Internal transitions (loading, resolving) are implementation detail — not exposed.
 export type PluginLifecycleState =
-  | 'registered'
-  | 'resolved'
-  | 'loading'
-  | 'activated'
-  | 'running'
-  | 'deactivated'
-  | 'disabled'
-  | 'error';
+  | 'registered'   // manifest known, code may or may not be loaded — can activate
+  | 'ready'        // code loaded during background preload — can activate
+  | 'running'      // activate() completed — plugin is active
+  | 'disabled'     // user-disabled or crash-disabled — activate skipped
+  | 'error';       // load or activation failed — needs explicit recovery
 
 export interface PluginHostStorage {
   getItem(key: string): string | null;
@@ -30,7 +38,7 @@ const DISABLED_PLUGINS_KEY = 'snapfzz:disabledPlugins';
 const CRASH_WINDOW_MS = 300_000;
 const MAX_CRASH_COUNT = 3;
 const STARTUP_BUDGET_MS = 200;
-const ACTIVATION_WARNING_MS = 5_000;
+const ACTIVATION_TIMEOUT_MS = 5_000;
 
 export class PluginHost {
   // Per A006/PluginHost: runtime owns manifest registry keyed by plugin id for lookup + lifecycle ops.
@@ -40,6 +48,7 @@ export class PluginHost {
   private activatedPlugins: Map<string, ActivatedPlugin> = new Map();
   private pluginStates: Map<string, PluginLifecycleState> = new Map();
   private disabledPlugins: Set<string>;
+  private systemPlugins: Set<string> = new Set();
   private crashTimestamps: Map<string, number[]> = new Map();
   private firedEvents: Set<ActivationEvent> = new Set();
   private store: ContributionStore;
@@ -65,6 +74,17 @@ export class PluginHost {
     this.plugins.set(manifest.id, manifest);
     this.pluginLoaders.set(manifest.id, loader);
     this.pluginStates.set(manifest.id, this.disabledPlugins.has(manifest.id) ? 'disabled' : 'registered');
+  }
+
+  // Per A005/Lifecycle: system plugins share the same API but are protected from uninstall.
+  registerAsSystem(plugin: PluginDefinition): void {
+    this.register(plugin);
+    this.systemPlugins.add(plugin.id);
+  }
+
+  // Per A005/Lifecycle: host distinguishes system plugins to enforce uninstall protection.
+  isSystemPlugin(pluginId: string): boolean {
+    return this.systemPlugins.has(pluginId);
   }
 
   getPlugin(id: string): PluginDefinition | undefined {
@@ -191,16 +211,33 @@ export class PluginHost {
     const plugin = await this.loadPluginDefinition(pluginId);
 
     // Per A002/Zone2: lifecycle activation logic stays runtime-only and React/DOM free.
-    const context = createPluginContext(pluginId, this.surface, this.store, undefined, this.storage);
+    const context = createPluginContext(
+      pluginId,
+      this.surface,
+      this.store,
+      undefined,
+      this.storage,
+      (event) => {
+        void this.activateByEvent(event as ActivationEvent);
+      },
+    );
     const startedAt = Date.now();
 
     try {
-      this.pluginStates.set(pluginId, 'activated');
-      const handle = plugin.activate ? await plugin.activate(context) : {};
+      const activationPromise = plugin.activate ? plugin.activate(context) : Promise.resolve({});
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error(`Plugin '${pluginId}' activation timed out after ${ACTIVATION_TIMEOUT_MS}ms`)),
+          ACTIVATION_TIMEOUT_MS,
+        );
+      });
+
+      // Per A005/Lifecycle: plugins that exceed activation timeout are killed to protect startup budget.
+      const handle = await Promise.race<PluginHandle, Promise<never>>([activationPromise, timeoutPromise]);
       const elapsed = Date.now() - startedAt;
 
-      if (elapsed > ACTIVATION_WARNING_MS) {
-        console.warn(`[PluginHost] Plugin '${pluginId}' activation took ${elapsed}ms`);
+      if (elapsed > ACTIVATION_TIMEOUT_MS) {
+        console.warn(`[PluginHost] Plugin '${pluginId}' activation took ${elapsed}ms (over ${ACTIVATION_TIMEOUT_MS}ms budget)`);
       }
 
       this.activatedPlugins.set(pluginId, { handle, context });
@@ -219,9 +256,6 @@ export class PluginHost {
   async deactivate(pluginId: string): Promise<void> {
     const activated = this.activatedPlugins.get(pluginId);
     if (!activated) {
-      if (!this.disabledPlugins.has(pluginId) && this.pluginStates.has(pluginId)) {
-        this.pluginStates.set(pluginId, 'deactivated');
-      }
       return;
     }
 
@@ -232,8 +266,9 @@ export class PluginHost {
     disposePluginContext(activated.context);
     this.activatedPlugins.delete(pluginId);
 
+    // Per A005/Lifecycle: deactivated plugin returns to registered — ready to activate again.
     if (!this.disabledPlugins.has(pluginId)) {
-      this.pluginStates.set(pluginId, 'deactivated');
+      this.pluginStates.set(pluginId, this.loadedPlugins.has(pluginId) ? 'ready' : 'registered');
     }
   }
 
@@ -272,7 +307,7 @@ export class PluginHost {
         console.warn(`[PluginHost] Startup activation budget exceeded: ${startupElapsed}ms`);
       }
     } else {
-      // Per A005/Lifecycle: non-critical plugins should preload in background using worker-safe yielding.
+      // Per A005/Lifecycle: non-critical plugins preload in background using requestIdleCallback for idle-time scheduling.
       this.scheduleBackgroundPreload();
     }
   }
@@ -291,6 +326,31 @@ export class PluginHost {
     await this.activate(pluginId);
   }
 
+  async uninstall(pluginId: string): Promise<void> {
+    if (this.isSystemPlugin(pluginId)) {
+      throw new Error(`Cannot uninstall system plugin: ${pluginId}`);
+    }
+
+    await this.deactivate(pluginId);
+    this.plugins.delete(pluginId);
+    this.pluginLoaders.delete(pluginId);
+    this.loadedPlugins.delete(pluginId);
+    this.pluginStates.delete(pluginId);
+    this.disabledPlugins.delete(pluginId);
+    this.crashTimestamps.delete(pluginId);
+    this.persistDisabledPlugins();
+  }
+
+  async update(pluginId: string, loader: PluginLoader): Promise<void> {
+    const manifest = this.plugins.get(pluginId);
+    if (!manifest) {
+      throw new Error(`Plugin not found: ${pluginId}`);
+    }
+
+    this.pluginLoaders.set(pluginId, loader);
+    await this.reload(pluginId);
+  }
+
   private async loadPluginDefinition(pluginId: string): Promise<PluginDefinition> {
     const cached = this.loadedPlugins.get(pluginId);
     if (cached) {
@@ -307,16 +367,15 @@ export class PluginHost {
       throw new Error(`Loader not found for plugin: ${pluginId}`);
     }
 
-    this.pluginStates.set(pluginId, 'loading');
-
     try {
       const loaded = await loader();
       const merged = { ...loaded, id: manifest.id };
       this.plugins.set(pluginId, merged);
       this.loadedPlugins.set(pluginId, merged);
 
-      if (!this.disabledPlugins.has(pluginId) && this.pluginStates.get(pluginId) !== 'running') {
-        this.pluginStates.set(pluginId, 'resolved');
+      const currentState = this.pluginStates.get(pluginId);
+      if (currentState === 'registered') {
+        this.pluginStates.set(pluginId, 'ready');
       }
 
       return merged;
@@ -343,9 +402,9 @@ export class PluginHost {
   }
 
   private scheduleBackgroundPreload(): void {
-    setTimeout(() => {
+    scheduleDuringIdle(() => {
       void this.preloadNonCriticalPlugins();
-    }, 0);
+    });
   }
 
   private async preloadNonCriticalPlugins(): Promise<void> {
@@ -365,7 +424,9 @@ export class PluginHost {
       }
 
       await this.loadPluginDefinition(plugin.id);
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await new Promise<void>((resolve) => {
+        scheduleDuringIdle(() => resolve());
+      });
     }
   }
 

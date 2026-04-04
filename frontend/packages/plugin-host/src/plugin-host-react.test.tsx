@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Spec: A002-feat-state-management-architecture.md, 009-feat-plugin-architecture.md
+// Spec: A002-feat-state-management-architecture.md, A005-plugin-architecture.md
 // Sections: Reactive Store Reads, React Integration, Crash Isolation
 // Verifies: useSyncExternalStore integration, PluginHostProvider context, ErrorBoundary fallback rendering
 import { describe, expect, it, beforeEach, vi } from 'vitest';
@@ -162,5 +162,24 @@ describe('A005/isolation: PluginErrorBoundary crash containment', () => {
     );
 
     expect(container.textContent).toContain('OK');
+  });
+
+  it('A005/isolation: calls onCrash with pluginId when child throws', () => {
+    const onCrash = vi.fn();
+    const ErrorComponent = () => { throw new Error('boom'); };
+
+    render(
+      createElement(
+        PluginErrorBoundary,
+        {
+          pluginId: 'crashy-plugin',
+          onCrash,
+          FallbackComponent: ({ error }: { error: Error }) => createElement('div', null, error.message),
+        },
+        createElement(ErrorComponent),
+      ),
+    );
+
+    expect(onCrash).toHaveBeenCalledWith('crashy-plugin', expect.any(Error));
   });
 });
