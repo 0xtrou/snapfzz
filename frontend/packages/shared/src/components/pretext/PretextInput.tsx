@@ -38,7 +38,7 @@ export function PretextInput({
 
   const textWidth = Math.max(0, containerWidth - PADDING_X * 2);
   const prepared = usePreparedText(value || ' ', font, { whiteSpace: 'pre-wrap' });
-  const { height: textHeight, lineCount } = usePretextLayout(prepared, textWidth, lineHeight);
+  const { lineCount } = usePretextLayout(prepared, textWidth, lineHeight);
 
   const clampedLines = Math.min(lineCount || 1, maxLines);
   const computedHeight = clampedLines * lineHeight + PADDING_Y * 2;

@@ -55,25 +55,23 @@ export function PretextList<T>({
     const viewStart = scrollTop;
     const viewEnd = scrollTop + viewportHeight;
 
-    let start = 0;
-    let end = items.length;
-
-    for (let i = 0; i < offsets.length; i++) {
-      if (offsets[i] + heights[i] >= viewStart) {
-        start = i;
-        break;
-      }
+    let lo = 0;
+    let hi = offsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (offsets[mid] + heights[mid] < viewStart) lo = mid + 1;
+      else hi = mid;
     }
+    const start = Math.max(0, lo - overscan);
 
-    for (let i = start; i < offsets.length; i++) {
-      if (offsets[i] > viewEnd) {
-        end = i;
-        break;
-      }
+    lo = start;
+    hi = offsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (offsets[mid] <= viewEnd) lo = mid + 1;
+      else hi = mid;
     }
-
-    start = Math.max(0, start - overscan);
-    end = Math.min(items.length, end + overscan);
+    const end = Math.min(items.length, lo + overscan);
 
     return { startIndex: start, endIndex: end };
   }, [items.length, offsets, heights, scrollTop, viewportHeight, overscan]);
@@ -112,7 +110,7 @@ export function PretextList<T>({
 
     if (wasAtBottomRef.current) {
       const el = viewportRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
   }, [items.length, followOutput]);
 
@@ -149,6 +147,7 @@ export function PretextList<T>({
         height: '100%',
         overflow: 'auto',
         position: 'relative',
+        contain: 'strict',
         ...style,
       }}
     >

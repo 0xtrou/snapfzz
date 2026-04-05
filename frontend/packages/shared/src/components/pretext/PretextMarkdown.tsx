@@ -1,6 +1,4 @@
 import { type CSSProperties, useMemo } from 'react';
-import { usePreparedText, usePretextLayout } from '../../lib/pretext';
-import { useContainerWidth } from './use-container-width';
 
 interface PretextMarkdownProps {
   text: string;
@@ -146,21 +144,10 @@ export function PretextMarkdown({
   className,
   style,
 }: PretextMarkdownProps) {
-  const [ref, width] = useContainerWidth();
   const blocks = useMemo(() => parseBlocks(text), [text]);
 
-  const plainText = useMemo(() => {
-    return blocks
-      .filter((b): b is Block & { type: 'paragraph' } => b.type === 'paragraph')
-      .map(b => b.text)
-      .join('\n');
-  }, [blocks]);
-
-  const prepared = usePreparedText(plainText || ' ', font);
-  const { height } = usePretextLayout(prepared, width, lineHeight);
-
   return (
-    <div ref={ref} className={className} style={{ display: 'grid', gap: 10, ...style }}>
+    <div className={className} style={{ display: 'grid', gap: 10, ...style }}>
       {blocks.map((block) => {
         const blockKey = `${block.type}-${'text' in block ? block.text.slice(0, 32) : 'code' in block ? block.code.slice(0, 32) : 'list'}`;
 

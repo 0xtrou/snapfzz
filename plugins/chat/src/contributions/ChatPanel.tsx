@@ -24,12 +24,19 @@ function extractPlainText(content: RenderableContentBlock[]): string {
     .join('\n');
 }
 
+const heightCache = new Map<string, number>();
+
 function estimateMessageHeight(message: ChatMessage): number {
+  const cached = heightCache.get(message.id);
+  if (cached !== undefined) return cached;
+
   const text = extractPlainText(message.content);
   if (!text) return 100;
   const prepared = prepare(text, MESSAGE_FONT);
   const { height } = layout(prepared, 500, MESSAGE_LINE_HEIGHT);
-  return height + BUBBLE_PADDING + BUBBLE_GAP;
+  const result = height + BUBBLE_PADDING + BUBBLE_GAP;
+  heightCache.set(message.id, result);
+  return result;
 }
 
 function renderBlock(block: RenderableContentBlock, key: string) {

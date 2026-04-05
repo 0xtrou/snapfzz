@@ -29,7 +29,7 @@ export function useTheme() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
 
-    const tauri = (window as Record<string, unknown>).__TAURI_INTERNALS__ as
+    const tauri = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ as
       | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
       | undefined;
     if (tauri) {

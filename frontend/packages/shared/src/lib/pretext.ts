@@ -4,9 +4,6 @@ import {
   layout,
   prepareWithSegments,
   layoutWithLines,
-  measureNaturalWidth,
-  measureLineGeometry,
-  walkLineRanges,
   type PreparedText,
   type PreparedTextWithSegments,
   type LayoutLine,
@@ -17,7 +14,6 @@ export type { PreparedText, PreparedTextWithSegments, LayoutLine, LayoutLineRang
 
 export type PretextOptions = {
   whiteSpace?: 'normal' | 'pre-wrap';
-  wordBreak?: 'normal' | 'keep-all';
 };
 
 export type PretextLayout = {
@@ -33,8 +29,7 @@ export function usePreparedText(
   options?: PretextOptions,
 ): PreparedText {
   const whiteSpace = options?.whiteSpace;
-  const wordBreak = options?.wordBreak;
-  return useMemo(() => prepare(text, font, { whiteSpace, wordBreak }), [text, font, whiteSpace, wordBreak]);
+  return useMemo(() => prepare(text, font, whiteSpace ? { whiteSpace } : undefined), [text, font, whiteSpace]);
 }
 
 export function usePretextLayout(
@@ -58,8 +53,7 @@ export function usePreparedSegments(
   options?: PretextOptions,
 ): PreparedTextWithSegments {
   const whiteSpace = options?.whiteSpace;
-  const wordBreak = options?.wordBreak;
-  return useMemo(() => prepareWithSegments(text, font, { whiteSpace, wordBreak }), [text, font, whiteSpace, wordBreak]);
+  return useMemo(() => prepareWithSegments(text, font, whiteSpace ? { whiteSpace } : undefined), [text, font, whiteSpace]);
 }
 
 export function useSegmentLayout(
@@ -79,16 +73,9 @@ export function useSegmentLayout(
   return result;
 }
 
-export function useNaturalWidth(prepared: PreparedTextWithSegments): number {
-  return useMemo(() => measureNaturalWidth(prepared), [prepared]);
-}
-
 export {
   prepare,
   layout,
   prepareWithSegments,
   layoutWithLines,
-  measureNaturalWidth,
-  measureLineGeometry,
-  walkLineRanges,
 };

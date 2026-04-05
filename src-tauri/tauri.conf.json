@@ -23,7 +23,7 @@
         "decorations": true,
         "resizable": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": false
+        "hiddenTitle": true
       }
     ],
     "security": {
