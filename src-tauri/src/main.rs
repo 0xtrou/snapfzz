@@ -10,12 +10,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sysinfo::{Pid as SysPid, ProcessesToUpdate, System};
 use tauri::ipc::Channel;
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, RunEvent};
 use tokio::sync::Mutex;
 
+use snapfzz_budget::supervised::{ProcessBudget, ProcessLocation};
+use snapfzz_budget::BudgetRegistry;
+
 const AGENTSCOPE_PORT: u16 = 8090;
-const TOKEN_BATCH_MS: u64 = 16;
-const HEALTH_TIMEOUT_SECS: u64 = 2;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -67,27 +68,28 @@ struct SessionInfo {
     session_id: String,
 }
 
-struct AgentSupervisorState {
+struct RuntimeState {
     child: Option<tokio::process::Child>,
     child_pid: Option<u32>,
-    port: u16,
 }
-
 
 #[tauri::command]
 async fn send_message(
     text: String,
     session_id: String,
+    plugin_id: Option<String>,
     on_token: Channel<ContentBlockBatch>,
-    state: tauri::State<'_, Arc<Mutex<AgentSupervisorState>>>,
+    registry: tauri::State<'_, Arc<BudgetRegistry>>,
+    _runtime: tauri::State<'_, Arc<Mutex<RuntimeState>>>,
 ) -> Result<MessageResult, String> {
-    let port = {
-        let guard = state.lock().await;
-        guard.port
-    };
+    let caller = plugin_id.as_deref().unwrap_or("unknown");
+    let _invoke_permit = registry
+        .try_acquire_invoke(caller)
+        .ok_or_else(|| format!("Budget exhausted: plugin '{caller}' invoke denied"))?;
 
-    let url = format!("http://127.0.0.1:{port}/process");
+    let url = format!("http://127.0.0.1:{AGENTSCOPE_PORT}/process");
     let client = reqwest::Client::new();
+    let batch_rate = registry.batch_rate();
 
     let response = client
         .post(&url)
@@ -100,40 +102,33 @@ async fn send_message(
         }))
         .send()
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|e| e.to_string())?
         .error_for_status()
-        .map_err(|error| error.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut stream = response.bytes_stream();
     let mut line_buffer = String::new();
     let mut event_data_lines: Vec<String> = Vec::new();
-
     let mut pending_blocks: Vec<Value> = Vec::new();
     let mut batch_id: u32 = 0;
     let mut batch_token_count: usize = 0;
     let mut total_tokens: usize = 0;
-    let mut finish_reason: String = "stop".to_string();
+    let mut finish_reason = "stop".to_string();
     let mut message_id: Option<String> = None;
     let mut batch_start = Instant::now();
     let mut stream_finished = false;
 
     'stream: while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result.map_err(|error| error.to_string())?;
+        let chunk = chunk_result.map_err(|e| e.to_string())?;
         line_buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         while let Some(newline_index) = line_buffer.find('\n') {
             let mut line = line_buffer[..newline_index].to_string();
             line_buffer.drain(..=newline_index);
-
-            if line.ends_with('\r') {
-                line.pop();
-            }
+            if line.ends_with('\r') { line.pop(); }
 
             if line.is_empty() {
-                if event_data_lines.is_empty() {
-                    continue;
-                }
-
+                if event_data_lines.is_empty() { continue; }
                 let payload = event_data_lines.join("\n");
                 event_data_lines.clear();
 
@@ -148,49 +143,29 @@ async fn send_message(
                 if let Some(id) = payload_value.get("id").and_then(Value::as_str) {
                     message_id = Some(id.to_string());
                 }
-
                 if let Some(reason) = payload_value
-                    .get("finish_reason")
-                    .and_then(Value::as_str)
-                    .or_else(|| {
-                        payload_value
-                            .get("metadata")
-                            .and_then(|metadata| metadata.get("finish_reason"))
-                            .and_then(Value::as_str)
-                    })
+                    .get("finish_reason").and_then(Value::as_str)
+                    .or_else(|| payload_value.get("metadata")
+                        .and_then(|m| m.get("finish_reason")).and_then(Value::as_str))
                 {
                     finish_reason = reason.to_string();
                 }
 
-                let mut extracted_blocks = extract_content_blocks(&payload_value);
-                if extracted_blocks.is_empty() {
-                    extracted_blocks.push(payload_value);
-                }
+                let mut extracted = extract_content_blocks(&payload_value);
+                if extracted.is_empty() { extracted.push(payload_value); }
 
-                batch_token_count += extracted_blocks.len();
-                total_tokens += extracted_blocks.len();
-                pending_blocks.extend(extracted_blocks);
+                batch_token_count += extracted.len();
+                total_tokens += extracted.len();
+                pending_blocks.extend(extracted);
 
-                // Per A001/Performance: flush token batch every 16ms (1 frame budget)
-                if batch_start.elapsed() >= Duration::from_millis(TOKEN_BATCH_MS) {
-                    flush_content_block_batch(
-                        &on_token,
-                        &session_id,
-                        &mut pending_blocks,
-                        &mut batch_id,
-                        &mut batch_token_count,
-                        false,
-                    )?;
+                if batch_start.elapsed() >= Duration::from_millis(batch_rate) {
+                    flush_batch(&on_token, &session_id, &mut pending_blocks, &mut batch_id, &mut batch_token_count, false)?;
                     batch_start = Instant::now();
                 }
-
                 continue;
             }
 
-            if line.starts_with(':') {
-                continue;
-            }
-
+            if line.starts_with(':') { continue; }
             if let Some(data) = line.strip_prefix("data:") {
                 event_data_lines.push(data.trim_start().to_string());
             }
@@ -200,40 +175,23 @@ async fn send_message(
     if !event_data_lines.is_empty() {
         let payload = event_data_lines.join("\n");
         if payload != "[DONE]" {
-            let payload_value =
-                serde_json::from_str::<Value>(&payload).unwrap_or_else(|_| json!({ "type": "text", "text": payload }));
-            let mut extracted_blocks = extract_content_blocks(&payload_value);
-            if extracted_blocks.is_empty() {
-                extracted_blocks.push(payload_value);
-            }
-            batch_token_count += extracted_blocks.len();
-            total_tokens += extracted_blocks.len();
-            pending_blocks.extend(extracted_blocks);
+            let pv = serde_json::from_str::<Value>(&payload)
+                .unwrap_or_else(|_| json!({ "type": "text", "text": payload }));
+            let mut extracted = extract_content_blocks(&pv);
+            if extracted.is_empty() { extracted.push(pv); }
+            batch_token_count += extracted.len();
+            total_tokens += extracted.len();
+            pending_blocks.extend(extracted);
         } else {
             stream_finished = true;
         }
     }
 
     if !pending_blocks.is_empty() {
-        flush_content_block_batch(
-            &on_token,
-            &session_id,
-            &mut pending_blocks,
-            &mut batch_id,
-            &mut batch_token_count,
-            false,
-        )?;
+        flush_batch(&on_token, &session_id, &mut pending_blocks, &mut batch_id, &mut batch_token_count, false)?;
     }
-
     if stream_finished {
-        flush_content_block_batch(
-            &on_token,
-            &session_id,
-            &mut pending_blocks,
-            &mut batch_id,
-            &mut batch_token_count,
-            true,
-        )?;
+        flush_batch(&on_token, &session_id, &mut pending_blocks, &mut batch_id, &mut batch_token_count, true)?;
     }
 
     Ok(MessageResult {
@@ -244,261 +202,158 @@ async fn send_message(
 }
 
 #[tauri::command]
-async fn stop_generation(
-    session_id: String,
-    state: tauri::State<'_, Arc<Mutex<AgentSupervisorState>>>,
-) -> Result<(), String> {
-    let port = {
-        let guard = state.lock().await;
-        guard.port
-    };
-
-    let url = format!("http://127.0.0.1:{port}/stop");
+async fn stop_generation(session_id: String) -> Result<(), String> {
     reqwest::Client::new()
-        .post(&url)
+        .post(format!("http://127.0.0.1:{AGENTSCOPE_PORT}/stop"))
         .json(&json!({ "session_id": session_id }))
-        .send()
-        .await
-        .map_err(|error| error.to_string())?
-        .error_for_status()
-        .map_err(|error| error.to_string())?;
-
+        .send().await.map_err(|e| e.to_string())?
+        .error_for_status().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-async fn create_session(
-    template_id: Option<String>,
-    state: tauri::State<'_, Arc<Mutex<AgentSupervisorState>>>,
-) -> Result<SessionInfo, String> {
-    let port = {
-        let guard = state.lock().await;
-        guard.port
-    };
-
-    let url = format!("http://127.0.0.1:{port}/session");
+async fn create_session(template_id: Option<String>) -> Result<SessionInfo, String> {
     let client = reqwest::Client::new();
-    let request = match template_id {
-        Some(template_id) => client.post(&url).json(&json!({ "template_id": template_id })),
+    let url = format!("http://127.0.0.1:{AGENTSCOPE_PORT}/session");
+    let req = match template_id {
+        Some(tid) => client.post(&url).json(&json!({ "template_id": tid })),
         None => client.post(&url),
     };
-
-    request
-        .send()
-        .await
-        .map_err(|error| error.to_string())?
-        .error_for_status()
-        .map_err(|error| error.to_string())?
-        .json::<SessionInfo>()
-        .await
-        .map_err(|error| error.to_string())
+    req.send().await.map_err(|e| e.to_string())?
+        .error_for_status().map_err(|e| e.to_string())?
+        .json::<SessionInfo>().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn load_session(
-    session_id: String,
-    state: tauri::State<'_, Arc<Mutex<AgentSupervisorState>>>,
-) -> Result<Value, String> {
-    let port = {
-        let guard = state.lock().await;
-        guard.port
-    };
-
-    let url = format!("http://127.0.0.1:{port}/session/{session_id}");
+async fn load_session(session_id: String) -> Result<Value, String> {
     reqwest::Client::new()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?
-        .error_for_status()
-        .map_err(|error| error.to_string())?
-        .json::<Value>()
-        .await
-        .map_err(|error| error.to_string())
+        .get(format!("http://127.0.0.1:{AGENTSCOPE_PORT}/session/{session_id}"))
+        .send().await.map_err(|e| e.to_string())?
+        .error_for_status().map_err(|e| e.to_string())?
+        .json::<Value>().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn agent_health(
-    state: tauri::State<'_, Arc<Mutex<AgentSupervisorState>>>,
-) -> Result<HealthStatus, String> {
-    let (port, child_running) = {
-        let mut guard = state.lock().await;
-        let child_running = match guard.child.as_mut() {
-            Some(child) => match child.try_wait() {
-                Ok(None) => true,
-                Ok(Some(_)) | Err(_) => {
-                    guard.child = None;
-                    false
-                }
-            },
-            None => false,
-        };
-
-        (guard.port, child_running)
-    };
-
-    // Per A005/AgentSupervisor: health is checked with a 2s poll window
-    let url = format!("http://127.0.0.1:{port}/health");
-    let status = match reqwest::Client::new()
-        .get(&url)
-        .timeout(Duration::from_secs(HEALTH_TIMEOUT_SECS))
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => "connected",
-        _ if child_running => "reconnecting",
-        _ => "disconnected",
-    };
-
-    Ok(HealthStatus {
-        status: status.to_string(),
-    })
+async fn agent_health(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<HealthStatus, String> {
+    let healthy = registry.supervised.check_health("agentscope").await;
+    let status = if healthy { "connected" } else { "disconnected" };
+    Ok(HealthStatus { status: status.into() })
 }
 
 #[tauri::command]
 async fn get_settings() -> Result<Settings, String> {
     let path = settings_path();
-
-    if !path.exists() {
-        return Ok(Settings::default());
-    }
-
-    let content = fs::read_to_string(&path).map_err(|error| error.to_string())?;
-    serde_json::from_str::<Settings>(&content).map_err(|error| error.to_string())
+    if !path.exists() { return Ok(Settings::default()); }
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str::<Settings>(&content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn save_settings(settings: Settings) -> Result<(), String> {
     let path = settings_path();
+    if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+    let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&path, content).map_err(|e| e.to_string())
+}
 
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
+#[tauri::command]
+async fn get_frame_target(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<u64, String> {
+    Ok(registry.frame_target())
+}
 
-    let content = serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
-    fs::write(&path, content).map_err(|error| error.to_string())
+#[tauri::command]
+async fn get_startup_budget(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<Value, String> {
+    let (visible, interactive, timeout) = registry.startup_budget();
+    Ok(json!({ "visible_ms": visible, "interactive_ms": interactive, "activation_timeout_ms": timeout }))
+}
+
+#[tauri::command]
+async fn budget_record_strike(plugin_id: String, registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<bool, String> {
+    registry.record_strike(&plugin_id);
+    Ok(registry.is_plugin_disabled(&plugin_id))
+}
+
+#[tauri::command]
+async fn budget_report_violation(class: String, metric: String, actual_ms: f64, registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<(), String> {
+    eprintln!("[budget] violation: class={class} metric={metric} actual={actual_ms:.1}ms target={}ms", registry.frame_target());
+    Ok(())
+}
+
+#[tauri::command]
+async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<Value, String> {
+    let snap = registry.snapshot();
+    serde_json::to_value(snap).map_err(|e| e.to_string())
 }
 
 fn extract_content_blocks(payload: &Value) -> Vec<Value> {
-    if let Some(content_blocks) = payload.get("content_blocks").and_then(Value::as_array) {
-        return content_blocks.to_vec();
+    if let Some(blocks) = payload.get("content_blocks").and_then(Value::as_array) {
+        return blocks.to_vec();
     }
-
-    if let Some(content_blocks) = payload
-        .get("delta")
-        .and_then(|delta| delta.get("content_blocks"))
-        .and_then(Value::as_array)
-    {
-        return content_blocks.to_vec();
+    if let Some(blocks) = payload.get("delta").and_then(|d| d.get("content_blocks")).and_then(Value::as_array) {
+        return blocks.to_vec();
     }
-
     if let Some(content) = payload.get("content").and_then(Value::as_array) {
         return content.to_vec();
     }
-
-    if let Some(delta_text) = payload
-        .get("delta")
-        .and_then(|delta| delta.get("content"))
-        .and_then(Value::as_str)
-    {
-        return vec![json!({ "type": "text", "text": delta_text })];
+    if let Some(text) = payload.get("delta").and_then(|d| d.get("content")).and_then(Value::as_str) {
+        return vec![json!({ "type": "text", "text": text })];
     }
-
-    if let Some(choice_text) = payload
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("delta"))
-        .and_then(|delta| delta.get("content"))
-        .and_then(Value::as_str)
-    {
-        return vec![json!({ "type": "text", "text": choice_text })];
+    if let Some(text) = payload.get("choices").and_then(Value::as_array)
+        .and_then(|c| c.first()).and_then(|c| c.get("delta"))
+        .and_then(|d| d.get("content")).and_then(Value::as_str) {
+        return vec![json!({ "type": "text", "text": text })];
     }
-
     Vec::new()
 }
 
-fn flush_content_block_batch(
+fn flush_batch(
     on_token: &Channel<ContentBlockBatch>,
     session_id: &str,
-    pending_blocks: &mut Vec<Value>,
+    pending: &mut Vec<Value>,
     batch_id: &mut u32,
-    batch_token_count: &mut usize,
+    count: &mut usize,
     done: bool,
 ) -> Result<(), String> {
-    if pending_blocks.is_empty() && !done {
-        return Ok(());
-    }
-
-    on_token
-        .send(ContentBlockBatch {
-            session_id: session_id.to_string(),
-            batch_id: *batch_id,
-            token_count: *batch_token_count,
-            blocks: std::mem::take(pending_blocks),
-            done,
-        })
-        .map_err(|error| error.to_string())?;
-
+    if pending.is_empty() && !done { return Ok(()); }
+    on_token.send(ContentBlockBatch {
+        session_id: session_id.to_string(),
+        batch_id: *batch_id,
+        token_count: *count,
+        blocks: std::mem::take(pending),
+        done,
+    }).map_err(|e| e.to_string())?;
     *batch_id += 1;
-    *batch_token_count = 0;
-
+    *count = 0;
     Ok(())
 }
 
 fn settings_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".snapfzz-global")
-        .join("settings.json")
-}
-
-fn uuid_string() -> String {
-    format!(
-        "{:x}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    )
+    dirs::home_dir().unwrap_or_default().join(".snapfzz-global").join("settings.json")
 }
 
 fn pid_file_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".snapfzz-global")
-        .join("agent.pid")
+    dirs::home_dir().unwrap_or_default().join(".snapfzz-global").join("agent.pid")
+}
+
+fn uuid_string() -> String {
+    format!("{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos())
 }
 
 fn resolve_intelligence_dir() -> Result<PathBuf, String> {
-    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
-    for candidate in &[
-        current_dir.join("intelligence"),
-        current_dir.join("..").join("intelligence"),
-        current_dir.join("..").join("..").join("intelligence"),
-    ] {
-        if candidate.join("pyproject.toml").exists() {
-            return Ok(candidate.clone());
-        }
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    for c in &[cwd.join("intelligence"), cwd.join("..").join("intelligence"), cwd.join("../..").join("intelligence")] {
+        if c.join("pyproject.toml").exists() { return Ok(c.clone()); }
     }
     Err("Unable to find intelligence/ directory".to_string())
 }
 
 fn cleanup_stale_pid() {
     let path = pid_file_path();
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    let pid: u32 = match content.trim().parse() {
-        Ok(p) => p,
-        Err(_) => { let _ = fs::remove_file(&path); return; }
-    };
+    let content = match fs::read_to_string(&path) { Ok(c) => c, Err(_) => return };
+    let pid: u32 = match content.trim().parse() { Ok(p) => p, Err(_) => { let _ = fs::remove_file(&path); return; } };
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]), true);
-    if let Some(proc) = sys.process(SysPid::from_u32(pid)) {
-        proc.kill();
-    }
+    if let Some(proc) = sys.process(SysPid::from_u32(pid)) { proc.kill(); }
     let _ = fs::remove_file(&path);
 }
 
@@ -508,14 +363,14 @@ fn write_pid_file(pid: u32) {
     let _ = fs::write(&path, pid.to_string());
 }
 
-fn remove_pid_file() {
-    let _ = fs::remove_file(pid_file_path());
-}
+fn remove_pid_file() { let _ = fs::remove_file(pid_file_path()); }
 
-async fn spawn_runtime(state: Arc<Mutex<AgentSupervisorState>>) -> Result<(), String> {
+async fn spawn_runtime(
+    registry: &Arc<BudgetRegistry>,
+    runtime: &Arc<Mutex<RuntimeState>>,
+) -> Result<(), String> {
     cleanup_stale_pid();
     let intelligence_dir = resolve_intelligence_dir()?;
-    let port = state.lock().await.port;
 
     let child = tokio::process::Command::new("uv")
         .args(["run", "python", "app.py"])
@@ -527,47 +382,55 @@ async fn spawn_runtime(state: Arc<Mutex<AgentSupervisorState>>) -> Result<(), St
     let child_pid = child.id().unwrap_or(0);
     write_pid_file(child_pid);
 
-    let mut guard = state.lock().await;
-    guard.child = Some(child);
-    guard.child_pid = Some(child_pid);
-    drop(guard);
+    {
+        let mut guard = runtime.lock().await;
+        guard.child = Some(child);
+        guard.child_pid = Some(child_pid);
+    }
+
+    registry.register_process("agentscope", ProcessBudget {
+        pid: Some(child_pid),
+        max_memory_mb: registry.preset.memory.agentscope_max_mb,
+        health_url: format!("http://127.0.0.1:{AGENTSCOPE_PORT}/health"),
+        health_interval_ms: 2000,
+        max_health_failures: registry.preset.reliability.max_restarts,
+        max_restarts: registry.preset.reliability.max_restarts,
+        location: ProcessLocation::Local,
+        consecutive_failures: 0,
+        restart_count: 0,
+    });
 
     for _ in 0..120 {
         tokio::time::sleep(Duration::from_millis(1000)).await;
-        if reqwest::Client::new()
-            .get(format!("http://127.0.0.1:{port}/health"))
-            .timeout(Duration::from_secs(2))
-            .send().await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
-        {
-            eprintln!("[supervisor] AgentScope Runtime healthy on port {port}");
+        if registry.supervised.check_health("agentscope").await {
+            eprintln!("[budget] AgentScope Runtime healthy on port {AGENTSCOPE_PORT}");
             return Ok(());
         }
     }
     Err("AgentScope Runtime did not become healthy within 120s".to_string())
 }
 
-async fn shutdown_runtime(state: &Arc<Mutex<AgentSupervisorState>>) {
-    let mut guard = state.lock().await;
-    if let Some(mut child) = guard.child.take() {
-        let _ = child.kill().await;
-    }
+async fn shutdown_runtime(runtime: &Arc<Mutex<RuntimeState>>) {
+    let mut guard = runtime.lock().await;
+    if let Some(mut child) = guard.child.take() { let _ = child.kill().await; }
     guard.child_pid = None;
     remove_pid_file();
 }
 
 fn main() {
-    let supervisor_state = Arc::new(Mutex::new(AgentSupervisorState {
-        child: None,
-        child_pid: None,
-        port: AGENTSCOPE_PORT,
-    }));
+    let registry = Arc::new(BudgetRegistry::from_hardware());
+    eprintln!("[budget] preset: {} (frame={}ms, cpu={}, mem={}MB)",
+        registry.preset.name, registry.frame_target(),
+        registry.preset.cpu.permits, registry.preset.memory.agentscope_max_mb);
 
-    let setup_state = supervisor_state.clone();
+    let runtime_state = Arc::new(Mutex::new(RuntimeState { child: None, child_pid: None }));
+
+    let setup_registry = registry.clone();
+    let setup_runtime = runtime_state.clone();
 
     tauri::Builder::default()
-        .manage(supervisor_state.clone())
+        .manage(registry.clone())
+        .manage(runtime_state.clone())
         .invoke_handler(tauri::generate_handler![
             send_message,
             stop_generation,
@@ -576,24 +439,33 @@ fn main() {
             agent_health,
             get_settings,
             save_settings,
+            get_frame_target,
+            get_startup_budget,
+            budget_record_strike,
+            budget_report_violation,
+            budget_snapshot,
         ])
-        .setup(move |_app| {
+        .setup(move |app| {
+            let handle = app.handle().clone();
+            let reg = setup_registry.clone();
+            let rt = setup_runtime.clone();
+
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = spawn_runtime(setup_state).await {
-                    eprintln!("[supervisor] {e}");
+                if let Err(e) = spawn_runtime(&reg, &rt).await {
+                    eprintln!("[budget] {e}");
                 }
+                let _ = handle.emit("agent-status", "online");
             });
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while running snapfzz")
-        .run(move |app_handle, event| {
+        .run(move |_app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                let state = app_handle
-                    .state::<Arc<Mutex<AgentSupervisorState>>>()
-                    .inner()
-                    .clone();
-                tauri::async_runtime::block_on(shutdown_runtime(&state));
+                let rt = runtime_state.clone();
+                tauri::async_runtime::block_on(shutdown_runtime(&rt));
+                eprintln!("[budget] shutdown complete");
             }
         });
 }
