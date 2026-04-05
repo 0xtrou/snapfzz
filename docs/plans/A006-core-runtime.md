@@ -108,8 +108,7 @@ PluginContext {
 | `snapfzz-tauri-shell` | Window management, IPC invoke/event handlers, EventBus bridge |
 | `snapfzz-plugin-host` | Manifest registry (Rust side), capability checking |
 | `snapfzz-plugin-bridge` | Schema validation (serde ↔ zod), typed command routing |
-| `snapfzz-box-manager` | Sandbox abstraction (BoxLite microVM first, horizontally scales to Container/Cloud/Wasm). AI code execution isolation. |
-| `snapfzz-agent-supervisor` | AgentScope process lifecycle via `uv`. Start, health check, restart, graceful shutdown. Orchestration is AgentScope's job — proven at 1M agents. |
+| `snapfzz-agent-supervisor` | Spawn AgentScope Runtime via `uv`, PID file, cleanup on exit. Runtime handles health/restart/sandbox internally. |
 | `snapfzz-stream-pipeline` | SSE consumer, 16ms batcher, Channel emitter, multiplexer |
 
 ---

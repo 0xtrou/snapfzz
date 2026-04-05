@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sysinfo::{Pid as SysPid, ProcessesToUpdate, System};
 use tauri::ipc::Channel;
+use tauri::{Manager, RunEvent};
 use tokio::sync::Mutex;
 
 const AGENTSCOPE_PORT: u16 = 8000;
@@ -65,11 +67,12 @@ struct SessionInfo {
     session_id: String,
 }
 
-#[derive(Default)]
 struct AgentSupervisorState {
     child: Option<tokio::process::Child>,
+    child_pid: Option<u32>,
     port: u16,
 }
+
 
 #[tauri::command]
 async fn send_message(
@@ -83,13 +86,16 @@ async fn send_message(
         guard.port
     };
 
-    let url = format!("http://127.0.0.1:{port}/chat");
+    let url = format!("http://127.0.0.1:{port}/process");
     let client = reqwest::Client::new();
 
     let response = client
         .post(&url)
         .json(&json!({
-            "text": text,
+            "input": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": text }]
+            }],
             "session_id": session_id,
         }))
         .send()
@@ -457,73 +463,111 @@ fn uuid_string() -> String {
     )
 }
 
-fn resolve_intelligence_dir() -> Result<PathBuf, String> {
-    let current_dir = std::env::current_dir().map_err(|error| error.to_string())?;
+fn pid_file_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".snapfzz-global")
+        .join("agent.pid")
+}
 
-    let mut candidates = vec![
+fn resolve_intelligence_dir() -> Result<PathBuf, String> {
+    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    for candidate in &[
         current_dir.join("intelligence"),
         current_dir.join("..").join("intelligence"),
         current_dir.join("..").join("..").join("intelligence"),
-    ];
-
-    if let Some(parent) = current_dir.parent() {
-        candidates.push(parent.join("intelligence"));
-    }
-
-    for candidate in candidates {
+    ] {
         if candidate.join("pyproject.toml").exists() {
-            return Ok(candidate);
+            return Ok(candidate.clone());
         }
     }
-
-    Err("Unable to find intelligence/ directory for AgentScope startup".to_string())
+    Err("Unable to find intelligence/ directory".to_string())
 }
 
-async fn spawn_agentscope_process(
-    state: Arc<Mutex<AgentSupervisorState>>,
-) -> Result<(), String> {
-    let intelligence_dir = resolve_intelligence_dir()?;
-
-    let mut guard = state.lock().await;
-
-    if let Some(child) = guard.child.as_mut() {
-        if child.try_wait().map_err(|error| error.to_string())?.is_none() {
-            return Ok(());
-        }
-        guard.child = None;
+fn cleanup_stale_pid() {
+    let path = pid_file_path();
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let pid: u32 = match content.trim().parse() {
+        Ok(p) => p,
+        Err(_) => { let _ = fs::remove_file(&path); return; }
+    };
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]), true);
+    if let Some(proc) = sys.process(SysPid::from_u32(pid)) {
+        proc.kill();
     }
+    let _ = fs::remove_file(&path);
+}
 
-    // Per A005/AgentSupervisor: start AgentScope via uv on app launch
+fn write_pid_file(pid: u32) {
+    let path = pid_file_path();
+    if let Some(parent) = path.parent() { let _ = fs::create_dir_all(parent); }
+    let _ = fs::write(&path, pid.to_string());
+}
+
+fn remove_pid_file() {
+    let _ = fs::remove_file(pid_file_path());
+}
+
+async fn spawn_runtime(state: Arc<Mutex<AgentSupervisorState>>) -> Result<(), String> {
+    cleanup_stale_pid();
+    let intelligence_dir = resolve_intelligence_dir()?;
+    let port = state.lock().await.port;
+
     let child = tokio::process::Command::new("uv")
-        .args([
-            "run",
-            "uvicorn",
-            "server:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            &guard.port.to_string(),
-        ])
+        .args(["run", "python", "app.py"])
         .current_dir(intelligence_dir)
         .kill_on_drop(true)
         .spawn()
-        .map_err(|error| error.to_string())?;
+        .map_err(|e| e.to_string())?;
 
+    let child_pid = child.id().unwrap_or(0);
+    write_pid_file(child_pid);
+
+    let mut guard = state.lock().await;
     guard.child = Some(child);
+    guard.child_pid = Some(child_pid);
+    drop(guard);
 
-    Ok(())
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/health"))
+            .timeout(Duration::from_secs(2))
+            .send().await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+    }
+    Err("AgentScope Runtime did not become healthy within 15s".to_string())
+}
+
+async fn shutdown_runtime(state: &Arc<Mutex<AgentSupervisorState>>) {
+    let mut guard = state.lock().await;
+    if let Some(mut child) = guard.child.take() {
+        let _ = child.kill().await;
+    }
+    guard.child_pid = None;
+    remove_pid_file();
 }
 
 fn main() {
     let supervisor_state = Arc::new(Mutex::new(AgentSupervisorState {
         child: None,
+        child_pid: None,
         port: AGENTSCOPE_PORT,
     }));
+
+    let setup_state = supervisor_state.clone();
 
     tauri::Builder::default()
         .manage(supervisor_state.clone())
         .invoke_handler(tauri::generate_handler![
-            // Per A006/CoreRuntime: Tauri commands are the typed Rust IPC bridge
             send_message,
             stop_generation,
             create_session,
@@ -533,16 +577,22 @@ fn main() {
             save_settings,
         ])
         .setup(move |_app| {
-            let startup_state = supervisor_state.clone();
             tauri::async_runtime::spawn(async move {
-                // Per A002/Zone1: process supervision and SSE pipeline live in Rust
-                // Per A002/Zone1: SSE parsing happens in Rust, never on JS main thread
-                if let Err(error) = spawn_agentscope_process(startup_state).await {
-                    eprintln!("failed to start AgentScope via uv: {error}");
+                if let Err(e) = spawn_runtime(setup_state).await {
+                    eprintln!("[supervisor] {e}");
                 }
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running snapfzz");
+        .build(tauri::generate_context!())
+        .expect("error while running snapfzz")
+        .run(move |app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                let state = app_handle
+                    .state::<Arc<Mutex<AgentSupervisorState>>>()
+                    .inner()
+                    .clone();
+                tauri::async_runtime::block_on(shutdown_runtime(&state));
+            }
+        });
 }

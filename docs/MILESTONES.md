@@ -199,33 +199,26 @@ The backend must be production-grade from day 1. Not stubs.
 
 | Component | What It Does | Spec |
 |---|---|---|
-| `snapfzz-tauri-shell` | Window management. Launcher ↔ project window lifecycle. IPC bridge (invoke + events). | A006 |
-| `snapfzz-stream-pipeline` | SSE consumer (`reqwest-eventsource`). Token batching (16ms). Channel API push to frontend. | A001, A002 |
-| `snapfzz-core` | Message types, session persistence, project config. | A004, A006 |
-| `main.rs` | Tauri commands registered. Windows created. Event bridge wired. Stream pipeline started. | A006 |
+| `snapfzz-agent-supervisor` | Spawn AgentScope Runtime via `uv`, PID file, cleanup on exit. | A005 |
+| `snapfzz-stream-pipeline` | SSE consumer from AgentScope Runtime. 16ms batching. Channel API to frontend. | A001, A002 |
+| `snapfzz-core` | Shared types. | A006 |
+| `main.rs` | Tauri commands registered. Windows created. Supervisor spawned. | A006 |
+| `intelligence/app.py` | AgentScope Runtime AgentApp — ~50 lines configuring agents, tools, memory. | — |
 
 **SSE streaming pipeline (critical path):**
 ```
-LLM API (OpenAI-compatible)
-    ↓ SSE stream
-Rust: reqwest-eventsource consumer
-    ↓ parse SSE events, extract tokens
+AgentScope Runtime (localhost:8090/process)
+    ↓ SSE stream (sequence-numbered events)
+Rust: reqwest SSE consumer
+    ↓ parse events, extract content blocks
 Rust: 16ms batcher (frame-budget coalescing)
     ↓ Tauri Channel API
-Frontend: append to message, render markdown
+Frontend: append to message, render
     ↓
 User sees streaming text at 60fps
 ```
 
-**Session persistence:**
-```
-.snapfzz/
-├── config.json          # project name, model, created date
-└── session/
-    └── chat.jsonl       # append-only message log
-```
-
-Messages saved on send (user) and on stream-complete (agent). JSONL format — one message per line, human-readable, git-friendly.
+**Session persistence: handled by AgentScope Runtime Session Service** (Redis/JSON/Tablestore backends). No custom persistence code needed.
 
 ### Alpha — What We Build (Ordered)
 
@@ -286,10 +279,10 @@ Messages saved on send (user) and on stream-complete (agent). JSONL format — o
 
 | Component | What It Does |
 |---|---|
-| `snapfzz-agent-supervisor` | AgentScope process lifecycle via `uv` — start, health check, restart. Orchestration is AgentScope's job (proven at 1M agents). |
+| AgentScope Runtime multi-agent templates | Multiple agents in pipeline, configured via YAML |
+| AgentScope Runtime Sandbox Service | Browser, filesystem, GUI sandboxes for code execution |
 | `snapfzz-plugin-host` (Rust) | Manifest discovery from `.snapfzz/plugins/` |
 | `snapfzz-plugin-bridge` | Schema validation, capability checking |
-| `snapfzz-box-manager` | BoxLite VM lifecycle, snapshot restore, port forwarding |
 | git2-rs integration | Log, diff, blame, branches — structured Rust data to frontend |
 
 ### Beta Exit Criteria

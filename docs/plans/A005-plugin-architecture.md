@@ -498,69 +498,24 @@ snapfzz-core/               # Manifest schema, lifecycle contracts, bus types
 snapfzz-tauri-shell/        # Window/WebView management, IPC
 snapfzz-plugin-host/        # Resolver, loader, supervisor, crash containment
 snapfzz-plugin-bridge/      # Rust↔JS bridge, schema validation (serde + zod)
-snapfzz-box-manager/        # Sandbox abstraction — BoxLite first, horizontal scaling to ContainerBox/CloudBox/WasmBox
-snapfzz-agent-supervisor/   # AgentScope process lifecycle (uv + health + restart). Orchestration is AgentScope's job.
-snapfzz-stream-pipeline/    # SSE consume, 16ms batch, multiplex, Channel emit
+snapfzz-agent-supervisor/   # Spawn AgentScope Runtime via uv, PID file, cleanup on exit. Runtime handles health/restart/sandbox.
+snapfzz-stream-pipeline/    # SSE consume from AgentScope Runtime, 16ms batch, Channel emit
 ```
 
-#### snapfzz-agent-supervisor — Why Not Orchestrator
+#### snapfzz-agent-supervisor
 
-AgentScope (Python) provides the full agent orchestration layer:
-- **Actor-based distributed mechanism** — each agent is an independent actor, gRPC for inter-agent communication
-- **MsgHub** — context manager that auto-broadcasts messages among participant agents
-- **Pipelines** — SequentialPipeline, FanoutPipeline (asyncio.gather for parallel)
-- **`to_dist()`** — transparently moves any agent to a separate process/machine
-- **Proven at 1M agents on 4 machines** (Alibaba research, arxiv 2407.17789)
+Spawns AgentScope Runtime via `uv run python app.py`. Manages PID file for orphan cleanup. Kills process on app exit via `RunEvent::ExitRequested`.
 
-Our Rust crate does NOT re-implement orchestration. It supervises the Python process:
-- **First-run**: download `uv` binary → `uv sync` → install Python 3.12 + AgentScope + deps
-- **Every launch**: `uv run python -m agentscope.server --port 8000` (~2s to ready)
-- **Health**: HTTP poll every 2s, exponential backoff restart on failure
-- **Shutdown**: SIGTERM → wait 2s → SIGKILL
+AgentScope Runtime (agentscope-runtime package) provides everything else:
+- **AgentApp** — FastAPI server with SSE streaming, health endpoint, session management
+- **LocalDeployManager** — health checks, monitoring, lifecycle management, graceful shutdown
+- **Sandbox Service** — browser, filesystem, GUI, cloud, mobile sandboxes for code execution
+- **Session Service** — Redis, JSON, Tablestore session persistence
+- **Memory Service** — InMemory, Redis, SQLAlchemy memory backends
+- **A2A Protocol** — agent-to-agent communication
+- **OpenAI SDK compatible** — clients can call via standard OpenAI SDK
 
-100 agents = 1 Python process. AgentScope's actor model handles concurrency internally.
-When scaling beyond a single machine, `agent.to_dist()` moves agents to remote processes via gRPC — no Rust code change needed.
-
-#### snapfzz-box-manager — Sandbox-First, Horizontal Scaling
-
-AI agents write and execute arbitrary code. Sandbox is non-negotiable.
-
-```rust
-trait SandboxProvider: Send + Sync {
-    async fn create(&self, config: SandboxConfig) -> Result<SandboxId>;
-    async fn start(&self, id: SandboxId) -> Result<()>;
-    async fn stop(&self, id: SandboxId) -> Result<()>;
-    async fn destroy(&self, id: SandboxId) -> Result<()>;
-    async fn health(&self, id: SandboxId) -> Result<HealthStatus>;
-    async fn exec(&self, id: SandboxId, cmd: &str, timeout: Duration) -> Result<ExecResult>;
-    async fn port_forward(&self, id: SandboxId, guest: u16) -> Result<u16>;
-    async fn snapshot(&self, id: SandboxId) -> Result<SnapshotId>;
-    async fn restore(&self, snapshot: SnapshotId) -> Result<SandboxId>;
-    async fn fs_mount(&self, id: SandboxId, host: &Path, guest: &Path, readonly: bool) -> Result<()>;
-}
-```
-
-Implementations scale horizontally:
-
-| Provider | When | Use Case |
-|---|---|---|
-| **BoxLiteProvider** | Alpha (day 1) | MicroVM — default sandbox for all AI code execution |
-| **ContainerProvider** | Beta | OCI containers — for environments that can't run microVMs |
-| **CloudProvider** | V1 | Remote VMs — heavy workloads, GPU, multi-machine scaling |
-| **WasmProvider** | V1 | WASI sandbox — ultra-fast lightweight isolation |
-
-What runs inside a sandbox:
-- Node.js dev server (preview)
-- Agent's code execution (build, test, deploy commands)
-- Any shell command the agent wants to run
-- Third-party plugin code needing filesystem/network access
-
-What runs on host (NOT sandboxed):
-- Tauri app (Rust)
-- AgentScope (Python, supervised by Rust)
-- Frontend (WebView)
-
-Snapshot/restore enables < 50ms sandbox boot after first creation.
+Our Rust crate does ~50 LOC: spawn, PID file, wait for health, cleanup on exit.
 
 ### Core (Frontend packages)
 

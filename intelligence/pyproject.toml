@@ -1,12 +1,10 @@
 [project]
 name = "snapfzz-intelligence"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
+    "agentscope-runtime",
     "agentscope",
-    "fastapi",
-    "uvicorn[standard]",
-    "sse-starlette",
 ]
 
 [tool.uv]
@@ -14,4 +12,5 @@ dev-dependencies = [
     "pytest",
     "pytest-asyncio",
     "httpx",
+    "fakeredis",
 ]
