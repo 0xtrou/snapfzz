@@ -3,6 +3,15 @@ pub mod metrics;
 pub mod preset;
 pub mod supervised;
 
+#[cfg(test)]
+mod preset_test;
+#[cfg(test)]
+mod controlled_test;
+#[cfg(test)]
+mod supervised_test;
+#[cfg(test)]
+mod registry_test;
+
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Instant;

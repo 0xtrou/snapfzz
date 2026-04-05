@@ -36,6 +36,8 @@ Spec numbers:
 - `A004` = Workspace Architecture
 - `A005` = Plugin Architecture
 - `A006` = Core Runtime
+- `A007` = Multi-Layout Architecture
+- `A008` = Budget Registry
 
 ### Layer 2: Inline Code Comments Reference Specs
 
