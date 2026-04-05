@@ -354,6 +354,26 @@ Plugins       via ctx     invoke()   —          renders    bus only   —
 External      monitored   HTTP/SSE   —          —          —          —
 ```
 
+## Budget Degradation Protocol
+
+When `try_acquire()` returns `None`, each budget class has a defined response:
+
+| Budget Class | On Exhaustion | User Experience |
+|---|---|---|
+| CPU permits | Queue task, execute when permit available | Slight delay, no error |
+| Network rate | Accumulate batch, flush on next period | Tokens arrive in larger chunks |
+| Network concurrency | Return error to plugin | Plugin shows "busy, try again" |
+| Plugin strikes | Plugin disabled, contributions removed | "Plugin disabled" notification |
+| Frame (metered) | Report violation — no enforcement | Possible jank (logged for debugging) |
+| Startup timeout | Kill hung plugin, continue boot | Plugin doesn't load, others unaffected |
+| Process memory | Kill process, restart with backoff | "Reconnecting..." status |
+| Process health | Restart with backoff | "Reconnecting..." status |
+| Storage | Trigger cleanup, warn user | "Storage nearly full" notification |
+
+No silent failures. Every exhaustion is either handled automatically (queue/restart) or reported to the user (notification).
+
+---
+
 ## Horizontal Scaling via Cloud Sandboxes
 
 Local machine has a fixed budget (2GB, 4 cores). For scale beyond local limits, the registry manages cloud sandbox processes with the same `register_process()` API:

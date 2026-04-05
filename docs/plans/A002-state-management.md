@@ -1,448 +1,229 @@
 ---
-title: "State Management Architecture — Worker-First for 60fps"
-type: feat
-date: 2026-04-02
-source: "4-agent parallel research on Worker state management, Tauri IPC, SSE offloading"
+title: "A002 — CPU Budget Enforcement (Zone Placement)"
+type: architecture
+date: 2026-04-05
+derives-from: A008
+budget: cpu
 ---
 
-# State Management: Worker-First Architecture
+# A002 — CPU Budget Enforcement (Zone Placement)
 
-The main thread does ONE thing: render at 60fps. Everything else runs somewhere else.
+The main thread does ONE thing: render. Everything else runs somewhere else. Zone placement is how the CPU budget is enforced.
+
+## Registry Contract
+
+```
+Budget class: "cpu"
+Domain: Controlled (in-process, semaphore-gated)
+Source of truth: A008 preset.cpu_permits
+
+Enforcement:
+  - Zone 1 (Rust): try_acquire("stream-pipeline", CpuPermit) before SSE parsing
+  - Zone 2 (Worker): BudgetEnvelope allocated at Worker creation, self-managed
+  - Zone 3 (Main): no permits needed — rendering only, metered by frame budget
+  - External (AgentScope): supervised, not gated
+
+Measurement:
+  - PerformanceObserver longtask detection (Zone 3 violation = computation leaked to main thread)
+  - Worker envelope usage reported back periodically
+```
 
 ---
 
 ## The Problem
 
-Four heavy data streams compete with React rendering on the main thread:
+Four data streams compete for the main thread:
 
-| Stream | Source | Frequency | Main Thread Cost |
-|---|---|---|---|
-| Agent tokens (SSE) | Python sidecar :8000 | 100-250 tok/s | JSON.parse + state update per token |
-| HMR updates | Vite dev server :3000 | On every file save | WebSocket parse + module update |
-| Console capture | Preview WebView | Every console.log/error | postMessage + state update |
-| File watcher | Tauri Rust backend | On every file change | Channel event + state update |
+| Stream | Source | Frequency |
+|---|---|---|
+| Agent tokens (SSE) | AgentScope Runtime :8090 | 100-250 tok/s |
+| HMR updates | Vite dev server | On file save |
+| Console capture | Preview WebView | On console.log/error |
+| File watcher | Rust backend | On file change |
 
-At peak load (agent generating code + user testing in preview + HMR firing), this **kills 60fps** because parsing, state updates, and rendering all compete for the same thread.
-
----
-
-## The Architecture: Three Zones
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│  ZONE 1: RUST (Native Speed)                                    │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │ • SSE consumer (reqwest-eventsource)                       │  │
-│  │ • Token batching (16ms frame-budget batches)               │  │
-│  │ • File watcher (notify crate)                              │  │
-│  │ • Process lifecycle (sidecar spawn/crash/restart)          │  │
-│  │ • Channel API → pushes pre-parsed data to JS              │  │
-│  └──────────────────────────┬─────────────────────────────────┘  │
-│                             │ Tauri Channel (< 8KB = direct eval)│
-│  ZONE 2: WEB WORKER (Background JS)                             │
-│  ┌──────────────────────────▼─────────────────────────────────┐  │
-│  │ • Syntax highlighting (Shiki via Web Worker)               │  │
-│  │ • Diff computation (code changes → render-ready diffs)     │  │
-│  │ • Markdown rendering (agent messages → HTML)               │  │
-│  │ • State reducer (use-workerized-reducer)                   │  │
-│  │ • Timer management (worker-timers for accurate debounce)   │  │
-│  └──────────────────────────┬─────────────────────────────────┘  │
-│                             │ postMessage (structured clone)     │
-│  ZONE 3: MAIN THREAD (Rendering Only)                           │
-│  ┌──────────────────────────▼─────────────────────────────────┐  │
-│  │ • React rendering (60fps)                                  │  │
-│  │ • User input handling                                      │  │
-│  │ • CSS animations (compositor-only)                         │  │
-│  │ • Layout/paint                                             │  │
-│  │ • useTransition for non-urgent updates                     │  │
-│  │ • useDeferredValue for expensive renders                   │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
+Without zone placement, parsing + state updates + rendering all compete for the same 16ms frame.
 
 ---
 
-## Zone 1: Rust — SSE Consumer + File Watcher
+## Three Zones
 
-### Decision: Parse SSE in Rust, not JavaScript
+```
+ZONE 1: RUST (Native)
+  Registry: try_acquire("stream-pipeline", CpuPermit(1))
+  ┌────────────────────────────────────────────────┐
+  │ SSE consumer (reqwest + line parsing)           │
+  │ Token batching (preset.batch_rate_ms)           │
+  │ File watcher (notify crate)                     │
+  │ Process supervision (Budget Registry enforce_loop) │
+  │ Channel API → pushes pre-parsed data to JS      │
+  └──────────────────────┬─────────────────────────┘
+                         │ Tauri Channel (< 8KB = direct eval)
 
-**Why:** Eliminates ALL JavaScript parsing overhead. Data arrives at the main thread already structured and batched. The Tauri Channel API auto-optimizes delivery (< 8KB = direct eval, fast path).
+ZONE 2: WEB WORKER (Background JS)
+  Registry: BudgetEnvelope allocated at creation
+  ┌──────────────────────▼─────────────────────────┐
+  │ Syntax highlighting (Shiki)                     │
+  │ Diff computation                                │
+  │ State reducer (use-workerized-reducer)          │
+  │ Self-manages within envelope, reports usage     │
+  └──────────────────────┬─────────────────────────┘
+                         │ postMessage (structured clone)
 
-**Evidence:** llama.cpp fixed a UI freeze at 250+ tok/s by adding RAF yields. We skip the problem entirely — tokens never touch the JS parsing pipeline.
+ZONE 3: MAIN THREAD (Rendering Only)
+  Registry: no permits — metered by frame budget (A001)
+  ┌──────────────────────▼─────────────────────────┐
+  │ React rendering                                 │
+  │ User input handling                             │
+  │ CSS animations (compositor-only)                │
+  │ Pretext layout (arithmetic — no DOM measurement)│
+  │ PerformanceObserver reports violations           │
+  └────────────────────────────────────────────────┘
+
+EXTERNAL: AgentScope Runtime (Supervised)
+  Registry: register_process("agentscope", ProcessBudget)
+  ┌────────────────────────────────────────────────┐
+  │ Agent orchestration, LLM calls, tools, memory   │
+  │ RSS monitored via sysinfo (local)               │
+  │ Health monitored via HTTP (local + cloud)        │
+  │ Killed + restarted if over budget               │
+  └────────────────────────────────────────────────┘
+```
+
+---
+
+## Zone 1: Rust — SSE Consumer
+
+Parse SSE in Rust. Data arrives at the main thread already structured and batched.
 
 ```rust
-// src-tauri/src/stream.rs
-use reqwest_eventsource::EventSource;
-use tauri::ipc::Channel;
-use std::time::{Duration, Instant};
+let batch_rate = registry.query("frame").batch_rate_ms;  // from A008 preset
 
-#[derive(Clone, Serialize)]
-pub struct TokenBatch {
-    pub content: String,
-    pub batch_id: u32,
-    pub token_count: usize,
-}
+while let Some(line) = reader.next_line().await? {
+    if let Some(data) = line.strip_prefix("data: ") {
+        batch.push_str(data);
+        token_count += 1;
 
-#[tauri::command]
-pub async fn consume_agent_stream(
-    url: String,
-    on_event: Channel<TokenBatch>,
-) -> Result<(), String> {
-    let mut es = EventSource::get(&url);
-    let mut batch = String::new();
-    let mut batch_id: u32 = 0;
-    let mut token_count: usize = 0;
-    let mut batch_start = Instant::now();
-
-    while let Some(event) = es.next().await {
-        match event {
-            Ok(Event::Message(msg)) => {
-                batch.push_str(&msg.data);
-                token_count += 1;
-
-                // Flush every 16ms (1 frame budget)
-                if batch_start.elapsed() >= Duration::from_millis(16) {
-                    on_event.send(TokenBatch {
-                        content: std::mem::take(&mut batch),
-                        batch_id,
-                        token_count,
-                    }).map_err(|e| e.to_string())?;
-                    batch_id += 1;
-                    token_count = 0;
-                    batch_start = Instant::now();
-                }
-            }
-            Err(e) => return Err(e.to_string()),
+        if batch_start.elapsed() >= Duration::from_millis(batch_rate) {
+            channel.send(ContentBlockBatch { content: batch, batch_id, token_count })?;
+            batch = String::new();
+            batch_id += 1;
+            token_count = 0;
+            batch_start = Instant::now();
         }
     }
-
-    // Flush remaining
-    if !batch.is_empty() {
-        on_event.send(TokenBatch { content: batch, batch_id, token_count })
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 ```
 
-**Cargo.toml additions:**
-```toml
-[dependencies]
-reqwest = { version = "0.12", features = ["stream"] }
-reqwest-eventsource = "0.6"
-```
+Batch rate reads from registry — not hardcoded. Battery mode: 33ms. Performance: 16ms.
 
 ---
 
-## Zone 2: Web Worker — Processing Pipeline
+## Zone 2: Web Worker — Budget Envelope
+
+Workers receive a pre-allocated budget envelope at creation. No per-task round-trip to Rust.
+
+```rust
+// Rust: allocate envelope for the Worker
+let worker_budget = registry.try_acquire("zone2.state", Resource::CpuPermit(2))?;
+// Pass to Worker via initial postMessage
+worker.post_message(BudgetEnvelope { cpu_permits: 2 });
+```
+
+```typescript
+// Worker: self-manages within envelope
+const envelope = await receiveEnvelope();
+let remaining = envelope.cpu_permits;
+
+function canRun(): boolean { return remaining > 0; }
+function recordWork() { remaining--; }
+
+// Periodically report usage back to main thread → Rust registry
+setInterval(() => {
+  postMessage({ type: 'budget_report', used: envelope.cpu_permits - remaining });
+  remaining = envelope.cpu_permits;  // reset for next period
+}, 1000);
+```
 
 ### Two Workers
 
 | Worker | Responsibility | Library |
 |---|---|---|
-| **StateWorker** | App state reducer, action dispatch | `use-workerized-reducer` + `comlink` |
-| **HighlightWorker** | Syntax highlighting for code blocks in chat | `shiki` |
-
-Note: Diff and git operations run in Rust (`git2-rs`) + Monaco's built-in diff editor. No JS workers needed for those.
-
-### StateWorker — The Brain
-
-Runs the entire app state machine off the main thread. Main thread receives render-ready state patches only.
-
-```typescript
-// workers/state-worker.ts
-import { initWorkerizedReducer } from 'use-workerized-reducer';
-
-interface AppState {
-  tokens: string;
-  messages: Message[];
-  buildProgress: BuildProgress;
-  previewStatus: PreviewStatus;
-  evalScores: EvalScores;
-}
-
-initWorkerizedReducer('app', async (state, action) => {
-  switch (action.type) {
-    case 'TOKEN_BATCH': {
-      // Append tokens (Immer handles immutability)
-      state.tokens += action.payload.content;
-      // Update the latest message content
-      const last = state.messages[state.messages.length - 1];
-      if (last?.role === 'assistant') {
-        last.content += action.payload.content;
-      }
-      break;
-    }
-    case 'BUILD_PROGRESS':
-      state.buildProgress = action.payload;
-      break;
-    case 'CONSOLE_ERROR':
-      state.previewStatus.errors.push(action.payload);
-      break;
-    case 'HMR_UPDATE':
-      state.previewStatus.lastHMR = Date.now();
-      break;
-  }
-});
-```
-
-```typescript
-// App.tsx — main thread receives render-ready state
-import { useWorkerizedReducer } from 'use-workerized-reducer/react';
-
-const stateWorker = new Worker(
-  new URL('./workers/state-worker.ts', import.meta.url),
-  { type: 'module' }
-);
-
-function App() {
-  const [state, dispatch, busy] = useWorkerizedReducer(
-    stateWorker, 'app',
-    { tokens: '', messages: [], buildProgress: null, previewStatus: null, evalScores: null }
-  );
-
-  // State arrives as patches — only changed fields trigger re-render
-  return <ChatPanel messages={state.messages} busy={busy} />;
-}
-```
-
-**Why `use-workerized-reducer`:**
-- Immer-based patches — only sends changed state to main thread (not full clone)
-- `busy` flag — know when worker is processing (show loading indicator)
-- Async reducers — can do heavy computation inside the reducer
-- 5KB bundle, maintained by Surma (Chrome engineer)
-
-### HighlightWorker — Syntax Highlighting
-
-```typescript
-// workers/highlight-worker.ts
-import { expose } from 'comlink';
-import { createHighlighter } from 'shiki';
-
-const highlighter = await createHighlighter({
-  themes: ['github-dark', 'github-light'],
-  langs: ['typescript', 'python', 'rust', 'javascript', 'json', 'html', 'css'],
-});
-
-const api = {
-  highlight(code: string, lang: string, theme: string): string {
-    return highlighter.codeToHtml(code, { lang, theme });
-  },
-  // Batch highlight for multiple code blocks in a message
-  highlightBatch(blocks: { code: string; lang: string }[], theme: string): string[] {
-    return blocks.map(b => highlighter.codeToHtml(b.code, { lang: b.lang, theme }));
-  },
-};
-
-expose(api);
-```
-
-```typescript
-// Used in ChatMessage component
-const highlightWorker = wrap<typeof api>(
-  new Worker(new URL('./workers/highlight-worker.ts', import.meta.url), { type: 'module' })
-);
-
-// Called when a code block appears in a message
-const html = await highlightWorker.highlight(code, 'typescript', 'github-dark');
-```
-
-### DiffWorker — File Change Display
-
-```typescript
-// workers/diff-worker.ts
-import { expose } from 'comlink';
-
-const api = {
-  computeDiff(oldContent: string, newContent: string): DiffResult {
-    // Unified diff computation — heavy for large files
-    return unifiedDiff(oldContent, newContent);
-  },
-};
-
-expose(api);
-```
+| StateWorker | App state reducer | `use-workerized-reducer` + `comlink` |
+| HighlightWorker | Syntax highlighting | `shiki` |
 
 ---
 
-## Zone 3: Main Thread — Render Only
+## Zone 3: Main Thread — Rendering Only
 
-The main thread receives:
-1. **State patches** from StateWorker (via `use-workerized-reducer`)
-2. **Highlighted HTML** from HighlightWorker (via `comlink`)
-3. **Diff results** from DiffWorker (via `comlink`)
-
-It does NOT:
-- Parse SSE streams
-- Compute diffs
-- Run syntax highlighting
-- Parse JSON from the backend
-- Manage timers for debouncing
-
-### React Concurrent Features (Complement, Not Replace Workers)
+No computation. No parsing. No sorting. State arrives pre-computed from Zone 2 or pre-parsed from Zone 1.
 
 ```typescript
-// Non-urgent state updates don't block user input
-const [isPending, startTransition] = useTransition();
-
-function onTokenBatch(batch: TokenBatch) {
-  startTransition(() => {
-    dispatch({ type: 'TOKEN_BATCH', payload: batch });
-  });
+// CORRECT: render pre-computed state
+function ChatPanel({ messages }) {
+  return <PretextList items={messages} estimateHeight={cachedHeight} ... />;
 }
 
-// Expensive renders are deferred
-const deferredMessages = useDeferredValue(state.messages);
-
-return (
-  <>
-    <MessageCount count={state.messages.length} />  {/* Immediate */}
-    <ChatList messages={deferredMessages} />          {/* Deferred */}
-  </>
-);
+// WRONG: compute during render
+function ChatPanel({ rawTokens }) {
+  const messages = parseTokensIntoMessages(rawTokens);  // ZONE VIOLATION
+  return <PretextList items={messages} ... />;
+}
 ```
+
+If it computes → Zone 1 or Zone 2. If it renders → Zone 3. No exceptions.
 
 ---
 
-## Data Flow: Complete Pipeline
+## Zone Violation Detection
 
-```
-Python AgentScope (SSE at :8000)
-    │
-    ▼
-Rust SSE Consumer (reqwest-eventsource)
-    │ Parses SSE, batches tokens every 16ms
-    ▼
-Tauri Channel API
-    │ < 8KB direct eval (fast path)
-    ▼
-Main Thread receives TokenBatch
-    │
-    ├─→ dispatch('TOKEN_BATCH') ──→ StateWorker (reducer)
-    │                                    │
-    │                                    ▼ Immer patch
-    │                               Main thread re-renders
-    │
-    ├─→ highlightWorker.highlight() ──→ HighlightWorker
-    │                                        │
-    │                                        ▼ HTML string
-    │                                   Code block renders
-    │
-    └─→ diffWorker.computeDiff() ──→ DiffWorker
-                                         │
-                                         ▼ DiffResult
-                                    Diff view renders
-```
-
----
-
-## Tauri-Specific Constraints
-
-| Constraint | Impact | Solution |
-|---|---|---|
-| `__TAURI_INTERNALS__` not available in Workers | Workers can't call Tauri commands | Main thread bridges: Channel → postMessage → Worker |
-| Channel API delivers to main thread only | Can't push directly to Worker | Main thread forwards via postMessage (negligible cost for pre-batched data) |
-| SharedArrayBuffer requires COOP/COEP headers | Need to configure in tauri.conf.json | Set headers in security config |
-| Worker bundling with Vite | Standard `new Worker(new URL(...))` works | Vite handles bundling automatically |
-
-### tauri.conf.json
-
-```json
-{
-  "app": {
-    "security": {
-      "headers": {
-        "Cross-Origin-Opener-Policy": "same-origin",
-        "Cross-Origin-Embedder-Policy": "require-corp"
-      }
+```typescript
+// PerformanceObserver detects computation that leaked to Zone 3
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    if (entry.duration > frame_target_ms) {
+      invoke('budget_report_violation', {
+        class: 'cpu',
+        zone: 'zone3',
+        actual_ms: entry.duration,
+      });
     }
   }
+});
+observer.observe({ type: 'longtask' });
+```
+
+---
+
+## Anti-Corruption Layer
+
+AgentScope Runtime emits SSE in its own format. We parse into our own `StreamEvent` enum at the Rust boundary. If AgentScope changes their format, we change one parser — nothing downstream knows.
+
+```rust
+pub enum StreamEvent {
+    ContentDelta { text: String, sequence: u32 },
+    ThinkingDelta { text: String },
+    ToolCall { id: String, name: String, input: Value },
+    ToolResult { id: String, output: Value },
+    StreamStart { session_id: String },
+    StreamEnd { usage: TokenUsage },
+    Error { code: String, message: String },
+}
+
+impl StreamEvent {
+    fn from_agentscope_sse(line: &str) -> Option<Self> {
+        // Parse AgentScope format into our types
+        // This is the ONLY place that knows AgentScope's wire format
+    }
 }
 ```
 
 ---
 
-## Why Not SharedArrayBuffer for State?
+## Budget Degradation (per A008)
 
-SharedArrayBuffer is available but **wrong for this use case:**
-
-- SSE tokens are text strings — SAB is for typed arrays
-- State updates are JSON-shaped — SAB requires manual serialization
-- Immer patches are ~100 bytes per update — structured clone is fast enough
-- Atomics add complexity without matching benefit
-
-**Use SAB only for:** Real-time audio, canvas pixel buffers, or shared counters (not relevant here).
-
----
-
-## Timer Management: worker-timers
-
-Debounce/throttle timers run in Worker to avoid Tauri WebView throttling when minimized:
-
-```typescript
-import { setTimeout, clearTimeout } from 'worker-timers';
-
-// HMR debounce — fires accurately even when app is in background
-let hmrTimeout: number;
-function debounceHMR(update: HMRUpdate) {
-  clearTimeout(hmrTimeout);
-  hmrTimeout = setTimeout(() => {
-    dispatch({ type: 'HMR_UPDATE', payload: update });
-  }, 300);
-}
-```
-
----
-
-## Package Stack Addition
-
-```json
-{
-  "dependencies": {
-    "comlink": "^4.4",
-    "use-workerized-reducer": "^0.3",
-    "worker-timers": "^8.0",
-    "immer": "^10.0"
-  }
-}
-```
-
-| Package | Size | Purpose |
-|---|---|---|
-| `comlink` | 1.1KB gz | RPC for HighlightWorker + DiffWorker |
-| `use-workerized-reducer` | 5KB | State management in Worker (Immer patches) |
-| `worker-timers` | 3KB | Accurate timers off main thread |
-| `immer` | 13KB | Immutable state patches (used by workerized-reducer) |
-| **Total** | **~22KB** | |
-
----
-
-## Production Inspiration
-
-| Product | Worker Pattern | What We Took |
-|---|---|---|
-| **Figma** | Entire canvas in Worker + OffscreenCanvas + WASM | The philosophy: main thread = render only |
-| **Excalidraw** | Worker pool with TTL-based cleanup | Recyclable workers for bursty workloads |
-| **Monaco Editor** | Per-language workers for syntax/type checking | Dedicated HighlightWorker pattern |
-| **VS Code Web** | Extension host in Worker + MessageChannel | Worker isolation for untrusted code |
-| **Stockroom** | Full store in Worker with bidirectional sync | use-workerized-reducer is the modern version |
-| **llama.cpp** | RAF batching to prevent UI freeze at 250+ tok/s | 16ms batch budget in Rust SSE consumer |
-
----
-
-## What Goes Where — Quick Reference
-
-| Data | Zone | Why |
-|---|---|---|
-| SSE parsing | **Rust** | Zero JS overhead, native speed |
-| Token batching | **Rust** | 16ms frame-budget batching at the source |
-| State mutations | **Worker** (StateWorker) | Immer patches, async reducers |
-| Syntax highlighting | **Worker** (HighlightWorker) | Shiki is heavy, renders HTML |
-| Diff computation | **Worker** (DiffWorker) | O(n) algorithm, blocks if on main thread |
-| Markdown → HTML | **Worker** (StateWorker or dedicated) | Marked/remark rendering |
-| Timer debounce | **Worker** (worker-timers) | Accurate even when app is minimized |
-| React rendering | **Main thread** | Only thing that MUST be on main thread |
-| User input | **Main thread** | DOM events are main-thread-only |
-| CSS animations | **Compositor** | GPU thread, not even main thread |
+| Zone | On Budget Exhaustion |
+|---|---|
+| Zone 1 (CPU permits) | Queue the task, execute when permit available |
+| Zone 2 (envelope exhausted) | Worker stops non-critical work, waits for next period |
+| Zone 3 (frame violation) | Report to registry — meter, no enforcement |
+| External (memory exceeded) | Kill process, restart with backoff |

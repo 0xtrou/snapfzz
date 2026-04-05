@@ -1,35 +1,48 @@
 ---
-title: "Performance Architecture — Technical Decisions"
-type: feat
-date: 2026-04-02
-source: "7-agent parallel research on Tauri + React + live preview performance"
+title: "A001 — Frame Budget Enforcement"
+type: architecture
+date: 2026-04-05
+derives-from: A008
+budget: frame
 ---
 
-# Performance Architecture
+# A001 — Frame Budget Enforcement
 
-Technical decisions for achieving 60fps, sub-200ms interactions, and smooth live preview across all platforms. Every decision is backed by research evidence from official docs, production apps, and open-source implementations.
+How the app protects the user's visual fluency. Every rendering decision traces to the frame budget allocated by the Budget Registry (A008).
+
+## Registry Contract
+
+```
+Budget class: "frame"
+Domain: Controlled (in-process)
+Source of truth: A008 preset.frame_target_ms
+  Performance: 16ms (60fps)
+  Balanced:    16ms (60fps)
+  Battery:     33ms (30fps)
+
+Enforcement:
+  - CSS containment (structural — browser enforces)
+  - Pretext arithmetic layout (structural — no DOM measurement possible)
+  - GPU-only animations (structural — never trigger layout)
+  - 16ms/33ms SSE batch coalescing (registry-governed rate)
+
+Measurement:
+  - PerformanceObserver for longtask > frame_target_ms
+  - FPS counter in status bar (continuous display)
+  - Violations reported to registry: budget_report_violation()
+```
 
 ---
 
 ## Critical Architecture Decision: Child WebViews, Not Iframes
 
-**Decision:** Use Tauri's native `window.add_child()` WebView API for the preview pane, NOT `<iframe>`.
+Use Tauri's native `window.add_child()` WebView API for preview, NOT `<iframe>`.
 
-**Why:**
-- Tauri Issue #6204 (OPEN): iframe IPC is broken on Windows — Rust callbacks fire on parent, not iframe
-- Issue #10935: iframes cause `__TAURI_INVOKE__ is not a function` console spam on Windows
-- Child WebViews get full IPC, independent CSP, and `.auto_resize()` for 60fps pane resizing
+- Tauri Issue #6204: iframe IPC broken on Windows
+- Child WebViews get full IPC, independent CSP, `.auto_resize()`
+- Each WebView has its own frame budget (A007 multi-layout)
 
-**Pattern:**
 ```rust
-// Two child WebViews in one Tauri window
-let editor = main_window.add_child(
-  WebviewBuilder::new("editor", WebviewUrl::App("/editor".into()))
-    .auto_resize(),
-  LogicalPosition::new(0., 0.),
-  LogicalSize::new(width / 2., height),
-)?;
-
 let preview = main_window.add_child(
   WebviewBuilder::new("preview",
     WebviewUrl::External("http://localhost:3000".parse().unwrap())
@@ -39,273 +52,119 @@ let preview = main_window.add_child(
 )?;
 ```
 
-**Known risk:** Linux WebKitGTK has a resize bug after ~6 resizes (Issue #10131). Monitor and workaround with manual size setting.
-
-**Source:** [Tauri multiwebview example](https://github.com/tauri-apps/tauri/blob/b27be063ff3052cb1071ac3ec719cfa104460fa4/examples/multiwebview/main.rs)
-
 ---
 
 ## Split Pane: react-resizable-panels
 
-**Decision:** Use `react-resizable-panels` (bvaughn, 5.2K stars) for the editor-side internal layout.
+CSS flexbox-based (`flexGrow`) — browser compositor handles it. `useSyncExternalStore` — no React re-renders during drag. Used by CodeSandbox Sandpack in production.
 
-**Why over Allotment:**
-- CSS flexbox-based (`flexGrow`) — browser compositor handles it, guaranteed 60fps
-- `useSyncExternalStore` — no React re-renders during drag
-- Used by CodeSandbox Sandpack in production
-- `pointer-events: none` auto-applied to panels during drag (prevents iframe capture)
-- Two callbacks: `onLayoutChange` (every frame) and `onLayoutChanged` (drag end only)
+Only update WebView dimensions on `onLayoutChanged` (drag end), not `onLayoutChange`.
+
+---
+
+## Chat: Pretext-Powered Virtualization
+
+**Decision:** Custom `PretextList` virtualizer using `@chenglou/pretext` for exact height measurement. Replaces react-virtuoso.
+
+**Why:** react-virtuoso estimates heights via DOM measurement — violates the frame budget by forcing synchronous reflow. Pretext computes heights via pure arithmetic (`prepare()` + `layout()`). Zero DOM reads in the hot path.
 
 **Pattern:**
 ```tsx
-<PanelGroup direction="horizontal" onLayoutChanged={handleLayoutChanged}>
-  <Panel defaultSize={50} minSize={20}>
-    <ChatAndEditor />
-  </Panel>
-  <PanelResizeHandle />
-  <Panel minSize={20}>
-    <LivePreview />
-  </Panel>
-</PanelGroup>
-```
-
-**Key rule:** Only update iframe/WebView dimensions on `onLayoutChanged` (drag end), not `onLayoutChange`.
-
----
-
-## Live Preview: HMR Pipeline
-
-**Decision:** Agent writes files → Vite/Next.js dev server HMR → WebView auto-updates via WebSocket.
-
-**Architecture:**
-```
-AgentScope writes file (MCP write_text_file)
-    ↓
-Vite/Next.js filesystem watcher detects change
-    ↓
-HMR module graph updated
-    ↓
-WebSocket pushes delta to all connected clients
-    ↓
-Preview WebView receives update (~200ms total)
-    ↓
-React Fast Refresh preserves component state
-```
-
-**Vite config for reliable HMR in Tauri:**
-```typescript
-export default defineConfig({
-  server: {
-    host: 'localhost',
-    port: 3000,
-    hmr: {
-      host: 'localhost',
-      port: 3000,
-      protocol: 'ws',
-    },
-    cors: true,
-    watch: {
-      usePolling: false, // Native watcher is faster
-    },
-  },
-});
-```
-
-**Console/error capture:** Inject via Tauri `initialization_script` on preview WebView:
-```javascript
-// Captures console.error and forwards to parent via Tauri event
-const origError = console.error;
-console.error = (...args) => {
-  origError.apply(console, args);
-  window.__TAURI_INTERNALS__?.invoke('preview_error', {
-    message: args.map(String).join(' ')
-  });
-};
-```
-
-**Reference:** Sandpack's [consoleHook.ts](https://github.com/codesandbox/sandpack/blob/main/sandpack-client/src/inject-scripts/consoleHook.ts) and [historyListener.ts](https://github.com/codesandbox/sandpack/blob/main/sandpack-client/src/clients/node/inject-scripts/historyListener.ts)
-
----
-
-## Triple Viewport: 3 WebViews
-
-**Decision:** 3 independent Tauri child WebViews, not 3 iframes.
-
-**Memory budget:** ~75-180MB per React dev instance × 3 = 225-540MB. Acceptable on 8GB+ machines.
-
-**Resource sharing:** Same-origin WebViews share HTTP cache, connections. Each has independent WS for HMR.
-
-**Performance rules:**
-```css
-/* CSS containment on each viewport container */
-.viewport-panel {
-  contain: strict;
-  content-visibility: auto;
-  contain-intrinsic-size: 768px 1024px;
-}
-```
-
-- Stagger HMR: 50-100ms delay between WebView reloads to prevent simultaneous re-renders
-- Inactive viewports: `pointer-events: none` for UX (prevents accidental interaction), NOT for performance
-- 3 viewports is well within safe zone — Polypane/Responsively handle 8-15+ without issues
-
-**Alternative considered:** Single WebView + CSS container queries. Rejected — requires refactoring every target app to use `@container` instead of `@media`, not viable for arbitrary OSS projects.
-
----
-
-## Chat: Streaming + Virtual Scrolling
-
-**Decision:** `react-virtuoso` for chat message list.
-
-**Why:**
-- Purpose-built `VirtuosoMessageList` API with `followOutput="smooth"`
-- Variable-height messages handled automatically
-- Bi-directional infinite scroll (load older messages)
-- 60fps scroll with ~20 DOM nodes regardless of history length
-- `ScrollSeekPlaceholder` for fast-scroll optimization
-
-**Pattern:**
-```tsx
-<Virtuoso
-  data={messages}
-  followOutput={(isAtBottom) => isAtBottom ? 'smooth' : false}
-  initialTopMostItemIndex={messages.length - 1}
-  itemContent={(_, msg) => <ChatMessage message={msg} />}
+<PretextList
+  items={messages}
+  estimateHeight={pretextMeasuredHeight}  // prepare()+layout() cached per message
+  renderItem={(msg) => <PretextBubble><PretextMarkdown text={msg.content} /></PretextBubble>}
+  keyExtractor={(msg) => msg.id}
+  followOutput
 />
 ```
 
-**SSE streaming:** Fetch + ReadableStream (not EventSource) — supports POST, custom headers, abort.
+**Height cache:** `prepare()` called once when message content changes (useMemo). `layout()` is arithmetic-only on resize (useLayoutEffect). Heights cached per message ID — never recomputed.
 
-**Backpressure:** Batch tokens (100-200) before rendering, flush via `requestAnimationFrame`.
-
----
-
-## Code Editor: Monaco
-
-**Decision:** Monaco Editor for the Code tab (full VS Code editing), Shiki for read-only code blocks in chat.
-
-| Use case | Library | Bundle |
-|---|---|---|
-| Editable code (Code tab) | `monaco-editor` | ~5MB (lazy-loaded, chunked) |
-| Read-only code blocks (chat) | `shiki` (Web Worker) | ~200KB, zero runtime JS |
-
-**Why Monaco over CodeMirror:** This IS an IDE. Full IntelliSense, multi-cursor, go-to-definition, built-in diff editor, minimap. The 5MB is lazy-loaded (only when Code tab opens) so it doesn't affect startup.
-
-**Shiki in Web Worker:** Offload syntax highlighting for chat code blocks to keep main thread free during streaming.
+**Visible range:** Binary search O(log n) — scales to 10K+ messages without degradation.
 
 ---
 
-## Animations: Tiered Approach
+## Code Editor: Monaco (Lazy) + Shiki (Worker)
 
-| Tier | Library | Use For | Bundle |
+| Use case | Library | Bundle | Zone |
 |---|---|---|---|
-| 1 | Pure CSS | Transitions, hover, theme switch | 0KB |
-| 2 | `@formkit/auto-animate` | List enter/exit/reorder | <3KB |
-| 3 | `motion` (WAAPI) | Scroll reveals, stagger | 3.8KB |
-| 4 | `motion/react` (LazyMotion) | Layout animations, gestures (rare) | 15KB |
+| Editable code (Code tab) | `monaco-editor` | ~5MB (lazy-loaded) | Zone 3 (render) |
+| Read-only code blocks (chat) | `shiki` (Web Worker) | ~200KB | Zone 2 (worker) |
 
-**Hard rules:**
-- NEVER animate `width`, `height`, `top`, `left`, `margin` — use `transform` and `opacity` only
-- NEVER use `setInterval` for animation — `requestAnimationFrame` only
-- CSS `contain: content` on every independent panel (chat, code, preview, file tree)
-- `content-visibility: auto` on off-screen chat messages
+Monaco is lazy-loaded — only when Code tab opens. Doesn't affect startup budget (A003).
 
 ---
 
-## CSS Containment: Isolation Zones
+## Animations: GPU-Only
+
+**Hard rules (from frame budget):**
+- NEVER animate `width`, `height`, `top`, `left`, `margin` — use `transform` and `opacity` only
+- NEVER use `setInterval` — `requestAnimationFrame` only
+- CSS `contain: strict` on every independent panel
+- `content-visibility: auto` on off-screen messages
+
+| Tier | Method | Use For |
+|---|---|---|
+| 1 | Pure CSS transitions | Hover, theme switch |
+| 2 | `@formkit/auto-animate` | List enter/exit (<3KB) |
+| 3 | `motion` (WAAPI) | Scroll reveals (3.8KB) |
+
+---
+
+## CSS Containment: Frame Budget Isolation
 
 ```css
-/* Chat panel doesn't repaint when preview updates */
-.chat-panel { contain: content; }
-
-/* Preview is fully independent */
-.preview-panel { contain: strict; }
-
-/* File tree items */
-.file-tree-item { contain: layout; }
-
-/* Code blocks in chat — skip rendering when off-screen */
-.chat-message { content-visibility: auto; contain-intrinsic-size: 1px 80px; }
+.chat-panel { contain: content; }     /* Chat doesn't repaint when preview updates */
+.preview-panel { contain: strict; }   /* Preview is fully independent */
+.file-tree-item { contain: layout; }  /* File tree items isolated */
+.chat-message {                       /* Skip off-screen messages */
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 80px;
+}
 ```
 
-**Evidence:** OpenTable reduced layout time 6× (11.21ms → 1.89ms) with `contain: strict`.
+Evidence: OpenTable reduced layout time 6× (11.21ms → 1.89ms) with `contain: strict`.
 
 ---
 
-## Python Sidecar: Lifecycle
+## SSE Streaming Pipeline
 
-**Spawn:** Tauri Shell plugin `sidecar()` with `externalBin` bundling.
+Agent tokens flow through Rust (Zone 1), never parsed on the main thread.
 
-**Communication:** SSE over HTTP (localhost:8000). Agent → React via `fetch` + `ReadableStream`.
-
-**Crash recovery:** Monitor `CommandEvent::Terminated`, auto-restart with backoff (max 3 attempts/5min).
-
-**Graceful shutdown:** Tauri listens `close-requested` → SIGTERM to Python → 5s grace → SIGKILL.
-
-**Python side:**
-```python
-signal.signal(signal.SIGTERM, lambda s, f: cleanup_and_exit())
+```
+AgentScope Runtime (localhost:8090/process)
+    ↓ SSE stream (sequence-numbered events)
+Rust: parse events, extract content blocks
+Rust: batch at registry.query("frame").batch_rate_ms
+    ↓ Tauri Channel API (< 8KB = direct eval)
+Frontend: append to message state, render
 ```
 
-**Production reference:** [Benito Martin's Tauri + FastAPI + llama.cpp](https://aiechoes.substack.com/p/building-production-ready-desktop) — bundled with PyInstaller, SSE streaming, UTF-8 fixes for Windows.
+Batch rate comes from the Budget Registry preset — not hardcoded. Battery mode uses 33ms, Performance uses 16ms.
 
 ---
 
 ## IPC: Tauri v2 Channel API
 
-**For high-frequency updates** (file watcher → HMR notifications): Use Tauri Channel API, not invoke.
+For high-frequency updates (SSE tokens, file watcher): Channel API, not invoke.
 
 ```typescript
-const hmrChannel = new Channel<HMRNotification>();
-hmrChannel.onmessage = (msg) => { /* trigger preview refresh */ };
-await invoke('watch_files', { path: '/src', onEvent: hmrChannel });
+const channel = new Channel<ContentBlockBatch>();
+channel.onmessage = (batch) => { appendToMessages(batch); };
+await invoke('send_message', { text, sessionId, onToken: channel });
 ```
 
-**Performance:** <8KB payloads go through direct eval (fastest path). Larger payloads use fetch.
+< 8KB payloads: direct eval (fastest path). Larger: fetch.
 
 ---
 
-## Platform-Specific Notes
+## Performance Metrics
 
-| Platform | WebView Engine | Notes |
+| Metric | Target (from A008 preset) | Tool |
 |---|---|---|
-| macOS | WKWebView | Primary target. 60fps cap by default. Use `tauri-plugin-macos-fps` to unlock 120Hz on Apple Silicon. |
-
----
-
-## Package Stack
-
-```json
-{
-  "dependencies": {
-    "react-virtuoso": "^4.7",
-    "react-resizable-panels": "^2.1",
-    "monaco-editor": "^0.52",
-    "shiki": "^3.0",
-    "motion": "^12.0",
-    "@formkit/auto-animate": "^0.8",
-    "@agentscope-ai/design": "latest",
-    "@agentscope-ai/chat": "latest"
-  },
-  "devDependencies": {
-    "tauri-plugin-macos-fps": "^0.1"
-  }
-}
-```
-
----
-
-## Eval: Performance Metrics
-
-Every build is measured. Part of the ME eval benchmark:
-
-| Metric | Target | Tool |
-|---|---|---|
-| Lighthouse Performance | ≥ 90 | Lighthouse CI |
+| Frame drops during scroll | 0 | PerformanceObserver |
+| Long tasks (>preset.frame_target_ms) | 0 during interaction | Long Task API |
 | LCP | < 2.5s | Web Vitals |
 | CLS | < 0.1 | Web Vitals |
-| FID | < 100ms | Web Vitals |
 | JS bundle (initial) | < 200KB gzipped | Bundle analyzer |
-| Frame drops during scroll | 0 | PerformanceObserver |
-| Long tasks (>50ms) | 0 during interaction | Long Task API |
-| axe-core violations | 0 critical/serious | axe-core |

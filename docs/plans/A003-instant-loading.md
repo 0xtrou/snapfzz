@@ -1,83 +1,169 @@
 ---
-title: "Instant Loading Architecture"
-type: feat
-date: 2026-04-02
+title: "A003 — Startup Budget Enforcement"
+type: architecture
+date: 2026-04-05
+derives-from: A008
+budget: startup
 ---
 
-# Instant Loading — Perfectly From Day 1
+# A003 — Startup Budget Enforcement
 
-The user clicks the app icon and is productive in < 200ms. The intelligence layer connects silently in the background.
+The user clicks the icon and is productive within the startup budget. Every millisecond of blank screen says "I'm not ready for you."
+
+## Registry Contract
+
+```
+Budget class: "startup"
+Domain: Controlled (in-process)
+Source of truth: A008 preset
+  visible_ms: 200 (all presets)
+  interactive_ms: 500 (all presets)
+  activation_timeout_ms: 5000 (per plugin)
+
+Enforcement:
+  - HTML skeleton at 0ms (structural — no JS needed)
+  - Plugin activation gated by STARTUP_BUDGET from registry
+  - Per-plugin activation timeout from registry (kill hung plugins)
+  - requestIdleCallback for non-critical preload
+
+Measurement:
+  - LCP via PerformanceObserver
+  - Long task detection during boot
+  - TTI measurement
+  - All reported to registry: budget_report_violation("startup", actual_ms)
+```
+
+---
 
 ## Loading Sequence
 
 ```
-0ms     Tauri window opens + static shell (sidebar, status bar, empty workspace)
-50ms    Workspace data from disk (projects list, last session, preferences)
-100ms   User sees their projects, can browse, click, read
-~200ms  ClarifyAgent VM restored from snapshot (< 50ms boot)
-~500ms  All lazy VMs booted in background — user never noticed
+0ms     Tauri window opens + HTML skeleton (sidebar, status bar, empty workspace)
+        Budget: visible_ms countdown starts
+
+50ms    Skeleton visible, CSS parsed, fonts loaded (bundled, no network)
+        Budget: 150ms remaining to visible target
+
+100ms   React hydrates, PluginHost created, BudgetRegistry initialized
+        Registry reads preset → emits frame_target_ms, startup_budget_ms to frontend
+
+150ms   Plugin discovery: registerDiscoveredPlugins()
+        Registry: try_acquire per plugin for activation
+
+200ms   Critical plugins activated (onStartupFinished)
+        Budget: visible_ms target met ✓
+        Registry: STARTUP_BUDGET_MS from preset, not hardcoded
+
+~500ms  Chat input active, user can type
+        Budget: interactive_ms target met ✓
+        Non-critical plugins: requestIdleCallback preload
 ```
 
-## Why This Works
+---
 
-BoxLite micro-VMs boot in **< 50ms**. That's sub-frame at 60fps. The VM layer is faster than React hydration.
+## Skeleton Strategy
 
-| Component | Boot Time | Strategy |
-|---|---|---|
-| Tauri window | ~100ms | Native, can't improve |
-| Static shell (skeleton) | ~30ms | Pre-rendered HTML, no JS needed |
-| Workspace data | ~20ms | Read from local disk |
-| BoxLite VM (each) | **< 50ms** | Hardware virtualization |
-| Snapshot restore (VM + Python) | **< 50ms** | BoxLite checkpoint, fork & clone |
-| OCI image (cached) | ~0ms | COW from local cache |
+Static HTML in `index.html` — visible before React loads. No JavaScript dependency.
+
+```html
+<div id="skeleton" class="skeleton-container">
+  <div class="header"><span>Snapfzz</span></div>
+  <div class="content">
+    <div class="sidebar"></div>
+    <div class="main"></div>
+  </div>
+  <div class="footer">Ready</div>
+</div>
+```
+
+React hydrates → adds `data-app-ready` → skeleton fades out via CSS transition (GPU-only, opacity).
+
+---
+
+## Plugin Activation Budget
+
+Plugins declare `activationEvents` in their manifest. The PluginHost reads `startup_budget_ms` and `activation_timeout_ms` from the Budget Registry.
+
+```typescript
+// PluginHost reads budget from registry on boot
+const startupBudget = await invoke('get_startup_budget');
+// startupBudget.total_ms = 200
+// startupBudget.per_plugin_timeout_ms = 5000
+
+// Activate critical plugins within budget
+const startTime = performance.now();
+for (const plugin of criticalPlugins) {
+  if (performance.now() - startTime > startupBudget.total_ms) {
+    console.warn('[PluginHost] Startup budget exceeded, deferring remaining plugins');
+    break;
+  }
+  await host.activate(plugin.id);  // times out at per_plugin_timeout_ms
+}
+```
+
+No hardcoded constants in the frontend. All values flow from the Budget Registry preset.
+
+---
+
+## Background Preload
+
+Non-critical plugins load during idle time. `requestIdleCallback` ensures preloading never steals frame budget.
+
+```typescript
+const schedule = typeof requestIdleCallback === 'function'
+  ? requestIdleCallback
+  : (cb: () => void) => setTimeout(cb, 0);
+
+for (const plugin of nonCriticalPlugins) {
+  schedule(() => host.preloadPlugin(plugin.id));
+}
+```
+
+---
+
+## AgentScope Runtime Boot
+
+AgentScope Runtime starts as a supervised process (A008). Its boot time is NOT part of the startup budget — the UI is interactive before the Runtime is ready.
+
+```
+0ms     UI skeleton visible (startup budget)
+200ms   UI interactive (plugins activated)
+~2-15s  AgentScope Runtime healthy (background, supervised)
+        Status bar: "○ Connecting..." → "● Connected"
+```
+
+First run: `uv sync` installs dependencies (~60s). Progress shown in status bar. Subsequent runs: Runtime starts in ~2s.
+
+---
 
 ## First Run vs Subsequent Runs
 
-| | First Run | Subsequent Runs |
+| | First Run | Subsequent |
 |---|---|---|
-| OCI image | Pull ~50MB — progress bar | Cached, 0ms |
-| Python packages | `pip install` — progress bar | Persistent state, 0ms |
-| Snapshot | Doesn't exist — cold boot ~2-3s | Restore < 50ms |
-| User experience | Honest setup screen | **Instant** |
+| UI skeleton | 0ms (HTML) | 0ms (HTML) |
+| React hydrate | ~100ms | ~100ms |
+| Plugin activation | ~150ms | ~150ms |
+| AgentScope Runtime | ~60s (uv sync + install) | ~2s |
+| User experience | UI instant, "Setting up intelligence..." | Everything instant |
 
-## Lazy Agent Boot
+---
 
-Only boot what the user needs NOW. Pre-warm the next stage in the background.
+## Measurement
 
-```
-App launch:
-  ├── Boot ClarifyAgent (immediate — user starts here)
-  └── Background: nothing else
+All timing reported to Budget Registry for the startup budget class:
 
-User in Clarify stage:
-  └── Background: pre-warm DiscoverAgent
+```typescript
+// LCP measurement
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    invoke('budget_report_violation', { class: 'startup', metric: 'lcp', value_ms: entry.startTime });
+  }
+}).observe({ type: 'largest-contentful-paint', buffered: true });
 
-User in Discover stage:
-  └── Background: pre-warm RateAgent
-
-User in Rate stage:
-  └── Background: pre-warm BuildAgent + Preview Box
-
-User in Build stage:
-  └── Background: pre-warm ShipAgent
-```
-
-Stage transitions feel instant because the next agent is already warm.
-
-## Manifesto Standard #13: Instant Loading
-
-```
-✓ App window visible in < 200ms (Tauri native + skeleton UI)
-✓ Workspace browsable in < 200ms (local disk read)
-✓ Chat input active in < 500ms (ClarifyAgent snapshot restore)
-✓ Background agents pre-warmed while user works
-✓ Lazy boot for later-stage agents
-✓ First run: honest setup screen with progress bar
-✓ Every subsequent run: snapshot restore < 50ms per VM
-✓ No spinner on stage transitions (next agent pre-warmed)
-
-EVAL:
-- Time-to-interactive < 500ms (measured)
-- Stage transition < 200ms
-- No visible spinner after first run
+// Long task during boot
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    invoke('budget_report_violation', { class: 'startup', metric: 'longtask', value_ms: entry.duration });
+  }
+}).observe({ type: 'longtask', buffered: true });
 ```
