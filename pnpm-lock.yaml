@@ -11,6 +11,9 @@ importers:
       '@ant-design/icons':
         specifier: ^6.1.1
         version: 6.1.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@chenglou/pretext':
+        specifier: ^0.0.4
+        version: 0.0.4
       '@snapfzz/chat-plugin':
         specifier: workspace:*
         version: link:plugins/chat
@@ -203,6 +206,9 @@ importers:
 
   frontend/packages/shared:
     dependencies:
+      '@chenglou/pretext':
+        specifier: '*'
+        version: 0.0.4
       antd:
         specifier: ^5.24.0
         version: 5.29.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -237,12 +243,12 @@ importers:
       '@snapfzz/plugin-sdk':
         specifier: workspace:*
         version: link:../../frontend/packages/plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../../frontend/packages/shared
       react:
         specifier: ^19.0.0
         version: 19.2.4
-      react-virtuoso:
-        specifier: ^4.12.8
-        version: 4.18.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -422,6 +428,9 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@chenglou/pretext@0.0.4':
+    resolution: {integrity: sha512-FnPAFMid1/p1j2V2gRPUVBarGUIb2PhkkC9YNnTOfPtTDgHKh8siO8PP9pCxpFfYlcodWPJpE1UbSHGQqt8pQQ==}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -1644,12 +1653,6 @@ packages:
     peerDependencies:
       react: ^19.2.4
 
-  react-virtuoso@4.18.4:
-    resolution: {integrity: sha512-DNM4Wy2tMA/J6ejMaDdqecOug31rOwgSRg4C/Dw6Iox4dJe9qwcx32M8HdhkE5uHEVVZh7h0koYwAsCSNdxGfQ==}
-    peerDependencies:
-      react: '>=16 || >=17 || >= 18 || >= 19'
-      react-dom: '>=16 || >=17 || >= 18 || >=19'
-
   react@19.2.4:
     resolution: {integrity: sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ==}
     engines: {node: '>=0.10.0'}
@@ -2119,6 +2122,8 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@chenglou/pretext@0.0.4': {}
 
   '@csstools/color-helpers@6.0.2': {}
 
@@ -3323,11 +3328,6 @@ snapshots:
       react: 19.2.4
       react-is: 19.2.4
       scheduler: 0.27.0
-
-  react-virtuoso@4.18.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
-    dependencies:
-      react: 19.2.4
-      react-dom: 19.2.4(react@19.2.4)
 
   react@19.2.4: {}
 

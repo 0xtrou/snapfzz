@@ -5,3 +5,4 @@ export * from './entities';
 export * from './lib';
 export * from './hooks';
 export * from './theme';
+export * from './components';

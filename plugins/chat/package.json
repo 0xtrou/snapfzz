@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@snapfzz/plugin-sdk": "workspace:*",
-    "react": "^19.0.0",
-    "react-virtuoso": "^4.12.8"
+    "@snapfzz/shared": "workspace:*",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
