@@ -291,6 +291,63 @@ snapfzz-budget (kernel)
   └── snapfzz-plugin-bridge     → startup budget (activation timeout)
 ```
 
+## Zone Communication with Registry
+
+Each zone communicates with the registry differently based on its placement:
+
+### Zone 1 (Rust) — Direct API
+
+Same process. `Arc<BudgetRegistry>` shared via Tauri managed state. Zero serialization overhead.
+
+```rust
+let permit = registry.try_acquire("stream-pipeline", Resource::CpuPermit(1))?;
+// work happens
+drop(permit); // released back to pool
+```
+
+### Zone 2 (Worker) — Budget envelope
+
+Workers can't call Rust directly. Instead, Rust pre-allocates a budget envelope at Worker creation. Worker self-manages within its allocation and reports usage back periodically.
+
+```rust
+// Rust: acquire bulk permit for the Worker
+let worker_budget = registry.try_acquire("zone2.state", Resource::CpuPermit(2))?;
+// Pass envelope to Worker via initial message
+worker.post_message(BudgetEnvelope { cpu_permits: 2, frame_target_ms: 16 });
+```
+
+No per-task round-trip through the main thread. Worker is autonomous within its envelope.
+
+### Zone 3 (Main thread) — Read-only observation
+
+The main thread never acquires permits. It only renders. Its relationship with the registry:
+
+1. Reads frame target (16ms or 33ms) to configure PerformanceObserver
+2. Receives budget metrics via Tauri events for status bar display
+3. Reports frame violations back to Rust
+
+Zone 3 is a **meter**, not a **gate**. It measures and reports. Rust enforces.
+
+### Plugins — Invisible budgeting
+
+Plugins never see the registry. Every `ctx.rust.invoke()` is tagged with the plugin ID by the PluginContext wrapper. Rust checks the registry before executing. Denied calls return errors. The plugin handles the error without knowing budgets exist.
+
+### External (AgentScope) — Supervised observation
+
+The registry spawns the process, writes its PID, monitors RSS and health every 2s via `enforce_loop()`. Kills and restarts when limits are exceeded. AgentScope has no awareness of being monitored.
+
+### Communication Matrix
+
+```
+              Registry    Zone 1     Zone 2     Zone 3     Plugins    External
+Registry      —           direct     envelope   events     invisible  observe+kill
+Zone 1        acquire()   —          spawns     Channel    —          HTTP/spawn
+Zone 2        envelope    message    —          message    —          —
+Zone 3        listen()    invoke()   message    —          renders    —
+Plugins       via ctx     invoke()   —          renders    bus only   —
+External      monitored   HTTP/SSE   —          —          —          —
+```
+
 ## Relation to Philosophy
 
 From learning 011 — Resource-Budgeted Architecture:

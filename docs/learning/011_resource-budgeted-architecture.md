@@ -116,6 +116,54 @@ P3 (sell infrastructure) tells us the engineering budget is a moat — the less 
 
 P4 (10 years) tells us the budgets must be structural, not behavioral — a behavioral budget (a code review rule saying "don't compute on main thread") erodes over time. A structural budget (Zone 2 Worker, Zone 3 render-only) is enforced by the architecture itself.
 
+## Three Axes of Resource Distribution
+
+Budget, Zones, and Users are orthogonal views of the same resources:
+
+**Budget** = HOW MUCH of each resource. The limits. Governed by presets (Performance/Balanced/Battery) and enforced by the registry.
+
+**Zone** = WHERE the work runs. The placement. A zone is a physical execution context — Rust native thread, Web Worker, main thread, external process. Zones are enforced by architecture, not by policy. You can't render from Rust. You can't access the DOM from a Worker. The structure prevents the violation.
+
+**User** = WHO is consuming. The accounting identity. stream-pipeline, plugin.chat, agentscope. The registry tracks usage per user, enforces limits per user, and reports per user.
+
+```
+Budget (how much)  ×  Zone (where)  ×  User (who)  =  allocation
+
+"plugin.chat gets 1 CPU permit in Zone 2 for state mutations"
+"stream-pipeline gets 1 CPU permit in Zone 1 for SSE parsing"
+"agentscope gets 512MB in External zone for agent execution"
+```
+
+| Zone | Placement Rule | Why This Zone Exists |
+|---|---|---|
+| Zone 1 (Rust) | Heavy compute, I/O, parsing | Native speed, never touches UI thread |
+| Zone 2 (Worker) | State mutations, highlighting | Off main thread, but needs JS APIs |
+| Zone 3 (Main) | React render only | Only zone with DOM access |
+| External | AgentScope, sandboxes | Separate process, separate memory space |
+
+The registry allocates budgets. Zones determine placement. Users get billed.
+
+## Scripted Plugin Architecture — Full Control
+
+Plugins are scripted through our SDK. Every capability is granted, not assumed. The SDK is the permission boundary:
+
+```
+Plugin CAN (via SDK):           Plugin CANNOT (structurally):
+  ctx.rust.invoke(command)        Access window/document directly
+  ctx.rust.listen(event)          Import from other plugins
+  ctx.bus.emit(topic)             Import from core (except SDK)
+  ctx.commands.register(id, fn)   Access filesystem or network
+  ctx.settings.get/set(key)       Spawn processes
+  ctx.storage.get/set(key)        Read other plugins' storage
+  ctx.logger.info/warn/error      Bypass the budget registry
+  Declare manifest contributions  Modify the plugin-sdk
+  Return lazy component loaders   Allocate resources without a permit
+```
+
+Every `ctx.rust.invoke()` call is tagged with the caller's plugin ID. The Rust side checks the budget registry before executing. If the plugin's budget is exhausted, the call returns an error. The plugin never knows the registry exists — it just experiences "this call failed, handle gracefully."
+
+This means: system plugins and third-party plugins follow the same rules. No shortcuts. The app is fully controlled because every plugin capability flows through our SDK, and every SDK operation flows through the budget registry.
+
 ## Evaluating Compliance
 
 For each budget, ask three questions:
