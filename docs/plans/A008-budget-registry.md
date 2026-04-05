@@ -104,12 +104,18 @@ pub struct Preset {
 }
 
 pub struct ProcessBudget {
-    pub pid: u32,
+    pub pid: Option<u32>,              // None for cloud sandboxes (no local PID)
     pub max_memory_mb: u64,
-    pub health_url: String,
+    pub health_url: String,            // localhost:8090 or cloud-sandbox-1.snapfzz.io:8090
     pub health_interval_ms: u64,
     pub max_health_failures: u32,
     pub max_restarts: u32,
+    pub location: ProcessLocation,
+}
+
+pub enum ProcessLocation {
+    Local,                             // sysinfo RSS monitoring available
+    Cloud { endpoint: String },        // HTTP-only monitoring, no sysinfo
 }
 
 pub struct StorageBudget {
@@ -347,6 +353,51 @@ Zone 3        listen()    invoke()   message    —          renders    —
 Plugins       via ctx     invoke()   —          renders    bus only   —
 External      monitored   HTTP/SSE   —          —          —          —
 ```
+
+## Horizontal Scaling via Cloud Sandboxes
+
+Local machine has a fixed budget (2GB, 4 cores). For scale beyond local limits, the registry manages cloud sandbox processes with the same `register_process()` API:
+
+```
+BudgetRegistry
+├── local (supervised via sysinfo + health)
+│   └── agentscope-local: 512MB, localhost:8090
+│
+├── cloud (supervised via health only — no sysinfo for remote)
+│   ├── sandbox-1: 2GB, cloud:8090
+│   ├── sandbox-2: 2GB, cloud:8091
+│   └── sandbox-N: ...
+```
+
+The registry doesn't care where the process runs. `register_process()` takes a `health_url` — local or remote. `enforce_loop()` polls the same way. Cloud processes get health-based supervision (HTTP poll + kill via API). Local processes get health + RSS monitoring.
+
+This enables: 1000 agents across N cloud sandboxes, all supervised by one registry on the user's machine. The local budget stays within preset limits. Cloud budgets are separate allocations.
+
+## Trust Boundaries
+
+### Plugin trust: human-gated
+
+Agents can write plugins. Humans install them. The plugin SDK is the permission boundary. No hot-reload from agents. No automatic installation.
+
+```
+Agent writes plugin code → saved to workspace
+Human reviews plugin → approves installation
+Plugin manifest declares budget → registry allocates
+Plugin activates through SDK → capabilities gated
+```
+
+### Process trust: registry-supervised
+
+Every spawned process (local AgentScope, cloud sandboxes) is supervised by the registry. The process doesn't know it's being monitored. The registry kills processes that exceed their budget. No process runs without a `ProcessBudget` allocation.
+
+### Capability trust: SDK-enforced
+
+Every `ctx.rust.invoke()` call is tagged with the plugin ID. The Rust side checks:
+1. Is this plugin's budget still valid? (not disabled by strikes)
+2. Does this plugin declare this capability? (manifest.budget.capabilities)
+3. Is the concurrency limit exceeded? (network.maxConcurrentInvokes)
+
+Denied calls return errors. The plugin handles gracefully without knowing why.
 
 ## Relation to Philosophy
 
