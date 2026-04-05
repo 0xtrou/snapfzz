@@ -85,6 +85,16 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - **`settingsSections`** — new contribution type for preferences layout.
 - **System settings plugins** — General, Runtime, Performance, Plugins, Advanced.
 
+### A008 — Budget Registry
+`docs/plans/A008-budget-registry.md`
+
+- **The kernel.** Every resource acquired from the registry before use.
+- **Two domains**: Controlled (semaphore-gated, in-process) + Supervised (observe+kill, cross-process).
+- **Presets**: Performance / Balanced / Battery — auto-detected from hardware.
+- **`try_acquire()` returns `None`** if budget exhausted — work doesn't happen.
+- **`enforce_loop()`** monitors supervised processes, emits metrics to frontend.
+- **Zones, Plugins, Runtimes all register** with the Budget Registry.
+
 ### A006 — Core Runtime
 `docs/plans/A006-core-runtime.md`
 
