@@ -13,7 +13,7 @@ use tauri::ipc::Channel;
 use tauri::{Manager, RunEvent};
 use tokio::sync::Mutex;
 
-const AGENTSCOPE_PORT: u16 = 8000;
+const AGENTSCOPE_PORT: u16 = 8090;
 const TOKEN_BATCH_MS: u64 = 16;
 const HEALTH_TIMEOUT_SECS: u64 = 2;
 
@@ -532,8 +532,8 @@ async fn spawn_runtime(state: Arc<Mutex<AgentSupervisorState>>) -> Result<(), St
     guard.child_pid = Some(child_pid);
     drop(guard);
 
-    for _ in 0..30 {
-        tokio::time::sleep(Duration::from_millis(500)).await;
+    for _ in 0..120 {
+        tokio::time::sleep(Duration::from_millis(1000)).await;
         if reqwest::Client::new()
             .get(format!("http://127.0.0.1:{port}/health"))
             .timeout(Duration::from_secs(2))
@@ -541,10 +541,11 @@ async fn spawn_runtime(state: Arc<Mutex<AgentSupervisorState>>) -> Result<(), St
             .map(|r| r.status().is_success())
             .unwrap_or(false)
         {
+            eprintln!("[supervisor] AgentScope Runtime healthy on port {port}");
             return Ok(());
         }
     }
-    Err("AgentScope Runtime did not become healthy within 15s".to_string())
+    Err("AgentScope Runtime did not become healthy within 120s".to_string())
 }
 
 async fn shutdown_runtime(state: &Arc<Mutex<AgentSupervisorState>>) {

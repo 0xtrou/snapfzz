@@ -75,6 +75,16 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - Lifecycle in Worker (Zone 2): activation events, enable/disable, reload, crash counting.
 - Theme is core, not a plugin.
 
+### A008 — Multi-Layout Architecture
+`docs/plans/A008-multi-layout-architecture.md`
+
+- **Separate Tauri windows** per layout (launcher, project, preferences, future layouts).
+- **Independent frame budgets** — one window's render load never affects another.
+- **Own PluginHost instance** per window — plugins declare which surface they target.
+- **`HostSurface`** union extends: `'launcher' | 'project' | 'preferences'`.
+- **`settingsSections`** — new contribution type for preferences layout.
+- **System settings plugins** — General, Runtime, Performance, Plugins, Advanced.
+
 ### A006 — Core Runtime
 `docs/plans/A006-core-runtime.md`
 
@@ -142,10 +152,11 @@ Both serve the specs. Disagreement = the spec wins.
 ```
 frontend/packages/
   @snapfzz/shared          Core: entities, lib, hooks, theme
-  @snapfzz/plugin-sdk      Core: stable contract — NEVER MODIFY
+  @snapfzz/plugin-sdk      Core: stable contract — additive extensions only
   @snapfzz/plugin-host     Core: plugin loader, ContributionStore
   @snapfzz/launcher        Core: thin shell, reads from store
   @snapfzz/project         Core: thin shell, reads from store
+  @snapfzz/preferences     Core: settings shell, reads settingsSections from store
   plugins/                  Features: each is a package
 
 src-tauri/crates/           Rust: Zone 1
@@ -167,7 +178,7 @@ cargo tauri dev                                   # Full app
 
 ## Hard Rules
 
-- Never modify `@snapfzz/plugin-sdk`
+- Never modify `@snapfzz/plugin-sdk`'s existing types (additive extensions only, with approval)
 - Never `// TODO` / `// FIXME` / `// HACK`
 - Never computation on main thread
 - Never feature code in core packages
