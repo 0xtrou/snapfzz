@@ -5,6 +5,7 @@ members = [
   "crates/snapfzz-tauri-shell",
   "crates/snapfzz-plugin-host",
   "crates/snapfzz-plugin-bridge",
+  "crates/snapfzz-budget",
   "crates/snapfzz-agent-supervisor",
   "crates/snapfzz-stream-pipeline",
 ]
