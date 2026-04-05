@@ -1,0 +1,171 @@
+# Snapfzz Budget Registry Configuration
+# Source of truth for all resource allocations.
+# Read by snapfzz-budget crate on boot.
+# User can override via System Preferences.
+
+# Auto-detected from hardware. User can override.
+preset: auto  # auto | performance | balanced | battery
+
+# Hardware detection thresholds (used when preset: auto)
+detection:
+  performance:
+    min_cores: 8
+    min_ram_gb: 16
+    requires_power: true
+  balanced:
+    min_cores: 4
+    min_ram_gb: 8
+  battery:
+    # fallback when on battery or below balanced thresholds
+
+# Budget allocations per preset
+presets:
+  performance:
+    frame:
+      target_ms: 16            # 60fps
+      violation_threshold_ms: 50  # longtask threshold
+    cpu:
+      permits: 4               # concurrent compute tasks
+      zone2_envelope: 2        # permits allocated to Worker
+    memory:
+      app_total_mb: 2048       # total app footprint target
+      agentscope_max_mb: 1024  # supervised process limit
+    startup:
+      visible_ms: 200          # skeleton visible target
+      interactive_ms: 500      # chat input active target
+      activation_timeout_ms: 5000  # per-plugin kill timeout
+    network:
+      batch_rate_ms: 16        # SSE batch coalescing (matches frame target)
+      max_concurrent_invokes: 10  # total across all plugins
+    reliability:
+      default_strikes: 3       # per-plugin crash tolerance
+      strike_window_secs: 300  # 5 minutes
+      max_restarts: 10         # supervised process restart limit
+    window:
+      max_concurrent: 5        # maximum open layouts
+    storage:
+      max_gb: 10               # workspace + logs + sessions
+      cleanup_threshold_pct: 90
+      log_rotation_mb: 10
+      log_keep_count: 5
+
+  balanced:
+    frame:
+      target_ms: 16
+      violation_threshold_ms: 50
+    cpu:
+      permits: 2
+      zone2_envelope: 1
+    memory:
+      app_total_mb: 1024
+      agentscope_max_mb: 512
+    startup:
+      visible_ms: 200
+      interactive_ms: 500
+      activation_timeout_ms: 5000
+    network:
+      batch_rate_ms: 16
+      max_concurrent_invokes: 5
+    reliability:
+      default_strikes: 3
+      strike_window_secs: 300
+      max_restarts: 10
+    window:
+      max_concurrent: 3
+    storage:
+      max_gb: 5
+      cleanup_threshold_pct: 90
+      log_rotation_mb: 10
+      log_keep_count: 5
+
+  battery:
+    frame:
+      target_ms: 33            # 30fps — save power
+      violation_threshold_ms: 66
+    cpu:
+      permits: 1
+      zone2_envelope: 1
+    memory:
+      app_total_mb: 512
+      agentscope_max_mb: 256
+    startup:
+      visible_ms: 200
+      interactive_ms: 500
+      activation_timeout_ms: 5000
+    network:
+      batch_rate_ms: 33        # matches frame target
+      max_concurrent_invokes: 3
+    reliability:
+      default_strikes: 3
+      strike_window_secs: 300
+      max_restarts: 5          # fewer restarts on battery
+    window:
+      max_concurrent: 2
+    storage:
+      max_gb: 5
+      cleanup_threshold_pct: 85
+      log_rotation_mb: 5
+      log_keep_count: 3
+
+# Supervised processes — registered at runtime, defaults here
+processes:
+  agentscope:
+    health_url: "http://127.0.0.1:8090/health"
+    health_interval_ms: 2000
+    max_health_failures: 3
+    location: local
+
+# Plugin budget defaults — applied when plugin manifest omits budget field
+plugin_defaults:
+  zone: zone3
+  reliability:
+    strikes: 3
+    window_secs: 300
+  network:
+    max_concurrent_invokes: 5
+  capabilities:
+    - rust.invoke
+    - rust.listen
+    - bus.emit
+    - bus.listen
+    - commands.register
+    - commands.execute
+    - settings.read
+    - storage.read
+    - logger
+
+# Capability definitions — what each capability allows
+capabilities:
+  rust.invoke:
+    description: "Call Rust backend commands via Tauri IPC"
+    gated_by: network.max_concurrent_invokes
+  rust.listen:
+    description: "Listen to Rust backend events"
+    gated_by: null  # passive, no budget cost
+  bus.emit:
+    description: "Emit events on the plugin bus"
+    gated_by: null
+  bus.listen:
+    description: "Listen to events on the plugin bus"
+    gated_by: null
+  commands.register:
+    description: "Register command handlers"
+    gated_by: null
+  commands.execute:
+    description: "Execute commands from other plugins"
+    gated_by: network.max_concurrent_invokes
+  settings.read:
+    description: "Read plugin-namespaced settings"
+    gated_by: null
+  settings.write:
+    description: "Write plugin-namespaced settings"
+    gated_by: null
+  storage.read:
+    description: "Read plugin-namespaced storage"
+    gated_by: null
+  storage.write:
+    description: "Write plugin-namespaced storage"
+    gated_by: null
+  logger:
+    description: "Write to plugin-namespaced log"
+    gated_by: null
