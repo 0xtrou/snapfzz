@@ -87,6 +87,9 @@ async fn send_message(
         .try_acquire_invoke(caller)
         .ok_or_else(|| format!("Budget exhausted: plugin '{caller}' invoke denied"))?;
 
+    let _cpu_permit = registry.try_acquire_cpu()
+        .ok_or_else(|| "Budget exhausted: CPU permits unavailable for SSE parsing".to_string())?;
+
     let url = format!("http://127.0.0.1:{AGENTSCOPE_PORT}/process");
     let client = reqwest::Client::new();
     let batch_rate = registry.batch_rate();
@@ -393,7 +396,7 @@ async fn spawn_runtime(
         max_memory_mb: registry.preset.memory.agentscope_max_mb,
         health_url: format!("http://127.0.0.1:{AGENTSCOPE_PORT}/health"),
         health_interval_ms: 2000,
-        max_health_failures: registry.preset.reliability.max_restarts,
+        max_health_failures: 3,
         max_restarts: registry.preset.reliability.max_restarts,
         location: ProcessLocation::Local,
         consecutive_failures: 0,

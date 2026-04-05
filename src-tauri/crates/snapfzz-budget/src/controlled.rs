@@ -139,4 +139,12 @@ impl ControlledBudgets {
             .map(|s| s.timestamps.len() as u32)
             .unwrap_or(0)
     }
+
+    pub fn disabled_plugin_ids(&self) -> Vec<String> {
+        self.plugin_strikes
+            .iter()
+            .filter(|entry| entry.disabled)
+            .map(|entry| entry.key().clone())
+            .collect()
+    }
 }

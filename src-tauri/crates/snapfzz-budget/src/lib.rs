@@ -14,7 +14,7 @@ mod registry_test;
 
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use controlled::{ControlledBudgets, CpuPermit, InvokePermit};
 use metrics::{BudgetMetrics, ProcessStatus};
@@ -105,6 +105,40 @@ impl BudgetRegistry {
         )
     }
 
+    pub async fn enforce_loop<F>(&self, interval_ms: u64, mut on_metrics: F)
+    where
+        F: FnMut(&BudgetMetrics),
+    {
+        loop {
+            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+
+            for entry in self.supervised.processes.iter() {
+                let name = entry.key();
+
+                if self.supervised.is_memory_exceeded(name) {
+                    eprintln!("[budget] process '{name}' exceeded memory limit — should be killed");
+                }
+
+                let healthy = self.supervised.check_health(name).await;
+                if healthy {
+                    self.supervised.reset_health_failures(name);
+                } else {
+                    let threshold_exceeded = self.supervised.record_health_failure(name);
+                    if threshold_exceeded {
+                        eprintln!("[budget] process '{name}' failed health check threshold — should be restarted");
+                    }
+                }
+            }
+
+            if self.supervised.is_storage_exceeded() {
+                eprintln!("[budget] storage exceeded cleanup threshold");
+            }
+
+            let metrics = self.snapshot();
+            on_metrics(&metrics);
+        }
+    }
+
     pub fn snapshot(&self) -> BudgetMetrics {
         let agentscope_rss = self.supervised.check_memory("agentscope");
         let agentscope_status = if agentscope_rss.is_some() {
@@ -114,17 +148,8 @@ impl BudgetRegistry {
         };
 
         let disabled_plugins: Vec<String> = self
-            .supervised
-            .processes
-            .iter()
-            .filter_map(|entry| {
-                if self.controlled.is_plugin_disabled(entry.key()) {
-                    Some(entry.key().clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
+            .controlled
+            .disabled_plugin_ids();
 
         BudgetMetrics {
             preset_name: self.preset.name.clone(),
