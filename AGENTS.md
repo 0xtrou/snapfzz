@@ -75,8 +75,8 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - Lifecycle in Worker (Zone 2): activation events, enable/disable, reload, crash counting.
 - Theme is core, not a plugin.
 
-### A008 — Multi-Layout Architecture
-`docs/plans/A008-multi-layout-architecture.md`
+### A007 — Multi-Layout Architecture
+`docs/plans/A007-multi-layout-architecture.md`
 
 - **Separate Tauri windows** per layout (launcher, project, preferences, future layouts).
 - **Independent frame budgets** — one window's render load never affects another.
