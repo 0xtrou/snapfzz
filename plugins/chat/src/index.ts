@@ -9,6 +9,22 @@ export default definePlugin({
   description: 'Text conversation channel for AgentScope agents',
   surface: ['project'],
   activationEvents: ['onStartupFinished'],
+
+  budget: {
+    zone: 'zone3',
+    reliability: { strikes: 3, windowSecs: 300 },
+    network: { maxConcurrentInvokes: 2 },
+    capabilities: [
+      'rust.invoke',
+      'rust.listen',
+      'bus.emit',
+      'commands.register',
+      'settings.read',
+      'storage.read',
+      'logger',
+    ],
+  },
+
   contributes: {
     leftPanelTabs: [
       {

@@ -2,12 +2,49 @@
 title: "Chat Plugin — Text Conversation Channel for AgentScope"
 type: spec
 date: 2026-04-04
-traces: [A001, A002, A003, A005, A006, U009, MILESTONES/Alpha]
+traces: [A001, A002, A003, A005, A006, A008, U009, MILESTONES/Alpha]
 ---
 
 # Chat Plugin
 
 The text conversation channel. Renders AgentScope's `Msg` and `ContentBlock` types as a ChatGPT-quality chat interface. The first plugin — proves the entire architecture works.
+
+---
+
+## Budget Registration (A008)
+
+```
+class: "plugin.chat"
+zone: zone3 (render only)
+
+Controlled resources:
+  reliability: 3 strikes, 300s window → auto-disable
+  network: max 2 concurrent ctx.rust.invoke() calls
+  frame: metered via PerformanceObserver (16ms target)
+
+Capabilities declared:
+  rust.invoke, rust.listen, bus.emit, commands.register,
+  settings.read, storage.read, logger
+
+Does NOT acquire:
+  CpuPermit — Zone 3 only, no compute
+  Memory — AgentScope owns agent memory
+  Storage — AgentScope Session owns persistence
+```
+
+### Budget × Zone × User Map
+
+| Action | User | Zone | Budget | Registry Role |
+|---|---|---|---|---|
+| Render message thread | plugin.chat | Zone 3 | Frame (16ms) | Meter |
+| Composer auto-resize | plugin.chat | Zone 3 | Frame (16ms) | Meter (Pretext arithmetic) |
+| Send message to Rust | plugin.chat | Zone 3→1 | Network | Gate (try_acquire) |
+| Parse SSE from AgentScope | stream-pipeline | Zone 1 | CPU | Gate (CpuPermit) |
+| Batch tokens at 16ms | stream-pipeline | Zone 1 | Network | Rate limiter |
+| AgentScope LLM call | agentscope | External | Memory | Supervisor (RSS check) |
+| AgentScope health | agentscope | External | Reliability | Supervisor (health poll) |
+| Plugin crash | plugin.chat | Zone 3 | Reliability | Gate (3 strikes → deny) |
+| Height calculation | plugin.chat | Zone 3 | Frame | None (arithmetic, zero cost) |
 
 ---
 

@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 
-export type HostSurface = 'launcher' | 'project';
+export type HostSurface = 'launcher' | 'project' | 'preferences';
 
 export type ActivationEvent =
   | 'onStartupFinished'
@@ -24,6 +24,27 @@ export interface PluginManifest {
   optionalDependencies?: Record<string, string>;
   requiredCapabilities?: string[];
   contributes?: PluginContributions;
+  budget?: PluginBudget;
+}
+
+export type PluginCapability =
+  | 'rust.invoke'
+  | 'rust.listen'
+  | 'bus.emit'
+  | 'bus.listen'
+  | 'commands.register'
+  | 'commands.execute'
+  | 'settings.read'
+  | 'settings.write'
+  | 'storage.read'
+  | 'storage.write'
+  | 'logger';
+
+export interface PluginBudget {
+  zone: 'zone3';
+  reliability?: { strikes?: number; windowSecs?: number };
+  network?: { maxConcurrentInvokes?: number };
+  capabilities?: PluginCapability[];
 }
 
 export interface PluginContributions {
@@ -43,6 +64,15 @@ export interface PluginContributions {
   identityProviders?: IdentityProviderContribution[];
   complianceTemplates?: ComplianceTemplateContribution[];
   miniApps?: MiniAppContribution[];
+  settingsSections?: SettingsSectionContribution[];
+}
+
+export interface SettingsSectionContribution {
+  id: string;
+  label: string;
+  icon: string;
+  order?: number;
+  component: () => Promise<{ default: ComponentType }>;
 }
 
 export interface TabContribution {
