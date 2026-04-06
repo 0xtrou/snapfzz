@@ -14,6 +14,5 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
-if (!window.getComputedStyle) {
-  window.getComputedStyle = () => ({} as CSSStyleDeclaration);
-}
+
+window.getComputedStyle = () => ({} as CSSStyleDeclaration);
