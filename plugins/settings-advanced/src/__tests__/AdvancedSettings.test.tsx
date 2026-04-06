@@ -5,12 +5,29 @@ import AdvancedSettings from '../AdvancedSettings';
 
 const mockInvoke = vi.fn();
 
+function fullSettings(overrides: Record<string, unknown> = {}) {
+  return {
+    apiKey: 'sk-test',
+    model: 'gpt-4o',
+    apiUrl: 'https://api.openai.com/v1',
+    theme: 'dark',
+    openLastProject: true,
+    language: 'en',
+    fontFamily: 'Inter',
+    fontSize: '14',
+    fpsCounter: false,
+    logLevel: 'info',
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   (window as Record<string, unknown>).__TAURI_INTERNALS__ = { invoke: mockInvoke };
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === 'get_data_dir') return Promise.resolve('/Users/test/.snapfzz');
-    if (cmd === 'get_advanced_settings') return Promise.resolve({ fpsCounter: false, logLevel: 'info' });
+    if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+    if (cmd === 'save_settings') return Promise.resolve(undefined);
     return Promise.resolve({});
   });
 });
@@ -18,6 +35,14 @@ beforeEach(() => {
 afterEach(() => {
   delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
 });
+
+async function waitForSettingsLoad() {
+  await waitFor(() => {
+    const cmds = mockInvoke.mock.calls.map((c: unknown[]) => c[0]);
+    expect(cmds).toContain('get_settings');
+  });
+  await new Promise((r) => setTimeout(r, 150));
+}
 
 describe('A007/settings-advanced: data directory', () => {
   it('A007/settings-advanced: renders data directory from get_data_dir', async () => {
@@ -47,7 +72,7 @@ describe('A007/settings-advanced: data directory', () => {
   it('A007/settings-advanced: shows empty string when get_data_dir rejects', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_data_dir') return Promise.reject(new Error('no path'));
-      if (cmd === 'get_advanced_settings') return Promise.reject(new Error('no settings'));
+      if (cmd === 'get_settings') return Promise.reject(new Error('no settings'));
       return Promise.resolve({});
     });
     render(<AdvancedSettings />);
@@ -72,10 +97,11 @@ describe('A007/settings-advanced: log level selector', () => {
     });
   });
 
-  it('A007/settings-advanced: loads saved log level from get_advanced_settings', async () => {
+  it('A007/settings-advanced: loads saved log level from get_settings', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_data_dir') return Promise.resolve('/tmp/.snapfzz');
-      if (cmd === 'get_advanced_settings') return Promise.resolve({ fpsCounter: false, logLevel: 'debug' });
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings({ logLevel: 'debug' }));
+      if (cmd === 'save_settings') return Promise.resolve(undefined);
       return Promise.resolve({});
     });
     render(<AdvancedSettings />);
@@ -84,11 +110,11 @@ describe('A007/settings-advanced: log level selector', () => {
     });
   });
 
-  it('A007/settings-advanced: calls get_advanced_settings on mount', async () => {
+  it('A007/settings-advanced: calls get_settings on mount', async () => {
     render(<AdvancedSettings />);
     await waitFor(() => {
       const cmds = mockInvoke.mock.calls.map((c) => c[0]);
-      expect(cmds).toContain('get_advanced_settings');
+      expect(cmds).toContain('get_settings');
     });
   });
 });
@@ -101,29 +127,50 @@ describe('A007/settings-advanced: FPS counter checkbox', () => {
     });
   });
 
-  it('A007/settings-advanced: FPS checkbox is unchecked by default', async () => {
+  it('A007/settings-advanced: FPS checkbox is unchecked when settings returns fpsCounter=false', async () => {
     render(<AdvancedSettings />);
     await waitFor(() => {
       expect(screen.getByRole('checkbox', { name: /show fps counter/i })).not.toBeChecked();
     });
   });
 
-  it('A007/settings-advanced: checking FPS counter calls set_advanced_setting with fpsCounter=true', async () => {
+  it('A007/settings-advanced: checking FPS counter marks form dirty and shows Save Changes', async () => {
     const user = userEvent.setup();
     render(<AdvancedSettings />);
-    await waitFor(() => screen.getByRole('checkbox', { name: /show fps counter/i }));
+    await waitForSettingsLoad();
 
     await user.click(screen.getByRole('checkbox', { name: /show fps counter/i }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('set_advanced_setting', { key: 'fpsCounter', value: true });
+      expect(screen.getByRole('checkbox', { name: /show fps counter/i })).toBeChecked();
+    });
+  });
+
+  it('A007/settings-advanced: checking FPS counter then saving calls save_settings with fpsCounter=true', async () => {
+    const user = userEvent.setup();
+    render(<AdvancedSettings />);
+    await waitForSettingsLoad();
+
+    await user.click(screen.getByRole('checkbox', { name: /show fps counter/i }));
+    await waitFor(() => {
+      const saveBtn = screen.getByRole('button', { name: 'Save' });
+      expect(saveBtn).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
+      expect(saveCall).toBeDefined();
+      expect(saveCall![1]).toHaveProperty('settings');
+      expect(saveCall![1].settings).toMatchObject({ fpsCounter: true });
     });
   });
 
   it('A007/settings-advanced: loads saved fpsCounter=true from settings', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_data_dir') return Promise.resolve('/tmp/.snapfzz');
-      if (cmd === 'get_advanced_settings') return Promise.resolve({ fpsCounter: true, logLevel: 'info' });
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings({ fpsCounter: true }));
+      if (cmd === 'save_settings') return Promise.resolve(undefined);
       return Promise.resolve({});
     });
     render(<AdvancedSettings />);
@@ -183,7 +230,7 @@ describe('A007/settings-advanced: reset to defaults', () => {
     });
   });
 
-  it('A007/settings-advanced: confirming reset calls reset_all_settings', async () => {
+  it('A007/settings-advanced: confirming reset calls save_settings with default values', async () => {
     const user = userEvent.setup();
     render(<AdvancedSettings />);
     await waitFor(() => screen.getByRole('button', { name: /reset all settings to defaults/i }));
@@ -200,15 +247,17 @@ describe('A007/settings-advanced: reset to defaults', () => {
     if (resetBtn) {
       await user.click(resetBtn);
       await waitFor(() => {
-        const cmds = mockInvoke.mock.calls.map((c) => c[0]);
-        expect(cmds).toContain('reset_all_settings');
+        const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
+        expect(saveCall).toBeDefined();
+        expect(saveCall![1]).toHaveProperty('settings');
+        expect(saveCall![1].settings).toMatchObject({ model: 'gpt-4o', theme: 'system', logLevel: 'info' });
       });
     } else {
       expect(true).toBe(true);
     }
   });
 
-  it('A007/settings-advanced: cancelling reset does not call reset_all_settings', async () => {
+  it('A007/settings-advanced: cancelling reset does not call save_settings for reset', async () => {
     const user = userEvent.setup();
     render(<AdvancedSettings />);
     await waitFor(() => screen.getByRole('button', { name: /reset all settings to defaults/i }));
