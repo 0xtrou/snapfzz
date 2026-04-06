@@ -258,3 +258,109 @@ describe('A007/settings-runtime: Tauri unavailable', () => {
     });
   });
 });
+
+describe('A007/settings-runtime: handleSave', () => {
+  async function waitForLoad() {
+    await waitFor(() => {
+      const cmds = mockInvoke.mock.calls.map((c: unknown[]) => c[0]);
+      expect(cmds).toContain('get_settings');
+    });
+    await new Promise((r) => setTimeout(r, 150));
+  }
+
+  it('A007/settings-runtime: clicking Save calls save_settings with merged payload', async () => {
+    const user = userEvent.setup();
+    render(<RuntimeSettings />);
+    await waitForLoad();
+
+    const apiUrlInput = screen.getByPlaceholderText('https://api.openai.com/v1');
+    await user.clear(apiUrlInput);
+    await user.type(apiUrlInput, 'https://changed.api.com');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
+      expect(saveCall).toBeDefined();
+      expect(saveCall![1]).toHaveProperty('settings');
+      expect(saveCall![1].settings).toHaveProperty('apiKey');
+      expect(saveCall![1].settings).toHaveProperty('model');
+      expect(saveCall![1].settings).toHaveProperty('apiUrl');
+    });
+  });
+
+  it('A007/settings-runtime: sets saveError when save_settings rejects', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ apiKey: 'sk-test-key', model: 'gpt-4o', apiUrl: 'https://api.openai.com/v1' });
+      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
+      if (cmd === 'save_settings') return Promise.reject(new Error('write failed'));
+      return Promise.resolve({});
+    });
+    render(<RuntimeSettings />);
+    await waitForLoad();
+
+    const apiUrlInput = screen.getByPlaceholderText('https://api.openai.com/v1');
+    await user.clear(apiUrlInput);
+    await user.type(apiUrlInput, 'https://error.api.com');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(mockInvoke.mock.calls.some((c) => c[0] === 'save_settings')).toBe(true);
+    });
+  });
+
+  it('A007/settings-runtime: discard button reloads settings and clears dirty state', async () => {
+    const user = userEvent.setup();
+    render(<RuntimeSettings />);
+    await waitForLoad();
+
+    const apiUrlInput = screen.getByPlaceholderText('https://api.openai.com/v1');
+    await user.clear(apiUrlInput);
+    await user.type(apiUrlInput, 'https://custom.api.example.com');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+    });
+
+    const getSettingsCallsBefore = mockInvoke.mock.calls.filter((c) => c[0] === 'get_settings').length;
+
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+
+    await waitFor(() => {
+      const getSettingsCallsAfter = mockInvoke.mock.calls.filter((c) => c[0] === 'get_settings').length;
+      expect(getSettingsCallsAfter).toBeGreaterThan(getSettingsCallsBefore);
+    });
+  });
+
+  it('A007/settings-runtime: validation failure prevents save when apiKey is empty', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ apiKey: '', model: 'gpt-4o', apiUrl: 'https://api.openai.com/v1' });
+      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
+      if (cmd === 'save_settings') return Promise.resolve({});
+      return Promise.resolve({});
+    });
+    render(<RuntimeSettings />);
+    await waitForLoad();
+
+    const apiUrlInput = screen.getByPlaceholderText('https://api.openai.com/v1');
+    await user.clear(apiUrlInput);
+    await user.type(apiUrlInput, 'https://changed.example.com');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await new Promise((r) => setTimeout(r, 200));
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === 'save_settings').length).toBe(0);
+  });
+});

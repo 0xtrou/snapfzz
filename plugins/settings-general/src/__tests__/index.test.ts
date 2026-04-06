@@ -1,4 +1,3 @@
-// A007/SettingsSections: validates settings-general plugin manifest and activation contract.
 import { describe, it, expect } from 'vitest';
 import plugin from '../index';
 
@@ -53,6 +52,13 @@ describe('A007/settings-general manifest', () => {
   it('A007/settingsSections: component is a lazy import function', () => {
     const section = plugin.contributes?.settingsSections?.[0];
     expect(typeof section?.component).toBe('function');
+  });
+
+  it('A007/settingsSections: component lazy import resolves to a module with a default export', async () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    const mod = await section!.component();
+    expect(mod).toBeDefined();
+    expect((mod as { default: unknown }).default).toBeDefined();
   });
 });
 

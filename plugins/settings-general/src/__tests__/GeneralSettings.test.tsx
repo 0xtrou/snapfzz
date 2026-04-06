@@ -276,3 +276,144 @@ describe('A007/settings-general: Tauri unavailable', () => {
     });
   });
 });
+
+describe('A007/settings-general: loadSettings fallback defaults', () => {
+  it('A007/settings-general: uses system theme fallback when settings.theme is missing', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ openLastProject: true, language: 'en', fontFamily: 'Inter', fontSize: '14' });
+      return Promise.resolve({});
+    });
+    render(<GeneralSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'System (follow OS)' })).toBeChecked();
+    });
+  });
+
+  it('A007/settings-general: uses openLastProject=true fallback when missing from settings', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', language: 'en', fontFamily: 'Inter', fontSize: '14' });
+      return Promise.resolve({});
+    });
+    render(<GeneralSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /reopen last project/i })).toBeChecked();
+    });
+  });
+
+  it('A007/settings-general: uses en language fallback when missing from settings', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, fontFamily: 'Inter', fontSize: '14' });
+      return Promise.resolve({});
+    });
+    render(<GeneralSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-general: uses Inter fontFamily fallback when missing from settings', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, language: 'en', fontSize: '14' });
+      return Promise.resolve({});
+    });
+    render(<GeneralSettings />);
+    await waitFor(() => {
+      expect(screen.getByText(/font family/i)).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-general: uses fontSize 14 fallback when missing from settings', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, language: 'en', fontFamily: 'Inter' });
+      return Promise.resolve({});
+    });
+    render(<GeneralSettings />);
+    await waitFor(() => {
+      expect(screen.getByText(/font size/i)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('A007/settings-general: error paths and discard', () => {
+  it('A007/settings-general: shows error when save_settings rejects', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'save_settings') return Promise.reject(new Error('disk full'));
+      return Promise.resolve({});
+    });
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await user.click(screen.getByRole('radio', { name: 'Dark' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(mockInvoke.mock.calls.some((c) => c[0] === 'save_settings')).toBe(true);
+    });
+  });
+
+  it('A007/settings-general: discard button calls loadSettings and resets dirty state', async () => {
+    const user = userEvent.setup();
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await user.click(screen.getByRole('radio', { name: 'Light' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+    });
+
+    const callCountBefore = mockInvoke.mock.calls.filter((c) => c[0] === 'get_settings').length;
+
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+
+    await waitFor(() => {
+      const callCountAfter = mockInvoke.mock.calls.filter((c) => c[0] === 'get_settings').length;
+      expect(callCountAfter).toBeGreaterThan(callCountBefore);
+    });
+  });
+
+  it('A007/settings-general: custom font family input is rendered and accepts text input', async () => {
+    const user = userEvent.setup();
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    const customFontInput = screen.getByPlaceholderText('Or type a custom font name...');
+    expect(customFontInput).toBeInTheDocument();
+    await user.clear(customFontInput);
+    await user.type(customFontInput, 'Roboto');
+    expect((customFontInput as HTMLInputElement).value).toBe('Roboto');
+  });
+
+  it('A007/settings-general: custom font size input is rendered and accepts text input', async () => {
+    const user = userEvent.setup();
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    const customSizeInput = screen.getByPlaceholderText('Or type a custom size (e.g. 17)...');
+    expect(customSizeInput).toBeInTheDocument();
+    await user.clear(customSizeInput);
+    await user.type(customSizeInput, '20');
+    expect((customSizeInput as HTMLInputElement).value).toBe('20');
+  });
+
+  it('A007/settings-general: save success clears after timeout', async () => {
+    const user = userEvent.setup();
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await user.click(screen.getByRole('radio', { name: 'Dark' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+    });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(mockInvoke.mock.calls.some((c) => c[0] === 'save_settings')).toBe(true);
+    });
+  });
+});

@@ -57,6 +57,13 @@ describe('A007/settings-runtime manifest', () => {
     const section = plugin.contributes?.settingsSections?.[0];
     expect(typeof section?.component).toBe('function');
   });
+
+  it('A007/settingsSections: component lazy import resolves to a module with a default export', async () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    const mod = await section!.component();
+    expect(mod).toBeDefined();
+    expect((mod as { default: unknown }).default).toBeDefined();
+  });
 });
 
 describe('A005/settings-runtime activation', () => {

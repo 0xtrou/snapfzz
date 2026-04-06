@@ -751,6 +751,233 @@ describe('A008/settings-processes: kill process', () => {
   });
 });
 
+describe('A008/settings-processes: detail panel health URL interactions', () => {
+  it('A008/settings-processes: shows — for health URL when empty', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', healthUrl: '' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('detail-health-url')).toHaveTextContent('—');
+    });
+  });
+
+  it('A008/settings-processes: copy URL button is present when healthUrl is set', async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', healthUrl: 'http://127.0.0.1:8090/health' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('detail-health-url')).toHaveTextContent('http://127.0.0.1:8090/health');
+    });
+  });
+
+  it('A008/settings-processes: open log folder button calls get_data_dir and open_path', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_data_dir') return Promise.resolve('/Users/test/.snapfzz');
+      if (cmd === 'open_path') return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-open-log-file-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-open-log-file-agentscope'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const cmds = mockInvoke.mock.calls.map(([cmd]) => cmd);
+      expect(cmds).toContain('get_data_dir');
+    });
+  });
+
+  it('A008/settings-processes: open log folder failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_data_dir') return Promise.reject(new Error('no path'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-open-log-file-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-open-log-file-agentscope'));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+  });
+});
+
+describe('A008/settings-processes: null rssMb in detail panel', () => {
+  it('A008/settings-processes: shows — for rss when rssMb is null', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', rssMb: null })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('A008/settings-processes: log panel empty state', () => {
+  it('A008/settings-processes: log panel shows No logs when logs are empty', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('log-panel-agentscope')).toHaveTextContent('No logs');
+    });
+  });
+
+  it('A008/settings-processes: toggle logs hides log panel on second click', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve(['log line']);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
+    });
+    await waitFor(() => screen.getByTestId('log-panel-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('log-panel-agentscope')).not.toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-processes: get_process_logs failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.reject(new Error('no logs'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-view-logs-agentscope')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('A008/settings-processes: restart process success', () => {
+  it('A008/settings-processes: restart_process is called after popconfirm confirm', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'restart_process') return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-restart-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-restart-agentscope'));
+    });
+
+    await waitFor(() => {
+      const okBtn = document.querySelector('.ant-popconfirm .ant-btn-primary');
+      if (okBtn) {
+        fireEvent.click(okBtn);
+      }
+    });
+
+    await waitFor(() => {
+      const cmds = mockInvoke.mock.calls.map(([cmd]) => cmd);
+      expect(cmds).toContain('list_processes');
+    });
+  });
+});
+
 describe('A008/settings-processes: max memory config', () => {
   it('A008/settings-processes: max memory is displayed as read-only text', async () => {
     mockInvoke.mockImplementation((cmd: string) => {

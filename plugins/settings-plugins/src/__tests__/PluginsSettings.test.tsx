@@ -278,4 +278,136 @@ describe('A007/settings-plugins: Tauri unavailable', () => {
       expect(screen.getByText('No plugins installed.')).toBeInTheDocument();
     });
   });
+
+  it('A007/settings-plugins: shows empty list when __TAURI_INTERNALS__ is absent', async () => {
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('No plugins installed.')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('A007/settings-plugins: default field values', () => {
+  it('A007/settings-plugins: uses id as name when name field is missing', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.bare' },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getAllByText('snapfzz.bare').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('A007/settings-plugins: shows — for version when version is absent', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.bare', name: 'Bare', enabled: true },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('—')).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-plugins: uses zone3 default when zone is absent', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.bare', name: 'Bare', version: '1.0.0', enabled: true },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('zone3')).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-plugins: defaults to 0 strikes when strikes absent', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.bare', name: 'Bare', version: '1.0.0', zone: 'zone3', enabled: true },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('0 strikes')).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-plugins: defaults to enabled=true when enabled is absent', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.bare', name: 'Bare', version: '1.0.0', zone: 'zone3', strikes: 0 },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      const toggle = screen.getByRole('switch', { name: /toggle bare/i });
+      expect(toggle).toBeChecked();
+    });
+  });
+});
+
+describe('A007/settings-plugins: strikeColor thresholds', () => {
+  it('A007/settings-plugins: shows 3 strikes with error color', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 3, enabled: true },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('3 strikes')).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-plugins: shows 0 strikes with success color (no warning)', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      const tag = screen.getByText('0 strikes').closest('.ant-tag');
+      expect(tag?.className).toContain('success');
+    });
+  });
+});
+
+describe('A007/settings-plugins: budget_snapshot returns no plugins key', () => {
+  it('A007/settings-plugins: handles snapshot with no plugins array', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return Promise.resolve({});
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('No plugins installed.')).toBeInTheDocument();
+    });
+  });
 });

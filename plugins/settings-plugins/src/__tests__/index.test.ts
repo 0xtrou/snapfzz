@@ -68,4 +68,10 @@ describe('A005/settings-plugins activation', () => {
     const handle = await plugin.activate!(ctx);
     expect(handle).not.toBeNull();
   });
+
+  it('A007/settingsSections: component lazy import resolves to a module', async () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    const mod = await section?.component();
+    expect(mod).toBeDefined();
+  });
 });
