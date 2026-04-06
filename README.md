@@ -6,7 +6,7 @@
   </p>
   <p align="center">
     <a href="https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml"><img src="https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/0xtrou/snapfzz/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+    <a href="https://github.com/0xtrou/snapfzz/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-SCL%201.0-blue.svg" alt="License"></a>
   </p>
 </p>
 
@@ -77,7 +77,9 @@ cargo tauri dev
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Snapfzz Community License (SCL) 1.0](LICENSE) — Source-available. Free for personal, education, nonprofit, and small business use. Commercial users pay what they want. Converts irrevocably to Apache 2.0 after 3 years per version.
+
+[Support the project →](https://snapfzz.com/sponsor)
 
 ---
 
