@@ -4,6 +4,8 @@ export {
   LogLevelSchema,
   FontFamilySchema,
   FontSizeSchema,
+  AgentscopeHostSchema,
+  AgentscopePortSchema,
   SettingsDefaults,
   validateSettings,
   safeParseSettings,

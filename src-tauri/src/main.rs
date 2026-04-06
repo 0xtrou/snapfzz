@@ -79,7 +79,7 @@ struct Settings {
     #[serde(default = "default_agentscope_host")]
     agentscope_host: String,
     #[serde(default = "default_agentscope_port")]
-    agentscope_port: u16,
+    agentscope_port: String,
 }
 
 fn default_model() -> String { "gpt-4o".to_string() }
@@ -92,7 +92,7 @@ fn default_language() -> String { "en".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_preset() -> String { "auto".to_string() }
 fn default_agentscope_host() -> String { "127.0.0.1".to_string() }
-fn default_agentscope_port() -> u16 { AGENTSCOPE_PORT }
+fn default_agentscope_port() -> String { AGENTSCOPE_PORT.to_string() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -683,6 +683,11 @@ async fn spawn_runtime(
     cleanup_stale_pid();
     let intelligence_dir = resolve_intelligence_dir()?;
 
+    // Read host/port from persisted settings, falling back to defaults.
+    let settings = get_settings().await.unwrap_or_default();
+    let host = if settings.agentscope_host.is_empty() { "127.0.0.1".to_string() } else { settings.agentscope_host };
+    let port: u16 = settings.agentscope_port.parse().unwrap_or(AGENTSCOPE_PORT);
+
     // A008/Supervised: pipe stdout+stderr before taking ownership of child.
     // Reader tasks push lines into ProcessLogs so the main child handle stays clean.
     let mut cmd = tokio::process::Command::new("uv");
@@ -745,7 +750,7 @@ async fn spawn_runtime(
     registry.register_process("agentscope", ProcessBudget {
         pid: Some(child_pid),
         max_memory_mb: prev_max_memory,
-        health_url: format!("http://127.0.0.1:{AGENTSCOPE_PORT}/health"),
+        health_url: format!("http://{host}:{port}/health"),
         health_interval_ms: 2000,
         max_health_failures: 3,
         max_restarts: preset_max_restarts,
@@ -763,7 +768,7 @@ async fn spawn_runtime(
             if let Some(mut entry) = registry.supervised.processes.get_mut("agentscope") {
                 entry.status = snapfzz_budget::metrics::ProcessStatus::Online;
             }
-            eprintln!("[budget] AgentScope Runtime healthy on port {AGENTSCOPE_PORT}");
+            eprintln!("[budget] AgentScope Runtime healthy on {host}:{port}");
             let _ = app_handle.emit("supervisor-event", SupervisorEvent {
                 event_type: "success".into(),
                 process: "agentscope".into(),

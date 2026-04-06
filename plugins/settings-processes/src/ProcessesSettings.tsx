@@ -22,7 +22,7 @@ import {
   FolderOpenOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { SettingsHeader } from '@snapfzz/shared';
+import { SettingsHeader, AgentscopeHostSchema, AgentscopePortSchema } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -121,6 +121,12 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
   const [savedPort, setSavedPort] = useState('8090');
   const [configSaving, setConfigSaving] = useState(false);
   const configDirty = agentscopeHost !== savedHost || agentscopePort !== savedPort;
+
+  const hostValidation = AgentscopeHostSchema.safeParse(agentscopeHost);
+  const portValidation = AgentscopePortSchema.safeParse(agentscopePort);
+  const configValid = hostValidation.success && portValidation.success;
+  const hostError = !hostValidation.success ? hostValidation.error.issues[0]?.message : null;
+  const portError = !portValidation.success ? portValidation.error.issues[0]?.message : null;
 
   const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -242,7 +248,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           >
             Connection
           </Text>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 10 }}>
             <div style={{ flex: 1 }}>
               <Text style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>
                 Host
@@ -252,6 +258,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                 value={agentscopeHost}
                 onChange={(e) => setAgentscopeHost(e.target.value)}
                 placeholder="127.0.0.1"
+                status={hostError ? 'error' : undefined}
                 style={{
                   background: 'var(--bg-input)',
                   borderColor: 'var(--border-default)',
@@ -259,6 +266,11 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                   fontSize: 13,
                 }}
               />
+              {hostError && (
+                <Text style={{ color: 'var(--color-error)', fontSize: 11, display: 'block', marginTop: 2 }}>
+                  {hostError}
+                </Text>
+              )}
             </div>
             <div style={{ width: 110 }}>
               <Text style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>
@@ -269,6 +281,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                 value={agentscopePort}
                 onChange={(e) => setAgentscopePort(e.target.value)}
                 placeholder="8090"
+                status={portError ? 'error' : undefined}
                 style={{
                   background: 'var(--bg-input)',
                   borderColor: 'var(--border-default)',
@@ -276,6 +289,11 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                   fontSize: 13,
                 }}
               />
+              {portError && (
+                <Text style={{ color: 'var(--color-error)', fontSize: 11, display: 'block', marginTop: 2 }}>
+                  {portError}
+                </Text>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -288,13 +306,13 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
               onConfirm={handleSaveAndRestart}
               okText="Save & Restart"
               cancelText="Cancel"
-              disabled={!configDirty}
+              disabled={!configDirty || !configValid}
             >
               <Button
                 size="small"
                 icon={<SaveOutlined />}
                 loading={configSaving}
-                disabled={!configDirty}
+                disabled={!configDirty || !configValid}
                 data-testid="btn-save-restart-agentscope"
               >
                 Save & Restart
