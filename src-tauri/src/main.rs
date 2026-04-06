@@ -1048,4 +1048,38 @@ mod tests {
         assert!(!lines.contains(&"line-0".to_string()), "oldest line must be evicted");
         assert!(lines.contains(&format!("line-{PROCESS_LOG_MAX_LINES}")), "newest line must be retained");
     }
+
+    #[test]
+    fn a008_process_logs_push_concurrent_processes_isolated() {
+        let store = ProcessLogs::new();
+        store.push("alpha", "alpha-1".into());
+        store.push("alpha", "alpha-2".into());
+        store.push("beta", "beta-1".into());
+        store.push("gamma", "gamma-1".into());
+
+        let alpha = store.tail("alpha", 100);
+        let beta = store.tail("beta", 100);
+        let gamma = store.tail("gamma", 100);
+
+        assert_eq!(alpha, vec!["alpha-1", "alpha-2"]);
+        assert_eq!(beta, vec!["beta-1"]);
+        assert_eq!(gamma, vec!["gamma-1"]);
+        assert!(!alpha.iter().any(|l| l.starts_with("beta")));
+        assert!(!beta.iter().any(|l| l.starts_with("alpha")));
+    }
+
+    #[test]
+    fn a008_process_logs_tail_returns_newest() {
+        let store = ProcessLogs::new();
+        for i in 0..10 {
+            store.push("agentscope", format!("line-{i}"));
+        }
+
+        let tail = store.tail("agentscope", 3);
+
+        assert_eq!(tail.len(), 3);
+        assert_eq!(tail[0], "line-7");
+        assert_eq!(tail[1], "line-8");
+        assert_eq!(tail[2], "line-9");
+    }
 }

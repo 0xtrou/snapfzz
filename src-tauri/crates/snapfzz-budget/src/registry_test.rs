@@ -138,4 +138,26 @@ mod tests {
             crate::metrics::ProcessStatus::Stopped
         ));
     }
+
+    #[test]
+    fn a008_registry_snapshot_processes_empty_when_none_registered() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        let snap = reg.snapshot();
+        assert!(snap.processes.is_empty());
+    }
+
+    #[test]
+    fn a008_registry_snapshot_processes_contains_registered() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        reg.register_process("test", make_budget());
+        let snap = reg.snapshot();
+        assert!(snap.processes.iter().any(|p| p.name == "test"));
+    }
+
+    #[test]
+    fn a008_registry_snapshot_agentscope_status_stopped_when_not_registered() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        let snap = reg.snapshot();
+        assert!(matches!(snap.agentscope_status, ProcessStatus::Stopped));
+    }
 }
