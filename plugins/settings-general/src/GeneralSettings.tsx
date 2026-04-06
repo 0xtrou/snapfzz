@@ -55,6 +55,9 @@ const LANGUAGE_OPTIONS = [
 const FONT_FAMILY_PRESETS = [
   { value: 'Inter', label: 'Inter' },
   { value: 'System', label: 'System Default' },
+  { value: 'SF Pro', label: 'SF Pro' },
+  { value: 'Helvetica Neue', label: 'Helvetica Neue' },
+  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
 ];
 
 const FONT_SIZE_OPTIONS = [
