@@ -318,6 +318,108 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  plugins/settings-advanced:
+    dependencies:
+      '@snapfzz/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../frontend/packages/plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../../frontend/packages/shared
+      antd:
+        specifier: ^5.0.0
+        version: 5.29.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  plugins/settings-general:
+    dependencies:
+      '@snapfzz/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../frontend/packages/plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../../frontend/packages/shared
+      antd:
+        specifier: ^5.0.0
+        version: 5.29.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  plugins/settings-performance:
+    dependencies:
+      '@ant-design/icons':
+        specifier: ^6.0.0
+        version: 6.1.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@snapfzz/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../frontend/packages/plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../../frontend/packages/shared
+      antd:
+        specifier: ^5.24.0
+        version: 5.29.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+
+  plugins/settings-plugins:
+    dependencies:
+      '@snapfzz/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../frontend/packages/plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../../frontend/packages/shared
+      antd:
+        specifier: ^5.0.0
+        version: 5.29.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  plugins/settings-runtime:
+    dependencies:
+      '@ant-design/icons':
+        specifier: ^6.0.0
+        version: 6.1.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@snapfzz/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../frontend/packages/plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../../frontend/packages/shared
+      antd:
+        specifier: ^5.24.0
+        version: 5.29.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+
   plugins/test-plugin:
     dependencies:
       '@snapfzz/plugin-sdk':

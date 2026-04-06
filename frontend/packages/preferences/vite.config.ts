@@ -1,10 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
-// Per A007/MultiLayout: preferences window gets its own Vite entry point and port 5175.
-// Independent build target ensures separate frame budget from project window.
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@snapfzz/settings-general': path.resolve(__dirname, '../../../plugins/settings-general/src/index.ts'),
+      '@snapfzz/settings-runtime': path.resolve(__dirname, '../../../plugins/settings-runtime/src/index.ts'),
+      '@snapfzz/settings-performance': path.resolve(__dirname, '../../../plugins/settings-performance/src/index.ts'),
+      '@snapfzz/settings-plugins': path.resolve(__dirname, '../../../plugins/settings-plugins/src/index.ts'),
+      '@snapfzz/settings-advanced': path.resolve(__dirname, '../../../plugins/settings-advanced/src/index.ts'),
+    },
+  },
   build: {
     outDir: '../../dist/preferences',
     emptyDirFirst: true,
