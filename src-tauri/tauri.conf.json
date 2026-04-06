@@ -24,6 +24,21 @@
         "resizable": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
+      },
+      {
+        "title": "Snapfzz Preferences",
+        "label": "preferences",
+        "url": "http://localhost:5175",
+        "width": 720,
+        "height": 560,
+        "minWidth": 600,
+        "minHeight": 400,
+        "center": true,
+        "decorations": true,
+        "resizable": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "visible": false
       }
     ],
     "security": {

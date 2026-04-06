@@ -17,6 +17,9 @@ importers:
       '@snapfzz/chat-plugin':
         specifier: workspace:*
         version: link:plugins/chat
+      '@tauri-apps/api':
+        specifier: ^2.0.0
+        version: 2.10.1
     devDependencies:
       '@testing-library/react':
         specifier: ^16.3.2

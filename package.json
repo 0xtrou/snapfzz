@@ -19,7 +19,8 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.1",
     "@chenglou/pretext": "^0.0.4",
-    "@snapfzz/chat-plugin": "workspace:*"
+    "@snapfzz/chat-plugin": "workspace:*",
+    "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",

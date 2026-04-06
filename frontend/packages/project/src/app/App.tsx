@@ -1,11 +1,6 @@
-// Per A006/CoreRuntime: Project shell renders contributions from ContributionStore via PluginHost.
-// Per A005/PluginArchitecture: shells remain empty of feature-plugin imports — runtime discovery registers plugins.
-// Per SNA-4: Integrate with @snapfzz/plugin-host for plugin-driven UI.
-import { useState, useRef, lazy, Suspense, useMemo, useEffect, useCallback, type ComponentType } from 'react';
-import { ConfigProvider, Button } from 'antd';
-import { SunOutlined, MoonOutlined } from '@ant-design/icons';
+import { useState, lazy, Suspense, useEffect, useCallback, type ComponentType } from 'react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
-import { useTheme, darkTheme, lightTheme } from '@snapfzz/shared';
+import { WindowShell } from '@snapfzz/shared';
 import {
   PluginHost,
   ContributionStore,
@@ -33,33 +28,24 @@ function LazyComponent({ loader, pluginId, onCrash }: {
 
 function TabBar({ tabs, activeTabId, onTabClick }: {
   tabs: readonly TabContribution[];
-  activeTabId: string | null;
+  activeTabId: string;
   onTabClick: (id: string) => void;
 }) {
-  if (tabs.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-[var(--text-muted)] text-sm">
-        No tabs available — install plugins to see content
-      </div>
-    );
-  }
-
   return (
-    <div className="flex border-b border-[var(--border-default)]">
+    <div className="flex items-center gap-1 px-2 py-1 bg-[var(--bg-default)]">
       {tabs.map((tab) => (
         <button
-          type="button"
           key={tab.id}
+          type="button"
           onClick={() => onTabClick(tab.id)}
-          className={`px-4 py-2 text-sm transition-colors duration-150 hover:bg-[var(--bg-subtle)] ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
             activeTabId === tab.id
-              ? 'text-[var(--text-primary)] border-b-2 border-[var(--accent)] bg-[var(--bg-subtle)]'
-              : 'text-[var(--text-muted)]'
+              ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
           }`}
-          style={{ transform: 'translateZ(0)' }} // Per A001: GPU-only animation constraint per performance spec.
         >
-          <span className="mr-2">{tab.icon}</span>
-          {tab.label}
+          <span>{tab.icon}</span>
+          <span>{tab.label}</span>
         </button>
       ))}
     </div>
@@ -73,7 +59,6 @@ function LeftPanel({ tabs, activeTabId, onTabChange, onCrash }: {
   onCrash: (pluginId: string, error: Error) => void;
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
-
   return (
     <div className="h-full flex flex-col" style={{ contain: 'strict' }}>
       <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
@@ -82,7 +67,7 @@ function LeftPanel({ tabs, activeTabId, onTabChange, onCrash }: {
           <LazyComponent loader={activeTab.component} pluginId={activeTab.id} onCrash={onCrash} />
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-            Select a tab to view content
+            No tabs available — install plugins to see content
           </div>
         )}
       </div>
@@ -97,7 +82,6 @@ function RightPanel({ tabs, activeTabId, onTabChange, onCrash }: {
   onCrash: (pluginId: string, error: Error) => void;
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
-
   return (
     <div className="h-full flex flex-col" style={{ contain: 'strict' }}>
       <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
@@ -106,7 +90,7 @@ function RightPanel({ tabs, activeTabId, onTabChange, onCrash }: {
           <LazyComponent loader={activeTab.component} pluginId={activeTab.id} onCrash={onCrash} />
         ) : (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-            Select a workspace tab to view content
+            No tabs available — install plugins to see content
           </div>
         )}
       </div>
@@ -122,7 +106,6 @@ function BottomPanel({ panels, onCrash }: { panels: readonly PanelContribution[]
       </div>
     );
   }
-
   return (
     <div className="h-full flex">
       {panels.map((panel) => (
@@ -134,114 +117,25 @@ function BottomPanel({ panels, onCrash }: { panels: readonly PanelContribution[]
   );
 }
 
-function FpsCounter() {
-  const [fps, setFps] = useState(0);
-  const framesRef = useRef(0);
-  const lastTimeRef = useRef(performance.now());
-
-  useEffect(() => {
-    let rafId: number;
-    const tick = () => {
-      framesRef.current++;
-      const now = performance.now();
-      if (now - lastTimeRef.current >= 1000) {
-        setFps(framesRef.current);
-        framesRef.current = 0;
-        lastTimeRef.current = now;
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
-
-  const color = fps >= 55 ? 'var(--color-success)' : fps >= 30 ? 'var(--color-warning)' : 'var(--color-error)';
-  return <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{fps} fps</span>;
-}
-
-function StatusBar({ items, pluginCount, onCrash }: { items: readonly StatusItemContribution[]; pluginCount: number; onCrash: (pluginId: string, error: Error) => void }) {
-  const leftItems = items.filter((item) => item.position === 'left');
-  const rightItems = items.filter((item) => item.position === 'right');
-
-  return (
-    <footer className="h-8 flex items-center px-4 text-xs border-t border-[var(--border-default)] bg-[var(--bg-default)]">
-      <div className="flex items-center gap-3">
-        {leftItems.map((item) => (
-          <StatusItemWrapper key={item.id} item={item} onCrash={onCrash} />
-        ))}
-        <span className="text-[var(--text-muted)]">{pluginCount} plugin{pluginCount !== 1 ? 's' : ''}</span>
-      </div>
-      <div className="ml-auto flex items-center gap-4">
-        {rightItems.map((item) => (
-          <StatusItemWrapper key={item.id} item={item} onCrash={onCrash} />
-        ))}
-        <FpsCounter />
-      </div>
-    </footer>
-  );
-}
-
 function StatusItemWrapper({ item, onCrash }: { item: StatusItemContribution; onCrash: (pluginId: string, error: Error) => void }) {
   return <LazyComponent loader={item.component} pluginId={item.id} onCrash={onCrash} />;
 }
 
-function createPluginHost(store: ContributionStore): PluginHost {
-  return new PluginHost(store, 'project');
-}
-
 const store = new ContributionStore();
-const host = createPluginHost(store);
+const host = new PluginHost(store, 'project');
 let pluginsInitialized = false;
 
 export function App() {
-  const { theme, toggleTheme } = useTheme();
-  const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
-
   const contributions = useContributionStore(() => store);
-
-  const [leftPanelActiveTab, setLeftPanelActiveTab] = useState<string | null>(null);
-  const [workspaceActiveTab, setWorkspaceActiveTab] = useState<string | null>(null);
 
   const leftPanelTabs = contributions.leftPanelTabs;
   const workspaceTabs = contributions.workspaceTabs;
 
-  // Per A005/Isolation: crash callback routes through host crash supervision (3-strike auto-disable).
+  const [leftPanelActiveTab, setLeftPanelActiveTab] = useState<string | null>(null);
+  const [workspaceActiveTab, setWorkspaceActiveTab] = useState<string | null>(null);
+
   const handleCrash = useCallback((pluginId: string, _error: Error) => {
     host.reportCrash(pluginId);
-  }, []);
-
-  const titleBarRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const tauriInvoke = (cmd: string, args?: Record<string, unknown>) => {
-      const tauri = (window as Record<string, unknown>).__TAURI_INTERNALS__ as
-        | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-        | undefined;
-      if (tauri) tauri.invoke(cmd, args).catch(() => {});
-    };
-
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!titleBarRef.current?.contains(target)) return;
-      if (target.closest('input, textarea, button, a, select')) return;
-      if (e.button !== 0) return;
-      e.preventDefault();
-      tauriInvoke('plugin:window|start_dragging', { label: 'launcher' });
-    };
-
-    const handleDblClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!titleBarRef.current?.contains(target)) return;
-      if (target.closest('input, textarea, button, a, select')) return;
-      tauriInvoke('plugin:window|toggle_maximize', { label: 'launcher' });
-    };
-
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('dblclick', handleDblClick);
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('dblclick', handleDblClick);
-    };
   }, []);
 
   useEffect(() => {
@@ -257,7 +151,6 @@ export function App() {
   }, [workspaceActiveTab, workspaceTabs]);
 
   useEffect(() => {
-    // Per A003/InstantLoading: hide skeleton once React hydrates.
     document.documentElement.setAttribute('data-app-ready', 'true');
     const skeleton = document.getElementById('skeleton');
     if (skeleton) {
@@ -274,57 +167,38 @@ export function App() {
     });
   }, []);
 
-  return (
-    <ConfigProvider theme={antdTheme}>
-      <PluginHostProvider host={host}>
-        <div className="flex flex-col h-screen overflow-hidden">
-          <header
-            ref={titleBarRef}
-            className="flex items-center gap-2 px-4 pr-3 border-b border-[var(--border-default)] bg-[var(--bg-default)] select-none cursor-default"
-            style={{ paddingLeft: 78, height: 38 }}
-          >
-            <div className="ml-auto flex items-center gap-1 pointer-events-auto">
-              <Button
-                type="text"
-                size="small"
-                icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-                onClick={toggleTheme}
-              />
-              <img src="/logo.svg" alt="Snapfzz" className="w-5 h-5" />
-            </div>
-          </header>
+  const leftItems = contributions.statusItems.filter((item) => item.position === 'left');
 
+  return (
+    <PluginHostProvider host={host}>
+      <WindowShell
+        statusBarContent={
+          <>
+            {leftItems.map((item) => (
+              <StatusItemWrapper key={item.id} item={item} onCrash={handleCrash} />
+            ))}
+            <span className="text-[var(--text-muted)]">
+              {contributions.leftPanelTabs.length + contributions.workspaceTabs.length} plugin{contributions.leftPanelTabs.length + contributions.workspaceTabs.length !== 1 ? 's' : ''}
+            </span>
+          </>
+        }
+      >
+        <div className="flex flex-col h-full">
           <PanelGroup direction="horizontal" className="flex-1" style={{ contain: 'strict' }}>
             <Panel defaultSize={40} minSize={20}>
-              <LeftPanel
-                tabs={leftPanelTabs}
-                activeTabId={leftPanelActiveTab || ''}
-                onTabChange={setLeftPanelActiveTab}
-                onCrash={handleCrash}
-              />
+              <LeftPanel tabs={leftPanelTabs} activeTabId={leftPanelActiveTab || ''} onTabChange={setLeftPanelActiveTab} onCrash={handleCrash} />
             </Panel>
-            <PanelResizeHandle 
-              className="w-1 bg-[var(--border-default)] hover:bg-[var(--border-strong)] transition-colors cursor-col-resize"
-              style={{ transform: 'translateZ(0)' }} // Per A001: GPU-only animation constraint per performance spec.
-            />
+            <PanelResizeHandle className="w-1 bg-[var(--border-default)] hover:bg-[var(--border-strong)] transition-colors cursor-col-resize" style={{ transform: 'translateZ(0)' }} />
             <Panel defaultSize={60} minSize={30}>
-              <RightPanel
-                tabs={workspaceTabs}
-                activeTabId={workspaceActiveTab || ''}
-                onTabChange={setWorkspaceActiveTab}
-                onCrash={handleCrash}
-              />
+              <RightPanel tabs={workspaceTabs} activeTabId={workspaceActiveTab || ''} onTabChange={setWorkspaceActiveTab} onCrash={handleCrash} />
             </Panel>
           </PanelGroup>
 
-          {/* Per U006: Bottom panel - Agent Network area */}
-          <div className="h-48 border-t border-[var(--border-default)]" style={{ contain: 'strict' }}>
+          <div className="h-48" style={{ contain: 'strict' }}>
             <BottomPanel panels={contributions.bottomPanels} onCrash={handleCrash} />
           </div>
-
-          <StatusBar items={contributions.statusItems} pluginCount={contributions.leftPanelTabs.length + contributions.workspaceTabs.length} onCrash={handleCrash} />
         </div>
-      </PluginHostProvider>
-    </ConfigProvider>
+      </WindowShell>
+    </PluginHostProvider>
   );
 }

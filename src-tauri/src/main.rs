@@ -291,28 +291,10 @@ async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Res
 
 #[tauri::command]
 async fn open_preferences(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::{WebviewUrl, WebviewWindowBuilder};
-
     if let Some(window) = app.get_webview_window("preferences") {
+        window.show().map_err(|e: tauri::Error| e.to_string())?;
         window.set_focus().map_err(|e: tauri::Error| e.to_string())?;
-        return Ok(());
     }
-
-    let url = if cfg!(debug_assertions) {
-        WebviewUrl::External("http://localhost:5175".parse().unwrap())
-    } else {
-        WebviewUrl::App("preferences.html".into())
-    };
-
-    WebviewWindowBuilder::new(&app, "preferences", url)
-    .title("Snapfzz Preferences")
-    .inner_size(720.0, 560.0)
-    .min_inner_size(600.0, 400.0)
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .hidden_title(true)
-    .build()
-    .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
