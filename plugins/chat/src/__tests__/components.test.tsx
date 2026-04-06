@@ -41,20 +41,20 @@ describe('chat/ThinkingCallout: collapse toggle', () => {
     expect(screen.getByText('Show')).toBeDefined();
   });
 
-  it('chat/ThinkingCallout: shows 💭 Thinking label', async () => {
+  it('chat/ThinkingCallout: shows Thinking label with icon', async () => {
     const { ThinkingCallout } = await import('../components/ThinkingCallout');
     render(<ThinkingCallout block={{ type: 'thinking', thinking: 'x' }} />);
 
-    expect(screen.getByText('💭 Thinking')).toBeDefined();
+    expect(screen.getByText('Thinking', { exact: false })).toBeDefined();
   });
 });
 
 describe('chat/ToolUseCard: status display', () => {
-  it('chat/ToolUseCard: shows tool name with 🔧 prefix', async () => {
+  it('chat/ToolUseCard: shows tool name with icon prefix', async () => {
     const { ToolUseCard } = await import('../components/ToolUseCard');
     render(<ToolUseCard block={{ type: 'tool_use', id: 't1', name: 'write_file', input: {}, inputPreview: '{}', status: 'running' }} />);
 
-    expect(screen.getByText('🔧 write_file')).toBeDefined();
+    expect(screen.getByText('write_file', { exact: false })).toBeDefined();
   });
 
   it('chat/ToolUseCard: shows running spinner text when status is running', async () => {
@@ -64,18 +64,18 @@ describe('chat/ToolUseCard: status display', () => {
     expect(screen.getByText('running')).toBeDefined();
   });
 
-  it('chat/ToolUseCard: shows ✓ done when status is done', async () => {
+  it('chat/ToolUseCard: shows done status when status is done', async () => {
     const { ToolUseCard } = await import('../components/ToolUseCard');
     render(<ToolUseCard block={{ type: 'tool_use', id: 't1', name: 'write_file', input: {}, inputPreview: '{}', status: 'done' }} />);
 
-    expect(screen.getByText('✓ done')).toBeDefined();
+    expect(screen.getByText('done', { exact: false })).toBeDefined();
   });
 
-  it('chat/ToolUseCard: shows ✕ error when status is error', async () => {
+  it('chat/ToolUseCard: shows error status when status is error', async () => {
     const { ToolUseCard } = await import('../components/ToolUseCard');
     render(<ToolUseCard block={{ type: 'tool_use', id: 't1', name: 'write_file', input: {}, inputPreview: '{}', status: 'error' }} />);
 
-    expect(screen.getByText('✕ error')).toBeDefined();
+    expect(screen.getByText('error', { exact: false })).toBeDefined();
   });
 
   it('chat/ToolUseCard: defaults to running when status is undefined', async () => {
@@ -226,11 +226,11 @@ describe('chat/ScrollPill: conditional rendering and click', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('chat/ScrollPill: renders ↓ New messages button when visible', async () => {
+  it('chat/ScrollPill: renders New messages button when visible', async () => {
     const { ScrollPill } = await import('../components/ScrollPill');
     render(<ScrollPill visible={true} onClick={vi.fn()} />);
 
-    expect(screen.getByText('↓ New messages')).toBeDefined();
+    expect(screen.getByText('New messages', { exact: false })).toBeDefined();
   });
 
   it('chat/ScrollPill: calls onClick when button is clicked', async () => {

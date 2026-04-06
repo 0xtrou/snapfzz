@@ -20,7 +20,7 @@ vi.mock('../hooks/use-chat', () => ({
 }));
 
 describe('chat/ConnectionStatus: status label text', () => {
-  it('chat/ConnectionStatus: shows ● Connected when status is connected', async () => {
+  it('chat/ConnectionStatus: shows Connected when status is connected', async () => {
     const { useChat } = await import('../hooks/use-chat');
     vi.mocked(useChat).mockReturnValue({
       connectionStatus: 'connected',
@@ -37,10 +37,10 @@ describe('chat/ConnectionStatus: status label text', () => {
     const { default: ConnectionStatus } = await import('../contributions/ConnectionStatus');
     render(<ConnectionStatus />);
 
-    expect(screen.getByText('● Connected')).toBeDefined();
+    expect(screen.getByText('Connected')).toBeDefined();
   });
 
-  it('chat/ConnectionStatus: shows ○ Reconnecting... when status is reconnecting', async () => {
+  it('chat/ConnectionStatus: shows Reconnecting... when status is reconnecting', async () => {
     const { useChat } = await import('../hooks/use-chat');
     vi.mocked(useChat).mockReturnValue({
       connectionStatus: 'reconnecting',
@@ -57,10 +57,10 @@ describe('chat/ConnectionStatus: status label text', () => {
     const { default: ConnectionStatus } = await import('../contributions/ConnectionStatus');
     render(<ConnectionStatus />);
 
-    expect(screen.getByText('○ Reconnecting...')).toBeDefined();
+    expect(screen.getByText('Reconnecting...')).toBeDefined();
   });
 
-  it('chat/ConnectionStatus: shows ○ Disconnected when status is disconnected', async () => {
+  it('chat/ConnectionStatus: shows Disconnected when status is disconnected', async () => {
     const { useChat } = await import('../hooks/use-chat');
     vi.mocked(useChat).mockReturnValue({
       connectionStatus: 'disconnected',
@@ -77,7 +77,7 @@ describe('chat/ConnectionStatus: status label text', () => {
     const { default: ConnectionStatus } = await import('../contributions/ConnectionStatus');
     render(<ConnectionStatus />);
 
-    expect(screen.getByText('○ Disconnected')).toBeDefined();
+    expect(screen.getByText('Disconnected')).toBeDefined();
   });
 });
 

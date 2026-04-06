@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BulbOutlined } from '@ant-design/icons';
 import type { ThinkingBlock } from '../types';
 
 interface ThinkingCalloutProps {
@@ -33,7 +34,7 @@ export function ThinkingCallout({ block }: ThinkingCalloutProps) {
           fontSize: 13,
         }}
       >
-        <span>💭 Thinking</span>
+        <span><BulbOutlined /> Thinking</span>
         <span>{open ? 'Hide' : 'Show'}</span>
       </button>
       {open ? (

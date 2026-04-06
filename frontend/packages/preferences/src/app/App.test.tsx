@@ -4,12 +4,22 @@
 // Section: Preferences Layout — Sidebar + Content
 // Verifies: preferences shell renders settingsSections, handles empty state, selects first section on mount
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+
+const { PluginHostMock } = vi.hoisted(() => ({
+  PluginHostMock: vi.fn().mockImplementation(function () {
+    return {
+      activateByEvent: vi.fn().mockResolvedValue(undefined),
+      reportCrash: vi.fn(),
+    };
+  }),
+}));
 
 vi.mock('@snapfzz/plugin-host', () => {
   const listeners = new Set<() => void>();
-  let snapshot = {
+  const snapshot = {
     leftPanelTabs: [],
     workspaceTabs: [],
     bottomPanels: [],
@@ -30,14 +40,9 @@ vi.mock('@snapfzz/plugin-host', () => {
     registerSettingsSection: vi.fn(),
   };
 
-  const mockHost = {
-    activateByEvent: vi.fn().mockResolvedValue(undefined),
-    reportCrash: vi.fn(),
-  };
-
   return {
-    ContributionStore: vi.fn(() => mockStore),
-    PluginHost: vi.fn(() => mockHost),
+    ContributionStore: class ContributionStore { constructor() { Object.assign(this, mockStore); } },
+    PluginHost: PluginHostMock,
     useContributionStore: vi.fn((getStore: () => typeof mockStore) => {
       const s = getStore();
       return s.getSnapshot();
@@ -52,6 +57,13 @@ vi.mock('@snapfzz/shared', () => ({
   useTheme: vi.fn(() => ({ theme: 'dark', toggleTheme: vi.fn() })),
   darkTheme: {},
   lightTheme: {},
+  WindowShell: ({ children, title, statusBarContent }: { children: React.ReactNode; title: string; statusBarContent?: React.ReactNode }) =>
+    createElement('div', { 'data-testid': 'window-shell' },
+      createElement('span', null, title),
+      statusBarContent,
+      children,
+    ),
+  AntIcon: ({ name }: { name: string }) => createElement('span', { 'data-icon': name }),
 }));
 
 vi.mock('antd', () => ({
@@ -66,6 +78,10 @@ vi.mock('@ant-design/icons', () => ({
   MoonOutlined: () => <span>moon</span>,
 }));
 
+import { App } from './App';
+
+const initialPluginHostCalls = PluginHostMock.mock.calls.map((c: unknown[]) => ({ surface: c[1] }));
+
 describe('A007/Preferences/App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,9 +91,17 @@ describe('A007/Preferences/App', () => {
     document.body.appendChild(root);
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it('A007/Preferences/empty: shows no-settings message when no settingsSections registered', () => {
-    const { App } = require('./App');
-    render(<App />);
+    render(createElement(App));
     expect(screen.getAllByText(/no settings available/i).length).toBeGreaterThan(0);
+  });
+
+  it('A007/shell: creates PluginHost with surface \'preferences\'', () => {
+    const surfaces = initialPluginHostCalls.map((c) => c.surface);
+    expect(surfaces).toContain('preferences');
   });
 });

@@ -244,16 +244,16 @@ describe('A007/settings-advanced: reset to defaults', () => {
 
     const allButtons = Array.from(document.body.querySelectorAll('button'));
     const resetBtn = allButtons.find((b) => /Reset Everything/i.test(b.textContent?.trim() ?? ''));
-    if (resetBtn) {
-      await user.click(resetBtn);
+    const confirmBtn = resetBtn ?? allButtons.find((b) => /^OK$/i.test(b.textContent?.trim() ?? ''));
+    expect(confirmBtn).toBeDefined();
+    if (confirmBtn) {
+      await user.click(confirmBtn);
       await waitFor(() => {
         const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
         expect(saveCall).toBeDefined();
         expect(saveCall![1]).toHaveProperty('settings');
         expect(saveCall![1].settings).toMatchObject({ model: 'gpt-4o', theme: 'system', logLevel: 'info' });
       });
-    } else {
-      expect(true).toBe(true);
     }
   });
 
@@ -524,13 +524,13 @@ describe('A007/settings-advanced: reset confirms and calls save_settings with de
 
     const allButtons = Array.from(document.body.querySelectorAll('button'));
     const resetBtn = allButtons.find((b) => /Reset Everything/i.test(b.textContent?.trim() ?? ''));
-    if (resetBtn) {
-      await user.click(resetBtn);
+    const confirmBtn = resetBtn ?? allButtons.find((b) => /^OK$/i.test(b.textContent?.trim() ?? ''));
+    expect(confirmBtn).toBeDefined();
+    if (confirmBtn) {
+      await user.click(confirmBtn);
       await waitFor(() => {
         expect(getSettingsCallCount).toBeGreaterThan(callsBeforeReset);
       });
-    } else {
-      expect(true).toBe(true);
     }
   });
 });

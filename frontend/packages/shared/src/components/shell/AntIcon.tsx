@@ -1,7 +1,7 @@
 import { createElement, type ComponentType } from 'react';
 import * as AntIcons from '@ant-design/icons';
 
-const iconMap = AntIcons as Record<string, ComponentType>;
+const iconMap = AntIcons as unknown as Record<string, ComponentType>;
 
 export function AntIcon({ name, ...props }: { name: string } & Record<string, unknown>) {
   const Icon = iconMap[name];

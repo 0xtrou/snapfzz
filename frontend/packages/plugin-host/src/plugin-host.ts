@@ -1,5 +1,4 @@
-import type { ActivationEvent, PluginContext, PluginHandle, HostSurface } from '@snapfzz/plugin-sdk';
-import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
+import type { ActivationEvent, PluginContext, PluginHandle, HostSurface, PluginDefinition } from '@snapfzz/plugin-sdk';
 import { ContributionStore } from './contribution-store';
 import { createPluginContext, disposePluginContext } from './plugin-context-factory';
 
@@ -233,7 +232,7 @@ export class PluginHost {
       });
 
       // Per A005/Lifecycle: plugins that exceed activation timeout are killed to protect startup budget.
-      const handle = await Promise.race<PluginHandle, Promise<never>>([activationPromise, timeoutPromise]);
+      const handle = await Promise.race([activationPromise, timeoutPromise]) as PluginHandle;
       const elapsed = Date.now() - startedAt;
 
       if (elapsed > ACTIVATION_TIMEOUT_MS) {

@@ -30,11 +30,15 @@ vi.mock('antd', () => ({
   ConfigProvider: ({ children }: { children: React.ReactNode }) => createElement('div', { 'data-testid': 'config' }, children),
 }));
 
+const { PluginHostMock } = vi.hoisted(() => ({
+  PluginHostMock: vi.fn().mockImplementation(function () {
+    return { activateByEvent: () => Promise.resolve() };
+  }),
+}));
+
 vi.mock('@snapfzz/plugin-host', () => ({
   ContributionStore: class ContributionStore {},
-  PluginHost: class PluginHost {
-    activateByEvent() { return Promise.resolve(); }
-  },
+  PluginHost: PluginHostMock,
   PluginHostProvider: ({ children }: { children: React.ReactNode }) => createElement('div', { 'data-testid': 'plugin-host-provider' }, children),
   PluginErrorBoundary: ({ children }: { children: React.ReactNode }) => createElement('div', null, children),
   registerDiscoveredPlugins: () => Promise.resolve(),
@@ -90,6 +94,14 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
       expect(screen.getByText('projects-content')).toBeTruthy();
       expect(screen.getByText('header-meta')).toBeTruthy();
     });
+  });
+
+  it('A007/shell: creates PluginHost with surface \'launcher\'', () => {
+    PluginHostMock.mockClear();
+    render(createElement(App));
+    expect(PluginHostMock).toHaveBeenCalled();
+    const [, surface] = PluginHostMock.mock.calls[0];
+    expect(surface).toBe('launcher');
   });
 
   it('A006/shell: renders status items from contributions', async () => {

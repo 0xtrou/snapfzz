@@ -24,6 +24,13 @@ vi.mock('@snapfzz/shared', () => ({
   useTheme: () => ({ theme: 'dark' }),
   darkTheme: { algorithm: undefined, token: {} },
   lightTheme: { algorithm: undefined, token: {} },
+  WindowShell: ({ children, statusBarContent }: { children: React.ReactNode; title?: string; statusBarContent?: React.ReactNode }) =>
+    createElement('div', { 'data-testid': 'window-shell' },
+      createElement('span', null, 'Project Window'),
+      statusBarContent,
+      children,
+    ),
+  AntIcon: ({ name }: { name: string }) => createElement('span', { 'data-icon': name }),
 }));
 
 vi.mock('antd', () => ({
@@ -36,15 +43,21 @@ vi.mock('react-resizable-panels', () => ({
   PanelResizeHandle: (props: any) => createElement('div', { 'data-testid': 'panel-resize-handle', ...props }),
 }));
 
+const { PluginHostMock } = vi.hoisted(() => ({
+  PluginHostMock: vi.fn().mockImplementation(function () {
+    return {
+      getPlugin: () => undefined,
+      register: () => undefined,
+      activateAll: () => Promise.resolve(),
+      activateByEvent: () => Promise.resolve(),
+      deactivate: () => Promise.resolve(),
+    };
+  }),
+}));
+
 vi.mock('@snapfzz/plugin-host', () => ({
   ContributionStore: class ContributionStore {},
-  PluginHost: class PluginHost {
-    getPlugin() { return undefined; }
-    register() { return undefined; }
-    activateAll() { return Promise.resolve(); }
-    activateByEvent() { return Promise.resolve(); }
-    deactivate() { return Promise.resolve(); }
-  },
+  PluginHost: PluginHostMock,
   PluginHostProvider: ({ children }: { children: React.ReactNode }) => createElement('div', { 'data-testid': 'plugin-host-provider' }, children),
   PluginErrorBoundary: ({ children }: { children: React.ReactNode }) => createElement('div', null, children),
   registerDiscoveredPlugins: () => Promise.resolve(),
@@ -89,7 +102,6 @@ describe('A006/shell: Project App', () => {
     expect(screen.getByText('Project Window')).toBeTruthy();
     expect(screen.getAllByText('No tabs available — install plugins to see content')).toHaveLength(2);
     expect(screen.getByText('No agent panels — plugins will provide agent network')).toBeTruthy();
-    expect(screen.getByText('●')).toBeTruthy();
   });
 
   it('A006/shell: uses plugin host provider wrapper', () => {
@@ -116,6 +128,11 @@ describe('A006/shell: Project App', () => {
 
     expect(screen.getByText('Chat')).toBeTruthy();
     expect(screen.getByText('KB')).toBeTruthy();
+  });
+
+  it('A007/shell: creates PluginHost with surface \'project\'', () => {
+    const surfaceArgs = PluginHostMock.mock.calls.map((c: unknown[]) => c[1]);
+    expect(surfaceArgs).toContain('project');
   });
 
   it('A006/shell: renders status items from contributions', async () => {

@@ -1,3 +1,4 @@
+import { CheckOutlined, CloseOutlined, ToolOutlined } from '@ant-design/icons';
 import type { RenderableToolUseBlock } from '../types';
 
 interface ToolUseCardProps {
@@ -6,11 +7,11 @@ interface ToolUseCardProps {
 
 function ToolStatus({ status }: { status: 'running' | 'done' | 'error' }) {
   if (status === 'done') {
-    return <span style={{ color: 'var(--color-success)' }}>✓ done</span>;
+    return <span style={{ color: 'var(--color-success)' }}><CheckOutlined /> done</span>;
   }
 
   if (status === 'error') {
-    return <span style={{ color: 'var(--color-error)' }}>✕ error</span>;
+    return <span style={{ color: 'var(--color-error)' }}><CloseOutlined /> error</span>;
   }
 
   return (
@@ -46,7 +47,7 @@ export function ToolUseCard({ block }: ToolUseCardProps) {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <strong style={{ color: 'var(--text-primary)', fontSize: 13 }}>🔧 {block.name}</strong>
+        <strong style={{ color: 'var(--text-primary)', fontSize: 13 }}><ToolOutlined /> {block.name}</strong>
         <ToolStatus status={status} />
       </div>
       <pre

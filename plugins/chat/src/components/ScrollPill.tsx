@@ -1,3 +1,5 @@
+import { ArrowDownOutlined } from '@ant-design/icons';
+
 interface ScrollPillProps {
   visible: boolean;
   onClick: () => void;
@@ -30,7 +32,7 @@ export function ScrollPill({ visible, onClick }: ScrollPillProps) {
         zIndex: 2,
       }}
     >
-      ↓ New messages
+      <ArrowDownOutlined /> New messages
     </button>
   );
 }

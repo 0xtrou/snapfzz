@@ -3,14 +3,14 @@ import type { AgentHealthResponse } from '../types';
 
 function labelForStatus(status: AgentHealthResponse['status']): string {
   if (status === 'connected') {
-    return '● Connected';
+    return 'Connected';
   }
 
   if (status === 'reconnecting') {
-    return '○ Reconnecting...';
+    return 'Reconnecting...';
   }
 
-  return '○ Disconnected';
+  return 'Disconnected';
 }
 
 function colorForStatus(status: AgentHealthResponse['status']): string {
@@ -25,9 +25,25 @@ function colorForStatus(status: AgentHealthResponse['status']): string {
   return 'var(--color-error)';
 }
 
+const dotStyle = (color: string): React.CSSProperties => ({
+  display: 'inline-block',
+  width: 8,
+  height: 8,
+  borderRadius: '50%',
+  background: color,
+  marginRight: 6,
+  verticalAlign: 'middle',
+});
+
 function ConnectionStatus() {
   const { connectionStatus } = useChat();
-  return <span style={{ color: colorForStatus(connectionStatus) }}>{labelForStatus(connectionStatus)}</span>;
+  const color = colorForStatus(connectionStatus);
+  return (
+    <span style={{ color }}>
+      <span aria-hidden="true" style={dotStyle(color)} />
+      {labelForStatus(connectionStatus)}
+    </span>
+  );
 }
 
 export default ConnectionStatus;
