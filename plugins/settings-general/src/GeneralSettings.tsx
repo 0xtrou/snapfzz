@@ -1,23 +1,35 @@
-import React, { useEffect, useState } from 'react';
-import { Checkbox, Radio, Select, Space, Typography } from 'antd';
+// A007/SettingsSections: General settings form — preferences surface only.
+// A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
+import React, { useCallback, useEffect } from 'react';
+import { Checkbox, Form, Radio, Select, Space, Typography } from 'antd';
 import { SettingsHeader } from '@snapfzz/shared';
+import { useState } from 'react';
 
 const { Text } = Typography;
 
 type Theme = 'light' | 'dark' | 'system';
 
-interface GeneralState {
+interface GeneralFormValues {
   theme: Theme;
   openLastProject: boolean;
   language: string;
 }
 
+interface FullSettings extends GeneralFormValues {
+  [key: string]: unknown;
+}
+
+// A007/TauriIPC: Preferences window loads from an external URL; __TAURI_INTERNALS__
+// provides invoke() without requiring @tauri-apps/api to be bundled.
 function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   const w = window as unknown as Record<string, unknown>;
   const tauri = w.__TAURI_INTERNALS__ as
     | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
     | undefined;
-  if (!tauri) return Promise.reject('Tauri not available');
+  if (!tauri) {
+    console.error('[settings-general] __TAURI_INTERNALS__ not available');
+    return Promise.reject(new Error('Tauri not available'));
+  }
   return tauri.invoke(cmd, args);
 }
 
@@ -28,86 +40,124 @@ const LANGUAGE_OPTIONS = [
   { value: 'ja', label: '日本語 (coming soon)', disabled: true },
 ];
 
+// A007/settingsSections: Default export required — preferences shell uses dynamic import().
 export default function GeneralSettings(): React.ReactElement {
-  const [state, setState] = useState<GeneralState>({
-    theme: 'system',
-    openLastProject: true,
-    language: 'en',
-  });
+  const [form] = Form.useForm<GeneralFormValues>();
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const loadingRef = React.useRef(false);
+
+  const loadSettings = useCallback(async () => {
+    loadingRef.current = true;
+    try {
+      const settings = await tauriInvoke('get_settings') as FullSettings;
+      form.setFieldsValue({
+        theme: (settings.theme as Theme) ?? 'system',
+        openLastProject: settings.openLastProject ?? true,
+        language: settings.language ?? 'en',
+      });
+    } catch {
+      // First launch — defaults apply
+    }
+    setTimeout(() => { loadingRef.current = false; }, 100);
+  }, [form]);
 
   useEffect(() => {
-    tauriInvoke('get_general_settings')
-      .then((raw) => {
-        const data = raw as Partial<GeneralState>;
-        setState((prev) => ({ ...prev, ...data }));
-      })
-      .catch(() => {});
-  }, []);
+    void loadSettings();
+  }, [loadSettings]);
 
-  function handleThemeChange(theme: Theme): void {
-    setState((prev) => ({ ...prev, theme }));
-    tauriInvoke('set_general_setting', { key: 'theme', value: theme }).catch(() => {});
-  }
-
-  function handleOpenLastProjectChange(checked: boolean): void {
-    setState((prev) => ({ ...prev, openLastProject: checked }));
-    tauriInvoke('set_general_setting', { key: 'openLastProject', value: checked }).catch(() => {});
-  }
-
-  function handleLanguageChange(language: string): void {
-    setState((prev) => ({ ...prev, language }));
-    tauriInvoke('set_general_setting', { key: 'language', value: language }).catch(() => {});
-  }
+  const handleSave = useCallback(async () => {
+    setSaveError(null);
+    setSaveSuccess(false);
+    let values: GeneralFormValues;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
+    setSaving(true);
+    try {
+      const current = await tauriInvoke('get_settings') as Record<string, unknown>;
+      const merged = {
+        ...current,
+        theme: values.theme,
+        openLastProject: values.openLastProject,
+        language: values.language,
+      };
+      await tauriInvoke('save_settings', { settings: merged });
+      setIsDirty(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setSaveError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }, [form]);
 
   return (
-    <div>
-      <SettingsHeader title="General" />
+    <div style={{ color: 'var(--text-primary)' }}>
+      <SettingsHeader
+        title="General"
+        isDirty={isDirty}
+        saving={saving}
+        saveSuccess={saveSuccess}
+        saveError={saveError}
+        onSave={handleSave}
+        onDiscard={() => { void loadSettings(); setIsDirty(false); }}
+      />
       <div style={{ padding: 16, maxWidth: 560 }}>
-      <Space direction="vertical" size={32} style={{ width: '100%' }}>
-        <section>
-          <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
-            Theme
-          </Text>
-          <Radio.Group
-            value={state.theme}
-            onChange={(e) => handleThemeChange(e.target.value as Theme)}
-          >
-            <Space direction="vertical" size={8}>
-              <Radio value="light">Light</Radio>
-              <Radio value="dark">Dark</Radio>
-              <Radio value="system">System (follow OS)</Radio>
-            </Space>
-          </Radio.Group>
-        </section>
+        <Form
+          form={form}
+          layout="vertical"
+          requiredMark={false}
+          initialValues={{ theme: 'system', openLastProject: true, language: 'en' }}
+          onValuesChange={() => { if (!loadingRef.current) setIsDirty(true); }}
+        >
+          <Space direction="vertical" size={32} style={{ width: '100%' }}>
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Theme
+              </Text>
+              <Form.Item name="theme" style={{ marginBottom: 0 }}>
+                <Radio.Group>
+                  <Space direction="vertical" size={8}>
+                    <Radio value="light">Light</Radio>
+                    <Radio value="dark">Dark</Radio>
+                    <Radio value="system">System (follow OS)</Radio>
+                  </Space>
+                </Radio.Group>
+              </Form.Item>
+            </section>
 
-        <section>
-          <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
-            Startup
-          </Text>
-          <Checkbox
-            checked={state.openLastProject}
-            onChange={(e) => handleOpenLastProjectChange(e.target.checked)}
-          >
-            Reopen last project on launch
-          </Checkbox>
-        </section>
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Startup
+              </Text>
+              <Form.Item name="openLastProject" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Checkbox>Reopen last project on launch</Checkbox>
+              </Form.Item>
+            </section>
 
-        <section>
-          <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
-            Language
-          </Text>
-          <Select
-            value={state.language}
-            onChange={handleLanguageChange}
-            options={LANGUAGE_OPTIONS}
-            style={{ width: 240 }}
-          />
-          <br />
-          <Text type="secondary" style={{ fontSize: 12, marginTop: 'var(--spacing-2, 8px)', display: 'block' }}>
-            More languages are on the roadmap.
-          </Text>
-        </section>
-      </Space>
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Language
+              </Text>
+              <Form.Item name="language" style={{ marginBottom: 0 }}>
+                <Select
+                  options={LANGUAGE_OPTIONS}
+                  style={{ width: 240 }}
+                />
+              </Form.Item>
+              <Text type="secondary" style={{ fontSize: 12, marginTop: 'var(--spacing-2, 8px)', display: 'block' }}>
+                More languages are on the roadmap.
+              </Text>
+            </section>
+          </Space>
+        </Form>
       </div>
     </div>
   );

@@ -101,13 +101,14 @@ export default function RuntimeSettings() {
     }
     setSaving(true);
     try {
-      await tauriInvoke('save_settings', {
-        settings: {
-          apiKey: values.apiKey,
-          model: values.model,
-          apiUrl: values.apiUrl,
-        },
-      });
+      const current = await tauriInvoke('get_settings') as Record<string, unknown>;
+      const merged = {
+        ...current,
+        apiKey: values.apiKey,
+        model: values.model,
+        apiUrl: values.apiUrl,
+      };
+      await tauriInvoke('save_settings', { settings: merged });
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);

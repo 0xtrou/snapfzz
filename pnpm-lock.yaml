@@ -20,6 +20,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.0.0
         version: 2.10.1
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@testing-library/react':
         specifier: ^16.3.2

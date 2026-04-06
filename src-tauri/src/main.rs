@@ -40,19 +40,47 @@ struct MessageResult {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 struct Settings {
-    #[serde(alias = "api_key")]
+    // Runtime
+    #[serde(alias = "api_key", default)]
     api_key: String,
+    #[serde(default = "default_model")]
     model: String,
-    #[serde(alias = "api_url")]
+    #[serde(alias = "api_url", default = "default_api_url")]
     api_url: String,
+
+    // General
+    #[serde(default = "default_theme")]
+    theme: String,
+    #[serde(default = "default_true")]
+    open_last_project: bool,
+    #[serde(default = "default_language")]
+    language: String,
+
+    // Advanced
+    #[serde(default = "default_true")]
+    fps_counter: bool,
+    #[serde(default = "default_log_level")]
+    log_level: String,
 }
+
+fn default_model() -> String { "gpt-4o".to_string() }
+fn default_api_url() -> String { "https://api.openai.com/v1".to_string() }
+fn default_theme() -> String { "system".to_string() }
+fn default_true() -> bool { true }
+fn default_language() -> String { "en".to_string() }
+fn default_log_level() -> String { "info".to_string() }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             api_key: String::new(),
-            model: "gpt-4o".to_string(),
-            api_url: "https://api.openai.com/v1".to_string(),
+            model: default_model(),
+            api_url: default_api_url(),
+            theme: default_theme(),
+            open_last_project: default_true(),
+            language: default_language(),
+            fps_counter: default_true(),
+            log_level: default_log_level(),
         }
     }
 }
