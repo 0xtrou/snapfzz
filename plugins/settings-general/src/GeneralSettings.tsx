@@ -36,8 +36,11 @@ function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unkno
   return tauri.invoke(cmd, args);
 }
 
-// Per A007/MultiLayout: emit settings-changed so all windows re-apply font settings on save.
+// Per A007/MultiLayout: emit settings-changed so all windows re-apply settings on save.
 function emitSettingsChanged(): void {
+  // Local DOM event for the emitting window (Tauri events may not deliver to self)
+  window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
+  // Tauri event for other windows
   const w = window as unknown as Record<string, unknown>;
   const tauri = w.__TAURI_INTERNALS__ as
     | { event?: { emit?: (event: string, payload?: unknown) => Promise<void> } }

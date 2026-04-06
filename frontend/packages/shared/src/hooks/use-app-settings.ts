@@ -132,9 +132,11 @@ export function useAppSettings(): string[] {
 
     void applySettings();
 
-    // Re-apply whenever another window saves settings (e.g. preferences → launcher).
-    const invoke = getTauriInvoke();
-    if (!invoke) return;
+    // Per A007/MultiLayout: listen for both Tauri cross-window events and same-window custom events.
+    // Tauri event.emit may not deliver to the emitting window, so the emitter also dispatches
+    // a DOM CustomEvent to guarantee the local window re-applies immediately.
+    const handleLocalSettingsChanged = () => { void applySettings(); };
+    window.addEventListener('snapfzz:settings-changed', handleLocalSettingsChanged);
 
     let unlisten: (() => void) | null = null;
     const w = window as unknown as Record<string, unknown>;
@@ -151,6 +153,7 @@ export function useAppSettings(): string[] {
     }
 
     return () => {
+      window.removeEventListener('snapfzz:settings-changed', handleLocalSettingsChanged);
       if (unlisten) unlisten();
     };
   }, []);
