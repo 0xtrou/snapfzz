@@ -362,7 +362,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                     type="text"
                     size="small"
                     icon={<LinkOutlined />}
-                    onClick={() => window.open(process.healthUrl, '_blank')}
+                    onClick={() => tauriInvoke('open_path', { path: process.healthUrl })}
                   />
                 </Tooltip>
               </>

@@ -22,6 +22,15 @@ use snapfzz_budget::BudgetRegistry;
 
 const AGENTSCOPE_PORT: u16 = 8090;
 
+fn agentscope_base_url() -> String {
+    let settings = std::fs::read_to_string(settings_path()).ok()
+        .and_then(|c| serde_json::from_str::<Settings>(&c).ok())
+        .unwrap_or_default();
+    let host = if settings.agentscope_host.is_empty() { "127.0.0.1".to_string() } else { settings.agentscope_host };
+    let port: u16 = settings.agentscope_port.parse().unwrap_or(AGENTSCOPE_PORT);
+    format!("http://{host}:{port}")
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct ContentBlockBatch {
@@ -248,7 +257,7 @@ async fn send_message(
     let _cpu_permit = registry.try_acquire_cpu()
         .ok_or_else(|| "Budget exhausted: CPU permits unavailable for SSE parsing".to_string())?;
 
-    let url = format!("http://127.0.0.1:{AGENTSCOPE_PORT}/process");
+    let url = format!("{}/process", agentscope_base_url());
     let client = reqwest::Client::new();
     let batch_rate = registry.batch_rate();
 
@@ -365,7 +374,7 @@ async fn send_message(
 #[tauri::command]
 async fn stop_generation(session_id: String) -> Result<(), String> {
     reqwest::Client::new()
-        .post(format!("http://127.0.0.1:{AGENTSCOPE_PORT}/stop"))
+        .post(format!("{}/stop", agentscope_base_url()))
         .json(&json!({ "session_id": session_id }))
         .send().await.map_err(|e| e.to_string())?
         .error_for_status().map_err(|e| e.to_string())?;
@@ -375,7 +384,7 @@ async fn stop_generation(session_id: String) -> Result<(), String> {
 #[tauri::command]
 async fn create_session(template_id: Option<String>) -> Result<SessionInfo, String> {
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{AGENTSCOPE_PORT}/session");
+    let url = format!("{}/session", agentscope_base_url());
     let req = match template_id {
         Some(tid) => client.post(&url).json(&json!({ "template_id": tid })),
         None => client.post(&url),
@@ -388,7 +397,7 @@ async fn create_session(template_id: Option<String>) -> Result<SessionInfo, Stri
 #[tauri::command]
 async fn load_session(session_id: String) -> Result<Value, String> {
     reqwest::Client::new()
-        .get(format!("http://127.0.0.1:{AGENTSCOPE_PORT}/session/{session_id}"))
+        .get(format!("{}/session/{session_id}", agentscope_base_url()))
         .send().await.map_err(|e| e.to_string())?
         .error_for_status().map_err(|e| e.to_string())?
         .json::<Value>().await.map_err(|e| e.to_string())
