@@ -1,12 +1,11 @@
-// Per A007/MultiLayout: applied across all windows so every surface uses the same font settings.
-// Per A004/Workspace: reads persisted appearance settings from settings.json on boot.
-import { useEffect, useState } from 'react';
+// Per A007/MultiLayout: single source of truth for all appearance settings across windows.
+// Per A004/Workspace: reads persisted settings from settings.json via Rust backend.
+// No localStorage — backend is the only source. Frontend is stateless.
+import { useCallback, useEffect, useState } from 'react';
 
 export type RuntimeTheme = 'dark' | 'light';
 export type SettingsTheme = RuntimeTheme | 'system';
-const THEME_STORAGE_KEY = 'snapfzz-theme';
 
-// A007/TauriIPC: accesses __TAURI_INTERNALS__ directly — no @tauri-apps/api bundle.
 function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null {
   const w = window as unknown as Record<string, unknown>;
   const tauri = w.__TAURI_INTERNALS__ as
@@ -19,7 +18,7 @@ interface AppSettings {
   theme?: SettingsTheme;
   fontFamily?: string;
   fontSize?: string;
-  installedFonts?: string[];
+  [key: string]: unknown;
 }
 
 const SYSTEM_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
@@ -40,20 +39,12 @@ function resolveFontSize(fontSize: string | undefined): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 }
 
-// Per A007/PreferencesLayout: each window rehydrates persisted appearance settings from shared settings.json.
-function notifyThemeStorageChange(resolvedTheme: RuntimeTheme): void {
-  if (typeof StorageEvent !== 'function') return;
-  window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY, newValue: resolvedTheme }));
-}
-
-function applyDomSettings(settings: AppSettings): void {
+function applyDomSettings(settings: AppSettings): RuntimeTheme {
   const resolvedTheme = resolveTheme(settings.theme);
   const resolvedFontFamily = resolveFontFamily(settings.fontFamily);
   const resolvedFontSize = resolveFontSize(settings.fontSize);
 
   document.documentElement.setAttribute('data-theme', resolvedTheme);
-  localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
-  notifyThemeStorageChange(resolvedTheme);
 
   document.documentElement.style.setProperty('--font-family', resolvedFontFamily);
   document.body.style.fontFamily = resolvedFontFamily;
@@ -68,10 +59,11 @@ function applyDomSettings(settings: AppSettings): void {
   }
 
   styleEl.textContent = `*, *::before, *::after { font-family: ${resolvedFontFamily} !important; font-size: inherit !important; } html { font-size: ${resolvedFontSize}px !important; }`;
+
+  return resolvedTheme;
 }
 
 async function loadAndRegisterCustomFonts(invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>): Promise<string[]> {
-  // Per A004/Workspace: fonts directory lives under the resolved data dir.
   let names: string[];
   try {
     names = (await invoke('list_installed_fonts')) as string[];
@@ -84,13 +76,12 @@ async function loadAndRegisterCustomFonts(invoke: (cmd: string, args?: Record<st
   try {
     dataDir = (await invoke('get_data_dir')) as string;
   } catch {
-    return names; // Return names but skip FontFace registration
+    return names;
   }
 
   const registeredNames: string[] = [];
   for (const name of names) {
     try {
-      // Attempt woff2 first, then ttf — both extensions are written by install_font_from_file / install_font_from_url.
       const woff2Url = `asset:///${dataDir.replace(/\\/g, '/')}/fonts/${name}.woff2`;
       const ttfUrl = `asset:///${dataDir.replace(/\\/g, '/')}/fonts/${name}.ttf`;
       let fontFace: FontFace;
@@ -104,16 +95,25 @@ async function loadAndRegisterCustomFonts(invoke: (cmd: string, args?: Record<st
       document.fonts.add(fontFace);
       registeredNames.push(name);
     } catch {
-      // Silently skip fonts that fail to load — app continues with remaining fonts.
+      // Skip fonts that fail to load — app continues with remaining fonts.
     }
   }
   return registeredNames;
 }
 
-// Per A007/MultiLayout: call this hook in WindowShell so all windows apply font settings.
-// Per A004/Workspace: reads from settings.json on boot; re-applies on settings-changed event.
-// Returns loaded custom font names for use in dropdown options.
-export function useAppSettings(): string[] {
+export interface AppSettingsState {
+  theme: RuntimeTheme;
+  toggleTheme: () => void;
+  customFonts: string[];
+}
+
+// Per A007/MultiLayout: single hook for all appearance state. Mounted at window top level.
+// Returns resolved theme + toggleTheme (saves to backend) + loaded custom font names.
+export function useAppSettings(): AppSettingsState {
+  const [theme, setTheme] = useState<RuntimeTheme>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
   const [customFonts, setCustomFonts] = useState<string[]>([]);
 
   useEffect(() => {
@@ -122,11 +122,12 @@ export function useAppSettings(): string[] {
       if (!invoke) return;
       try {
         const settings = (await invoke('get_settings')) as AppSettings;
-        applyDomSettings(settings);
+        const resolved = applyDomSettings(settings);
+        setTheme(resolved);
         const registered = await loadAndRegisterCustomFonts(invoke);
         setCustomFonts(registered);
       } catch {
-        // First launch or Tauri unavailable — silently continue with CSS defaults.
+        // First launch or Tauri unavailable — continue with CSS defaults.
       }
     }
 
@@ -135,8 +136,8 @@ export function useAppSettings(): string[] {
     // Per A007/MultiLayout: listen for both Tauri cross-window events and same-window custom events.
     // Tauri event.emit may not deliver to the emitting window, so the emitter also dispatches
     // a DOM CustomEvent to guarantee the local window re-applies immediately.
-    const handleLocalSettingsChanged = () => { void applySettings(); };
-    window.addEventListener('snapfzz:settings-changed', handleLocalSettingsChanged);
+    const handleSettingsChanged = () => { void applySettings(); };
+    window.addEventListener('snapfzz:settings-changed', handleSettingsChanged);
 
     let unlisten: (() => void) | null = null;
     const w = window as unknown as Record<string, unknown>;
@@ -153,10 +154,28 @@ export function useAppSettings(): string[] {
     }
 
     return () => {
-      window.removeEventListener('snapfzz:settings-changed', handleLocalSettingsChanged);
+      window.removeEventListener('snapfzz:settings-changed', handleSettingsChanged);
       if (unlisten) unlisten();
     };
   }, []);
 
-  return customFonts;
+  // Per A007/MultiLayout: toggle saves to backend and triggers the propagation chain.
+  // No localStorage — save_settings in Rust emits settings-changed to all webviews.
+  const toggleTheme = useCallback(async () => {
+    const invoke = getTauriInvoke();
+    if (!invoke) return;
+    try {
+      const current = (await invoke('get_settings')) as AppSettings;
+      const newTheme: SettingsTheme = resolveTheme(current.theme) === 'dark' ? 'light' : 'dark';
+      await invoke('save_settings', { settings: { ...current, theme: newTheme } });
+      window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
+    } catch {
+      // Fallback: toggle DOM directly if backend unavailable
+      const fallback: RuntimeTheme = theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', fallback);
+      setTheme(fallback);
+    }
+  }, [theme]);
+
+  return { theme, toggleTheme, customFonts };
 }

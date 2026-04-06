@@ -21,7 +21,6 @@ const emptySnapshot = {
 let snapshot = { ...emptySnapshot };
 
 vi.mock('@snapfzz/shared', () => ({
-  useTheme: () => ({ theme: 'dark' }),
   darkTheme: { algorithm: undefined, token: {} },
   lightTheme: { algorithm: undefined, token: {} },
   WindowShell: ({ children, statusBarContent }: { children: React.ReactNode; title?: string; statusBarContent?: React.ReactNode }) =>

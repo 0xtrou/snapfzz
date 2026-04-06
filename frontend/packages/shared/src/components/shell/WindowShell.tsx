@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
-import { useTheme } from '../../hooks/use-theme';
 import { useAppSettings } from '../../hooks/use-app-settings';
 import { darkTheme, lightTheme } from '../../theme';
 import { useWindowDrag } from './use-window-drag';
@@ -8,7 +7,6 @@ import { WindowHeader } from './WindowHeader';
 import { StatusBar } from './StatusBar';
 import { createContext, useContext } from 'react';
 
-// Context for sharing loaded custom fonts across all windows
 export const CustomFontsContext = createContext<string[]>([]);
 
 interface WindowShellProps {
@@ -17,11 +15,9 @@ interface WindowShellProps {
   statusBarContent?: ReactNode;
 }
 
+// Per A007/MultiLayout: single useAppSettings drives theme + font + ConfigProvider for all windows.
 export function WindowShell({ title, children, statusBarContent }: WindowShellProps) {
-  const { theme, toggleTheme } = useTheme();
-  // Per A007/MultiLayout: load and apply font settings from settings.json at top level.
-  // Custom fonts are loaded once here and shared via context to all settings plugins.
-  const customFonts = useAppSettings();
+  const { theme, toggleTheme, customFonts } = useAppSettings();
   const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
   const titleBarRef = useWindowDrag();
 
@@ -40,7 +36,6 @@ export function WindowShell({ title, children, statusBarContent }: WindowShellPr
   );
 }
 
-// Hook for plugins to access loaded custom fonts
 export function useCustomFonts(): string[] {
   return useContext(CustomFontsContext);
 }

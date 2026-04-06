@@ -54,7 +54,6 @@ vi.mock('@snapfzz/plugin-host', () => {
 });
 
 vi.mock('@snapfzz/shared', () => ({
-  useTheme: vi.fn(() => ({ theme: 'dark', toggleTheme: vi.fn() })),
   darkTheme: {},
   lightTheme: {},
   WindowShell: ({ children, title, statusBarContent }: { children: React.ReactNode; title: string; statusBarContent?: React.ReactNode }) =>

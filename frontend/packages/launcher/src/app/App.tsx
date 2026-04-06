@@ -2,7 +2,7 @@
 // Per A005/PluginArchitecture: shell reads ContributionStore, empty until plugins register.
 // Per A006/CoreRuntime: launcher shell = header + main + status bar, all from store.
 import { ConfigProvider } from 'antd';
-import { useTheme, useAppSettings, darkTheme, lightTheme } from '@snapfzz/shared';
+import { useAppSettings, darkTheme, lightTheme } from '@snapfzz/shared';
 import {
   PluginHost,
   ContributionStore,
@@ -47,9 +47,7 @@ type LauncherContributionSnapshot = ContributionSnapshot & {
 };
 
 export function App() {
-  const { theme } = useTheme();
-  // Per A007/MultiLayout: launcher must apply shared settings.json appearance updates like other windows.
-  useAppSettings();
+  const { theme } = useAppSettings();
   const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
 
   const { store, host } = useMemo(() => {

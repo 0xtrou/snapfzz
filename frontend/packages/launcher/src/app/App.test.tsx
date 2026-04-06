@@ -25,7 +25,6 @@ const { useAppSettingsMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@snapfzz/shared', () => ({
-  useTheme: () => ({ theme: 'dark' }),
   useAppSettings: useAppSettingsMock,
   darkTheme: { algorithm: undefined, token: {} },
   lightTheme: { algorithm: undefined, token: {} },
@@ -59,7 +58,7 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     if (existing) existing.remove();
     snapshot = { ...emptySnapshot };
     useAppSettingsMock.mockReset();
-    useAppSettingsMock.mockReturnValue([]);
+    useAppSettingsMock.mockReturnValue({ theme: 'dark', toggleTheme: vi.fn(), customFonts: [] });
   });
 
   afterEach(() => {
