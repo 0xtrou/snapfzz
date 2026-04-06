@@ -35,7 +35,7 @@ function resolveFontFamily(fontFamily: string | undefined): string {
 }
 
 function resolveFontSize(fontSize: string | undefined): number {
-  const parsed = Number.parseInt(fontSize || '14', 10);
+  const parsed = Number.parseInt(fontSize || '12', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 }
 

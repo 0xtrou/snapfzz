@@ -79,7 +79,7 @@ fn default_api_url() -> String { "https://api.openai.com/v1".to_string() }
 fn default_theme() -> String { "system".to_string() }
 fn default_true() -> bool { true }
 fn default_font_family() -> String { "Inter".to_string() }
-fn default_font_size() -> String { "14".to_string() }
+fn default_font_size() -> String { "12".to_string() }
 fn default_language() -> String { "en".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_preset() -> String { "auto".to_string() }

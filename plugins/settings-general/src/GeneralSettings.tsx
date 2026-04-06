@@ -56,9 +56,9 @@ const FONT_FAMILY_PRESETS = [
 ];
 
 const FONT_SIZE_OPTIONS = [
-  { value: '12', label: '12px' },
+  { value: '12', label: '12px (default)' },
   { value: '13', label: '13px' },
-  { value: '14', label: '14px (default)' },
+  { value: '14', label: '14px' },
   { value: '15', label: '15px' },
   { value: '16', label: '16px' },
   { value: '18', label: '18px' },
@@ -102,7 +102,7 @@ export default function GeneralSettings(): React.ReactElement {
         openLastProject: settings.openLastProject ?? true,
         language: settings.language ?? 'en',
         fontFamily: (settings.fontFamily as string) ?? 'Inter',
-        fontSize: (settings.fontSize as string) ?? '14',
+        fontSize: (settings.fontSize as string) ?? '12',
       });
     } catch {
       // First launch — defaults apply
@@ -233,7 +233,7 @@ export default function GeneralSettings(): React.ReactElement {
           form={form}
           layout="vertical"
           requiredMark={false}
-          initialValues={{ theme: 'system', openLastProject: true, language: 'en', fontFamily: 'Inter', fontSize: '14' }}
+          initialValues={{ theme: 'system', openLastProject: true, language: 'en', fontFamily: 'Inter', fontSize: '12' }}
           onValuesChange={() => { if (!loadingRef.current) setIsDirty(true); }}
         >
           <Space direction="vertical" size={32} style={{ width: '100%' }}>

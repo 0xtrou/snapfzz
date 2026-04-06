@@ -14,7 +14,7 @@ function fullSettings(overrides: Record<string, unknown> = {}) {
     openLastProject: true,
     language: 'en',
     fontFamily: 'Inter',
-    fontSize: '14',
+    fontSize: '12',
     fpsCounter: true,
     logLevel: 'info',
     ...overrides,
@@ -282,7 +282,7 @@ describe('A007/settings-general: Tauri unavailable', () => {
 describe('A007/settings-general: loadSettings fallback defaults', () => {
   it('A007/settings-general: uses system theme fallback when settings.theme is missing', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_settings') return Promise.resolve({ openLastProject: true, language: 'en', fontFamily: 'Inter', fontSize: '14' });
+      if (cmd === 'get_settings') return Promise.resolve({ openLastProject: true, language: 'en', fontFamily: 'Inter',     fontSize: '12' });
       return Promise.resolve({});
     });
     render(<GeneralSettings />);
@@ -293,7 +293,7 @@ describe('A007/settings-general: loadSettings fallback defaults', () => {
 
   it('A007/settings-general: uses openLastProject=true fallback when missing from settings', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', language: 'en', fontFamily: 'Inter', fontSize: '14' });
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', language: 'en', fontFamily: 'Inter',     fontSize: '12' });
       return Promise.resolve({});
     });
     render(<GeneralSettings />);
@@ -304,7 +304,7 @@ describe('A007/settings-general: loadSettings fallback defaults', () => {
 
   it('A007/settings-general: uses en language fallback when missing from settings', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, fontFamily: 'Inter', fontSize: '14' });
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, fontFamily: 'Inter',     fontSize: '12' });
       return Promise.resolve({});
     });
     render(<GeneralSettings />);
@@ -315,7 +315,7 @@ describe('A007/settings-general: loadSettings fallback defaults', () => {
 
   it('A007/settings-general: uses Inter fontFamily fallback when missing from settings', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, language: 'en', fontSize: '14' });
+      if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, language: 'en',     fontSize: '12' });
       return Promise.resolve({});
     });
     render(<GeneralSettings />);
@@ -324,7 +324,7 @@ describe('A007/settings-general: loadSettings fallback defaults', () => {
     });
   });
 
-  it('A007/settings-general: uses fontSize 14 fallback when missing from settings', async () => {
+  it('A007/settings-general: uses fontSize 12 fallback when missing from settings', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_settings') return Promise.resolve({ theme: 'light', openLastProject: true, language: 'en', fontFamily: 'Inter' });
       return Promise.resolve({});
@@ -600,7 +600,7 @@ describe('A007/settings-general: saving emits settings-changed with correct valu
   it('A007/settings-general: saving font size persists correct value via save_settings', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_settings') return Promise.resolve(fullSettings({ fontFamily: 'Inter', fontSize: '14' }));
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings({ fontFamily: 'Inter',     fontSize: '12' }));
       if (cmd === 'save_settings') return Promise.resolve(undefined);
       if (cmd === 'list_installed_fonts') return Promise.resolve([]);
       return Promise.resolve({});
