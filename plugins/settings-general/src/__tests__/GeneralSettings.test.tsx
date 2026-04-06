@@ -564,9 +564,15 @@ describe('A007/settings-general: installed fonts appear in dropdown', () => {
   });
 });
 
-describe('A007/settings-general: saving applies theme and typography to DOM', () => {
-  it('A007/settings-general: theme change applies immediately with resolved runtime theme', async () => {
+describe('A007/settings-general: saving emits settings-changed with correct values', () => {
+  it('A007/settings-general: saving theme emits settings-changed after save_settings', async () => {
     const user = userEvent.setup();
+    const mockEmit = vi.fn().mockResolvedValue(undefined);
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: mockInvoke,
+      event: { emit: mockEmit },
+    };
+
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_settings') return Promise.resolve(fullSettings({ theme: 'light' }));
       if (cmd === 'save_settings') return Promise.resolve(undefined);
@@ -574,23 +580,10 @@ describe('A007/settings-general: saving applies theme and typography to DOM', ()
       return Promise.resolve({});
     });
 
-    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-      return {
-        matches: query === '(prefers-color-scheme: dark)',
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      } as unknown as MediaQueryList;
-    });
-
     render(<GeneralSettings />);
     await waitForSettingsLoad();
 
-    await user.click(screen.getByRole('radio', { name: 'System (follow OS)' }));
+    await user.click(screen.getByRole('radio', { name: 'Dark' }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
     });
@@ -600,11 +593,12 @@ describe('A007/settings-general: saving applies theme and typography to DOM', ()
       expect(mockInvoke.mock.calls.some((c) => c[0] === 'save_settings')).toBe(true);
     });
 
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(localStorage.getItem('snapfzz-theme')).toBe('dark');
+    const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
+    expect(saveCall![1].settings).toMatchObject({ theme: 'dark' });
+    expect(mockEmit).toHaveBeenCalledWith('settings-changed');
   });
 
-  it('A007/settings-general: font size applies through html root inheritance override', async () => {
+  it('A007/settings-general: saving font size persists correct value via save_settings', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_settings') return Promise.resolve(fullSettings({ fontFamily: 'Inter', fontSize: '14' }));
@@ -631,10 +625,8 @@ describe('A007/settings-general: saving applies theme and typography to DOM', ()
       expect(mockInvoke.mock.calls.some((c) => c[0] === 'save_settings')).toBe(true);
     });
 
-    const styleEl = document.getElementById('snapfzz-font-override');
-    expect(styleEl?.textContent).toContain('font-size: inherit !important');
-    expect(styleEl?.textContent).toContain('html { font-size: 16px !important; }');
-    expect(document.documentElement.style.getPropertyValue('--font-size')).toBe('16px');
+    const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
+    expect(saveCall![1].settings).toMatchObject({ fontSize: '16' });
   });
 });
 

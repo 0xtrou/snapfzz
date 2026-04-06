@@ -67,50 +67,6 @@ const FONT_SIZE_OPTIONS = [
   { value: '18', label: '18px' },
 ];
 
-const SYSTEM_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-const THEME_STORAGE_KEY = 'snapfzz-theme';
-
-function resolveRuntimeTheme(theme: Theme): 'light' | 'dark' {
-  if (theme === 'light' || theme === 'dark') return theme;
-  if (typeof window.matchMedia !== 'function') return 'dark';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-function resolveFontSize(fontSize: string): number {
-  const parsed = Number.parseInt(fontSize, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
-}
-
-function notifyThemeStorageChange(resolvedTheme: 'light' | 'dark'): void {
-  if (typeof StorageEvent !== 'function') return;
-  window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY, newValue: resolvedTheme }));
-}
-
-function applyThemeToDom(theme: Theme): void {
-  const resolvedTheme = resolveRuntimeTheme(theme);
-  document.documentElement.setAttribute('data-theme', resolvedTheme);
-  localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
-  notifyThemeStorageChange(resolvedTheme);
-}
-
-function applyFontToDom(fontFamily: string, fontSize: string): void {
-  const resolvedFont = fontFamily === 'System' ? SYSTEM_FONT_STACK : fontFamily;
-  const resolvedFontSize = resolveFontSize(fontSize);
-
-  document.documentElement.style.setProperty('--font-family', resolvedFont);
-  document.body.style.fontFamily = resolvedFont;
-  document.documentElement.style.setProperty('--font-size', `${resolvedFontSize}px`);
-  document.body.style.fontSize = `${resolvedFontSize}px`;
-
-  let styleEl = document.getElementById('snapfzz-font-override');
-  if (!styleEl) {
-    styleEl = document.createElement('style');
-    styleEl.id = 'snapfzz-font-override';
-    document.head.appendChild(styleEl);
-  }
-  styleEl.textContent = `*, *::before, *::after { font-family: ${resolvedFont} !important; font-size: inherit !important; } html { font-size: ${resolvedFontSize}px !important; }`;
-}
-
 // A007/settingsSections: Default export required — preferences shell uses dynamic import().
 export default function GeneralSettings(): React.ReactElement {
   const [form] = Form.useForm<GeneralFormValues>();
@@ -192,8 +148,6 @@ export default function GeneralSettings(): React.ReactElement {
       await tauriInvoke('save_settings', { settings: merged });
       // Per A007/PreferencesLayout: broadcast settings writes so every window re-applies persisted appearance state.
       emitSettingsChanged();
-      applyThemeToDom(values.theme);
-      applyFontToDom(values.fontFamily, values.fontSize);
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
