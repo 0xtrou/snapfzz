@@ -18,27 +18,27 @@ Built with [Tauri](https://tauri.app/) + [AgentScope Runtime](https://runtime.ag
 
 ## Test Coverage
 
-Coverage ≥90% enforced by CI on every push. Threshold assertion fails the build if any package drops below.
+Coverage ≥90% enforced by CI on every push. Badges update automatically from CI coverage data.
 
 ### Core Infrastructure
 
-| Layer | Package | CI |
-|---|---|---|
-| Rust | [`snapfzz-budget`](src-tauri/crates/snapfzz-budget/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=budget)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Rust | [`main.rs`](src-tauri/src/main.rs) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=runtime)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Frontend | [`@snapfzz/plugin-host`](frontend/packages/plugin-host/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugin-host)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Layer | Package | Coverage | CI |
+|---|---|---|---|
+| Rust | [`snapfzz-budget`](src-tauri/crates/snapfzz-budget/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=budget)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Rust | [`main.rs`](src-tauri/src/main.rs) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=runtime)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Frontend | [`@snapfzz/plugin-host`](frontend/packages/plugin-host/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugin-host)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 
 ### Plugins
 
-| Plugin | Package | CI |
-|---|---|---|
-| Chat | [`plugins/chat`](plugins/chat/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=chat)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings General | [`plugins/settings-general`](plugins/settings-general/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=general)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings Runtime | [`plugins/settings-runtime`](plugins/settings-runtime/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=runtime)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings Performance | [`plugins/settings-performance`](plugins/settings-performance/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=performance)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings Plugins | [`plugins/settings-plugins`](plugins/settings-plugins/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugins)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings Advanced | [`plugins/settings-advanced`](plugins/settings-advanced/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=advanced)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings Processes | [`plugins/settings-processes`](plugins/settings-processes/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=processes)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Plugin | Package | Coverage | CI |
+|---|---|---|---|
+| Chat | [`plugins/chat`](plugins/chat/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/chat.json)](plugins/chat/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=chat)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Settings General | [`plugins/settings-general`](plugins/settings-general/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-general.json)](plugins/settings-general/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=general)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Settings Runtime | [`plugins/settings-runtime`](plugins/settings-runtime/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-runtime.json)](plugins/settings-runtime/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=runtime)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Settings Performance | [`plugins/settings-performance`](plugins/settings-performance/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-performance.json)](plugins/settings-performance/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=performance)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Settings Plugins | [`plugins/settings-plugins`](plugins/settings-plugins/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-plugins.json)](plugins/settings-plugins/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugins)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Settings Advanced | [`plugins/settings-advanced`](plugins/settings-advanced/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-advanced.json)](plugins/settings-advanced/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=advanced)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Settings Processes | [`plugins/settings-processes`](plugins/settings-processes/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-processes.json)](plugins/settings-processes/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=processes)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 
 ## Architecture
 

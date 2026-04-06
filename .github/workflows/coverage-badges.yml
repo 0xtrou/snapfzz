@@ -1,0 +1,52 @@
+name: Coverage Badges
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  update-badges:
+    name: Update Coverage Badges
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+
+      - name: Run coverage for all plugins
+        run: |
+          mkdir -p .badges
+          for plugin in chat settings-general settings-runtime settings-performance settings-plugins settings-advanced settings-processes; do
+            DIR="plugins/$plugin"
+            if [ "$plugin" = "chat" ]; then
+              FILTER="@snapfzz/chat-plugin"
+            else
+              FILTER="@snapfzz/$plugin"
+            fi
+            pnpm --filter "$FILTER" exec npx vitest run --coverage --coverage.reporter=json-summary 2>/dev/null || true
+            SUMMARY="$DIR/coverage/coverage-summary.json"
+            if [ -f "$SUMMARY" ]; then
+              COV=$(node -e "console.log(require('./$SUMMARY').total.lines.pct)")
+              COLOR="red"
+              if [ "$(echo "$COV >= 90" | bc)" = "1" ]; then COLOR="brightgreen"; fi
+              if [ "$(echo "$COV >= 80" | bc)" = "1" ] && [ "$(echo "$COV < 90" | bc)" = "1" ]; then COLOR="yellow"; fi
+              echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > ".badges/$plugin.json"
+            fi
+          done
+
+      - name: Commit badge data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .badges/
+          git diff --staged --quiet || git commit -m "ci: update coverage badges [skip ci]"
+          git push
