@@ -24,6 +24,16 @@ function applyFontSettings(settings: AppSettings): void {
     const resolved = settings.fontFamily === 'System' ? SYSTEM_FONT_STACK : settings.fontFamily;
     document.documentElement.style.setProperty('--font-family', resolved);
     document.body.style.fontFamily = resolved;
+
+    // Ant Design's ConfigProvider sets fontFamily via CSS class selectors that override
+    // body-level styles. Inject a global style to force the selected font everywhere.
+    let styleEl = document.getElementById('snapfzz-font-override');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'snapfzz-font-override';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = `*, *::before, *::after { font-family: ${resolved} !important; }`;
   }
   if (settings.fontSize) {
     document.documentElement.style.setProperty('--font-size', settings.fontSize + 'px');

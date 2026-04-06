@@ -55,9 +55,6 @@ const LANGUAGE_OPTIONS = [
 const FONT_FAMILY_PRESETS = [
   { value: 'Inter', label: 'Inter' },
   { value: 'System', label: 'System Default' },
-  { value: 'SF Pro', label: 'SF Pro' },
-  { value: 'Helvetica Neue', label: 'Helvetica Neue' },
-  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
 ];
 
 const FONT_SIZE_OPTIONS = [
@@ -77,6 +74,14 @@ function applyFontToDom(fontFamily: string, fontSize: string): void {
   document.body.style.fontFamily = resolvedFont;
   document.documentElement.style.setProperty('--font-size', fontSize + 'px');
   document.body.style.fontSize = fontSize + 'px';
+
+  let styleEl = document.getElementById('snapfzz-font-override');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'snapfzz-font-override';
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = `*, *::before, *::after { font-family: ${resolvedFont} !important; }`;
 }
 
 // A007/settingsSections: Default export required — preferences shell uses dynamic import().
