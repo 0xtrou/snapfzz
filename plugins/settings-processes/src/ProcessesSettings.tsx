@@ -10,6 +10,7 @@ import {
   Space,
   Typography,
   Tooltip,
+  Input,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -19,6 +20,7 @@ import {
   CopyOutlined,
   LinkOutlined,
   FolderOpenOutlined,
+  SaveOutlined,
 } from '@ant-design/icons';
 import { SettingsHeader } from '@snapfzz/shared';
 
@@ -101,11 +103,52 @@ interface DetailPanelProps {
   onAction: () => void;
 }
 
+// Per ENGINEERING_GUIDE/Settings Propagation: emits DOM event after save so all windows re-apply.
+// A007/MultiLayout: preferences window is separate — DOM event triggers useAppSettings re-read.
+function emitSettingsChanged() {
+  window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
+}
+
 function DetailPanel({ process, onAction }: DetailPanelProps) {
   const [showLogs, setShowLogs] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
 
+  // Per A007/settingsSections + A008/SupervisedDomain: agentscope host/port is now configured
+  // inside the Processes detail panel, not in a separate Runtime settings section.
+  const [agentscopeHost, setAgentscopeHost] = useState('127.0.0.1');
+  const [agentscopePort, setAgentscopePort] = useState('8090');
+  const [configSaving, setConfigSaving] = useState(false);
+
   const logContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (process.name !== 'agentscope') return;
+    tauriInvoke('get_settings').then((s) => {
+      const settings = s as Record<string, unknown>;
+      if (typeof settings.agentscopeHost === 'string') setAgentscopeHost(settings.agentscopeHost);
+      if (typeof settings.agentscopePort === 'string') setAgentscopePort(settings.agentscopePort);
+      if (typeof settings.agentscopePort === 'number') setAgentscopePort(String(settings.agentscopePort));
+    }).catch(() => void 0);
+  }, [process.name]);
+
+  const handleSaveAndRestart = useCallback(async () => {
+    setConfigSaving(true);
+    try {
+      const current = await tauriInvoke('get_settings') as Record<string, unknown>;
+      // Per ENGINEERING_GUIDE/Settings Propagation: merge into full settings object before saving.
+      await tauriInvoke('save_settings', {
+        settings: { ...current, agentscopeHost, agentscopePort },
+      });
+      // Per ENGINEERING_GUIDE/Settings Propagation: emit DOM event so same-window useAppSettings re-reads.
+      emitSettingsChanged();
+      await tauriInvoke('restart_process', { name: 'agentscope' });
+      onAction();
+    } catch {
+      void 0;
+    } finally {
+      setConfigSaving(false);
+    }
+  }, [agentscopeHost, agentscopePort, onAction]);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -167,6 +210,87 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
         borderTop: '1px solid var(--border-default)',
       }}
     >
+      {process.name === 'agentscope' && (
+        <div
+          data-testid="agentscope-config-section"
+          style={{
+            marginBottom: 20,
+            padding: '14px 16px',
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 8,
+          }}
+        >
+          <Text
+            style={{
+              display: 'block',
+              color: 'var(--text-secondary)',
+              fontWeight: 600,
+              fontSize: 11,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              marginBottom: 12,
+            }}
+          >
+            Connection
+          </Text>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Text style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>
+                Host
+              </Text>
+              <Input
+                data-testid="agentscope-host-input"
+                value={agentscopeHost}
+                onChange={(e) => setAgentscopeHost(e.target.value)}
+                placeholder="127.0.0.1"
+                style={{
+                  background: 'var(--bg-input)',
+                  borderColor: 'var(--border-default)',
+                  color: 'var(--text-primary)',
+                  fontSize: 13,
+                }}
+              />
+            </div>
+            <div style={{ width: 110 }}>
+              <Text style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>
+                Port
+              </Text>
+              <Input
+                data-testid="agentscope-port-input"
+                value={agentscopePort}
+                onChange={(e) => setAgentscopePort(e.target.value)}
+                placeholder="8090"
+                style={{
+                  background: 'var(--bg-input)',
+                  borderColor: 'var(--border-default)',
+                  color: 'var(--text-primary)',
+                  fontSize: 13,
+                }}
+              />
+            </div>
+            <Popconfirm
+              title="Save and restart agent runtime?"
+              description="The agent runtime will restart with the new connection settings."
+              onConfirm={handleSaveAndRestart}
+              okText="Save & Restart"
+              cancelText="Cancel"
+            >
+              <Button
+                size="small"
+                icon={<SaveOutlined />}
+                loading={configSaving}
+                data-testid="btn-save-restart-agentscope"
+              >
+                Save & Restart
+              </Button>
+            </Popconfirm>
+          </div>
+          <Text style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+            Changes require process restart to take effect
+          </Text>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
         <div>
           <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>PID</Text>

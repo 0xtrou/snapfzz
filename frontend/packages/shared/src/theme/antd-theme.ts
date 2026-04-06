@@ -4,7 +4,7 @@ import type { ThemeConfig } from 'antd';
 const sharedTokens = {
   fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   fontFamilyCode: "'JetBrains Mono', 'Fira Code', monospace",
-  fontSize: 12,
+  fontSize: 13,
   borderRadius: 6,
   borderRadiusLG: 8,
   borderRadiusSM: 4,

@@ -56,8 +56,8 @@ const FONT_FAMILY_PRESETS = [
 ];
 
 const FONT_SIZE_OPTIONS = [
-  { value: '12', label: '12px (default)' },
-  { value: '13', label: '13px' },
+  { value: '12', label: '12px' },
+  { value: '13', label: '13px (default)' },
   { value: '14', label: '14px' },
   { value: '15', label: '15px' },
   { value: '16', label: '16px' },

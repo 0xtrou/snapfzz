@@ -72,6 +72,14 @@ struct Settings {
     // Performance
     #[serde(default = "default_preset")]
     preset: String,
+
+    // Per A008/SupervisedDomain: agentscope connection config moved from settings-runtime plugin
+    // into the Processes panel. Defaults match the AGENTSCOPE_PORT constant so existing deployments
+    // continue working without a settings.json migration.
+    #[serde(default = "default_agentscope_host")]
+    agentscope_host: String,
+    #[serde(default = "default_agentscope_port")]
+    agentscope_port: u16,
 }
 
 fn default_model() -> String { "gpt-4o".to_string() }
@@ -79,10 +87,12 @@ fn default_api_url() -> String { "https://api.openai.com/v1".to_string() }
 fn default_theme() -> String { "system".to_string() }
 fn default_true() -> bool { true }
 fn default_font_family() -> String { "Inter".to_string() }
-fn default_font_size() -> String { "12".to_string() }
+fn default_font_size() -> String { "13".to_string() }
 fn default_language() -> String { "en".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_preset() -> String { "auto".to_string() }
+fn default_agentscope_host() -> String { "127.0.0.1".to_string() }
+fn default_agentscope_port() -> u16 { AGENTSCOPE_PORT }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -98,6 +108,8 @@ impl Default for Settings {
             fps_counter: default_true(),
             log_level: default_log_level(),
             preset: default_preset(),
+            agentscope_host: default_agentscope_host(),
+            agentscope_port: default_agentscope_port(),
         }
     }
 }

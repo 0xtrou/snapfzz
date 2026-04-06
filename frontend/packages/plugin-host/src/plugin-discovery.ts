@@ -22,10 +22,12 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
   const loaders: Array<() => Promise<{ default: PluginDefinition }>> =
     surface === 'project'
       ? [() => import('@snapfzz/chat-plugin')]
-      : surface === 'preferences'
+        : surface === 'preferences'
         ? [
+            // Per A007/settingsSections: Runtime section removed — agentscope host/port config
+            // moved into Processes DetailPanel (A008/SupervisedDomain). settings-runtime plugin
+            // is kept on disk for reference but disconnected from the preferences surface loader.
             () => import('@snapfzz/settings-general'),
-            () => import('@snapfzz/settings-runtime'),
             () => import('@snapfzz/settings-performance'),
             () => import('@snapfzz/settings-processes'),
             () => import('@snapfzz/settings-plugins'),
