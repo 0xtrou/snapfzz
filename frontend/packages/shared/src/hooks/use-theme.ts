@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 type Theme = 'dark' | 'light';
+const THEME_STORAGE_KEY = 'snapfzz-theme';
 
 function getSystemTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
@@ -9,7 +10,7 @@ function getSystemTheme(): Theme {
 
 function getStoredTheme(): Theme | null {
   if (typeof localStorage === 'undefined') return null;
-  const stored = localStorage.getItem('snapfzz-theme');
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
   return stored === 'dark' || stored === 'light' ? stored : null;
 }
 
@@ -18,7 +19,7 @@ export function useTheme() {
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    localStorage.setItem('snapfzz-theme', t);
+    localStorage.setItem(THEME_STORAGE_KEY, t);
     document.documentElement.setAttribute('data-theme', t);
   }, []);
 
@@ -36,6 +37,32 @@ export function useTheme() {
       tauri.invoke('plugin:window|set_theme', { label: 'launcher', value: theme }).catch(() => {});
     }
   }, [theme]);
+
+  useEffect(() => {
+    const applyCurrentTheme = () => {
+      const nextTheme = getStoredTheme() ?? getSystemTheme();
+      setThemeState(nextTheme);
+      document.documentElement.setAttribute('data-theme', nextTheme);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== THEME_STORAGE_KEY) return;
+      applyCurrentTheme();
+    };
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = () => {
+      if (getStoredTheme() !== null) return;
+      applyCurrentTheme();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    mediaQuery.addEventListener('change', handleSystemThemeChange);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      mediaQuery.removeEventListener('change', handleSystemThemeChange);
+    };
+  }, []);
 
   return { theme, setTheme, toggleTheme };
 }

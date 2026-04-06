@@ -20,8 +20,13 @@ const emptySnapshot = {
 
 let snapshot = { ...emptySnapshot };
 
+const { useAppSettingsMock } = vi.hoisted(() => ({
+  useAppSettingsMock: vi.fn(),
+}));
+
 vi.mock('@snapfzz/shared', () => ({
   useTheme: () => ({ theme: 'dark' }),
+  useAppSettings: useAppSettingsMock,
   darkTheme: { algorithm: undefined, token: {} },
   lightTheme: { algorithm: undefined, token: {} },
 }));
@@ -53,6 +58,8 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     const existing = document.getElementById('skeleton');
     if (existing) existing.remove();
     snapshot = { ...emptySnapshot };
+    useAppSettingsMock.mockReset();
+    useAppSettingsMock.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -102,6 +109,11 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     expect(PluginHostMock).toHaveBeenCalled();
     const [, surface] = PluginHostMock.mock.calls[0];
     expect(surface).toBe('launcher');
+  });
+
+  it('A007/settings-general: launcher mounts shared app settings hook', () => {
+    render(createElement(App));
+    expect(useAppSettingsMock).toHaveBeenCalledTimes(1);
   });
 
   it('A006/shell: renders status items from contributions', async () => {

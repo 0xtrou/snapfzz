@@ -1,6 +1,10 @@
 // Per A007/MultiLayout: applied across all windows so every surface uses the same font settings.
-// Per A004/Workspace: reads fontFamily and fontsize from settings.json on boot.
+// Per A004/Workspace: reads persisted appearance settings from settings.json on boot.
 import { useEffect, useState } from 'react';
+
+export type RuntimeTheme = 'dark' | 'light';
+export type SettingsTheme = RuntimeTheme | 'system';
+const THEME_STORAGE_KEY = 'snapfzz-theme';
 
 // A007/TauriIPC: accesses __TAURI_INTERNALS__ directly — no @tauri-apps/api bundle.
 function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null {
@@ -12,6 +16,7 @@ function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Pro
 }
 
 interface AppSettings {
+  theme?: SettingsTheme;
   fontFamily?: string;
   fontSize?: string;
   installedFonts?: string[];
@@ -19,26 +24,50 @@ interface AppSettings {
 
 const SYSTEM_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
-function applyFontSettings(settings: AppSettings): void {
-  if (settings.fontFamily) {
-    const resolved = settings.fontFamily === 'System' ? SYSTEM_FONT_STACK : settings.fontFamily;
-    document.documentElement.style.setProperty('--font-family', resolved);
-    document.body.style.fontFamily = resolved;
+function resolveTheme(theme: SettingsTheme | undefined): RuntimeTheme {
+  if (theme === 'dark' || theme === 'light') return theme;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 
-    // Ant Design's ConfigProvider sets fontFamily via CSS class selectors that override
-    // body-level styles. Inject a global style to force the selected font everywhere.
-    let styleEl = document.getElementById('snapfzz-font-override');
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = 'snapfzz-font-override';
-      document.head.appendChild(styleEl);
-    }
-    styleEl.textContent = `*, *::before, *::after { font-family: ${resolved} !important; }`;
+function resolveFontFamily(fontFamily: string | undefined): string {
+  if (!fontFamily || fontFamily === 'System') return SYSTEM_FONT_STACK;
+  return fontFamily;
+}
+
+function resolveFontSize(fontSize: string | undefined): number {
+  const parsed = Number.parseInt(fontSize || '14', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+}
+
+// Per A007/PreferencesLayout: each window rehydrates persisted appearance settings from shared settings.json.
+function notifyThemeStorageChange(resolvedTheme: RuntimeTheme): void {
+  if (typeof StorageEvent !== 'function') return;
+  window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY, newValue: resolvedTheme }));
+}
+
+function applyDomSettings(settings: AppSettings): void {
+  const resolvedTheme = resolveTheme(settings.theme);
+  const resolvedFontFamily = resolveFontFamily(settings.fontFamily);
+  const resolvedFontSize = resolveFontSize(settings.fontSize);
+
+  document.documentElement.setAttribute('data-theme', resolvedTheme);
+  localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
+  notifyThemeStorageChange(resolvedTheme);
+
+  document.documentElement.style.setProperty('--font-family', resolvedFontFamily);
+  document.body.style.fontFamily = resolvedFontFamily;
+  document.documentElement.style.setProperty('--font-size', `${resolvedFontSize}px`);
+  document.body.style.fontSize = `${resolvedFontSize}px`;
+
+  let styleEl = document.getElementById('snapfzz-font-override');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'snapfzz-font-override';
+    document.head.appendChild(styleEl);
   }
-  if (settings.fontSize) {
-    document.documentElement.style.setProperty('--font-size', settings.fontSize + 'px');
-    document.body.style.fontSize = settings.fontSize + 'px';
-  }
+
+  styleEl.textContent = `*, *::before, *::after { font-family: ${resolvedFontFamily} !important; font-size: inherit !important; } html { font-size: ${resolvedFontSize}px !important; }`;
 }
 
 async function loadAndRegisterCustomFonts(invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>): Promise<string[]> {
@@ -93,7 +122,7 @@ export function useAppSettings(): string[] {
       if (!invoke) return;
       try {
         const settings = (await invoke('get_settings')) as AppSettings;
-        applyFontSettings(settings);
+        applyDomSettings(settings);
         const registered = await loadAndRegisterCustomFonts(invoke);
         setCustomFonts(registered);
       } catch {
