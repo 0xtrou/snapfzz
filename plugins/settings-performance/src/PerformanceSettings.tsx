@@ -1,8 +1,7 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
 // refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
-import { Card, Progress, Radio, Space, Table, Tag, Tooltip, Typography } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Card, Progress, Radio, Space, Tag, Typography } from 'antd';
 import { AntIcon, createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -146,50 +145,35 @@ function strokeColorForPct(pct: number): string {
   return 'var(--color-success)';
 }
 
-// A008/BudgetTable: column definitions for the Ant Design Table.
-const columns = [
-  {
-    title: 'Budget',
-    dataIndex: 'name',
-    key: 'name',
-    width: 180,
-    render: (name: string, record: BudgetRow) => (
-      <Space>
-        <AntIcon name={record.icon} />
-        <Text strong>{name}</Text>
-        <Tooltip title={record.description} placement="right" overlayStyle={{ maxWidth: 320 }}>
-          <QuestionCircleOutlined style={{ color: 'var(--text-muted)', fontSize: 12, cursor: 'help' }} />
-        </Tooltip>
-      </Space>
-    ),
-  },
-  {
-    title: 'Current',
-    dataIndex: 'current',
-    key: 'current',
-    render: (_: string, record: BudgetRow) => (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Text style={{ color: 'var(--text-secondary)', minWidth: 100 }}>{record.current}</Text>
-        {record.percent >= 0 && (
-          <Progress
-            percent={record.percent}
-            size="small"
-            strokeColor={strokeColorForPct(record.percent)}
-            showInfo={false}
-            style={{ flex: 1, minWidth: 80 }}
-          />
-        )}
+function BudgetItem({ row }: { row: BudgetRow }) {
+  return (
+    <div style={{
+      padding: '12px 0',
+      borderBottom: '1px solid var(--border-default)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Space size={8}>
+          <AntIcon name={row.icon} style={{ color: 'var(--text-muted)', fontSize: 14 }} />
+          <Text strong style={{ fontSize: 13 }}>{row.name}</Text>
+        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Text style={{ color: 'var(--text-primary)', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{row.current}</Text>
+          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>/ {row.limit}</Text>
+        </div>
       </div>
-    ),
-  },
-  {
-    title: 'Limit',
-    dataIndex: 'limit',
-    key: 'limit',
-    width: 220,
-    render: (val: string) => <Text style={{ color: 'var(--text-muted)' }}>{val}</Text>,
-  },
-];
+      {row.percent >= 0 && (
+        <Progress
+          percent={row.percent}
+          size="small"
+          strokeColor={strokeColorForPct(row.percent)}
+          showInfo={false}
+          style={{ margin: '4px 0' }}
+        />
+      )}
+      <Text style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: '16px' }}>{row.description}</Text>
+    </div>
+  );
+}
 
 export default function PerformanceSettings() {
   const [metrics, setMetrics] = useState<BudgetMetrics | null>(null);
@@ -315,17 +299,12 @@ export default function PerformanceSettings() {
           </Space>
         </Card>
 
-        {/* A008/BudgetTable: consolidated view of all 8 displayable budgets (A008/BudgetRegistry). */}
         {metrics ? (
-          <Table<BudgetRow>
-            dataSource={budgetRows}
-            columns={columns}
-            size="middle"
-            pagination={false}
-            bordered
-            rowKey="key"
-            style={{ marginBottom: 20 }}
-          />
+          <div>
+            {budgetRows.map((row) => (
+              <BudgetItem key={row.key} row={row} />
+            ))}
+          </div>
         ) : (
           <Text style={{ color: 'var(--text-muted)', fontSize: 13 }}>—</Text>
         )}
