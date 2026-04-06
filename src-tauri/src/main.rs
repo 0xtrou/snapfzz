@@ -616,6 +616,9 @@ async fn spawn_runtime(
     for _ in 0..120 {
         tokio::time::sleep(Duration::from_millis(1000)).await;
         if registry.supervised.check_health("agentscope").await {
+            if let Some(mut entry) = registry.supervised.processes.get_mut("agentscope") {
+                entry.status = snapfzz_budget::metrics::ProcessStatus::Online;
+            }
             eprintln!("[budget] AgentScope Runtime healthy on port {AGENTSCOPE_PORT}");
             return Ok(());
         }
@@ -625,7 +628,17 @@ async fn spawn_runtime(
 
 async fn shutdown_runtime(runtime: &Arc<Mutex<RuntimeState>>) {
     let mut guard = runtime.lock().await;
-    if let Some(mut child) = guard.child.take() { let _ = child.kill().await; }
+    if let Some(ref child) = guard.child {
+        if let Some(pid) = child.id() {
+            #[cfg(unix)]
+            unsafe { libc::kill(pid as i32, libc::SIGKILL); }
+            #[cfg(not(unix))]
+            { let _ = child.start_kill(); }
+        }
+    }
+    if let Some(mut child) = guard.child.take() {
+        let _ = child.wait().await;
+    }
     guard.child_pid = None;
     remove_pid_file();
 }
@@ -843,6 +856,31 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(Duration::from_millis(2000)).await;
+
+                    for entry in metrics_reg.supervised.processes.iter() {
+                        let name = entry.key().clone();
+                        let healthy = metrics_reg.supervised.check_health(&name).await;
+                        if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(&name) {
+                            if healthy {
+                                proc.status = snapfzz_budget::metrics::ProcessStatus::Online;
+                                proc.consecutive_failures = 0;
+                            } else {
+                                proc.consecutive_failures += 1;
+                                if proc.consecutive_failures >= proc.max_health_failures {
+                                    proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
+                                } else {
+                                    proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
+                                }
+                            }
+                        }
+
+                        if metrics_reg.supervised.is_memory_exceeded(&name) {
+                            if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(&name) {
+                                proc.status = snapfzz_budget::metrics::ProcessStatus::Errored;
+                            }
+                        }
+                    }
+
                     let snap = metrics_reg.snapshot();
                     if let Err(e) = metrics_handle.emit("budget-metrics", &snap) {
                         eprintln!("[budget] metrics emit error: {e}");
