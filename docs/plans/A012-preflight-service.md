@@ -39,6 +39,9 @@ Tauri .setup()
 │    │   ├─ try OS keychain first             │
 │    │   └─ fall back to ~/.snapfzz/vault.key │
 │    ├─ open SecretVault                      │
+│    ├─ generate process auth tokens          │
+│    │   └─ vault.store("process:agentscope:  │
+│    │      authToken", random_hex(32))        │
 │    └─ migrate plaintext secrets from        │
 │       settings.json (one-time)              │
 │                                             │
@@ -78,6 +81,68 @@ Tauri .setup()
 - **Phase 5-6** are async — spawned as background tasks. The window opens immediately; AgentScope may still be starting.
 - Each phase emits structured log: `[preflight] Phase {n}: {name} — {duration}ms`
 - Any phase failure is logged but non-fatal (app continues in degraded mode) except Phase 1 (filesystem) which is fatal.
+
+### Hookable Lifecycle
+
+Inspired by NestJS `OnModuleInit` / `OnApplicationBootstrap`. Each phase can register hooks that run at specific lifecycle points. This allows crates and plugins to participate in boot without coupling to `PreflightService` internals.
+
+```rust
+/// Trait for components that need initialization during preflight.
+/// Similar to NestJS OnModuleInit — called during the phase that owns the component.
+pub trait OnPreflightInit {
+    fn on_preflight_init(&mut self, ctx: &PreflightContext) -> Result<(), PreflightError>;
+}
+
+/// Trait for components that need work after all sync phases complete.
+/// Similar to NestJS OnApplicationBootstrap — called after Phase 4, before window opens.
+pub trait OnPreflightReady {
+    fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError>;
+}
+
+/// Trait for async components that start in Phase 5-6.
+/// Called after window opens — used for process spawning, background services.
+#[async_trait]
+pub trait OnPreflightAsync {
+    async fn on_preflight_async(&self, ctx: &PreflightContext) -> Result<(), PreflightError>;
+}
+
+pub struct PreflightContext {
+    pub data_dir: PathBuf,
+    pub vault: Arc<Mutex<SecretVault>>,
+    pub settings: Settings,
+    pub registry: Arc<BudgetRegistry>,
+}
+```
+
+**Registration**: components register hooks via `PreflightService::register()` before `run_sync()`.
+
+```rust
+let mut preflight = PreflightService::new(data_dir);
+preflight.register_init(Phase::Vault, Box::new(process_token_generator));
+preflight.register_ready(Box::new(settings_validator));
+preflight.register_async(Box::new(agentscope_spawner));
+preflight.register_async(Box::new(metrics_loop));
+let result = preflight.run_sync()?;
+```
+
+**Execution order**: within a phase, hooks run in registration order. Cross-phase order is guaranteed by phase numbering.
+
+### Process Auth Tokens
+
+Phase 2 generates per-process auth tokens and stores them in the vault. These tokens secure IPC between the Rust supervisor and spawned processes.
+
+```
+process:agentscope:authToken  — random 32-byte hex, regenerated every boot
+process:{name}:authToken      — pattern for future processes
+```
+
+**Flow**:
+1. Phase 2: `vault.store("process:agentscope:authToken", random_hex(32))`
+2. Phase 5: `spawn_runtime()` reads token from vault, passes as `SNAPFZZ_AUTH_TOKEN` env var
+3. Python `app.py` reads `SNAPFZZ_AUTH_TOKEN`, adds FastAPI middleware that checks `Authorization: Bearer {token}`
+4. All Rust HTTP calls to AgentScope include `Authorization: Bearer {token}` header
+
+This ensures only the Snapfzz supervisor can access the AgentScope API, even on localhost.
 
 ---
 

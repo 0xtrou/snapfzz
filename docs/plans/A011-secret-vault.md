@@ -65,9 +65,12 @@ On every write: rebuild entire file (entries are small, count is low — <100 en
 ```
 provider:{provider_id}:apiKey     — LLM provider API key
 provider:{provider_id}:orgId      — optional org/team identifier
+process:{name}:authToken          — per-process IPC auth token (regenerated every boot)
 webhook:{name}:secret             — webhook signing secrets
 custom:{name}                     — user-defined secrets
 ```
+
+Process auth tokens are ephemeral — regenerated on every boot by the Preflight Service (A012 Phase 2). They secure IPC between the Rust supervisor and spawned processes. The token is passed to the process as an environment variable (`SNAPFZZ_AUTH_TOKEN`) and verified by the process on every incoming request.
 
 ---
 
