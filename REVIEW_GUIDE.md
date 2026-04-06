@@ -94,7 +94,7 @@ Every test must trace to a spec. Every spec requirement must have a test.
 |---|---|---|
 | Do all test names start with a spec reference? | `grep "it('" *.test.ts` — every `it()` starts with `A00X/` or `U00X/` | Test name has no spec prefix. |
 | Does each test file have a header comment? | First lines should be `// Spec: A00X-...` | Missing header identifying which spec this file covers. |
-| Are there untested spec requirements? | Compare TRACEABILITY.md "Code" and "Tests" columns. | A requirement has code but no test. |
+| Are there untested spec requirements? | Check test coverage ≥90%. Run with --coverage and verify. | Coverage below 90% means requirements are untested. |
 | Do tests actually verify the claimed behavior? | Read the test. Does it assert what the test name says? | Test name says one thing, assertion checks something else. |
 
 ### 4. Inline Comments
@@ -118,7 +118,7 @@ Standard code review concerns, grounded in specs:
 | Are there circular imports? | Package A imports from Package B which imports from Package A. |
 | Does it break existing tests? | `npx vitest run` has failures. |
 | Does the app still boot? | `pnpm dev:launcher` doesn't serve 200 OK. |
-| Is TRACEABILITY.md updated? | New code exists but no new rows in traceability matrix. |
+| Is test coverage ≥90%? | Run with --coverage. New code must be covered. |
 
 ### 6. Boundary Check
 
@@ -197,7 +197,7 @@ For each PR reviewed, produce:
 
 ### Test Traceability
 - [PASS/FAIL] All test names have spec prefixes
-- [PASS/FAIL] TRACEABILITY.md updated
+- [PASS/FAIL] Test coverage ≥90%
 - [X] new tests added, [Y] existing tests pass
 
 ### Code Quality

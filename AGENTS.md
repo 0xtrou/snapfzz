@@ -173,7 +173,7 @@ src-tauri/crates/           Rust: Zone 1
 
 docs/plans/                 A001-A006: architecture specs
 docs/ui-specs/              U001-U010: UI specs
-docs/TRACEABILITY.md        Spec → Code → Test
+docs/learning/              Compounded knowledge
 ```
 
 ## Commands

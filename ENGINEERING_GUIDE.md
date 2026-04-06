@@ -78,23 +78,9 @@ ctx.bus.emit('topic', payload);
 - Standard patterns (React hooks, Ant Design usage)
 - Test files (spec reference is in the test name instead)
 
-### Layer 3: Traceability Matrix
+### Layer 3: Tests ARE the Traceability
 
-File: `docs/TRACEABILITY.md` — maps every spec requirement to its implementation and tests.
-
-```markdown
-## 009 Plugin Architecture
-
-| Requirement | Code | Tests |
-|---|---|---|
-| Manifest-driven plugin discovery | plugin-host/src/plugin-host.ts:resolve() | plugin-host.test.ts:A005/resolve |
-| Topological dependency sort | plugin-host/src/plugin-host.ts:resolve() | plugin-host.test.ts:A005/resolve:sorts by deps |
-| Lazy activation on events | plugin-host/src/plugin-host.ts:activate() | plugin-host.test.ts:A005/activate |
-| PluginContext with all fields | plugin-host/src/plugin-context-factory.ts | plugin-context-factory.test.ts:A005/context |
-| Crash isolation via ErrorBoundary | plugin-host/src/plugin-error-boundary.tsx | plugin-host-react.test.tsx:A005/isolation |
-| Bus-only communication | plugin-host/src/plugin-context-factory.ts:EventBus | plugin-context-factory.test.ts:A005/EventBus |
-| ContributionStore reactive | plugin-host/src/contribution-store.ts | contribution-store.test.ts:A005/store |
-```
+Tests with spec-prefixed names (`A005/resolve: sorts by deps`) are the living traceability matrix. If the test passes, the spec is implemented. If it doesn't, CI fails. No separate document needed.
 
 Updated every time code or specs change.
 
@@ -310,7 +296,7 @@ When delegating work to an agent, ALWAYS include:
 1. **Spec file paths** — every relevant spec the agent must read
 2. **Traceability requirement** — "test names must start with spec number"
 3. **Inline comment requirement** — "reference specs for architectural decisions"
-4. **Verification step** — "update docs/TRACEABILITY.md after implementation"
+4. **Verification step** — "run tests, verify coverage ≥90%"
 
 ### Agent Prompt Template
 
@@ -319,10 +305,9 @@ When delegating work to an agent, ALWAYS include:
 - /path/to/spec1.md (sections X, Y, Z are relevant)
 - /path/to/spec2.md (section A is relevant)
 
-## TRACEABILITY REQUIREMENTS
+## SPEC TRACEABILITY
 - Test names: {spec-number}/{section}: {behavior}
 - Inline comments: // Per {spec-number}/{section}: {why}
-- Update docs/TRACEABILITY.md after implementation
 
 ## TDD
 - Write failing test first referencing the spec
@@ -350,8 +335,7 @@ Before any PR merges:
 
 1. **Every test name starts with a spec reference** — no orphan tests
 2. **Architectural decisions have inline spec comments** — no unexplained choices
-3. **TRACEABILITY.md is updated** — new code is mapped to specs
-4. **No spec violations** — code matches what specs describe
+3. **No spec violations** — code matches what specs describe
 5. **Tests pass** — `npx vitest run`
 6. **App boots** — `pnpm dev:launcher` serves 200 OK
 
@@ -362,7 +346,6 @@ Before any PR merges:
 ```
 docs/plans/YYYY-MM-DD-NNN-feat-<name>.md     # Specs (architecture decisions)
 docs/ui-specs/NN-<name>.md                    # UI specs
-docs/TRACEABILITY.md                          # Spec → Code → Test mapping
 ENGINEERING_GUIDE.md                          # This file (how to build)
 CONTRIBUTING.md                               # How to contribute
 ```
@@ -415,7 +398,7 @@ CONTRIBUTING.md                               # How to contribute
 3. Does this code violate any spec? → if yes, update the spec first or don't write the code
 4. Are tests named with spec prefixes? → `{spec}/{section}: {behavior}`
 5. Are architectural decisions commented? → `// Per {spec}/{section}: {why}`
-6. Is TRACEABILITY.md updated? → new rows for new code
+6. Is test coverage ≥90%? → run with --coverage and verify
 7. No TODOs? → `grep -rn "TODO\|FIXME" frontend/packages/` must be clean
 8. Tests pass? → `npx vitest run`
 9. App boots? → `pnpm dev:launcher` returns 200
