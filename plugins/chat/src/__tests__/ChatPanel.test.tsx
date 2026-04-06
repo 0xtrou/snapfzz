@@ -385,6 +385,63 @@ describe('chat/ChatPanel: composer behavior', () => {
   });
 });
 
+describe('chat/ChatPanel: additional block types in renderBlock', () => {
+  it('chat/ChatPanel: renders ToolResultInline for tool_result blocks', async () => {
+    const { useChat } = await import('../hooks/use-chat');
+    vi.mocked(useChat).mockReturnValue({
+      messages: [
+        {
+          id: 'msg-tr',
+          name: 'Orchestrator',
+          role: 'assistant',
+          content: [{ type: 'tool_result' as const, id: 'r1', output: 'done', outputPreview: 'done result' }],
+          metadata: {},
+          timestamp: '2026-04-06T10:00:00Z',
+          timestampLabel: '10:00',
+          groupedWithPrevious: false,
+        },
+      ],
+      isStreaming: false,
+      pendingMessageId: null,
+      tokenCount: 0,
+      connectionStatus: 'connected',
+      sessionId: 'mock-session',
+      send: vi.fn(),
+      stop: vi.fn(),
+      clearConversation: vi.fn(),
+    });
+
+    await renderChatPanel();
+
+    expect(screen.getByTestId('tool-result-inline')).toBeDefined();
+  });
+
+  it('chat/ChatPanel: send button triggers send() with input text', async () => {
+    const send = vi.fn();
+    const { useChat } = await import('../hooks/use-chat');
+    vi.mocked(useChat).mockReturnValue({
+      messages: [],
+      isStreaming: false,
+      pendingMessageId: null,
+      tokenCount: 0,
+      connectionStatus: 'connected',
+      sessionId: 'mock-session',
+      send,
+      stop: vi.fn(),
+      clearConversation: vi.fn(),
+    });
+
+    await renderChatPanel();
+
+    const user = userEvent.setup();
+    const textarea = screen.getByTestId('pretext-input');
+    await user.type(textarea, 'Hello agent');
+    await user.click(screen.getByRole('button'));
+
+    expect(send).toHaveBeenCalledWith('Hello agent');
+  });
+});
+
 describe('chat/ChatPanel: ThinkingIndicator visibility', () => {
   it('chat/ChatPanel: ThinkingIndicator visible when streaming with pendingMessageId', async () => {
     const { useChat } = await import('../hooks/use-chat');

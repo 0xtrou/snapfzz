@@ -1,17 +1,10 @@
 // A007/SettingsSections: Runtime settings form — preferences surface only.
 // A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Button,
-  Form,
-  Input,
-  Select,
-  Space,
-  Tag,
-  Typography,
-} from 'antd';
+import { Form, Input, Select, Space, Tag, Typography } from 'antd';
+import { SettingsHeader } from '@snapfzz/shared';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // A007/TauriIPC: Preferences window loads from an external URL; __TAURI_INTERNALS__
 // provides invoke() without requiring @tauri-apps/api to be bundled.
@@ -128,11 +121,18 @@ export default function RuntimeSettings() {
   const isOnline = health.status === 'connected';
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 560, color: 'var(--text-primary)' }}>
-      <Title level={4} style={{ color: 'var(--text-primary)', marginBottom: 24 }}>
-        Runtime Settings
-      </Title>
+    <div style={{ color: 'var(--text-primary)' }}>
+      <SettingsHeader
+        title="Runtime"
+        isDirty={isDirty}
+        saving={saving}
+        saveSuccess={saveSuccess}
+        saveError={saveError}
+        onSave={handleSave}
+        onDiscard={() => { loadSettings(); setIsDirty(false); }}
+      />
 
+      <div style={{ padding: 16, maxWidth: 560 }}>
       <div
         style={{
           display: 'flex',
@@ -271,58 +271,6 @@ export default function RuntimeSettings() {
         </Form.Item>
 
       </Form>
-
-      <div style={{
-        marginTop: 24,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 0',
-        borderTop: '1px solid var(--border-default)',
-      }}>
-        {isDirty && (
-          <>
-            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Unsaved changes</span>
-            <button
-              type="button"
-              onClick={() => { loadSettings(); setIsDirty(false); }}
-              style={{
-                padding: '6px 16px',
-                background: 'none',
-                border: '1px solid var(--border-default)',
-                borderRadius: 6,
-                color: 'var(--text-primary)',
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Discard
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || !isDirty}
-          style={{
-            padding: '6px 16px',
-            background: isDirty ? 'var(--accent)' : 'var(--bg-subtle)',
-            color: isDirty ? 'var(--bg-primary)' : 'var(--text-muted)',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: isDirty && !saving ? 'pointer' : 'default',
-          }}
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-        {saveSuccess && (
-          <span style={{ color: 'var(--color-success)', fontSize: 13 }}>Saved</span>
-        )}
-        {saveError && (
-          <span style={{ color: 'var(--color-error)', fontSize: 13 }}>{saveError}</span>
-        )}
       </div>
     </div>
   );

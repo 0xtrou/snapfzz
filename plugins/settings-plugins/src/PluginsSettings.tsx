@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { List, Space, Switch, Tag, Typography } from 'antd';
+import { SettingsHeader } from '@snapfzz/shared';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface PluginEntry {
   id: string;
@@ -74,11 +75,9 @@ export default function PluginsSettings(): React.ReactElement {
   }
 
   return (
-    <div style={{ padding: 'var(--spacing-6, 24px)', maxWidth: 640 }}>
-      <Title level={3} style={{ marginBottom: 'var(--spacing-6, 24px)' }}>
-        Plugins
-      </Title>
-
+    <div>
+      <SettingsHeader title="Plugins" />
+      <div style={{ padding: 16, maxWidth: 640 }}>
       <List<PluginEntry>
         loading={loading}
         dataSource={plugins}
@@ -111,6 +110,7 @@ export default function PluginsSettings(): React.ReactElement {
           </List.Item>
         )}
       />
+      </div>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Checkbox, Radio, Select, Space, Typography } from 'antd';
+import { SettingsHeader } from '@snapfzz/shared';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -59,11 +60,9 @@ export default function GeneralSettings(): React.ReactElement {
   }
 
   return (
-    <div style={{ padding: 'var(--spacing-6, 24px)', maxWidth: 560 }}>
-      <Title level={3} style={{ marginBottom: 'var(--spacing-6, 24px)' }}>
-        General
-      </Title>
-
+    <div>
+      <SettingsHeader title="General" />
+      <div style={{ padding: 16, maxWidth: 560 }}>
       <Space direction="vertical" size={32} style={{ width: '100%' }}>
         <section>
           <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
@@ -109,6 +108,7 @@ export default function GeneralSettings(): React.ReactElement {
           </Text>
         </section>
       </Space>
+      </div>
     </div>
   );
 }

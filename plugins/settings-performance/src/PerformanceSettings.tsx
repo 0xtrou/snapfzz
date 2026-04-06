@@ -2,9 +2,9 @@
 // refreshes every 2s, displays preset selector and progress bars.
 import { useEffect, useState, useCallback } from 'react';
 import { Card, Progress, Radio, Space, Typography } from 'antd';
-import { createTauriBridge } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // A008/BudgetMetrics: mirrors serde camelCase output of BudgetMetrics in metrics.rs
 interface BudgetMetrics {
@@ -81,12 +81,9 @@ export default function PerformanceSettings() {
   const storagePct = metrics ? pct(metrics.storageUsedGb, metrics.storageMaxGb) : 0;
 
   return (
-    <div style={{ padding: 32, maxWidth: 640, contain: 'content' }}>
-      <Title level={3} style={{ color: 'var(--text-primary)', marginBottom: 24 }}>
-        Performance
-      </Title>
-
-      {/* A008/Presets: user-selectable preset overrides auto-detected hardware preset */}
+    <div style={{ contain: 'content' }}>
+      <SettingsHeader title="Performance" />
+      <div style={{ padding: 16, maxWidth: 640 }}>
       <Card
         title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
         style={{ marginBottom: 20, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
@@ -219,6 +216,7 @@ export default function PerformanceSettings() {
           </Space>
         </Card>
       )}
+      </div>
     </div>
   );
 }

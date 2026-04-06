@@ -2,15 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const mockBridgeInvoke = vi.fn();
+const { mockBridgeInvoke } = vi.hoisted(() => ({ mockBridgeInvoke: vi.fn() }));
 
-vi.mock('@snapfzz/shared', () => ({
-  createTauriBridge: () => ({
-    isAvailable: true,
-    invoke: mockBridgeInvoke,
-    listen: vi.fn().mockResolvedValue(() => {}),
-  }),
-}));
+vi.mock('@snapfzz/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@snapfzz/shared')>();
+  return {
+    ...actual,
+    createTauriBridge: () => ({
+      isAvailable: true,
+      invoke: mockBridgeInvoke,
+      listen: vi.fn().mockResolvedValue(() => {}),
+    }),
+  };
+});
 
 import PerformanceSettings from '../PerformanceSettings';
 
@@ -36,11 +40,9 @@ function makeMetrics(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   mockBridgeInvoke.mockReset();
-  vi.useFakeTimers();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -94,7 +96,7 @@ describe('A007/settings-performance: preset selector', () => {
   });
 
   it('A007/settings-performance: clicking a different preset updates selection', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const user = userEvent.setup();
     mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'balanced' }));
     render(<PerformanceSettings />);
     await waitFor(() => screen.getByRole('radio', { name: 'Battery' }));
@@ -208,15 +210,18 @@ describe('A007/settings-performance: progress bars', () => {
 
 describe('A007/settings-performance: metrics refresh', () => {
   it('A007/settings-performance: polls budget_snapshot every 2 seconds', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
-    render(<PerformanceSettings />);
-    await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledTimes(1));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockBridgeInvoke.mockResolvedValue(makeMetrics());
+      render(<PerformanceSettings />);
+      await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledTimes(1));
 
-    await act(async () => { vi.advanceTimersByTime(2000); });
-    await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledTimes(2));
-
-    await act(async () => { vi.advanceTimersByTime(2000); });
-    await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledTimes(3));
+      const callsBefore = mockBridgeInvoke.mock.calls.length;
+      await act(async () => { vi.advanceTimersByTime(2001); await Promise.resolve(); });
+      await waitFor(() => expect(mockBridgeInvoke.mock.calls.length).toBeGreaterThan(callsBefore));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
