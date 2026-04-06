@@ -578,6 +578,121 @@ describe('A008/settings-processes: clear logs', () => {
   });
 });
 
+describe('A008/settings-processes: error handling when Tauri unavailable', () => {
+  it('A008/settings-processes: restart_process failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'restart_process') return Promise.reject(new Error('no tauri'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-restart-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-restart-agentscope'));
+    });
+    await waitFor(() => {
+      const okBtn = document.querySelector('.ant-popconfirm .ant-btn-primary');
+      if (okBtn) {
+        fireEvent.click(okBtn);
+      }
+    });
+
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+  });
+
+  it('A008/settings-processes: kill_process failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'kill_process') return Promise.reject(new Error('no tauri'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-kill-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-kill-agentscope'));
+    });
+    await waitFor(() => {
+      const okBtn = document.querySelector('.ant-popconfirm .ant-btn-primary');
+      if (okBtn) {
+        fireEvent.click(okBtn);
+      }
+    });
+
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+  });
+
+  it('A008/settings-processes: clear_process_logs failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'clear_process_logs') return Promise.reject(new Error('no tauri'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
+    });
+    await waitFor(() => screen.getByTestId('log-panel-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-clear-logs-agentscope'));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+  });
+
+  it('A008/settings-processes: update_process_config failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'update_process_config') return Promise.reject(new Error('no tauri'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByRole('spinbutton', { name: 'Max memory MB' }));
+
+    await act(async () => {
+      fireEvent.change(screen.getByRole('spinbutton', { name: 'Max memory MB' }), {
+        target: { value: '256' },
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+  });
+});
+
 describe('A008/settings-processes: kill process', () => {
   it('A008/settings-processes: kill_process is called after popconfirm confirm', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
