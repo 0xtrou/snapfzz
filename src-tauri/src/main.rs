@@ -383,6 +383,17 @@ async fn pick_folder(default_path: Option<String>) -> Result<Option<String>, Str
 }
 
 #[tauri::command]
+async fn open_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    { std::process::Command::new("open").arg(&path).spawn().map_err(|e| e.to_string())?; }
+    #[cfg(target_os = "linux")]
+    { std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| e.to_string())?; }
+    #[cfg(target_os = "windows")]
+    { std::process::Command::new("explorer").arg(&path).spawn().map_err(|e| e.to_string())?; }
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_data_dir() -> Result<String, String> {
     Ok(resolve_data_dir().to_string_lossy().to_string())
 }
@@ -614,16 +625,23 @@ async fn spawn_runtime(
         guard.child_pid = Some(child_pid);
     }
 
+    let prev = registry.supervised.processes.get("agentscope");
+    let prev_restart_count = prev.as_ref().map(|p| p.restart_count).unwrap_or(0);
+    let is_restart = prev.is_some();
+    let prev_max_memory = prev.as_ref().map(|p| p.max_memory_mb)
+        .unwrap_or(registry.preset.memory.agentscope_max_mb);
+    drop(prev);
+
     registry.register_process("agentscope", ProcessBudget {
         pid: Some(child_pid),
-        max_memory_mb: registry.preset.memory.agentscope_max_mb,
+        max_memory_mb: prev_max_memory,
         health_url: format!("http://127.0.0.1:{AGENTSCOPE_PORT}/health"),
         health_interval_ms: 2000,
         max_health_failures: 3,
         max_restarts: registry.preset.reliability.max_restarts,
         location: ProcessLocation::Local,
         consecutive_failures: 0,
-        restart_count: 0,
+        restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
         status: snapfzz_budget::metrics::ProcessStatus::Starting,
         started_at: Some(std::time::Instant::now()),
         owner: "system".to_string(),
@@ -771,6 +789,7 @@ fn main() {
             get_settings,
             save_settings,
             get_data_dir,
+            open_path,
             pick_folder,
             set_data_dir,
             get_frame_target,

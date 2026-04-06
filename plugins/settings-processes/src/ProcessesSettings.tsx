@@ -17,6 +17,9 @@ import {
   CloseCircleOutlined,
   FileTextOutlined,
   DeleteOutlined,
+  CopyOutlined,
+  LinkOutlined,
+  FolderOpenOutlined,
 } from '@ant-design/icons';
 import { SettingsHeader } from '@snapfzz/shared';
 
@@ -99,14 +102,14 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ process, onAction }: DetailPanelProps) {
-  const [showLogs, setShowLogs] = useState(false);
+  const [showLogs, setShowLogs] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
   const [maxMemory, setMaxMemory] = useState<number>(process.maxMemoryMb);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = useCallback(async () => {
     try {
-      const result = await tauriInvoke('get_process_logs', { name: process.name, tailN: 50 });
+      const result = await tauriInvoke('get_process_logs', { name: process.name, tailN: 100 });
       setLogs(result as string[]);
     } catch {
       // Tauri not available in browser preview
@@ -194,13 +197,33 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>Health URL</Text>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Text
               style={{ color: 'var(--text-primary)', fontSize: 13, fontFamily: 'var(--font-mono)' }}
               data-testid="detail-health-url"
             >
               {process.healthUrl || '—'}
             </Text>
+            {process.healthUrl && (
+              <>
+                <Tooltip title="Copy URL">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CopyOutlined />}
+                    onClick={() => navigator.clipboard.writeText(process.healthUrl)}
+                  />
+                </Tooltip>
+                <Tooltip title="Open in browser">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<LinkOutlined />}
+                    onClick={() => window.open(process.healthUrl, '_blank')}
+                  />
+                </Tooltip>
+              </>
+            )}
           </div>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
@@ -296,7 +319,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           onClick={() => setShowLogs((v) => !v)}
           data-testid={`btn-view-logs-${process.name}`}
         >
-          {showLogs ? 'Hide Logs' : 'View Logs'}
+          {showLogs ? 'Hide Logs' : 'View Latest 100 Logs'}
         </Button>
 
         <Button
@@ -306,6 +329,20 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           data-testid={`btn-clear-logs-${process.name}`}
         >
           Clear Logs
+        </Button>
+
+        <Button
+          size="small"
+          icon={<FolderOpenOutlined />}
+          onClick={async () => {
+            try {
+              const dataDir = await tauriInvoke('get_data_dir') as string;
+              tauriInvoke('open_path', { path: dataDir });
+            } catch { void 0; }
+          }}
+          data-testid={`btn-open-log-file-${process.name}`}
+        >
+          Open Log Folder
         </Button>
       </Space>
 
