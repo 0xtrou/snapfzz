@@ -1,8 +1,8 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
-// refreshes every 2s, displays preset selector and progress bars.
+// refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
-import { Card, Progress, Radio, Space, Tag, Typography } from 'antd';
-import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
+import { Card, Progress, Radio, Space, Table, Tag, Typography } from 'antd';
+import { AntIcon, createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -30,19 +30,18 @@ interface HardwareInfo {
   onBattery: boolean;
 }
 
+// A008/BudgetTable: row data for the consolidated budget table (U005/BudgetDisplay).
+interface BudgetRow {
+  key: string;
+  name: string;
+  icon: string;
+  current: string;
+  limit: string;
+  // 0-100 for Progress bar, -1 for N/A (no usage bar)
+  percent: number;
+}
+
 const REFRESH_INTERVAL_MS = 2000;
-
-// A001/GPUOnlyAnimations: all color decisions via CSS variables — no hardcoded hex.
-function healthColor(pct: number): string {
-  if (pct >= 90) return 'var(--color-error)';
-  if (pct >= 70) return 'var(--color-warning)';
-  return 'var(--color-success)';
-}
-
-function pct(used: number, total: number): number {
-  if (total === 0) return 0;
-  return Math.min(100, Math.round((used / total) * 100));
-}
 
 const bridge = createTauriBridge();
 
@@ -64,6 +63,131 @@ function PresetOption({ name, specs }: { name: string; specs: { cpu: number; ram
     </div>
   );
 }
+
+// A008/BudgetTable: build the 8 displayable budget rows from a BudgetMetrics snapshot.
+// Engineering budget is infrastructure-only and not UI-displayable (see A008).
+function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
+  return [
+    {
+      key: 'frame',
+      name: 'Frame',
+      icon: 'ThunderboltOutlined',
+      current: '—',
+      limit: `${metrics.frameTargetMs}ms (${metrics.frameTargetMs <= 16 ? '60' : '30'}fps)`,
+      percent: -1,
+    },
+    {
+      key: 'batch',
+      name: 'Batch Rate',
+      icon: 'SwapOutlined',
+      current: '—',
+      limit: `${metrics.batchRateMs}ms`,
+      percent: -1,
+    },
+    {
+      key: 'cpu',
+      name: 'CPU Permits',
+      icon: 'ApiOutlined',
+      current: `${metrics.cpuUsed} in use`,
+      limit: `${metrics.cpuTotal}`,
+      percent: metrics.cpuTotal > 0 ? Math.round((metrics.cpuUsed / metrics.cpuTotal) * 100) : 0,
+    },
+    {
+      key: 'memory',
+      name: 'Memory',
+      icon: 'DatabaseOutlined',
+      current: `${metrics.agentscopeRssMb != null ? Math.round(metrics.agentscopeRssMb) : '—'} MB`,
+      limit: `${metrics.agentscopeMaxMb} MB`,
+      percent:
+        metrics.agentscopeMaxMb > 0 && metrics.agentscopeRssMb != null
+          ? Math.round((metrics.agentscopeRssMb / metrics.agentscopeMaxMb) * 100)
+          : 0,
+    },
+    {
+      key: 'network',
+      name: 'Network',
+      icon: 'CloudOutlined',
+      current: `${metrics.invokeUsed} invokes`,
+      limit: `${metrics.invokeTotal}`,
+      percent: metrics.invokeTotal > 0 ? Math.round((metrics.invokeUsed / metrics.invokeTotal) * 100) : 0,
+    },
+    {
+      key: 'storage',
+      name: 'Storage',
+      icon: 'HddOutlined',
+      current: `${metrics.storageUsedGb} GB`,
+      limit: `${metrics.storageMaxGb} GB`,
+      percent: metrics.storageMaxGb > 0 ? Math.round((metrics.storageUsedGb / metrics.storageMaxGb) * 100) : 0,
+    },
+    {
+      key: 'startup',
+      name: 'Startup',
+      icon: 'RocketOutlined',
+      current: '—',
+      limit: '200ms visible / 500ms interactive',
+      percent: -1,
+    },
+    {
+      key: 'reliability',
+      name: 'Reliability',
+      icon: 'SafetyCertificateOutlined',
+      current: `${metrics.disabledPlugins?.length ?? 0} disabled`,
+      limit: '3 strikes / 5min',
+      percent: -1,
+    },
+  ];
+}
+
+// A001/GPUOnlyAnimations: all color decisions via CSS variables — no hardcoded hex.
+function strokeColorForPct(pct: number): string {
+  if (pct >= 90) return 'var(--color-error)';
+  if (pct >= 70) return 'var(--color-warning)';
+  return 'var(--color-success)';
+}
+
+// A008/BudgetTable: column definitions for the Ant Design Table.
+const columns = [
+  {
+    title: 'Budget',
+    dataIndex: 'name',
+    key: 'name',
+    render: (name: string, record: BudgetRow) => (
+      <Space>
+        <AntIcon name={record.icon} />
+        <Text strong>{name}</Text>
+      </Space>
+    ),
+  },
+  {
+    title: 'Current',
+    dataIndex: 'current',
+    key: 'current',
+    render: (val: string) => <Text style={{ color: 'var(--text-secondary)' }}>{val}</Text>,
+  },
+  {
+    title: 'Limit',
+    dataIndex: 'limit',
+    key: 'limit',
+    render: (val: string) => <Text style={{ color: 'var(--text-muted)' }}>{val}</Text>,
+  },
+  {
+    title: 'Usage',
+    dataIndex: 'percent',
+    key: 'usage',
+    width: 150,
+    render: (pct: number) =>
+      pct >= 0 ? (
+        <Progress
+          percent={pct}
+          size="small"
+          strokeColor={strokeColorForPct(pct)}
+          showInfo={false}
+        />
+      ) : (
+        <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</Text>
+      ),
+  },
+];
 
 export default function PerformanceSettings() {
   const [metrics, setMetrics] = useState<BudgetMetrics | null>(null);
@@ -108,12 +232,7 @@ export default function PerformanceSettings() {
   const perfRamMb = hwInfo ? Math.min(hwInfo.ramGb * 512, 8192) : 2048;
   const perfRam = perfRamMb >= 1024 ? `${Math.floor(perfRamMb / 1024)}GB` : `${perfRamMb}MB`;
 
-  // A001/PerformanceArchitecture: frame_target_ms is the budget ceiling, not a usage counter.
-  // Display it as a configuration value; use 0% fill to avoid misleading 100% bar.
-  const cpuPct = metrics ? pct(metrics.cpuUsed, metrics.cpuTotal) : 0;
-  const memPct = metrics ? pct(metrics.agentscopeRssMb ?? 0, metrics.agentscopeMaxMb) : 0;
-  const invokePct = metrics ? pct(metrics.invokeUsed, metrics.invokeTotal) : 0;
-  const storagePct = metrics ? pct(metrics.storageUsedGb, metrics.storageMaxGb) : 0;
+  const budgetRows: BudgetRow[] = metrics ? buildBudgetRows(metrics) : [];
 
   return (
     <div style={{ contain: 'content' }}>
@@ -158,149 +277,71 @@ export default function PerformanceSettings() {
         </span>
       </SettingsHeader>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
-      <div style={{ padding: "16px 32px", maxWidth: 640 }}>
-      <Card
-        title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
-        style={{ marginBottom: 20, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
-      >
-        <Space direction="vertical" size={12}>
-          <Radio.Group
-            value={displayPreset}
-            onChange={(e) => setPendingPreset(e.target.value as Preset)}
-          >
-            <Space>
-              <Radio value="battery" style={{ color: 'var(--text-primary)' }}>
-                <PresetOption name="Battery" specs={{ cpu: 2, ram: '512MB', fps: 30 }} />
-              </Radio>
-              <Radio value="balanced" style={{ color: 'var(--text-primary)' }}>
-                <PresetOption name="Balanced" specs={{ cpu: 4, ram: '1GB', fps: 60 }} />
-              </Radio>
-              <Radio value="performance" style={{ color: 'var(--text-primary)' }}>
-                <PresetOption
-                  name="Performance"
-                  specs={{ cpu: perfCpu, ram: perfRam, fps: 60 }}
-                />
-              </Radio>
-              <Radio value="custom" disabled style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
-                Custom <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>(coming soon)</span>
-              </Radio>
-            </Space>
-          </Radio.Group>
-          {metrics && (
-            <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.frameTargetMs <= 16 ? '60fps' : '30fps'} · uptime {Math.floor(metrics.uptimeSecs / 60)}m
-            </Text>
-          )}
-        </Space>
-      </Card>
-
-      {/* A001/PerformanceArchitecture: frame budget — 60fps = 16ms target */}
-      <Card
-        title={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Text style={{ color: 'var(--text-primary)' }}>Frame Budget</Text>{metrics && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-success)', animation: 'pulse 2s ease-in-out infinite' }} />}</span>}
-        style={{ marginBottom: 16, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size={8}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Target</Text>
-            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-              {metrics ? `${metrics.frameTargetMs}ms (${metrics.frameTargetMs <= 16 ? '60fps' : '30fps'})` : '—'}
-            </Text>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Batch Rate</Text>
-            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-              {metrics ? `${metrics.batchRateMs}ms` : '—'}
-            </Text>
-          </div>
-        </Space>
-      </Card>
-
-      {/* A008/ControlledDomain: CPU semaphore permits */}
-      <Card
-        title={<Text style={{ color: 'var(--text-primary)' }}>CPU Budget</Text>}
-        style={{ marginBottom: 16, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
-      >
-        <Progress
-          percent={cpuPct}
-          strokeColor={healthColor(cpuPct)}
-          trailColor="var(--bg-subtle)"
-          format={() => metrics ? `${metrics.cpuUsed}/${metrics.cpuTotal} permits in use` : '—'}
-          size="small"
-        />
-      </Card>
-
-      {/* A008/SupervisedDomain: AgentScope RSS vs max_memory_mb */}
-      <Card
-        title={<Text style={{ color: 'var(--text-primary)' }}>Memory Budget</Text>}
-        style={{ marginBottom: 16, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size={8}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>AgentScope</Text>
-            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-              {metrics
-                ? `${metrics.agentscopeRssMb !== null ? Math.round(metrics.agentscopeRssMb) : '—'}/${metrics.agentscopeMaxMb} MB`
-                : '—'}
-            </Text>
-          </div>
-          <Progress
-            percent={memPct}
-            strokeColor={healthColor(memPct)}
-            trailColor="var(--bg-subtle)"
-            size="small"
-            format={() =>
-              metrics
-                ? metrics.agentscopeStatus === 'online'
-                  ? 'online'
-                  : metrics.agentscopeStatus
-                : '—'
-            }
-          />
-        </Space>
-      </Card>
-
-      {/* A008/ControlledDomain: invoke semaphore — network concurrency */}
-      <Card
-        title={<Text style={{ color: 'var(--text-primary)' }}>Network Budget</Text>}
-        style={{ marginBottom: 16, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
-      >
-        <Progress
-          percent={invokePct}
-          strokeColor={healthColor(invokePct)}
-          trailColor="var(--bg-subtle)"
-          format={() => metrics ? `${metrics.invokeUsed}/${metrics.invokeTotal} concurrent invokes` : '—'}
-          size="small"
-        />
-      </Card>
-
-      {/* A008/Storage: workspace + logs + sessions footprint */}
-      <Card
-        title={<Text style={{ color: 'var(--text-primary)' }}>Storage Budget</Text>}
-        style={{ marginBottom: 16, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
-      >
-        <Progress
-          percent={storagePct}
-          strokeColor={healthColor(storagePct)}
-          trailColor="var(--bg-subtle)"
-          format={() => metrics ? `${metrics.storageUsedGb}/${metrics.storageMaxGb} GB used` : '—'}
-          size="small"
-        />
-      </Card>
-
-      {metrics && metrics.disabledPlugins.length > 0 && (
+      <div style={{ padding: '16px 32px', maxWidth: 640 }}>
         <Card
-          title={<Text style={{ color: 'var(--color-error)' }}>Disabled Plugins</Text>}
-          style={{ background: 'var(--bg-default)', borderColor: 'var(--color-error)' }}
+          title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
+          style={{ marginBottom: 20, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
         >
-          <Space direction="vertical" size={4}>
-            {metrics.disabledPlugins.map((pid) => (
-              <Text key={pid} style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                {pid}
+          <Space direction="vertical" size={12}>
+            <Radio.Group
+              value={displayPreset}
+              onChange={(e) => setPendingPreset(e.target.value as Preset)}
+            >
+              <Space>
+                <Radio value="battery" style={{ color: 'var(--text-primary)' }}>
+                  <PresetOption name="Battery" specs={{ cpu: 2, ram: '512MB', fps: 30 }} />
+                </Radio>
+                <Radio value="balanced" style={{ color: 'var(--text-primary)' }}>
+                  <PresetOption name="Balanced" specs={{ cpu: 4, ram: '1GB', fps: 60 }} />
+                </Radio>
+                <Radio value="performance" style={{ color: 'var(--text-primary)' }}>
+                  <PresetOption
+                    name="Performance"
+                    specs={{ cpu: perfCpu, ram: perfRam, fps: 60 }}
+                  />
+                </Radio>
+                <Radio value="custom" disabled style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+                  Custom <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>(coming soon)</span>
+                </Radio>
+              </Space>
+            </Radio.Group>
+            {metrics && (
+              <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.frameTargetMs <= 16 ? '60fps' : '30fps'} · uptime {Math.floor(metrics.uptimeSecs / 60)}m
               </Text>
-            ))}
+            )}
           </Space>
         </Card>
-      )}
+
+        {/* A008/BudgetTable: consolidated view of all 8 displayable budgets (A008/BudgetRegistry). */}
+        {metrics ? (
+          <Table<BudgetRow>
+            dataSource={budgetRows}
+            columns={columns}
+            size="middle"
+            pagination={false}
+            bordered
+            rowKey="key"
+            style={{ marginBottom: 20 }}
+          />
+        ) : (
+          <Text style={{ color: 'var(--text-muted)', fontSize: 13 }}>—</Text>
+        )}
+
+        {metrics && metrics.disabledPlugins.length > 0 && (
+          <Card
+            title={<Text style={{ color: 'var(--color-error)' }}>Disabled Plugins</Text>}
+            style={{ background: 'var(--bg-default)', borderColor: 'var(--color-error)' }}
+          >
+            <Space direction="vertical" size={4}>
+              {metrics.disabledPlugins.map((pid) => (
+                <Text key={pid} style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                  {pid}
+                </Text>
+              ))}
+            </Space>
+          </Card>
+        )}
       </div>
     </div>
   );

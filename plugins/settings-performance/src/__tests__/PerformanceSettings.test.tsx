@@ -235,7 +235,239 @@ describe('A007/settings-performance: preset selector', () => {
   });
 });
 
-describe('A007/settings-performance: budget metrics display', () => {
+describe('A008/settings-performance: budget table structure', () => {
+  it('A008/settings-performance: renders Ant Design Table when metrics loaded', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const table = document.querySelector('.ant-table');
+      expect(table).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: renders 8 budget rows', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const rows = document.querySelectorAll('.ant-table-tbody tr');
+      expect(rows.length).toBe(8);
+    });
+  });
+
+  it('A008/settings-performance: Frame row present with N/A usage', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Frame')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Batch Rate row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Batch Rate')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: CPU Permits row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('CPU Permits')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Memory row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Memory')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Network row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Network')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Storage row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Storage')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Startup row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Startup')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Reliability row present', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Reliability')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: table has Budget, Current, Limit, Usage column headers', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Budget')).toBeInTheDocument();
+      expect(screen.getByText('Current')).toBeInTheDocument();
+      expect(screen.getByText('Limit')).toBeInTheDocument();
+      expect(screen.getByText('Usage')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('A008/settings-performance: budget table values', () => {
+  it('A008/settings-performance: Frame row shows frame target and fps', async () => {
+    setupMocks({ metrics: makeMetrics({ frameTargetMs: 16 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('16ms (60fps)')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Frame row shows 30fps when target > 16ms', async () => {
+    setupMocks({ metrics: makeMetrics({ frameTargetMs: 33 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('33ms (30fps)')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Batch Rate row shows batch rate', async () => {
+    setupMocks({ metrics: makeMetrics({ batchRateMs: 16 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('16ms')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: CPU row shows used count', async () => {
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 3, cpuTotal: 8 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('3 in use')).toBeInTheDocument();
+      expect(screen.getByText('8')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Memory row shows used MB', async () => {
+    setupMocks({ metrics: makeMetrics({ agentscopeRssMb: 128, agentscopeMaxMb: 512 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('128 MB')).toBeInTheDocument();
+      expect(screen.getByText('512 MB')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Memory row shows — when agentscopeRssMb is null', async () => {
+    setupMocks({ metrics: makeMetrics({ agentscopeRssMb: null, agentscopeMaxMb: 512 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('— MB')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Network row shows invoke count', async () => {
+    setupMocks({ metrics: makeMetrics({ invokeUsed: 2, invokeTotal: 6 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('2 invokes')).toBeInTheDocument();
+      expect(screen.getByText('6')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Storage row shows GB used', async () => {
+    setupMocks({ metrics: makeMetrics({ storageUsedGb: 2.5, storageMaxGb: 10 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('2.5 GB')).toBeInTheDocument();
+      expect(screen.getByText('10 GB')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Startup row shows startup budget limit', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('200ms visible / 500ms interactive')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Reliability row shows disabled count', async () => {
+    setupMocks({ metrics: makeMetrics({ disabledPlugins: ['a', 'b'] }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('2 disabled')).toBeInTheDocument();
+      expect(screen.getByText('3 strikes / 5min')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: Reliability row shows 0 disabled when empty', async () => {
+    setupMocks({ metrics: makeMetrics({ disabledPlugins: [] }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('0 disabled')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('A008/settings-performance: budget table usage bars', () => {
+  it('A008/settings-performance: progress bar visible for CPU row', async () => {
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 2, cpuTotal: 4 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bars = document.querySelectorAll('.ant-progress');
+      expect(bars.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('A008/settings-performance: progress bars shown for CPU, Memory, Network, Storage', async () => {
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 1, cpuTotal: 4, agentscopeRssMb: 100, agentscopeMaxMb: 512, invokeUsed: 1, invokeTotal: 3, storageUsedGb: 1, storageMaxGb: 10 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bars = document.querySelectorAll('.ant-progress');
+      expect(bars.length).toBe(4);
+    });
+  });
+
+  it('A008/settings-performance: no table rendered before metrics load', async () => {
+    mockBridgeInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return new Promise(() => {});
+      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
+      return Promise.resolve(undefined);
+    });
+    render(<PerformanceSettings />);
+    const table = document.querySelector('.ant-table');
+    expect(table).not.toBeInTheDocument();
+  });
+
+  it('A008/settings-performance: shows — placeholder when metrics not yet loaded', async () => {
+    mockBridgeInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return new Promise(() => {});
+      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
+      return Promise.resolve(undefined);
+    });
+    render(<PerformanceSettings />);
+    const dashes = screen.getAllByText('—');
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('A007/settings-performance: budget metrics display (API compat)', () => {
   it('A007/settings-performance: calls budget_snapshot on mount', async () => {
     setupMocks();
     render(<PerformanceSettings />);
@@ -252,71 +484,6 @@ describe('A007/settings-performance: budget metrics display', () => {
     });
   });
 
-  it('A007/settings-performance: displays CPU budget section', async () => {
-    setupMocks();
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('CPU Budget')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: displays Memory Budget section', async () => {
-    setupMocks();
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('Memory Budget')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: displays Network Budget section', async () => {
-    setupMocks();
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('Network Budget')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: displays Storage Budget section', async () => {
-    setupMocks();
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('Storage Budget')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: shows CPU usage as permits in use', async () => {
-    setupMocks({ metrics: makeMetrics({ cpuUsed: 2, cpuTotal: 8 }) });
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('2/8 permits in use')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: shows storage usage in GB', async () => {
-    setupMocks({ metrics: makeMetrics({ storageUsedGb: 2.5, storageMaxGb: 20 }) });
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('2.5/20 GB used')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: shows invoke concurrency', async () => {
-    setupMocks({ metrics: makeMetrics({ invokeUsed: 1, invokeTotal: 3 }) });
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('1/3 concurrent invokes')).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: shows frame target and batch rate', async () => {
-    setupMocks({ metrics: makeMetrics({ frameTargetMs: 16, batchRateMs: 16 }) });
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('16ms (60fps)')).toBeInTheDocument();
-      expect(screen.getByText('16ms')).toBeInTheDocument();
-    });
-  });
-
   it('A008/settings-performance: shows uptime in preset info line', async () => {
     setupMocks({ metrics: makeMetrics({ uptimeSecs: 180, cpuTotal: 4, agentscopeMaxMb: 512, presetName: 'Balanced' }) });
     render(<PerformanceSettings />);
@@ -327,28 +494,6 @@ describe('A007/settings-performance: budget metrics display', () => {
       expect(bodyText).toMatch(/512/);
       expect(bodyText).toMatch(/3m/);
     });
-  });
-});
-
-describe('A007/settings-performance: progress bars', () => {
-  it('A007/settings-performance: CPU progress bar renders at correct percentage', async () => {
-    setupMocks({ metrics: makeMetrics({ cpuUsed: 2, cpuTotal: 4 }) });
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      const bars = document.querySelectorAll('.ant-progress');
-      expect(bars.length).toBeGreaterThan(0);
-    });
-  });
-
-  it('A007/settings-performance: shows — placeholder when metrics not yet loaded', async () => {
-    mockBridgeInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'budget_snapshot') return new Promise(() => {});
-      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
-      return Promise.resolve(undefined);
-    });
-    render(<PerformanceSettings />);
-    const dashes = screen.getAllByText('—');
-    expect(dashes.length).toBeGreaterThan(0);
   });
 });
 
@@ -385,7 +530,7 @@ describe('A007/settings-performance: disabled plugins', () => {
   it('A007/settings-performance: does not show disabled plugins section when list is empty', async () => {
     setupMocks({ metrics: makeMetrics({ disabledPlugins: [] }) });
     render(<PerformanceSettings />);
-    await waitFor(() => screen.getByText('CPU Budget'));
+    await waitFor(() => screen.getByText('CPU Permits'));
     expect(screen.queryByText('Disabled Plugins')).not.toBeInTheDocument();
   });
 });
@@ -450,7 +595,7 @@ describe('A007/settings-performance: save and discard', () => {
     await user.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('CPU Budget')).toBeInTheDocument();
+      expect(screen.getByText('CPU Permits')).toBeInTheDocument();
     });
   });
 });
@@ -476,15 +621,7 @@ describe('A007/settings-performance: GB display', () => {
     setupMocks({ metrics: makeMetrics({ agentscopeRssMb: null }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText(/—\/512 MB/)).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-performance: shows agentscope status when not online', async () => {
-    setupMocks({ metrics: makeMetrics({ agentscopeStatus: 'starting' }) });
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(document.body.textContent).toContain('starting');
+      expect(screen.getByText('— MB')).toBeInTheDocument();
     });
   });
 
