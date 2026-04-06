@@ -534,9 +534,19 @@ fn cleanup_stale_pid() {
     let path = pid_file_path();
     let content = match fs::read_to_string(&path) { Ok(c) => c, Err(_) => return };
     let pid: u32 = match content.trim().parse() { Ok(p) => p, Err(_) => { let _ = fs::remove_file(&path); return; } };
+
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]), true);
-    if let Some(proc) = sys.process(SysPid::from_u32(pid)) { proc.kill(); }
+    if sys.process(SysPid::from_u32(pid)).is_some() {
+        eprintln!("[supervisor] killing orphan process {pid}");
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
+        #[cfg(not(unix))]
+        if let Some(proc) = sys.process(SysPid::from_u32(pid)) { proc.kill(); }
+    }
     let _ = fs::remove_file(&path);
 }
 
@@ -558,13 +568,19 @@ async fn spawn_runtime(
 
     // A008/Supervised: pipe stdout+stderr before taking ownership of child.
     // Reader tasks push lines into ProcessLogs so the main child handle stays clean.
-    let mut child = tokio::process::Command::new("uv")
-        .args(["run", "python", "app.py"])
+    let mut cmd = tokio::process::Command::new("uv");
+    cmd.args(["run", "python", "app.py"])
         .current_dir(intelligence_dir)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+
+    #[cfg(unix)]
+    {
+        cmd.process_group(0);
+    }
+
+    let mut child = cmd.spawn()
         .map_err(|e| e.to_string())?;
 
     let child_pid = child.id().unwrap_or(0);
@@ -628,19 +644,33 @@ async fn spawn_runtime(
 
 async fn shutdown_runtime(runtime: &Arc<Mutex<RuntimeState>>) {
     let mut guard = runtime.lock().await;
-    if let Some(ref child) = guard.child {
-        if let Some(pid) = child.id() {
-            #[cfg(unix)]
-            unsafe { libc::kill(pid as i32, libc::SIGKILL); }
-            #[cfg(not(unix))]
-            { let _ = child.start_kill(); }
-        }
+
+    if guard.child.is_none() {
+        guard.child_pid = None;
+        return;
     }
+
+    let pid = guard.child_pid;
+
     if let Some(mut child) = guard.child.take() {
-        let _ = child.wait().await;
+        if let Some(pid) = pid {
+            let is_alive = child.try_wait().ok().flatten().is_none();
+            if is_alive {
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(-(pid as i32), libc::SIGKILL);
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+                #[cfg(not(unix))]
+                { let _ = child.start_kill(); }
+            }
+        }
+        let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
     }
+
     guard.child_pid = None;
     remove_pid_file();
+    eprintln!("[supervisor] process killed (pid: {:?})", pid);
 }
 
 // A008/Supervised: list all registered supervised processes with full snapshot.
@@ -857,25 +887,24 @@ fn main() {
                 loop {
                     tokio::time::sleep(Duration::from_millis(2000)).await;
 
-                    for entry in metrics_reg.supervised.processes.iter() {
-                        let name = entry.key().clone();
-                        let healthy = metrics_reg.supervised.check_health(&name).await;
-                        if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(&name) {
+                    let names: Vec<String> = metrics_reg.supervised.processes.iter()
+                        .map(|e| e.key().clone())
+                        .collect();
+
+                    for name in &names {
+                        let healthy = metrics_reg.supervised.check_health(name).await;
+                        if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(name) {
                             if healthy {
                                 proc.status = snapfzz_budget::metrics::ProcessStatus::Online;
                                 proc.consecutive_failures = 0;
                             } else {
                                 proc.consecutive_failures += 1;
-                                if proc.consecutive_failures >= proc.max_health_failures {
-                                    proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
-                                } else {
-                                    proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
-                                }
+                                proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
                             }
                         }
 
-                        if metrics_reg.supervised.is_memory_exceeded(&name) {
-                            if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(&name) {
+                        if metrics_reg.supervised.is_memory_exceeded(name) {
+                            if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(name) {
                                 proc.status = snapfzz_budget::metrics::ProcessStatus::Errored;
                             }
                         }
