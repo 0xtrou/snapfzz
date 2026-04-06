@@ -1,8 +1,10 @@
+import type { CSSProperties } from 'react';
+
 interface ThinkingIndicatorProps {
   visible: boolean;
 }
 
-const dotStyle: React.CSSProperties = {
+const dotStyle: CSSProperties = {
   width: 8,
   height: 8,
   borderRadius: '50%',

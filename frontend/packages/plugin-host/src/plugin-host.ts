@@ -232,7 +232,7 @@ export class PluginHost {
       });
 
       // Per A005/Lifecycle: plugins that exceed activation timeout are killed to protect startup budget.
-      const handle = await Promise.race([activationPromise, timeoutPromise]) as PluginHandle;
+      const handle = await Promise.race<PluginHandle>([activationPromise, timeoutPromise]);
       const elapsed = Date.now() - startedAt;
 
       if (elapsed > ACTIVATION_TIMEOUT_MS) {

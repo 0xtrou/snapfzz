@@ -1,4 +1,5 @@
 export { definePlugin } from './define-plugin';
+export type { PluginDefinition } from './define-plugin';
 export type {
   PluginManifest,
   SnapfzzPlugin,
