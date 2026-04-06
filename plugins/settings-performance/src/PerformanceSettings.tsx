@@ -1,6 +1,6 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
 // refreshes every 2s, displays preset selector and progress bars.
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Progress, Radio, Space, Tag, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
@@ -22,6 +22,12 @@ interface BudgetMetrics {
   storageMaxGb: number;
   disabledPlugins: string[];
   uptimeSecs: number;
+}
+
+interface HardwareInfo {
+  cores: number;
+  ramGb: number;
+  onBattery: boolean;
 }
 
 const REFRESH_INTERVAL_MS = 2000;
@@ -61,12 +67,22 @@ function PresetOption({ name, specs }: { name: string; specs: { cpu: number; ram
 
 export default function PerformanceSettings() {
   const [metrics, setMetrics] = useState<BudgetMetrics | null>(null);
-  const [preset, setPreset] = useState<Preset>('balanced');
-  const [originalPreset, setOriginalPreset] = useState<Preset>('balanced');
+  // A008/StatelessUI: pendingPreset is the ONLY local state for preset.
+  // activePreset is always derived from the backend snapshot — never stored in state.
+  const [pendingPreset, setPendingPreset] = useState<Preset | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const isDirty = preset !== originalPreset;
-  const presetLoadedRef = useRef(false);
+  const [hwInfo, setHwInfo] = useState<HardwareInfo | null>(null);
+
+  const activePreset = (metrics?.presetName?.toLowerCase() as Preset) || 'balanced';
+  const displayPreset = pendingPreset ?? activePreset;
+  const isDirty = pendingPreset !== null && pendingPreset !== activePreset;
+
+  useEffect(() => {
+    tauriInvoke<HardwareInfo>('get_hardware_info')
+      .then(setHwInfo)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -76,14 +92,6 @@ export default function PerformanceSettings() {
         const snap = await tauriInvoke<BudgetMetrics>('budget_snapshot');
         if (!active) return;
         setMetrics(snap);
-        if (!presetLoadedRef.current) {
-          const name = snap.presetName.toLowerCase() as Preset;
-          if (name === 'performance' || name === 'balanced' || name === 'battery') {
-            setPreset(name);
-            setOriginalPreset(name);
-          }
-          presetLoadedRef.current = true;
-        }
       } catch {
         void 0;
       }
@@ -93,6 +101,12 @@ export default function PerformanceSettings() {
     const id = setInterval(poll, REFRESH_INTERVAL_MS);
     return () => { active = false; clearInterval(id); };
   }, []);
+
+  // A008/PerformancePreset: compute hardware-scaled Performance badge values.
+  // Mirrors the build_preset(Performance) formula in preset.rs.
+  const perfCpu = hwInfo ? Math.max(hwInfo.cores - 2, 4) : 4;
+  const perfRamMb = hwInfo ? Math.min(hwInfo.ramGb * 512, 8192) : 2048;
+  const perfRam = perfRamMb >= 1024 ? `${Math.floor(perfRamMb / 1024)}GB` : `${perfRamMb}MB`;
 
   // A001/PerformanceArchitecture: frame_target_ms is the budget ceiling, not a usage counter.
   // Display it as a configuration value; use 0% fill to avoid misleading 100% bar.
@@ -111,16 +125,16 @@ export default function PerformanceSettings() {
         onSave={async () => {
           setSaving(true);
           try {
-            await tauriInvoke('set_preset', { presetName: preset });
+            await tauriInvoke('set_preset', { presetName: displayPreset });
             const current = await tauriInvoke<Record<string, unknown>>('get_settings');
-            await tauriInvoke('save_settings', { settings: { ...current, preset } });
-            setOriginalPreset(preset);
+            await tauriInvoke('save_settings', { settings: { ...current, preset: displayPreset } });
+            setPendingPreset(null);
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2500);
           } catch { void 0; }
           setSaving(false);
         }}
-        onDiscard={() => setPreset(originalPreset)}
+        onDiscard={() => setPendingPreset(null)}
       >
         <span style={{
           display: 'inline-flex',
@@ -151,8 +165,8 @@ export default function PerformanceSettings() {
       >
         <Space direction="vertical" size={12}>
           <Radio.Group
-            value={preset}
-            onChange={(e) => setPreset(e.target.value as Preset)}
+            value={displayPreset}
+            onChange={(e) => setPendingPreset(e.target.value as Preset)}
           >
             <Space>
               <Radio value="battery" style={{ color: 'var(--text-primary)' }}>
@@ -164,15 +178,7 @@ export default function PerformanceSettings() {
               <Radio value="performance" style={{ color: 'var(--text-primary)' }}>
                 <PresetOption
                   name="Performance"
-                  specs={{
-                    cpu: metrics ? Math.max(metrics.cpuTotal, 4) : 4,
-                    ram: metrics
-                      ? metrics.agentscopeMaxMb >= 1024
-                        ? `${Math.floor(metrics.agentscopeMaxMb / 1024)}GB`
-                        : `${Math.floor(metrics.agentscopeMaxMb)}MB`
-                      : '—',
-                    fps: 60,
-                  }}
+                  specs={{ cpu: perfCpu, ram: perfRam, fps: 60 }}
                 />
               </Radio>
               <Radio value="custom" disabled style={{ color: 'var(--text-muted)', opacity: 0.5 }}>

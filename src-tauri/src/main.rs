@@ -457,8 +457,8 @@ async fn set_preset(
         _ => return Err(format!("Unknown preset: {preset_name}")),
     };
     let new_preset = build_preset(name, &hw);
-    registry.controlled.frame_target_ms.store(new_preset.frame.target_ms, std::sync::atomic::Ordering::Relaxed);
-    registry.controlled.batch_rate_ms.store(new_preset.network.batch_rate_ms, std::sync::atomic::Ordering::Relaxed);
+    registry.swap_preset(new_preset);
+    eprintln!("[budget] preset swapped to: {preset_name}");
     Ok(())
 }
 
@@ -719,8 +719,12 @@ async fn spawn_runtime(
     let prev = registry.supervised.processes.get("agentscope");
     let prev_restart_count = prev.as_ref().map(|p| p.restart_count).unwrap_or(0);
     let is_restart = prev.is_some();
+    let (preset_agentscope_max_mb, preset_max_restarts) = {
+        let preset = registry.preset.read().unwrap();
+        (preset.memory.agentscope_max_mb, preset.reliability.max_restarts)
+    };
     let prev_max_memory = prev.as_ref().map(|p| p.max_memory_mb)
-        .unwrap_or(registry.preset.memory.agentscope_max_mb);
+        .unwrap_or(preset_agentscope_max_mb);
     drop(prev);
 
     registry.register_process("agentscope", ProcessBudget {
@@ -729,7 +733,7 @@ async fn spawn_runtime(
         health_url: format!("http://127.0.0.1:{AGENTSCOPE_PORT}/health"),
         health_interval_ms: 2000,
         max_health_failures: 3,
-        max_restarts: registry.preset.reliability.max_restarts,
+        max_restarts: preset_max_restarts,
         location: ProcessLocation::Local,
         consecutive_failures: 0,
         restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
@@ -840,6 +844,18 @@ async fn restart_process(
     spawn_runtime(&app, &registry, &runtime, &logs).await
 }
 
+// A008/BudgetRegistry: expose hardware info so the frontend can compute
+// hardware-scaled Performance preset badge values without a second round-trip.
+#[tauri::command]
+async fn get_hardware_info() -> Result<Value, String> {
+    let hw = detect_hardware();
+    Ok(json!({
+        "cores": hw.cores,
+        "ramGb": hw.ram_gb,
+        "onBattery": hw.on_battery,
+    }))
+}
+
 // A008/Supervised: send SIGKILL to a named process and clean up.
 #[tauri::command]
 async fn kill_process(
@@ -882,9 +898,12 @@ fn main() {
         };
         BudgetRegistry::with_preset(build_preset(preset_name, &hw))
     });
-    eprintln!("[budget] preset: {} (frame={}ms, cpu={}, mem={}MB)",
-        registry.preset.name, registry.frame_target(),
-        registry.preset.cpu.permits, registry.preset.memory.agentscope_max_mb);
+    {
+        let preset = registry.preset.read().unwrap();
+        eprintln!("[budget] preset: {} (frame={}ms, cpu={}, mem={}MB)",
+            preset.name, registry.frame_target(),
+            preset.cpu.permits, preset.memory.agentscope_max_mb);
+    }
 
     let runtime_state = Arc::new(Mutex::new(RuntimeState { child: None, child_pid: None }));
     let process_logs = Arc::new(ProcessLogs::new());
@@ -922,6 +941,7 @@ fn main() {
             restart_process,
             kill_process,
             update_process_config,
+            get_hardware_info,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

@@ -38,6 +38,21 @@ function makeMetrics(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeHwInfo(overrides: Record<string, unknown> = {}) {
+  return { cores: 10, ramGb: 16, onBattery: false, ...overrides };
+}
+
+function setupMocks(overrides: Partial<Record<string, unknown>> = {}) {
+  mockBridgeInvoke.mockImplementation((cmd: string) => {
+    if (cmd === 'budget_snapshot') return Promise.resolve(overrides.metrics ?? makeMetrics());
+    if (cmd === 'get_hardware_info') return Promise.resolve(overrides.hwInfo ?? makeHwInfo());
+    if (cmd === 'set_preset') return Promise.resolve(undefined);
+    if (cmd === 'get_settings') return Promise.resolve({ preset: 'balanced' });
+    if (cmd === 'save_settings') return Promise.resolve(undefined);
+    return Promise.resolve(undefined);
+  });
+}
+
 beforeEach(() => {
   mockBridgeInvoke.mockReset();
 });
@@ -46,9 +61,146 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('A008/settings-performance: stateless preset from backend', () => {
+  it('A008/settings-performance: displays active preset from backend snapshot', async () => {
+    setupMocks({ metrics: makeMetrics({ presetName: 'performance' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /performance/i })).toBeChecked();
+    });
+  });
+
+  it('A008/settings-performance: balanced preset selected when snapshot returns Balanced', async () => {
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /balanced/i })).toBeChecked();
+    });
+  });
+
+  it('A008/settings-performance: battery preset selected when snapshot returns battery', async () => {
+    setupMocks({ metrics: makeMetrics({ presetName: 'battery' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /battery/i })).toBeChecked();
+    });
+  });
+
+  it('A008/settings-performance: unknown presetName from snapshot falls back to balanced', async () => {
+    setupMocks({ metrics: makeMetrics({ presetName: 'extreme' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /balanced/i })).toBeChecked();
+    });
+  });
+
+  it('A008/settings-performance: pending preset shown when user selects different radio', async () => {
+    const user = userEvent.setup();
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
+
+    await user.click(screen.getByRole('radio', { name: /battery/i }));
+
+    expect(screen.getByRole('radio', { name: /battery/i })).toBeChecked();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: save clears pending preset and backend updates', async () => {
+    const user = userEvent.setup();
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
+    await user.click(screen.getByRole('radio', { name: /battery/i }));
+    await waitFor(() => screen.getByRole('button', { name: /save/i }));
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      const saveCall = mockBridgeInvoke.mock.calls.find(([cmd]) => cmd === 'save_settings');
+      expect(saveCall).toBeDefined();
+      expect(saveCall![1]).toMatchObject({ settings: expect.objectContaining({ preset: 'battery' }) });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /discard/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: discard clears pending preset back to active', async () => {
+    const user = userEvent.setup();
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
+    await user.click(screen.getByRole('radio', { name: /battery/i }));
+    await waitFor(() => screen.getByRole('button', { name: /discard/i }));
+
+    await user.click(screen.getByRole('button', { name: /discard/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /balanced/i })).toBeChecked();
+    });
+    expect(screen.queryByRole('button', { name: /discard/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('A008/settings-performance: hardware-scaled performance badge', () => {
+  it('A008/settings-performance: performance badge shows actual hardware values', async () => {
+    setupMocks({ hwInfo: makeHwInfo({ cores: 10, ramGb: 16 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('8 CPU');
+      expect(bodyText).toContain('8GB');
+    });
+  });
+
+  it('A008/settings-performance: performance badge floors cpu at 4 on low-core machine', async () => {
+    setupMocks({ hwInfo: makeHwInfo({ cores: 4, ramGb: 4 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('4 CPU');
+      expect(bodyText).toContain('2GB');
+    });
+  });
+
+  it('A008/settings-performance: performance badge caps ram at 8GB', async () => {
+    setupMocks({ hwInfo: makeHwInfo({ cores: 20, ramGb: 64 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('8GB');
+    });
+  });
+
+  it('A008/settings-performance: performance badge shows MB when ramGb yields <1024MB', async () => {
+    setupMocks({ hwInfo: makeHwInfo({ cores: 4, ramGb: 1 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('512MB');
+    });
+  });
+
+  it('A008/settings-performance: shows fallback 4 CPU / 2048MB when hardware info unavailable', async () => {
+    mockBridgeInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return Promise.resolve(makeMetrics());
+      if (cmd === 'get_hardware_info') return Promise.reject(new Error('unavailable'));
+      return Promise.resolve(undefined);
+    });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('4 CPU');
+      expect(bodyText).toContain('2GB');
+    });
+  });
+});
+
 describe('A007/settings-performance: preset selector', () => {
   it('A007/settings-performance: renders Performance radio option', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'Balanced' }));
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /performance/i })).toBeInTheDocument();
@@ -56,7 +208,7 @@ describe('A007/settings-performance: preset selector', () => {
   });
 
   it('A007/settings-performance: renders Balanced radio option', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'Balanced' }));
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /balanced/i })).toBeInTheDocument();
@@ -64,40 +216,16 @@ describe('A007/settings-performance: preset selector', () => {
   });
 
   it('A007/settings-performance: renders Battery radio option', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'Balanced' }));
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: /battery/i })).toBeInTheDocument();
     });
   });
 
-  it('A007/settings-performance: active preset from budget_snapshot is selected', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'performance' }));
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: /performance/i })).toBeChecked();
-    });
-  });
-
-  it('A007/settings-performance: balanced preset selected when snapshot returns Balanced', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'balanced' }));
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: /balanced/i })).toBeChecked();
-    });
-  });
-
-  it('A007/settings-performance: battery preset selected when snapshot returns battery', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'battery' }));
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: /battery/i })).toBeChecked();
-    });
-  });
-
   it('A007/settings-performance: clicking a different preset updates selection', async () => {
     const user = userEvent.setup();
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'balanced' }));
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
     render(<PerformanceSettings />);
     await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
 
@@ -109,15 +237,23 @@ describe('A007/settings-performance: preset selector', () => {
 
 describe('A007/settings-performance: budget metrics display', () => {
   it('A007/settings-performance: calls budget_snapshot on mount', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(mockBridgeInvoke).toHaveBeenCalledWith('budget_snapshot', undefined);
     });
   });
 
+  it('A007/settings-performance: calls get_hardware_info on mount', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+    });
+  });
+
   it('A007/settings-performance: displays CPU budget section', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('CPU Budget')).toBeInTheDocument();
@@ -125,7 +261,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: displays Memory Budget section', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('Memory Budget')).toBeInTheDocument();
@@ -133,7 +269,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: displays Network Budget section', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('Network Budget')).toBeInTheDocument();
@@ -141,7 +277,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: displays Storage Budget section', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('Storage Budget')).toBeInTheDocument();
@@ -149,7 +285,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: shows CPU usage as permits in use', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ cpuUsed: 2, cpuTotal: 8 }));
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 2, cpuTotal: 8 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('2/8 permits in use')).toBeInTheDocument();
@@ -157,7 +293,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: shows storage usage in GB', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ storageUsedGb: 2.5, storageMaxGb: 20 }));
+    setupMocks({ metrics: makeMetrics({ storageUsedGb: 2.5, storageMaxGb: 20 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('2.5/20 GB used')).toBeInTheDocument();
@@ -165,7 +301,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: shows invoke concurrency', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ invokeUsed: 1, invokeTotal: 3 }));
+    setupMocks({ metrics: makeMetrics({ invokeUsed: 1, invokeTotal: 3 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('1/3 concurrent invokes')).toBeInTheDocument();
@@ -173,7 +309,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A007/settings-performance: shows frame target and batch rate', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ frameTargetMs: 16, batchRateMs: 16 }));
+    setupMocks({ metrics: makeMetrics({ frameTargetMs: 16, batchRateMs: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('16ms (60fps)')).toBeInTheDocument();
@@ -182,7 +318,7 @@ describe('A007/settings-performance: budget metrics display', () => {
   });
 
   it('A008/settings-performance: shows uptime in preset info line', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ uptimeSecs: 180, cpuTotal: 4, agentscopeMaxMb: 512, presetName: 'Balanced' }));
+    setupMocks({ metrics: makeMetrics({ uptimeSecs: 180, cpuTotal: 4, agentscopeMaxMb: 512, presetName: 'Balanced' }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       const bodyText = document.body.textContent ?? '';
@@ -196,7 +332,7 @@ describe('A007/settings-performance: budget metrics display', () => {
 
 describe('A007/settings-performance: progress bars', () => {
   it('A007/settings-performance: CPU progress bar renders at correct percentage', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ cpuUsed: 2, cpuTotal: 4 }));
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 2, cpuTotal: 4 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       const bars = document.querySelectorAll('.ant-progress');
@@ -205,7 +341,11 @@ describe('A007/settings-performance: progress bars', () => {
   });
 
   it('A007/settings-performance: shows — placeholder when metrics not yet loaded', async () => {
-    mockBridgeInvoke.mockReturnValue(new Promise(() => {}));
+    mockBridgeInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return new Promise(() => {});
+      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
+      return Promise.resolve(undefined);
+    });
     render(<PerformanceSettings />);
     const dashes = screen.getAllByText('—');
     expect(dashes.length).toBeGreaterThan(0);
@@ -216,13 +356,16 @@ describe('A007/settings-performance: metrics refresh', () => {
   it('A007/settings-performance: polls budget_snapshot every 2 seconds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      mockBridgeInvoke.mockResolvedValue(makeMetrics());
+      setupMocks();
       render(<PerformanceSettings />);
-      await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledWith('budget_snapshot', undefined));
 
-      const callsBefore = mockBridgeInvoke.mock.calls.length;
+      const callsBefore = mockBridgeInvoke.mock.calls.filter(([cmd]) => cmd === 'budget_snapshot').length;
       await act(async () => { vi.advanceTimersByTime(2001); await Promise.resolve(); });
-      await waitFor(() => expect(mockBridgeInvoke.mock.calls.length).toBeGreaterThan(callsBefore));
+      await waitFor(() => {
+        const callsAfter = mockBridgeInvoke.mock.calls.filter(([cmd]) => cmd === 'budget_snapshot').length;
+        expect(callsAfter).toBeGreaterThan(callsBefore);
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -231,7 +374,7 @@ describe('A007/settings-performance: metrics refresh', () => {
 
 describe('A007/settings-performance: disabled plugins', () => {
   it('A007/settings-performance: shows disabled plugins section when plugins are disabled', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ disabledPlugins: ['snapfzz.chat'] }));
+    setupMocks({ metrics: makeMetrics({ disabledPlugins: ['snapfzz.chat'] }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('Disabled Plugins')).toBeInTheDocument();
@@ -240,7 +383,7 @@ describe('A007/settings-performance: disabled plugins', () => {
   });
 
   it('A007/settings-performance: does not show disabled plugins section when list is empty', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ disabledPlugins: [] }));
+    setupMocks({ metrics: makeMetrics({ disabledPlugins: [] }) });
     render(<PerformanceSettings />);
     await waitFor(() => screen.getByText('CPU Budget'));
     expect(screen.queryByText('Disabled Plugins')).not.toBeInTheDocument();
@@ -250,7 +393,7 @@ describe('A007/settings-performance: disabled plugins', () => {
 describe('A007/settings-performance: save and discard', () => {
   it('A007/settings-performance: changing preset marks form dirty', async () => {
     const user = userEvent.setup();
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'balanced' }));
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
     render(<PerformanceSettings />);
     await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
 
@@ -263,12 +406,7 @@ describe('A007/settings-performance: save and discard', () => {
 
   it('A007/settings-performance: saving calls save_settings with current preset', async () => {
     const user = userEvent.setup();
-    mockBridgeInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'budget_snapshot') return Promise.resolve(makeMetrics({ presetName: 'balanced' }));
-      if (cmd === 'get_settings') return Promise.resolve({ preset: 'balanced' });
-      if (cmd === 'save_settings') return Promise.resolve(undefined);
-      return Promise.resolve(undefined);
-    });
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
     render(<PerformanceSettings />);
     await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
     await user.click(screen.getByRole('radio', { name: /battery/i }));
@@ -284,7 +422,7 @@ describe('A007/settings-performance: save and discard', () => {
 
   it('A007/settings-performance: discard restores original preset', async () => {
     const user = userEvent.setup();
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'balanced' }));
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
     render(<PerformanceSettings />);
     await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
     await user.click(screen.getByRole('radio', { name: /battery/i }));
@@ -301,6 +439,7 @@ describe('A007/settings-performance: save and discard', () => {
     const user = userEvent.setup();
     mockBridgeInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') return Promise.resolve(makeMetrics({ presetName: 'balanced' }));
+      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
       if (cmd === 'get_settings') return Promise.reject(new Error('fail'));
       return Promise.resolve(undefined);
     });
@@ -318,7 +457,7 @@ describe('A007/settings-performance: save and discard', () => {
 
 describe('A007/settings-performance: GB display', () => {
   it('A007/settings-performance: shows GB for agentscopeMaxMb >= 1024', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ agentscopeMaxMb: 1024, presetName: 'performance' }));
+    setupMocks({ metrics: makeMetrics({ agentscopeMaxMb: 1024, presetName: 'performance' }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(document.body.textContent).toContain('1GB');
@@ -326,7 +465,7 @@ describe('A007/settings-performance: GB display', () => {
   });
 
   it('A007/settings-performance: shows 30fps when frameTargetMs > 16', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ frameTargetMs: 33 }));
+    setupMocks({ metrics: makeMetrics({ frameTargetMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('33ms (30fps)')).toBeInTheDocument();
@@ -334,7 +473,7 @@ describe('A007/settings-performance: GB display', () => {
   });
 
   it('A007/settings-performance: shows memory as — when agentscopeRssMb is null', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ agentscopeRssMb: null }));
+    setupMocks({ metrics: makeMetrics({ agentscopeRssMb: null }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText(/—\/512 MB/)).toBeInTheDocument();
@@ -342,7 +481,7 @@ describe('A007/settings-performance: GB display', () => {
   });
 
   it('A007/settings-performance: shows agentscope status when not online', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ agentscopeStatus: 'starting' }));
+    setupMocks({ metrics: makeMetrics({ agentscopeStatus: 'starting' }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(document.body.textContent).toContain('starting');
@@ -350,29 +489,20 @@ describe('A007/settings-performance: GB display', () => {
   });
 
   it('A007/settings-performance: live indicator shows Offline before metrics load', () => {
-    mockBridgeInvoke.mockReturnValue(new Promise(() => {}));
+    mockBridgeInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return new Promise(() => {});
+      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
+      return Promise.resolve(undefined);
+    });
     render(<PerformanceSettings />);
     expect(screen.getByText('Offline')).toBeInTheDocument();
   });
 
   it('A007/settings-performance: live indicator shows Live after metrics load', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics());
+    setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('Live')).toBeInTheDocument();
-    });
-  });
-});
-
-describe('A007/settings-performance: unknown preset name', () => {
-  it('A007/settings-performance: unknown presetName from snapshot does not change preset selection', async () => {
-    mockBridgeInvoke.mockResolvedValue(makeMetrics({ presetName: 'extreme' }));
-    render(<PerformanceSettings />);
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: /balanced/i })).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('radio', { name: /balanced/i })).toBeChecked();
     });
   });
 });

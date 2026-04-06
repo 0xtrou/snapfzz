@@ -14,6 +14,7 @@ mod registry_test;
 
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use controlled::{ControlledBudgets, CpuPermit, InvokePermit};
@@ -22,7 +23,7 @@ use preset::{build_preset, detect_hardware, select_preset, Preset, PresetName};
 use supervised::{ProcessBudget, StorageState, SupervisedBudgets};
 
 pub struct BudgetRegistry {
-    pub preset: Preset,
+    pub preset: RwLock<Preset>,
     pub controlled: ControlledBudgets,
     pub supervised: SupervisedBudgets,
     boot_time: Instant,
@@ -51,7 +52,7 @@ impl BudgetRegistry {
         });
 
         Self {
-            preset,
+            preset: RwLock::new(preset),
             controlled,
             supervised,
             boot_time: Instant::now(),
@@ -61,6 +62,19 @@ impl BudgetRegistry {
     pub fn with_preset_name(name: PresetName) -> Self {
         let hw = detect_hardware();
         Self::with_preset(build_preset(name, &hw))
+    }
+
+    // A008: swap_preset updates both the atomics (hot path) and the stored
+    // Preset (for snapshot() accuracy) atomically under the write lock.
+    pub fn swap_preset(&self, new_preset: Preset) {
+        self.controlled
+            .frame_target_ms
+            .store(new_preset.frame.target_ms, Ordering::Relaxed);
+        self.controlled
+            .batch_rate_ms
+            .store(new_preset.network.batch_rate_ms, Ordering::Relaxed);
+        let mut guard = self.preset.write().unwrap();
+        *guard = new_preset;
     }
 
     pub fn try_acquire_cpu(&self) -> Option<CpuPermit> {
@@ -152,8 +166,9 @@ impl BudgetRegistry {
 
         let disabled_plugins: Vec<String> = self.controlled.disabled_plugin_ids();
 
+        let preset = self.preset.read().unwrap();
         BudgetMetrics {
-            preset_name: self.preset.name.clone(),
+            preset_name: preset.name.clone(),
             cpu_used: self.controlled.cpu_total() - self.controlled.cpu_available(),
             cpu_total: self.controlled.cpu_total(),
             invoke_used: self.controlled.invoke_total() - self.controlled.invoke_available(),
@@ -161,10 +176,10 @@ impl BudgetRegistry {
             frame_target_ms: self.controlled.frame_target_ms.load(Ordering::Relaxed),
             batch_rate_ms: self.controlled.batch_rate_ms.load(Ordering::Relaxed),
             agentscope_rss_mb,
-            agentscope_max_mb: self.preset.memory.agentscope_max_mb,
+            agentscope_max_mb: preset.memory.agentscope_max_mb,
             agentscope_status,
             storage_used_gb: self.supervised.measure_storage(),
-            storage_max_gb: self.preset.storage.max_gb,
+            storage_max_gb: preset.storage.max_gb,
             disabled_plugins,
             uptime_secs: self.boot_time.elapsed().as_secs(),
             processes,

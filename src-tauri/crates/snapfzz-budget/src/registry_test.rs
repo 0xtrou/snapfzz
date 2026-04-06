@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::metrics::ProcessStatus;
-    use crate::preset::PresetName;
+    use crate::preset::{build_preset, HardwareInfo, PresetName};
     use crate::supervised::{ProcessBudget, ProcessLocation};
     use crate::BudgetRegistry;
 
@@ -160,5 +160,54 @@ mod tests {
         let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
         let snap = reg.snapshot();
         assert!(matches!(snap.agentscope_status, ProcessStatus::Stopped));
+    }
+
+    #[test]
+    fn a008_registry_swap_preset_changes_snapshot_name() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Battery);
+        assert_eq!(reg.snapshot().preset_name, "battery");
+
+        let hw = HardwareInfo {
+            cores: 8,
+            ram_gb: 16,
+            on_battery: false,
+        };
+        let perf = build_preset(PresetName::Performance, &hw);
+        reg.swap_preset(perf);
+
+        assert_eq!(reg.snapshot().preset_name, "performance");
+    }
+
+    #[test]
+    fn a008_registry_swap_preset_updates_frame_target() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        assert_eq!(reg.frame_target(), 16);
+
+        let hw = HardwareInfo {
+            cores: 4,
+            ram_gb: 8,
+            on_battery: true,
+        };
+        let batt = build_preset(PresetName::Battery, &hw);
+        reg.swap_preset(batt);
+
+        assert_eq!(reg.frame_target(), 33);
+        assert_eq!(reg.snapshot().preset_name, "battery");
+    }
+
+    #[test]
+    fn a008_registry_swap_preset_updates_memory_limit() {
+        let hw = HardwareInfo {
+            cores: 8,
+            ram_gb: 16,
+            on_battery: false,
+        };
+        let reg = BudgetRegistry::with_preset(build_preset(PresetName::Battery, &hw));
+        assert_eq!(reg.snapshot().agentscope_max_mb, 512);
+
+        let perf = build_preset(PresetName::Performance, &hw);
+        reg.swap_preset(perf);
+
+        assert!(reg.snapshot().agentscope_max_mb > 512);
     }
 }
