@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Form, Input, Modal, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
-import { SettingsHeader, useCustomFonts } from '@snapfzz/shared';
+import { SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -55,6 +55,9 @@ const LANGUAGE_OPTIONS = [
 const FONT_FAMILY_PRESETS = [
   { value: 'Inter', label: 'Inter' },
   { value: 'System', label: 'System Default' },
+  { value: 'SF Pro', label: 'SF Pro' },
+  { value: 'Helvetica Neue', label: 'Helvetica Neue' },
+  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
 ];
 
 const FONT_SIZE_OPTIONS = [
@@ -81,9 +84,7 @@ export default function GeneralSettings(): React.ReactElement {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
-  // Custom fonts are loaded at top level (WindowShell) and shared via context.
-  const customFonts = useCustomFonts();
-
+  const [installedFonts, setInstalledFonts] = useState<string[]>([]);
   const [fontUrl, setFontUrl] = useState('');
   const [fontUrlName, setFontUrlName] = useState('');
   const [fontUrlInstalling, setFontUrlInstalling] = useState(false);
@@ -94,6 +95,15 @@ export default function GeneralSettings(): React.ReactElement {
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
 
   const loadingRef = useRef(false);
+
+  const loadInstalledFonts = useCallback(async () => {
+    try {
+      const names = (await tauriInvoke('list_installed_fonts')) as string[];
+      setInstalledFonts(Array.isArray(names) ? names : []);
+    } catch {
+      setInstalledFonts([]);
+    }
+  }, []);
 
   const loadSettings = useCallback(async () => {
     loadingRef.current = true;
@@ -114,13 +124,14 @@ export default function GeneralSettings(): React.ReactElement {
 
   useEffect(() => {
     void loadSettings();
-  }, [loadSettings]);
+    void loadInstalledFonts();
+  }, [loadSettings, loadInstalledFonts]);
 
   const allFontOptions = [
     ...FONT_FAMILY_PRESETS,
-    ...customFonts
-      .filter((name: string) => !FONT_FAMILY_PRESETS.some((p) => p.value === name))
-      .map((name: string) => ({ value: name, label: name })),
+    ...installedFonts
+      .filter((name) => !FONT_FAMILY_PRESETS.some((p) => p.value === name))
+      .map((name) => ({ value: name, label: name })),
   ];
 
   const handleSave = useCallback(async () => {
@@ -168,12 +179,13 @@ export default function GeneralSettings(): React.ReactElement {
       await tauriInvoke('install_font_from_url', { url: fontUrl.trim(), name: fontUrlName.trim() });
       setFontUrl('');
       setFontUrlName('');
+      await loadInstalledFonts();
     } catch (err) {
       setFontUrlError(String(err));
     } finally {
       setFontUrlInstalling(false);
     }
-  }, [fontUrl, fontUrlName]);
+  }, [fontUrl, fontUrlName, loadInstalledFonts]);
 
   const handleInstallFromFile = useCallback(async (file: UploadFile) => {
     setFileInstallError(null);
@@ -186,13 +198,14 @@ export default function GeneralSettings(): React.ReactElement {
     setFileInstalling(true);
     try {
       await tauriInvoke('install_font_from_file', { sourcePath: path, name });
+      await loadInstalledFonts();
     } catch (err) {
       setFileInstallError(String(err));
     } finally {
       setFileInstalling(false);
     }
     return false;
-  }, []);
+  }, [loadInstalledFonts]);
 
   const handleRemoveFont = useCallback(async (name: string) => {
     setFontToRemove(name);
@@ -203,13 +216,14 @@ export default function GeneralSettings(): React.ReactElement {
     if (!fontToRemove) return;
     try {
       await tauriInvoke('remove_font', { name: fontToRemove });
+      await loadInstalledFonts();
     } catch (err) {
       setFontUrlError(String(err));
     } finally {
       setFontToRemove(null);
       setRemoveConfirmVisible(false);
     }
-  }, [fontToRemove]);
+  }, [fontToRemove, loadInstalledFonts]);
 
   const cancelRemoveFont = useCallback(() => {
     setFontToRemove(null);
@@ -329,12 +343,12 @@ export default function GeneralSettings(): React.ReactElement {
                   <Text type="danger" style={{ fontSize: 12 }}>{fileInstallError}</Text>
                 )}
 
-                {customFonts.length > 0 && (
+                {installedFonts.length > 0 && (
                   <div>
                     <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>
                       Installed:
                     </Text>
-                    {customFonts.map((name: string) => (
+                    {installedFonts.map((name) => (
                       <Tag 
                         key={name} 
                         closable

@@ -1,8 +1,6 @@
-import type { ReactElement } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { CustomFontsContext } from '@snapfzz/shared';
 import GeneralSettings from '../GeneralSettings';
 
 const mockInvoke = vi.fn();
@@ -21,19 +19,6 @@ function fullSettings(overrides: Record<string, unknown> = {}) {
     logLevel: 'info',
     ...overrides,
   };
-}
-
-function renderWithContext(ui: ReactElement, customFonts: string[] = []) {
-  return render(
-    <CustomFontsContext.Provider value={customFonts}>
-      {ui}
-    </CustomFontsContext.Provider>
-  );
-}
-
-// Global render wrapper - defaults to empty fonts unless specified
-function renderWithFonts(ui: ReactElement) {
-  return renderWithContext(ui, []);
 }
 
 beforeEach(() => {
@@ -558,7 +543,13 @@ describe('A007/settings-general: custom font install from file', () => {
 
 describe('A007/settings-general: installed fonts appear in dropdown', () => {
   it('A007/settings-general: installed fonts appear in dropdown', async () => {
-    renderWithContext(<GeneralSettings />, ['CustomFont1', 'CustomFont2']);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont1', 'CustomFont2']);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
     await waitForSettingsLoad();
 
     await waitFor(() => {
@@ -569,7 +560,13 @@ describe('A007/settings-general: installed fonts appear in dropdown', () => {
   });
 
   it('A007/settings-general: no installed fonts section when list is empty', async () => {
-    renderWithContext(<GeneralSettings />, []);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
     await waitForSettingsLoad();
 
     await new Promise((r) => setTimeout(r, 100));
@@ -607,13 +604,20 @@ describe('A007/settings-general: saving applies font to document.body', () => {
 
 describe('A007/settings-general: remove installed font', () => {
   it('A007/settings-general: remove font button shows confirmation modal', async () => {
-    renderWithContext(<GeneralSettings />, ['CustomFont']);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont']);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
     await waitForSettingsLoad();
 
     await waitFor(() => {
       expect(screen.getByText('CustomFont')).toBeInTheDocument();
     });
 
+    // Tag with closable prop renders a close button - query by aria-label or testid
     const closeBtn = screen.getByLabelText('Close') || screen.getByText('×');
     await userEvent.click(closeBtn);
 
@@ -623,7 +627,14 @@ describe('A007/settings-general: remove installed font', () => {
   });
 
   it('A007/settings-general: confirm remove calls remove_font and reloads fonts', async () => {
-    renderWithContext(<GeneralSettings />, ['CustomFont']);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont']);
+      if (cmd === 'remove_font') return Promise.resolve(undefined);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
     await waitForSettingsLoad();
 
     await waitFor(() => {
@@ -647,7 +658,13 @@ describe('A007/settings-general: remove installed font', () => {
   });
 
   it('A007/settings-general: cancel remove closes modal without removing', async () => {
-    renderWithContext(<GeneralSettings />, ['CustomFont']);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont']);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
     await waitForSettingsLoad();
 
     await waitFor(() => {
