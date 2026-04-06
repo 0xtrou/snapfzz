@@ -233,6 +233,7 @@ export default function PerformanceSettings() {
             await tauriInvoke('set_preset', { presetName: displayPreset });
             const current = await tauriInvoke<Record<string, unknown>>('get_settings');
             await tauriInvoke('save_settings', { settings: { ...current, preset: displayPreset } });
+            window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
             setPendingPreset(null);
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2500);

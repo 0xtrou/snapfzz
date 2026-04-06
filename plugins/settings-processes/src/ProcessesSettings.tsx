@@ -117,7 +117,10 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
   // inside the Processes detail panel, not in a separate Runtime settings section.
   const [agentscopeHost, setAgentscopeHost] = useState('127.0.0.1');
   const [agentscopePort, setAgentscopePort] = useState('8090');
+  const [savedHost, setSavedHost] = useState('127.0.0.1');
+  const [savedPort, setSavedPort] = useState('8090');
   const [configSaving, setConfigSaving] = useState(false);
+  const configDirty = agentscopeHost !== savedHost || agentscopePort !== savedPort;
 
   const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -125,9 +128,14 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
     if (process.name !== 'agentscope') return;
     tauriInvoke('get_settings').then((s) => {
       const settings = s as Record<string, unknown>;
-      if (typeof settings.agentscopeHost === 'string') setAgentscopeHost(settings.agentscopeHost);
-      if (typeof settings.agentscopePort === 'string') setAgentscopePort(settings.agentscopePort);
-      if (typeof settings.agentscopePort === 'number') setAgentscopePort(String(settings.agentscopePort));
+      const host = typeof settings.agentscopeHost === 'string' ? settings.agentscopeHost : '127.0.0.1';
+      const port = typeof settings.agentscopePort === 'string' ? settings.agentscopePort
+        : typeof settings.agentscopePort === 'number' ? String(settings.agentscopePort)
+        : '8090';
+      setAgentscopeHost(host);
+      setAgentscopePort(port);
+      setSavedHost(host);
+      setSavedPort(port);
     }).catch(() => void 0);
   }, [process.name]);
 
@@ -135,12 +143,12 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
     setConfigSaving(true);
     try {
       const current = await tauriInvoke('get_settings') as Record<string, unknown>;
-      // Per ENGINEERING_GUIDE/Settings Propagation: merge into full settings object before saving.
       await tauriInvoke('save_settings', {
         settings: { ...current, agentscopeHost, agentscopePort },
       });
-      // Per ENGINEERING_GUIDE/Settings Propagation: emit DOM event so same-window useAppSettings re-reads.
       emitSettingsChanged();
+      setSavedHost(agentscopeHost);
+      setSavedPort(agentscopePort);
       await tauriInvoke('restart_process', { name: 'agentscope' });
       onAction();
     } catch {
@@ -269,26 +277,30 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                 }}
               />
             </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              Changes require process restart to take effect
+            </Text>
             <Popconfirm
               title="Save and restart agent runtime?"
               description="The agent runtime will restart with the new connection settings."
               onConfirm={handleSaveAndRestart}
               okText="Save & Restart"
               cancelText="Cancel"
+              disabled={!configDirty}
             >
               <Button
                 size="small"
                 icon={<SaveOutlined />}
                 loading={configSaving}
+                disabled={!configDirty}
                 data-testid="btn-save-restart-agentscope"
               >
                 Save & Restart
               </Button>
             </Popconfirm>
           </div>
-          <Text style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-            Changes require process restart to take effect
-          </Text>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
