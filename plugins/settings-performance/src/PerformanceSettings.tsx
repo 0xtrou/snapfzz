@@ -1,7 +1,8 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
 // refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
-import { Card, Progress, Radio, Space, Table, Tag, Typography } from 'antd';
+import { Card, Progress, Radio, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { AntIcon, createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -37,8 +38,8 @@ interface BudgetRow {
   icon: string;
   current: string;
   limit: string;
-  // 0-100 for Progress bar, -1 for N/A (no usage bar)
   percent: number;
+  description: string;
 }
 
 const REFRESH_INTERVAL_MS = 2000;
@@ -75,6 +76,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       current: '—',
       limit: `${metrics.frameTargetMs}ms (${metrics.frameTargetMs <= 16 ? '60' : '30'}fps)`,
       percent: -1,
+      description: 'Maximum time per render frame. At 16ms the UI renders at 60fps with no jank. Battery mode relaxes to 33ms (30fps) to save power. Example: streaming 100 tokens/sec stays smooth because tokens are batched at this interval.',
     },
     {
       key: 'batch',
@@ -83,6 +85,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       current: '—',
       limit: `${metrics.batchRateMs}ms`,
       percent: -1,
+      description: 'How often streaming tokens are flushed to the UI. Matches the frame budget — tokens are coalesced and sent once per frame. Example: 50 tokens arriving in 16ms are batched into one update.',
     },
     {
       key: 'cpu',
@@ -91,6 +94,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       current: `${metrics.cpuUsed} in use`,
       limit: `${metrics.cpuTotal}`,
       percent: metrics.cpuTotal > 0 ? Math.round((metrics.cpuUsed / metrics.cpuTotal) * 100) : 0,
+      description: 'Concurrent compute tasks allowed in the backend. Each stream parse or heavy operation acquires a permit. When exhausted, work queues until a permit is released. Example: with 4 permits, 4 simultaneous streams can be processed in parallel.',
     },
     {
       key: 'memory',
@@ -102,6 +106,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
         metrics.agentscopeMaxMb > 0 && metrics.agentscopeRssMb != null
           ? Math.round((metrics.agentscopeRssMb / metrics.agentscopeMaxMb) * 100)
           : 0,
+      description: 'Memory limit for the agent runtime process. Monitored every 2s. If exceeded, the process is killed and restarted automatically. Example: a 512MB limit means the agent can hold ~50K messages in memory before hitting the cap.',
     },
     {
       key: 'network',
@@ -110,6 +115,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       current: `${metrics.invokeUsed} invokes`,
       limit: `${metrics.invokeTotal}`,
       percent: metrics.invokeTotal > 0 ? Math.round((metrics.invokeUsed / metrics.invokeTotal) * 100) : 0,
+      description: 'Maximum concurrent backend calls from plugins. Each plugin command acquires a permit. When exhausted, plugins receive a "budget exhausted" error. Example: with 10 permits, 10 plugins can call the backend simultaneously.',
     },
     {
       key: 'storage',
@@ -118,15 +124,9 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       current: `${metrics.storageUsedGb} GB`,
       limit: `${metrics.storageMaxGb} GB`,
       percent: metrics.storageMaxGb > 0 ? Math.round((metrics.storageUsedGb / metrics.storageMaxGb) * 100) : 0,
+      description: 'Disk space used by the app data directory (settings, logs, sessions, runtime data). At 90% threshold, cleanup is triggered automatically. Example: 10GB limit with 9GB used triggers old session pruning.',
     },
-    {
-      key: 'startup',
-      name: 'Startup',
-      icon: 'RocketOutlined',
-      current: '—',
-      limit: '200ms visible / 500ms interactive',
-      percent: -1,
-    },
+
     {
       key: 'reliability',
       name: 'Reliability',
@@ -134,6 +134,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       current: `${metrics.disabledPlugins?.length ?? 0} disabled`,
       limit: '3 strikes / 5min',
       percent: -1,
+      description: 'Plugin crash tolerance. Each render crash increments a strike counter. 3 strikes within 5 minutes → plugin auto-disabled. A retry button lets users re-enable. Example: a buggy plugin crashes 3 times → disabled, other plugins unaffected.',
     },
   ];
 }
@@ -151,10 +152,14 @@ const columns = [
     title: 'Budget',
     dataIndex: 'name',
     key: 'name',
+    width: 180,
     render: (name: string, record: BudgetRow) => (
       <Space>
         <AntIcon name={record.icon} />
         <Text strong>{name}</Text>
+        <Tooltip title={record.description} placement="right" overlayStyle={{ maxWidth: 320 }}>
+          <QuestionCircleOutlined style={{ color: 'var(--text-muted)', fontSize: 12, cursor: 'help' }} />
+        </Tooltip>
       </Space>
     ),
   },
@@ -162,30 +167,27 @@ const columns = [
     title: 'Current',
     dataIndex: 'current',
     key: 'current',
-    render: (val: string) => <Text style={{ color: 'var(--text-secondary)' }}>{val}</Text>,
+    render: (_: string, record: BudgetRow) => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Text style={{ color: 'var(--text-secondary)', minWidth: 100 }}>{record.current}</Text>
+        {record.percent >= 0 && (
+          <Progress
+            percent={record.percent}
+            size="small"
+            strokeColor={strokeColorForPct(record.percent)}
+            showInfo={false}
+            style={{ flex: 1, minWidth: 80 }}
+          />
+        )}
+      </div>
+    ),
   },
   {
     title: 'Limit',
     dataIndex: 'limit',
     key: 'limit',
+    width: 220,
     render: (val: string) => <Text style={{ color: 'var(--text-muted)' }}>{val}</Text>,
-  },
-  {
-    title: 'Usage',
-    dataIndex: 'percent',
-    key: 'usage',
-    width: 150,
-    render: (pct: number) =>
-      pct >= 0 ? (
-        <Progress
-          percent={pct}
-          size="small"
-          strokeColor={strokeColorForPct(pct)}
-          showInfo={false}
-        />
-      ) : (
-        <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</Text>
-      ),
   },
 ];
 
@@ -277,7 +279,7 @@ export default function PerformanceSettings() {
         </span>
       </SettingsHeader>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
-      <div style={{ padding: '16px 32px', maxWidth: 640 }}>
+      <div style={{ padding: '16px 32px' }}>
         <Card
           title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
           style={{ marginBottom: 20, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}

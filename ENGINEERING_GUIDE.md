@@ -237,6 +237,47 @@ cargo tarpaulin -p snapfzz-budget --out Html
 
 ---
 
+## User-Facing Copy — Non-Negotiable
+
+All text visible to users (tooltips, labels, descriptions, error messages, notifications) must be **generic and implementation-agnostic**. Never expose internal infrastructure.
+
+### Forbidden in user-facing text
+
+- Internal paths (`~/.snapfzz/`, `src-tauri/`, `node_modules/`)
+- Framework names (`Tauri`, `Rust`, `AgentScope`, `React`, `Vite`, `tokio`)
+- Architecture terms (`Zone 1`, `Zone 2`, `Zone 3`, `sysinfo`, `DashMap`, `Channel API`)
+- Internal API names (`ctx.rust.invoke()`, `BudgetRegistry`, `ContributionStore`)
+
+### Use instead
+
+| Forbidden | Use Instead |
+|---|---|
+| "Tauri invoke" | "backend call" |
+| "Rust SSE consumer" | "streaming pipeline" |
+| "AgentScope Runtime" | "agent runtime" |
+| "Zone 1 (Rust)" | "the backend" |
+| "~/.snapfzz/" | "the app data directory" |
+| "sysinfo RSS monitoring" | "monitored every 2s" |
+| "Channel API push" | "update" |
+| "ctx.rust.invoke()" | "plugin command" |
+
+### Where this applies
+
+- Plugin UI text (labels, tooltips, placeholders, descriptions)
+- Error messages shown to users
+- Notification toasts
+- Status bar text
+- About dialog
+
+### Where this does NOT apply
+
+- Code comments (spec references are required)
+- Log output (stderr, console.log in dev mode)
+- Test names
+- Documentation in docs/ folder
+
+---
+
 ## Plugin Loading UX — Non-Negotiable
 
 Every plugin UI must either load instantly or show a loading skeleton. No blank white screens.
