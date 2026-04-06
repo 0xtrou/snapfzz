@@ -665,6 +665,7 @@ export default function ProcessesSettings() {
             background: 'var(--bg-default)',
             borderRadius: 8,
             border: '1px solid var(--border-default)',
+            overflow: 'hidden',
           }}
           expandable={{
             expandedRowKeys: expandedRows,
