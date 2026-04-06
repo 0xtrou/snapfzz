@@ -4,6 +4,8 @@
   "scripts": {
     "dev:launcher": "pnpm --filter @snapfzz/launcher dev",
     "dev:project": "pnpm --filter @snapfzz/project dev",
+    "dev:preferences": "pnpm --filter @snapfzz/preferences dev",
+    "build:preferences": "pnpm --filter @snapfzz/preferences build",
     "build": "pnpm -r build",
     "build:launcher": "pnpm --filter @snapfzz/launcher build",
     "build:project": "pnpm --filter @snapfzz/project build",

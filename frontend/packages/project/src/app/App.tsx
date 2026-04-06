@@ -155,7 +155,7 @@ function FpsCounter() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  const color = fps >= 55 ? '#22c55e' : fps >= 30 ? '#eab308' : '#ef4444';
+  const color = fps >= 55 ? 'var(--color-success)' : fps >= 30 ? 'var(--color-warning)' : 'var(--color-error)';
   return <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{fps} fps</span>;
 }
 

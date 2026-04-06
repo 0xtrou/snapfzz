@@ -288,6 +288,30 @@ async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Res
     serde_json::to_value(snap).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn open_preferences(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::WebviewUrl;
+    use tauri::WebviewWindowBuilder;
+
+    if let Some(window) = app.get_webview_window("preferences") {
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "preferences",
+        WebviewUrl::App("preferences.html".into()),
+    )
+    .title("Snapfzz Preferences")
+    .inner_size(720.0, 560.0)
+    .min_inner_size(600.0, 400.0)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 fn extract_content_blocks(payload: &Value) -> Vec<Value> {
     if let Some(blocks) = payload.get("content_blocks").and_then(Value::as_array) {
         return blocks.to_vec();
@@ -447,6 +471,7 @@ fn main() {
             budget_record_strike,
             budget_report_violation,
             budget_snapshot,
+            open_preferences,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
