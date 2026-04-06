@@ -31,7 +31,38 @@ For every file changed, identify which spec it implements. Then verify:
 | Does it use the correct UI stack? | Per ENGINEERING_GUIDE/UI Stack: Ant Design + Ant Icons + Tailwind + CSS variables only. | Emoji as icons. Hardcoded hex/rgb colors. Non-Ant icon libraries. Non-Ant component libraries. |
 | Does it meet test coverage? | Per ENGINEERING_GUIDE/Test Coverage: ≥90% coverage for all plugins and core packages. | Coverage below 90%. Missing error path tests. Missing contract verification tests. Snapshot-only tests. |
 
-### 2. Zone Verification
+### 2. Evidence-Based Verification (MANDATORY)
+
+**Never trust the build agent's claims. Verify with grep/search commands.**
+
+If the build agent says "added 6 new Tauri commands", you MUST verify:
+
+```bash
+# WRONG: "I read the file and the commands are there" (subjective claim)
+# RIGHT: grep for each function name and confirm it exists
+
+grep -n "fn restart_process" src-tauri/src/main.rs     # must find exactly 1 match
+grep -n "fn kill_process" src-tauri/src/main.rs         # must find exactly 1 match
+grep -n "restart_process" src-tauri/src/main.rs | grep "generate_handler"  # must find in handler
+```
+
+**For every claimed deliverable, run a verification command:**
+
+| Claim | Verification Command |
+|---|---|
+| "Added function X" | `grep -n "fn X" <file>` — must find exactly 1 match |
+| "Registered command X" | `grep "X" <file>` in `generate_handler!` block — must find it |
+| "Exported type X" | `grep "X" <index.ts>` — must find in export |
+| "Added N tests" | `grep -c "fn test\|it(" <test_file>` — count must match claim |
+| "No TODO/FIXME" | `grep -rn "TODO\|FIXME\|HACK" <dir>` — must return 0 results |
+| "No hardcoded colors" | `grep -rn "#[0-9a-f]\|rgba(" <dir>` — must return 0 results |
+| "All tests pass" | Run the actual test command and verify output |
+
+**A review that doesn't include grep evidence for every claimed deliverable is invalid.**
+
+Reject the review if you find yourself writing "confirmed" without running a search command. The build agent can claim anything — only grep proves it.
+
+### 3. Zone Verification
 
 **This is the most common violation.** Check every new/modified file:
 
