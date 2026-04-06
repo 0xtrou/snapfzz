@@ -1,11 +1,12 @@
-// Spec: A005-feat-plugin-architecture.md, A002-state-management.md
-// Sections: Contribution Registry, Reactive Store Snapshots
+// Spec: A005-feat-plugin-architecture.md, A002-state-management.md, A007-multi-layout-architecture.md
+// Sections: Contribution Registry, Reactive Store Snapshots, Settings Sections
 // Verifies: registration/disposal behavior, subscription notifications, immutable snapshot contract
 import { describe, expect, it, vi } from 'vitest';
 import type {
   CommandContribution,
   PanelContribution,
   SettingsContribution,
+  SettingsSectionContribution,
   ShortcutContribution,
   StatusItemContribution,
   TabContribution,
@@ -45,6 +46,14 @@ const createSetting = (id: string): SettingsContribution => ({
   id,
   label: id,
   schema: { type: 'string' },
+});
+
+const createSettingsSection = (id: string, order?: number): SettingsSectionContribution => ({
+  id,
+  label: id,
+  icon: '⚙',
+  order,
+  component: async () => ({ default: (() => null) as never }),
 });
 
 describe('A005/store: ContributionStore registration + snapshot behavior', () => {
@@ -99,6 +108,7 @@ describe('A005/store: ContributionStore registration + snapshot behavior', () =>
     store.registerCommand(createCommand('command.one'));
     store.registerShortcut(createShortcut('command.one'));
     store.registerSetting(createSetting('setting.one'));
+    store.registerSettingsSection(createSettingsSection('general'));
 
     const snapshot = store.getSnapshot();
 
@@ -110,6 +120,7 @@ describe('A005/store: ContributionStore registration + snapshot behavior', () =>
     expect(Object.isFrozen(snapshot.commands)).toBe(true);
     expect(Object.isFrozen(snapshot.shortcuts)).toBe(true);
     expect(Object.isFrozen(snapshot.settings)).toBe(true);
+    expect(Object.isFrozen(snapshot.settingsSections)).toBe(true);
   });
 
   it('A005/store: preserves insertion order for multiple registrations of the same contribution type', () => {
@@ -121,5 +132,57 @@ describe('A005/store: ContributionStore registration + snapshot behavior', () =>
     store.registerLeftPanelTab(second);
 
     expect(store.getLeftPanelTabs()).toEqual([first, second]);
+  });
+
+  it('A007/store-settingsSections: registers a settings section contribution', () => {
+    const store = new ContributionStore();
+    const section = createSettingsSection('general', 1);
+
+    store.registerSettingsSection(section);
+
+    expect(store.getSettingsSections()).toEqual([section]);
+  });
+
+  it('A007/store-settingsSections: removes a settings section when disposer is called', () => {
+    const store = new ContributionStore();
+    const section = createSettingsSection('general', 1);
+
+    const dispose = store.registerSettingsSection(section);
+    dispose();
+
+    expect(store.getSettingsSections()).toEqual([]);
+  });
+
+  it('A007/store-settingsSections: deduplicates by id — second registration with same id is no-op', () => {
+    const store = new ContributionStore();
+    const section = createSettingsSection('general', 1);
+    const duplicate = createSettingsSection('general', 2);
+
+    store.registerSettingsSection(section);
+    store.registerSettingsSection(duplicate);
+
+    expect(store.getSettingsSections()).toHaveLength(1);
+    expect(store.getSettingsSections()[0]).toEqual(section);
+  });
+
+  it('A007/store-settingsSections: snapshot includes settingsSections and is frozen', () => {
+    const store = new ContributionStore();
+    store.registerSettingsSection(createSettingsSection('general', 1));
+    store.registerSettingsSection(createSettingsSection('plugins', 2));
+
+    const snapshot = store.getSnapshot();
+
+    expect(snapshot.settingsSections).toHaveLength(2);
+    expect(Object.isFrozen(snapshot.settingsSections)).toBe(true);
+  });
+
+  it('A007/store-settingsSections: notifies subscribers when a settings section is registered', () => {
+    const store = new ContributionStore();
+    const listener = vi.fn();
+
+    store.subscribe(listener);
+    store.registerSettingsSection(createSettingsSection('general'));
+
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

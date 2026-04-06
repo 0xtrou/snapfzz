@@ -3,6 +3,7 @@ import type {
   ComponentContribution,
   PanelContribution,
   SettingsContribution,
+  SettingsSectionContribution,
   ShortcutContribution,
   StatusItemContribution,
   TabContribution,
@@ -17,6 +18,8 @@ export interface ContributionSnapshot {
   shortcuts: readonly ShortcutContribution[];
   settings: readonly SettingsContribution[];
   genericComponents: readonly ComponentContribution[];
+  // Per A007/Preferences: settingsSections contribution type drives the preferences sidebar.
+  settingsSections: readonly SettingsSectionContribution[];
 }
 
 export class ContributionStore {
@@ -29,6 +32,8 @@ export class ContributionStore {
   private shortcuts: ShortcutContribution[] = [];
   private settings: SettingsContribution[] = [];
   private genericComponents: ComponentContribution[] = [];
+  // Per A007/Preferences: settingsSections powers the preferences window sidebar navigation.
+  private settingsSections: SettingsSectionContribution[] = [];
   private listeners: Set<() => void> = new Set();
   // Per A002/StateManagement: snapshot pattern enables useSyncExternalStore reactive reads without re-render overhead.
   private snapshot: ContributionSnapshot = this.createSnapshot();
@@ -65,6 +70,10 @@ export class ContributionStore {
     return this.registerArrayContribution('genericComponents', component, (entry) => entry.id === component.id);
   }
 
+  registerSettingsSection(section: SettingsSectionContribution) {
+    return this.registerArrayContribution('settingsSections', section, (entry) => entry.id === section.id);
+  }
+
   getLeftPanelTabs() {
     return [...this.leftPanelTabs];
   }
@@ -97,6 +106,10 @@ export class ContributionStore {
     return [...this.genericComponents];
   }
 
+  getSettingsSections() {
+    return [...this.settingsSections];
+  }
+
   getSnapshot(): ContributionSnapshot {
     return this.snapshot;
   }
@@ -112,6 +125,7 @@ export class ContributionStore {
       shortcuts: Object.freeze([...this.shortcuts]),
       settings: Object.freeze([...this.settings]),
       genericComponents: Object.freeze([...this.genericComponents]),
+      settingsSections: Object.freeze([...this.settingsSections]),
     });
   }
 
@@ -159,6 +173,7 @@ type ContributionArrays = {
   shortcuts: ShortcutContribution[];
   settings: SettingsContribution[];
   genericComponents: ComponentContribution[];
+  settingsSections: SettingsSectionContribution[];
 };
 
 type ArrayPropertyKey = keyof ContributionArrays;

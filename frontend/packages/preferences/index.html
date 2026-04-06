@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Snapfzz Preferences</title>
+    <style>
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root, #skeleton { height: 100%; width: 100%; }
+      body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; }
+      #skeleton { display: flex; flex-direction: column; transition: opacity 150ms ease-out; }
+      #skeleton.fade-out { opacity: 0; pointer-events: none; }
+      #skeleton .header { height: 38px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #27272a; }
+      #skeleton .header span { color: #a1a1aa; font-size: 14px; font-weight: 600; }
+      #skeleton .body { flex: 1; display: flex; }
+      #skeleton .sidebar { width: 208px; border-right: 1px solid #27272a; }
+      #skeleton .content { flex: 1; }
+      #skeleton .footer { height: 32px; display: flex; align-items: center; padding: 0 16px; border-top: 1px solid #27272a; }
+      #skeleton .footer span { color: #52525b; font-size: 12px; }
+      html[data-app-ready="true"] #skeleton { display: none; }
+    </style>
+    <script>
+      const t = localStorage.getItem('snapfzz-theme');
+      document.documentElement.setAttribute('data-theme',
+        t === 'dark' || t === 'light' ? t :
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      );
+    </script>
+  </head>
+  <body>
+    <div id="skeleton">
+      <div class="header"><span>Snapfzz Preferences</span></div>
+      <div class="body"><div class="sidebar"></div><div class="content"></div></div>
+      <div class="footer"><span>● Ready</span></div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -375,6 +375,12 @@ export class PluginHost {
         this.store.registerShortcut(shortcut as import('@snapfzz/plugin-sdk').ShortcutContribution);
       }
     }
+    // Per A007/Preferences: settingsSections contributions routed to store for preferences sidebar.
+    if (c.settingsSections) {
+      for (const section of c.settingsSections) {
+        this.store.registerSettingsSection(section as import('@snapfzz/plugin-sdk').SettingsSectionContribution);
+      }
+    }
   }
 
   async update(pluginId: string, loader: PluginLoader): Promise<void> {
