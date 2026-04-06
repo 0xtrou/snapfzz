@@ -121,10 +121,56 @@ pub fn select_preset(hw: &HardwareInfo) -> PresetName {
     PresetName::Battery
 }
 
-pub fn build_preset(name: PresetName) -> Preset {
+// A008/BudgetRegistry: build_preset accepts HardwareInfo so the Performance preset
+// can scale CPU and memory to ~90% of detected hardware rather than using fixed values.
+pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
     match name {
-        PresetName::Performance => Preset {
-            name: "performance".into(),
+        PresetName::Performance => {
+            // Leave 2 cores for OS; guarantee at least 4 permits.
+            let cpu_permits = std::cmp::max(hw.cores.saturating_sub(2), 4);
+            // Cap app memory at 50% of RAM or 8192 MB, whichever is smaller.
+            let app_total_mb = std::cmp::min(hw.ram_gb * 512, 8192);
+            // AgentScope gets 75% of the app total.
+            let agentscope_max_mb = app_total_mb * 3 / 4;
+            Preset {
+                name: "performance".into(),
+                frame: FrameBudget {
+                    target_ms: 16,
+                    violation_threshold_ms: 50,
+                },
+                cpu: CpuBudget {
+                    permits: cpu_permits,
+                    zone2_envelope: cpu_permits / 2,
+                },
+                memory: MemoryBudget {
+                    app_total_mb,
+                    agentscope_max_mb,
+                },
+                startup: StartupBudget {
+                    visible_ms: 200,
+                    interactive_ms: 500,
+                    activation_timeout_ms: 5000,
+                },
+                network: NetworkBudget {
+                    batch_rate_ms: 16,
+                    max_concurrent_invokes: 10,
+                },
+                reliability: ReliabilityBudget {
+                    default_strikes: 3,
+                    strike_window_secs: 300,
+                    max_restarts: 15,
+                },
+                window: WindowBudget { max_concurrent: 5 },
+                storage: StorageBudget {
+                    max_gb: 10,
+                    cleanup_threshold_pct: 90,
+                    log_rotation_mb: 10,
+                    log_keep_count: 5,
+                },
+            }
+        }
+        PresetName::Balanced => Preset {
+            name: "balanced".into(),
             frame: FrameBudget {
                 target_ms: 16,
                 violation_threshold_ms: 50,
@@ -144,43 +190,7 @@ pub fn build_preset(name: PresetName) -> Preset {
             },
             network: NetworkBudget {
                 batch_rate_ms: 16,
-                max_concurrent_invokes: 10,
-            },
-            reliability: ReliabilityBudget {
-                default_strikes: 3,
-                strike_window_secs: 300,
-                max_restarts: 10,
-            },
-            window: WindowBudget { max_concurrent: 5 },
-            storage: StorageBudget {
-                max_gb: 10,
-                cleanup_threshold_pct: 90,
-                log_rotation_mb: 10,
-                log_keep_count: 5,
-            },
-        },
-        PresetName::Balanced => Preset {
-            name: "balanced".into(),
-            frame: FrameBudget {
-                target_ms: 16,
-                violation_threshold_ms: 50,
-            },
-            cpu: CpuBudget {
-                permits: 2,
-                zone2_envelope: 1,
-            },
-            memory: MemoryBudget {
-                app_total_mb: 1024,
-                agentscope_max_mb: 512,
-            },
-            startup: StartupBudget {
-                visible_ms: 200,
-                interactive_ms: 500,
-                activation_timeout_ms: 5000,
-            },
-            network: NetworkBudget {
-                batch_rate_ms: 16,
-                max_concurrent_invokes: 5,
+                max_concurrent_invokes: 6,
             },
             reliability: ReliabilityBudget {
                 default_strikes: 3,
@@ -202,12 +212,12 @@ pub fn build_preset(name: PresetName) -> Preset {
                 violation_threshold_ms: 66,
             },
             cpu: CpuBudget {
-                permits: 1,
+                permits: 2,
                 zone2_envelope: 1,
             },
             memory: MemoryBudget {
-                app_total_mb: 512,
-                agentscope_max_mb: 256,
+                app_total_mb: 1024,
+                agentscope_max_mb: 512,
             },
             startup: StartupBudget {
                 visible_ms: 200,

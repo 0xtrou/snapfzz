@@ -33,7 +33,7 @@ export function ImageContent({ block }: ImageContentProps) {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
+            background: 'var(--color-overlay)',
             border: 'none',
             display: 'flex',
             alignItems: 'center',

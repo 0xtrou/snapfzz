@@ -95,6 +95,25 @@ impl Default for Settings {
     }
 }
 
+/// A008/Supervised: event emitted to the frontend at supervisor lifecycle boundaries.
+/// Frontend listens on "supervisor-event" to display runtime notifications.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupervisorEvent {
+    event_type: String, // "success" | "error"
+    process: String,    // e.g. "agentscope"
+    message: String,    // human-readable description
+    timestamp: u64,     // unix epoch ms
+}
+
+/// Returns the current time as milliseconds since the Unix epoch.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 #[derive(Serialize, Debug)]
 struct HealthStatus {
     status: String,
@@ -596,6 +615,7 @@ fn write_pid_file(pid: u32) {
 fn remove_pid_file() { let _ = fs::remove_file(pid_file_path()); }
 
 async fn spawn_runtime(
+    app_handle: &tauri::AppHandle,
     registry: &Arc<BudgetRegistry>,
     runtime: &Arc<Mutex<RuntimeState>>,
     logs: &Arc<ProcessLogs>,
@@ -680,13 +700,19 @@ async fn spawn_runtime(
                 entry.status = snapfzz_budget::metrics::ProcessStatus::Online;
             }
             eprintln!("[budget] AgentScope Runtime healthy on port {AGENTSCOPE_PORT}");
+            let _ = app_handle.emit("supervisor-event", SupervisorEvent {
+                event_type: "success".into(),
+                process: "agentscope".into(),
+                message: "AgentScope Runtime started successfully".into(),
+                timestamp: now_ms(),
+            });
             return Ok(());
         }
     }
     Err("AgentScope Runtime did not become healthy within 120s".to_string())
 }
 
-async fn shutdown_runtime(runtime: &Arc<Mutex<RuntimeState>>) {
+async fn shutdown_runtime(app_handle: &tauri::AppHandle, runtime: &Arc<Mutex<RuntimeState>>) {
     let mut guard = runtime.lock().await;
 
     if guard.child.is_none() {
@@ -715,6 +741,12 @@ async fn shutdown_runtime(runtime: &Arc<Mutex<RuntimeState>>) {
     guard.child_pid = None;
     remove_pid_file();
     eprintln!("[supervisor] process killed (pid: {:?})", pid);
+    let _ = app_handle.emit("supervisor-event", SupervisorEvent {
+        event_type: "success".into(),
+        process: "agentscope".into(),
+        message: "Process killed".into(),
+        timestamp: now_ms(),
+    });
 }
 
 // A008/Supervised: list all registered supervised processes with full snapshot.
@@ -751,6 +783,7 @@ async fn clear_process_logs(
 #[tauri::command]
 async fn restart_process(
     name: String,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, Arc<BudgetRegistry>>,
     runtime: tauri::State<'_, Arc<Mutex<RuntimeState>>>,
     logs: tauri::State<'_, Arc<ProcessLogs>>,
@@ -758,20 +791,21 @@ async fn restart_process(
     if name != "agentscope" {
         return Err(format!("restart_process: unknown process '{name}'"));
     }
-    shutdown_runtime(&runtime).await;
-    spawn_runtime(&registry, &runtime, &logs).await
+    shutdown_runtime(&app, &runtime).await;
+    spawn_runtime(&app, &registry, &runtime, &logs).await
 }
 
 // A008/Supervised: send SIGKILL to a named process and clean up.
 #[tauri::command]
 async fn kill_process(
     name: String,
+    app: tauri::AppHandle,
     runtime: tauri::State<'_, Arc<Mutex<RuntimeState>>>,
 ) -> Result<(), String> {
     if name != "agentscope" {
         return Err(format!("kill_process: unknown process '{name}'"));
     }
-    shutdown_runtime(&runtime).await;
+    shutdown_runtime(&app, &runtime).await;
     Ok(())
 }
 
@@ -918,7 +952,7 @@ fn main() {
             });
 
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = spawn_runtime(&reg, &rt, &logs).await {
+                if let Err(e) = spawn_runtime(&handle, &reg, &rt, &logs).await {
                     eprintln!("[budget] {e}");
                 }
                 let _ = handle.emit("agent-status", "online");
@@ -938,6 +972,7 @@ fn main() {
 
                     for name in &names {
                         let healthy = metrics_reg.supervised.check_health(name).await;
+                        let mut failures_to_emit: Option<u32> = None;
                         if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(name) {
                             if healthy {
                                 proc.status = snapfzz_budget::metrics::ProcessStatus::Online;
@@ -945,13 +980,33 @@ fn main() {
                             } else {
                                 proc.consecutive_failures += 1;
                                 proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
+                                failures_to_emit = Some(proc.consecutive_failures);
                             }
                         }
+                        if let Some(failures) = failures_to_emit {
+                            let _ = metrics_handle.emit("supervisor-event", SupervisorEvent {
+                                event_type: "error".into(),
+                                process: name.clone(),
+                                message: format!("Health check failed ({failures} consecutive)"),
+                                timestamp: now_ms(),
+                            });
+                        }
 
-                        if metrics_reg.supervised.is_memory_exceeded(name) {
+                        let rss = metrics_reg.supervised.check_memory(name);
+                        let max = metrics_reg.supervised.processes.get(name)
+                            .map(|p| p.max_memory_mb)
+                            .unwrap_or(0);
+                        if rss.map(|r| r > max as f64).unwrap_or(false) {
                             if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(name) {
                                 proc.status = snapfzz_budget::metrics::ProcessStatus::Errored;
                             }
+                            let rss_val = rss.unwrap_or(0.0);
+                            let _ = metrics_handle.emit("supervisor-event", SupervisorEvent {
+                                event_type: "error".into(),
+                                process: name.clone(),
+                                message: format!("Memory exceeded: {rss_val:.0}MB > {max}MB limit"),
+                                timestamp: now_ms(),
+                            });
                         }
                     }
 
@@ -966,10 +1021,10 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("error while running snapfzz")
-        .run(move |_app_handle, event| {
+        .run(move |app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
                 let rt = runtime_state.clone();
-                tauri::async_runtime::block_on(shutdown_runtime(&rt));
+                tauri::async_runtime::block_on(shutdown_runtime(app_handle, &rt));
                 eprintln!("[budget] shutdown complete");
             }
         });
@@ -1035,7 +1090,7 @@ mod tests {
     #[test]
     fn a004_persistence_pid_file_path_uses_resolved_data_dir() {
         let path = pid_file_path();
-        assert!(path.to_str().unwrap().ends_with("agent.pid"));
+        assert!(path.to_str().unwrap().ends_with("agentscope.pid"));
         assert!(path.to_str().unwrap().contains(".snapfzz"));
     }
 
@@ -1126,5 +1181,47 @@ mod tests {
         assert_eq!(tail[0], "line-7");
         assert_eq!(tail[1], "line-8");
         assert_eq!(tail[2], "line-9");
+    }
+
+    #[test]
+    fn a008_supervisor_event_serializes_with_camel_case_fields() {
+        let event = SupervisorEvent {
+            event_type: "success".into(),
+            process: "agentscope".into(),
+            message: "AgentScope Runtime started successfully".into(),
+            timestamp: 1_000_000,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "success");
+        assert_eq!(json["process"], "agentscope");
+        assert_eq!(json["message"], "AgentScope Runtime started successfully");
+        assert_eq!(json["timestamp"], 1_000_000_u64);
+    }
+
+    #[test]
+    fn a008_supervisor_event_error_variant_serializes_correctly() {
+        let event = SupervisorEvent {
+            event_type: "error".into(),
+            process: "agentscope".into(),
+            message: "Health check failed (3 consecutive)".into(),
+            timestamp: 42,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "error");
+        assert_eq!(json["message"], "Health check failed (3 consecutive)");
+    }
+
+    #[test]
+    fn a008_now_ms_returns_nonzero_timestamp() {
+        let ts = now_ms();
+        assert!(ts > 0, "now_ms must return a positive unix epoch ms value");
+    }
+
+    #[test]
+    fn a008_now_ms_advances_over_time() {
+        let t1 = now_ms();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let t2 = now_ms();
+        assert!(t2 >= t1, "now_ms must be monotonically non-decreasing");
     }
 }

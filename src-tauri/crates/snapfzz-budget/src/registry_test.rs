@@ -40,6 +40,7 @@ mod tests {
     fn a008_registry_try_acquire_cpu_respects_preset_limit() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Battery);
         let _p1 = reg.try_acquire_cpu().unwrap();
+        let _p2 = reg.try_acquire_cpu().unwrap();
         assert!(reg.try_acquire_cpu().is_none());
     }
 
@@ -79,10 +80,10 @@ mod tests {
         let reg = BudgetRegistry::with_preset_name(PresetName::Balanced);
         let snap = reg.snapshot();
         assert_eq!(snap.preset_name, "balanced");
-        assert_eq!(snap.cpu_total, 2);
-        assert_eq!(snap.invoke_total, 5);
+        assert_eq!(snap.cpu_total, 4);
+        assert_eq!(snap.invoke_total, 6);
         assert_eq!(snap.frame_target_ms, 16);
-        assert_eq!(snap.agentscope_max_mb, 512);
+        assert_eq!(snap.agentscope_max_mb, 1024);
     }
 
     #[test]
@@ -131,7 +132,7 @@ mod tests {
     fn a008_registry_backward_compat_agentscope_fields() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Balanced);
         let snap = reg.snapshot();
-        assert_eq!(snap.agentscope_max_mb, 512);
+        assert_eq!(snap.agentscope_max_mb, 1024);
         assert!(snap.agentscope_rss_mb.is_none());
         assert!(matches!(
             snap.agentscope_status,

@@ -40,8 +40,8 @@ Balanced (laptop, plugged in, ≥4 cores, ≥8GB RAM):
   batch_rate_ms:   16
 
 Battery (laptop, on battery):
-  cpu_permits:     1
-  memory_mb:       512
+  cpu_permits:     2
+  memory_mb:       1024
   storage_gb:      5
   frame_target_ms: 33    (30fps)
   batch_rate_ms:   33

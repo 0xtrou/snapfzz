@@ -32,7 +32,7 @@ impl BudgetRegistry {
     pub fn from_hardware() -> Self {
         let hw = detect_hardware();
         let preset_name = select_preset(&hw);
-        let preset = build_preset(preset_name);
+        let preset = build_preset(preset_name, &hw);
         Self::with_preset(preset)
     }
 
@@ -59,7 +59,8 @@ impl BudgetRegistry {
     }
 
     pub fn with_preset_name(name: PresetName) -> Self {
-        Self::with_preset(build_preset(name))
+        let hw = detect_hardware();
+        Self::with_preset(build_preset(name, &hw))
     }
 
     pub fn try_acquire_cpu(&self) -> Option<CpuPermit> {

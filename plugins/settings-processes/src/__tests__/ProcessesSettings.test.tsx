@@ -228,11 +228,11 @@ describe('A008/settings-processes: uptime formatting', () => {
     });
   });
 
-  it('A008/settings-processes: formats zero uptime as 0m', async () => {
+  it('A008/settings-processes: formats zero uptime as 0s', async () => {
     mockInvoke.mockResolvedValue([makeProcess({ uptimeSecs: 0 })]);
     render(<ProcessesSettings />);
     await waitFor(() => {
-      expect(screen.getByText('0m')).toBeInTheDocument();
+      expect(screen.getByText('0s')).toBeInTheDocument();
     });
   });
 });
@@ -293,7 +293,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows PID after expand', async () => {
-    mockInvoke.mockResolvedValue([makeProcess({ name: 'agentscope', pid: 43452 })]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', pid: 43452 })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -307,9 +311,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows health URL after expand', async () => {
-    mockInvoke.mockResolvedValue([
-      makeProcess({ name: 'agentscope', healthUrl: 'http://127.0.0.1:8090/health' }),
-    ]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', healthUrl: 'http://127.0.0.1:8090/health' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -325,7 +331,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows owner after expand', async () => {
-    mockInvoke.mockResolvedValue([makeProcess({ name: 'agentscope', owner: 'system' })]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', owner: 'system' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -339,7 +349,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows restart button with Popconfirm', async () => {
-    mockInvoke.mockResolvedValue([makeProcess({ name: 'agentscope' })]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -353,7 +367,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows kill button with Popconfirm', async () => {
-    mockInvoke.mockResolvedValue([makeProcess({ name: 'agentscope' })]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -367,7 +385,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows View Logs button', async () => {
-    mockInvoke.mockResolvedValue([makeProcess({ name: 'agentscope' })]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -381,7 +403,11 @@ describe('A008/settings-processes: detail panel', () => {
   });
 
   it('A008/settings-processes: detail panel shows Clear Logs button', async () => {
-    mockInvoke.mockResolvedValue([makeProcess({ name: 'agentscope' })]);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<ProcessesSettings />);
     await waitFor(() => screen.getByText('agentscope'));
 
@@ -476,6 +502,7 @@ describe('A008/settings-processes: Tauri commands', () => {
   it('A008/settings-processes: restart_process is called with process name', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       return Promise.resolve(null);
     });
     render(<ProcessesSettings />);
@@ -512,7 +539,7 @@ describe('A008/settings-processes: Tauri commands', () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('get_process_logs', {
         name: 'agentscope',
-        tailN: 50,
+        tailN: 100,
       });
     });
   });
@@ -582,6 +609,7 @@ describe('A008/settings-processes: error handling when Tauri unavailable', () =>
   it('A008/settings-processes: restart_process failure is silently handled', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       if (cmd === 'restart_process') return Promise.reject(new Error('no tauri'));
       return Promise.resolve(null);
     });
@@ -612,6 +640,7 @@ describe('A008/settings-processes: error handling when Tauri unavailable', () =>
   it('A008/settings-processes: kill_process failure is silently handled', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       if (cmd === 'kill_process') return Promise.reject(new Error('no tauri'));
       return Promise.resolve(null);
     });
@@ -667,10 +696,10 @@ describe('A008/settings-processes: error handling when Tauri unavailable', () =>
     expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
   });
 
-  it('A008/settings-processes: update_process_config failure is silently handled', async () => {
+  it('A008/settings-processes: update_process_config is not called (max memory is read-only)', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
-      if (cmd === 'update_process_config') return Promise.reject(new Error('no tauri'));
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       return Promise.resolve(null);
     });
     render(<ProcessesSettings />);
@@ -680,16 +709,11 @@ describe('A008/settings-processes: error handling when Tauri unavailable', () =>
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByRole('spinbutton', { name: 'Max memory MB' }));
+    await waitFor(() => screen.getByTestId('detail-panel-agentscope'));
 
-    await act(async () => {
-      fireEvent.change(screen.getByRole('spinbutton', { name: 'Max memory MB' }), {
-        target: { value: '256' },
-      });
-      await Promise.resolve();
-    });
-
-    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+    expect(
+      mockInvoke.mock.calls.filter(([cmd]: string[]) => cmd === 'update_process_config').length
+    ).toBe(0);
   });
 });
 
@@ -697,6 +721,7 @@ describe('A008/settings-processes: kill process', () => {
   it('A008/settings-processes: kill_process is called after popconfirm confirm', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       if (cmd === 'kill_process') return Promise.resolve(null);
       return Promise.resolve(null);
     });
@@ -727,9 +752,10 @@ describe('A008/settings-processes: kill process', () => {
 });
 
 describe('A008/settings-processes: max memory config', () => {
-  it('A008/settings-processes: update_process_config is called when max memory changes', async () => {
+  it('A008/settings-processes: max memory is displayed as read-only text', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope', maxMemoryMb: 512 })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       return Promise.resolve(null);
     });
     render(<ProcessesSettings />);
@@ -739,21 +765,16 @@ describe('A008/settings-processes: max memory config', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByRole('spinbutton', { name: 'Max memory MB' }));
+    await waitFor(() => screen.getByTestId('detail-panel-agentscope'));
 
-    const input = screen.getByRole('spinbutton', { name: 'Max memory MB' });
-    await act(async () => {
-      fireEvent.change(input, { target: { value: '1024' } });
-    });
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('list_processes', undefined);
-    });
+    expect(screen.getByText('512 MB')).toBeInTheDocument();
+    expect(screen.getByText('Set via Performance preset')).toBeInTheDocument();
   });
 
-  it('A008/settings-processes: handleMaxMemoryChange skips null value', async () => {
+  it('A008/settings-processes: max memory does not invoke update_process_config', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
       return Promise.resolve(null);
     });
     render(<ProcessesSettings />);
@@ -763,20 +784,10 @@ describe('A008/settings-processes: max memory config', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByRole('spinbutton', { name: 'Max memory MB' }));
-
-    const callsBefore = mockInvoke.mock.calls.filter(
-      ([cmd]: string[]) => cmd === 'update_process_config'
-    ).length;
-
-    await act(async () => {
-      fireEvent.change(screen.getByRole('spinbutton', { name: 'Max memory MB' }), {
-        target: { value: '' },
-      });
-    });
+    await waitFor(() => screen.getByTestId('detail-panel-agentscope'));
 
     expect(
       mockInvoke.mock.calls.filter(([cmd]: string[]) => cmd === 'update_process_config').length
-    ).toBe(callsBefore);
+    ).toBe(0);
   });
 });

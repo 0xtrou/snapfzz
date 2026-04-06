@@ -47,9 +47,9 @@ async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): 
 type Preset = 'performance' | 'balanced' | 'battery';
 
 const PRESET_LABELS: Record<Preset, string> = {
-  performance: 'Performance',
-  balanced: 'Balanced',
-  battery: 'Battery',
+  battery: 'Battery · 2 CPU · 512MB · 30fps',
+  balanced: 'Balanced · 4 CPU · 1GB · 60fps',
+  performance: 'Performance · scales to 90% of hardware',
 };
 
 export default function PerformanceSettings() {
@@ -114,7 +114,7 @@ export default function PerformanceSettings() {
           gap: 6,
           padding: '2px 8px',
           borderRadius: 10,
-          background: metrics ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+          background: metrics ? 'var(--color-success-bg)' : 'var(--color-error-bg)',
           fontSize: 11,
           fontWeight: 500,
           color: metrics ? 'var(--color-success)' : 'var(--color-error)',
@@ -153,7 +153,7 @@ export default function PerformanceSettings() {
           </Radio.Group>
           {metrics && (
             <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              Active: {metrics.presetName} · {metrics.cpuTotal} permits · {metrics.agentscopeMaxMb} MB cap · uptime {Math.floor(metrics.uptimeSecs / 60)}m
+              Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.frameTargetMs <= 16 ? '60fps' : '30fps'} · uptime {Math.floor(metrics.uptimeSecs / 60)}m
             </Text>
           )}
         </Space>

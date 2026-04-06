@@ -25,11 +25,11 @@ presets:
       target_ms: 16            # 60fps
       violation_threshold_ms: 50  # longtask threshold
     cpu:
-      permits: 4               # concurrent compute tasks
-      zone2_envelope: 2        # permits allocated to Worker
+      permits: scales          # max(cores - 2, 4) — detected at runtime
+      zone2_envelope: scales   # permits / 2
     memory:
-      app_total_mb: 2048       # total app footprint target
-      agentscope_max_mb: 1024  # supervised process limit
+      app_total_mb: scales     # min(ram_gb * 512, 8192)
+      agentscope_max_mb: scales  # app_total_mb * 3 / 4
     startup:
       visible_ms: 200          # skeleton visible target
       interactive_ms: 500      # chat input active target
@@ -40,7 +40,7 @@ presets:
     reliability:
       default_strikes: 3       # per-plugin crash tolerance
       strike_window_secs: 300  # 5 minutes
-      max_restarts: 10         # supervised process restart limit
+      max_restarts: 15         # supervised process restart limit
     window:
       max_concurrent: 5        # maximum open layouts
     storage:
@@ -51,21 +51,21 @@ presets:
 
   balanced:
     frame:
-      target_ms: 16
+      target_ms: 16            # 60fps
       violation_threshold_ms: 50
     cpu:
-      permits: 2
-      zone2_envelope: 1
+      permits: 4
+      zone2_envelope: 2
     memory:
-      app_total_mb: 1024
-      agentscope_max_mb: 512
+      app_total_mb: 2048
+      agentscope_max_mb: 1024
     startup:
       visible_ms: 200
       interactive_ms: 500
       activation_timeout_ms: 5000
     network:
       batch_rate_ms: 16
-      max_concurrent_invokes: 5
+      max_concurrent_invokes: 6
     reliability:
       default_strikes: 3
       strike_window_secs: 300
@@ -83,11 +83,11 @@ presets:
       target_ms: 33            # 30fps — save power
       violation_threshold_ms: 66
     cpu:
-      permits: 1
+      permits: 2
       zone2_envelope: 1
     memory:
-      app_total_mb: 512
-      agentscope_max_mb: 256
+      app_total_mb: 1024
+      agentscope_max_mb: 512
     startup:
       visible_ms: 200
       interactive_ms: 500

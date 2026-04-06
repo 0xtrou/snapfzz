@@ -7,7 +7,6 @@ import {
   Progress,
   Button,
   Popconfirm,
-  InputNumber,
   Space,
   Typography,
   Tooltip,
@@ -103,9 +102,9 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ process, onAction }: DetailPanelProps) {
-  const [showLogs, setShowLogs] = useState(true);
+  const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [maxMemory, setMaxMemory] = useState<number>(process.maxMemoryMb);
+
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = useCallback(async () => {
@@ -113,7 +112,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
       const result = await tauriInvoke('get_process_logs', { name: process.name, tailN: 100 });
       setLogs(result as string[]);
     } catch {
-      // Tauri not available in browser preview
+      void 0;
     }
   }, [process.name]);
 
@@ -125,7 +124,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
   }, [showLogs, fetchLogs]);
 
   useEffect(() => {
-    if (logContainerRef.current) {
+    if (logContainerRef.current && logs.length > 0) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs]);
@@ -137,7 +136,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
       await tauriInvoke('restart_process', { name: process.name });
       onAction();
     } catch {
-      // Tauri not available in browser preview
+      void 0;
     }
   };
 
@@ -146,7 +145,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
       await tauriInvoke('kill_process', { name: process.name });
       onAction();
     } catch {
-      // Tauri not available in browser preview
+      void 0;
     }
   };
 
@@ -155,18 +154,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
       await tauriInvoke('clear_process_logs', { name: process.name });
       setLogs([]);
     } catch {
-      // Tauri not available in browser preview
-    }
-  };
-
-  const handleMaxMemoryChange = async (value: number | null) => {
-    if (value === null) return;
-    setMaxMemory(value);
-    try {
-      await tauriInvoke('update_process_config', { name: process.name, maxMemoryMb: value });
-      onAction();
-    } catch {
-      // Tauri not available in browser preview
+      void 0;
     }
   };
 
@@ -255,18 +243,10 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
-          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>Max Memory (MB)</Text>
+          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>Max Memory</Text>
           <div style={{ marginTop: 4 }}>
-            <InputNumber
-              value={maxMemory}
-              min={64}
-              max={8192}
-              step={64}
-              onChange={handleMaxMemoryChange}
-              size="small"
-              style={{ width: 100 }}
-              aria-label="Max memory MB"
-            />
+            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>{process.maxMemoryMb} MB</Text>
+            <Text style={{ color: 'var(--text-muted)', fontSize: 11, display: 'block' }}>Set via Performance preset</Text>
           </div>
         </div>
         <div style={{ flex: 1 }}>
@@ -366,8 +346,8 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           {logs.length === 0 ? (
             <div style={{ color: 'var(--text-muted)' }}>No logs</div>
           ) : (
-            logs.map((line, i) => (
-              <div key={`${process.name}-log-${i}`} style={{ lineHeight: 1.6 }}>
+            logs.map((line) => (
+              <div key={`${process.name}-${line}`} style={{ lineHeight: 1.6 }}>
                 {line}
               </div>
             ))
@@ -389,7 +369,7 @@ export default function ProcessesSettings() {
       setProcesses(result as ProcessSnapshot[]);
       setHasData(true);
     } catch {
-      // Tauri not available in browser preview — list stays empty
+      void 0;
     }
   }, []);
 
@@ -486,7 +466,7 @@ export default function ProcessesSettings() {
             gap: 6,
             padding: '2px 8px',
             borderRadius: 10,
-            background: hasData ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+            background: hasData ? 'var(--color-success-bg)' : 'var(--color-error-bg)',
             fontSize: 11,
             fontWeight: 500,
             color: hasData ? 'var(--color-success)' : 'var(--color-error)',

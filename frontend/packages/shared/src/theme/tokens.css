@@ -22,6 +22,9 @@
   --color-warning: #eab308;
   --color-error: #ef4444;
   --color-info: #3b82f6;
+  --color-success-bg: rgba(34, 197, 94, 0.1);
+  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.75);
   --color-accent: #fafafa;
   --accent: #fafafa;
   --color-accent-hover: #e4e4e7;
@@ -46,6 +49,9 @@
   --color-warning: #eab308;
   --color-error: #ef4444;
   --color-info: #3b82f6;
+  --color-success-bg: rgba(34, 197, 94, 0.1);
+  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.5);
   --color-accent: #18181b;
   --accent: #18181b;
   --color-accent-hover: #27272a;

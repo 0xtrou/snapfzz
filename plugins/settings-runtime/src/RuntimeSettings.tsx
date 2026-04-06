@@ -152,7 +152,7 @@ export default function RuntimeSettings() {
           style={{
             borderRadius: 12,
             fontWeight: 500,
-            background: isOnline ? 'rgba(34,197,94,0.12)' : 'var(--bg-tertiary)',
+            background: isOnline ? 'var(--color-success-bg)' : 'var(--bg-tertiary)',
             borderColor: isOnline ? 'var(--color-success)' : 'var(--border-strong)',
             color: isOnline ? 'var(--color-success)' : 'var(--text-muted)',
           }}

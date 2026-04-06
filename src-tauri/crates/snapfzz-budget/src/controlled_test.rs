@@ -1,10 +1,15 @@
 #[cfg(test)]
 mod tests {
     use crate::controlled::ControlledBudgets;
-    use crate::preset::{build_preset, PresetName};
+    use crate::preset::{build_preset, HardwareInfo, PresetName};
 
     fn make_controlled(name: PresetName) -> ControlledBudgets {
-        ControlledBudgets::from_preset(&build_preset(name))
+        let hw = HardwareInfo {
+            cores: 8,
+            ram_gb: 16,
+            on_battery: false,
+        };
+        ControlledBudgets::from_preset(&build_preset(name, &hw))
     }
 
     #[test]
@@ -17,8 +22,9 @@ mod tests {
     #[test]
     fn a008_controlled_cpu_acquire_returns_none_when_exhausted() {
         let ctrl = make_controlled(PresetName::Battery);
-        assert_eq!(ctrl.cpu_total(), 1);
+        assert_eq!(ctrl.cpu_total(), 2);
         let _p1 = ctrl.try_acquire_cpu().unwrap();
+        let _p2 = ctrl.try_acquire_cpu().unwrap();
         assert!(ctrl.try_acquire_cpu().is_none());
     }
 
@@ -26,10 +32,11 @@ mod tests {
     fn a008_controlled_cpu_permit_released_on_drop() {
         let ctrl = make_controlled(PresetName::Battery);
         {
-            let _p = ctrl.try_acquire_cpu().unwrap();
+            let _p1 = ctrl.try_acquire_cpu().unwrap();
+            let _p2 = ctrl.try_acquire_cpu().unwrap();
             assert_eq!(ctrl.cpu_available(), 0);
         }
-        assert_eq!(ctrl.cpu_available(), 1);
+        assert_eq!(ctrl.cpu_available(), 2);
     }
 
     #[test]
