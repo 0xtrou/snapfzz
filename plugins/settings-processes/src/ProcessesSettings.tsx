@@ -102,7 +102,7 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ process, onAction }: DetailPanelProps) {
-  const [showLogs, setShowLogs] = useState(false);
+  const [showLogs, setShowLogs] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
 
   const logContainerRef = useRef<HTMLDivElement>(null);
