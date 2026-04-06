@@ -1,7 +1,7 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
 // refreshes every 2s, displays preset selector and progress bars.
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { Card, Progress, Radio, Space, Typography } from 'antd';
+import { useEffect, useState, useRef } from 'react';
+import { Card, Progress, Radio, Space, Tag, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -28,9 +28,9 @@ const REFRESH_INTERVAL_MS = 2000;
 
 // A001/GPUOnlyAnimations: all color decisions via CSS variables — no hardcoded hex.
 function healthColor(pct: number): string {
-  if (pct >= 90) return 'var(--color-error, #ff4d4f)';
-  if (pct >= 70) return 'var(--color-warning, #faad14)';
-  return 'var(--color-success, #52c41a)';
+  if (pct >= 90) return 'var(--color-error)';
+  if (pct >= 70) return 'var(--color-warning)';
+  return 'var(--color-success)';
 }
 
 function pct(used: number, total: number): number {
@@ -46,11 +46,18 @@ async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): 
 
 type Preset = 'performance' | 'balanced' | 'battery';
 
-const PRESET_LABELS: Record<Preset, string> = {
-  battery: 'Battery · 2 CPU · 512MB · 30fps',
-  balanced: 'Balanced · 4 CPU · 1GB · 60fps',
-  performance: 'Performance · scales to 90% of hardware',
-};
+function PresetOption({ name, specs }: { name: string; specs: { cpu: number; ram: string; fps: number } }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <Text strong style={{ fontSize: 13 }}>{name}</Text>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        <Tag color="blue">{specs.cpu} CPU</Tag>
+        <Tag color="purple">{specs.ram}</Tag>
+        <Tag>{specs.fps}fps</Tag>
+      </div>
+    </div>
+  );
+}
 
 export default function PerformanceSettings() {
   const [metrics, setMetrics] = useState<BudgetMetrics | null>(null);
@@ -71,7 +78,7 @@ export default function PerformanceSettings() {
         setMetrics(snap);
         if (!presetLoadedRef.current) {
           const name = snap.presetName.toLowerCase() as Preset;
-          if (name in PRESET_LABELS) {
+          if (name === 'performance' || name === 'balanced' || name === 'battery') {
             setPreset(name);
             setOriginalPreset(name);
           }
@@ -104,6 +111,7 @@ export default function PerformanceSettings() {
         onSave={async () => {
           setSaving(true);
           try {
+            await tauriInvoke('set_preset', { presetName: preset });
             const current = await tauriInvoke<Record<string, unknown>>('get_settings');
             await tauriInvoke('save_settings', { settings: { ...current, preset } });
             setOriginalPreset(preset);
@@ -147,11 +155,26 @@ export default function PerformanceSettings() {
             onChange={(e) => setPreset(e.target.value as Preset)}
           >
             <Space>
-              {(Object.keys(PRESET_LABELS) as Preset[]).map((p) => (
-                <Radio key={p} value={p} style={{ color: 'var(--text-primary)' }}>
-                  {PRESET_LABELS[p]}
-                </Radio>
-              ))}
+              <Radio value="battery" style={{ color: 'var(--text-primary)' }}>
+                <PresetOption name="Battery" specs={{ cpu: 2, ram: '512MB', fps: 30 }} />
+              </Radio>
+              <Radio value="balanced" style={{ color: 'var(--text-primary)' }}>
+                <PresetOption name="Balanced" specs={{ cpu: 4, ram: '1GB', fps: 60 }} />
+              </Radio>
+              <Radio value="performance" style={{ color: 'var(--text-primary)' }}>
+                <PresetOption
+                  name="Performance"
+                  specs={{
+                    cpu: metrics ? Math.max(metrics.cpuTotal, 4) : 4,
+                    ram: metrics
+                      ? metrics.agentscopeMaxMb >= 1024
+                        ? `${Math.floor(metrics.agentscopeMaxMb / 1024)}GB`
+                        : `${Math.floor(metrics.agentscopeMaxMb)}MB`
+                      : '—',
+                    fps: 60,
+                  }}
+                />
+              </Radio>
               <Radio value="custom" disabled style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
                 Custom <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>(coming soon)</span>
               </Radio>
@@ -260,8 +283,8 @@ export default function PerformanceSettings() {
 
       {metrics && metrics.disabledPlugins.length > 0 && (
         <Card
-          title={<Text style={{ color: 'var(--color-error, #ff4d4f)' }}>Disabled Plugins</Text>}
-          style={{ background: 'var(--bg-default)', borderColor: 'var(--color-error, #ff4d4f)' }}
+          title={<Text style={{ color: 'var(--color-error)' }}>Disabled Plugins</Text>}
+          style={{ background: 'var(--bg-default)', borderColor: 'var(--color-error)' }}
         >
           <Space direction="vertical" size={4}>
             {metrics.disabledPlugins.map((pid) => (

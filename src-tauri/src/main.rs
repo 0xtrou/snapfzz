@@ -16,6 +16,7 @@ use tauri::{Emitter, Manager, RunEvent};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 
+use snapfzz_budget::preset::{build_preset, detect_hardware, select_preset, PresetName};
 use snapfzz_budget::supervised::{ProcessBudget, ProcessLocation};
 use snapfzz_budget::BudgetRegistry;
 
@@ -67,6 +68,10 @@ struct Settings {
     fps_counter: bool,
     #[serde(default = "default_log_level")]
     log_level: String,
+
+    // Performance
+    #[serde(default = "default_preset")]
+    preset: String,
 }
 
 fn default_model() -> String { "gpt-4o".to_string() }
@@ -77,6 +82,7 @@ fn default_font_family() -> String { "Inter".to_string() }
 fn default_font_size() -> String { "14".to_string() }
 fn default_language() -> String { "en".to_string() }
 fn default_log_level() -> String { "info".to_string() }
+fn default_preset() -> String { "auto".to_string() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -91,6 +97,7 @@ impl Default for Settings {
             font_size: default_font_size(),
             fps_counter: default_true(),
             log_level: default_log_level(),
+            preset: default_preset(),
         }
     }
 }
@@ -372,6 +379,15 @@ async fn agent_health(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result
     Ok(HealthStatus { status: status.into() })
 }
 
+fn get_settings_sync() -> Settings {
+    let path = settings_path();
+    if !path.exists() { return Settings::default(); }
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|c| serde_json::from_str(&c).ok())
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 async fn get_settings() -> Result<Settings, String> {
     let path = settings_path();
@@ -415,6 +431,24 @@ async fn budget_report_violation(class: String, metric: String, actual_ms: f64, 
 async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<Value, String> {
     let snap = registry.snapshot();
     serde_json::to_value(snap).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_preset(
+    preset_name: String,
+    registry: tauri::State<'_, Arc<BudgetRegistry>>,
+) -> Result<(), String> {
+    let hw = detect_hardware();
+    let name = match preset_name.as_str() {
+        "performance" => PresetName::Performance,
+        "balanced" => PresetName::Balanced,
+        "battery" => PresetName::Battery,
+        _ => return Err(format!("Unknown preset: {preset_name}")),
+    };
+    let new_preset = build_preset(name, &hw);
+    registry.controlled.frame_target_ms.store(new_preset.frame.target_ms, std::sync::atomic::Ordering::Relaxed);
+    registry.controlled.batch_rate_ms.store(new_preset.network.batch_rate_ms, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
 }
 
 #[tauri::command]
@@ -824,7 +858,19 @@ async fn update_process_config(
 }
 
 fn main() {
-    let registry = Arc::new(BudgetRegistry::from_hardware());
+    let settings = get_settings_sync();
+    let registry = Arc::new(if settings.preset == "auto" || settings.preset.is_empty() {
+        BudgetRegistry::from_hardware()
+    } else {
+        let hw = detect_hardware();
+        let preset_name = match settings.preset.as_str() {
+            "performance" => PresetName::Performance,
+            "balanced" => PresetName::Balanced,
+            "battery" => PresetName::Battery,
+            _ => select_preset(&hw),
+        };
+        BudgetRegistry::with_preset(build_preset(preset_name, &hw))
+    });
     eprintln!("[budget] preset: {} (frame={}ms, cpu={}, mem={}MB)",
         registry.preset.name, registry.frame_target(),
         registry.preset.cpu.permits, registry.preset.memory.agentscope_max_mb);
@@ -857,6 +903,7 @@ fn main() {
             budget_record_strike,
             budget_report_violation,
             budget_snapshot,
+            set_preset,
             open_preferences,
             list_processes,
             get_process_logs,
