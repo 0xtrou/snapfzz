@@ -78,4 +78,15 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install
-      - run: pnpm --filter @snapfzz/${{ matrix.plugin }} exec npx vitest run
+      - name: Test with coverage
+        run: pnpm --filter @snapfzz/${{ matrix.plugin }} exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% coverage
+        run: |
+          SUMMARY="plugins/${{ matrix.plugin }}/coverage/coverage-summary.json"
+          if [ -f "$SUMMARY" ]; then
+            COV=$(node -e "console.log(require('./$SUMMARY').total.lines.pct)")
+            echo "${{ matrix.plugin }}: ${COV}%"
+            node -e "if (${COV} < 90) { console.error('Coverage ${COV}% < 90%'); process.exit(1); }"
+          else
+            echo "No coverage report found — tests passed without coverage"
+          fi

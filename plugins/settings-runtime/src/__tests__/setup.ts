@@ -13,3 +13,7 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => false,
   }),
 });
+
+if (!window.getComputedStyle) {
+  window.getComputedStyle = () => ({} as CSSStyleDeclaration);
+}
