@@ -978,6 +978,266 @@ describe('A008/settings-processes: restart process success', () => {
   });
 });
 
+describe('A007/settings-processes: agentscope config section', () => {
+  it('A007/settings-processes: agentscope detail panel shows host/port config section', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('agentscope-config-section')).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-processes: agentscope config section is absent for non-agentscope processes', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'vite-preview', pid: 99 })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('vite-preview'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('detail-panel-vite-preview'));
+    expect(screen.queryByTestId('agentscope-config-section')).not.toBeInTheDocument();
+  });
+
+  it('A007/settings-processes: agentscope host input is editable', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('agentscope-host-input'));
+
+    const hostInput = screen.getByTestId('agentscope-host-input');
+    await act(async () => {
+      fireEvent.change(hostInput, { target: { value: '0.0.0.0' } });
+    });
+    expect(hostInput).toHaveValue('0.0.0.0');
+  });
+
+  it('A007/settings-processes: agentscope port input is editable', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('agentscope-port-input'));
+
+    const portInput = screen.getByTestId('agentscope-port-input');
+    await act(async () => {
+      fireEvent.change(portInput, { target: { value: '9000' } });
+    });
+    expect(portInput).toHaveValue('9000');
+  });
+
+  it('A007/settings-processes: agentscope config loads saved host from get_settings', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '192.168.1.10', agentscopePort: 9090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('agentscope-host-input'));
+    expect(screen.getByTestId('agentscope-host-input')).toHaveValue('192.168.1.10');
+  });
+
+  it('A007/settings-processes: agentscope config loads saved port from get_settings', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 9090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('agentscope-port-input'));
+    expect(screen.getByTestId('agentscope-port-input')).toHaveValue('9090');
+  });
+
+  it('A007/settings-processes: Save & Restart button is present in agentscope config section', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-save-restart-agentscope')).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-processes: Save & Restart calls save_settings with merged host and port', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      if (cmd === 'save_settings') return Promise.resolve(null);
+      if (cmd === 'restart_process') return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('agentscope-port-input'));
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('agentscope-port-input'), { target: { value: '9000' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-save-restart-agentscope'));
+    });
+    await waitFor(() => {
+      const okBtn = document.querySelector('.ant-popconfirm .ant-btn-primary');
+      if (okBtn) fireEvent.click(okBtn);
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    await waitFor(() => {
+      const saveCall = mockInvoke.mock.calls.find(([cmd]) => cmd === 'save_settings');
+      expect(saveCall).toBeTruthy();
+      const settings = saveCall![1].settings as Record<string, unknown>;
+      expect(settings.agentscopePort).toBe('9000');
+    });
+  });
+
+  it('A007/settings-processes: Save & Restart calls restart_process with agentscope name', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      if (cmd === 'save_settings') return Promise.resolve(null);
+      if (cmd === 'restart_process') return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-save-restart-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-save-restart-agentscope'));
+    });
+    await waitFor(() => {
+      const okBtn = document.querySelector('.ant-popconfirm .ant-btn-primary');
+      if (okBtn) fireEvent.click(okBtn);
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    await waitFor(() => {
+      const cmds = mockInvoke.mock.calls.map(([cmd]) => cmd);
+      expect(cmds).toContain('restart_process');
+    });
+  });
+
+  it('A007/settings-processes: Save & Restart failure is silently handled', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.reject(new Error('no settings'));
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => screen.getByTestId('btn-save-restart-agentscope'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-save-restart-agentscope'));
+    });
+    await waitFor(() => {
+      const okBtn = document.querySelector('.ant-popconfirm .ant-btn-primary');
+      if (okBtn) fireEvent.click(okBtn);
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByTestId('detail-panel-agentscope')).toBeInTheDocument();
+  });
+
+  it('A007/settings-processes: restart note text is shown in config section', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: '127.0.0.1', agentscopePort: 8090 });
+      return Promise.resolve(null);
+    });
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId('agentscope-config-section')).toHaveTextContent(
+        'Changes require process restart to take effect',
+      );
+    });
+  });
+});
+
 describe('A008/settings-processes: max memory config', () => {
   it('A008/settings-processes: max memory is displayed as read-only text', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
