@@ -851,7 +851,8 @@ async fn install_font_from_url(url: String, name: String) -> Result<String, Stri
     let fonts_dir = resolve_data_dir().join("fonts");
     fs::create_dir_all(&fonts_dir).map_err(|e| e.to_string())?;
 
-    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?
+        .error_for_status().map_err(|e| e.to_string())?;
     let bytes = response.bytes().await.map_err(|e| e.to_string())?;
 
     let ext = if url.contains(".woff2") {

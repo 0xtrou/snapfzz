@@ -160,7 +160,7 @@ export default function GeneralSettings(): React.ReactElement {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
-      setSaveError(String(err));
+      setSaveError('Unable to save settings. Please try again.');
     } finally {
       setSaving(false);
     }
