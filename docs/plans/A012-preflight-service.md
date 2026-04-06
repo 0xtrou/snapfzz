@@ -39,9 +39,8 @@ Tauri .setup()
 │    │   ├─ try OS keychain first             │
 │    │   └─ fall back to ~/.snapfzz/vault.key │
 │    ├─ open SecretVault                      │
-│    ├─ generate process auth tokens          │
-│    │   └─ vault.store("process:agentscope:  │
-│    │      authToken", random_hex(32))        │
+│    ├─ generate ephemeral process auth tokens│
+│    │   └─ held in memory only, not vault    │
 │    └─ migrate plaintext secrets from        │
 │       settings.json (one-time)              │
 │                                             │
@@ -129,20 +128,33 @@ let result = preflight.run_sync()?;
 
 ### Process Auth Tokens
 
-Phase 2 generates per-process auth tokens and stores them in the vault. These tokens secure IPC between the Rust supervisor and spawned processes.
+Phase 2 generates per-process auth tokens. These tokens secure IPC between the Rust supervisor and spawned processes.
 
+Tokens are **ephemeral** — held in-process memory only, regenerated every boot. Never persisted to disk or vault (no need — they're only valid for the lifetime of the process).
+
+```rust
+pub struct ProcessTokens {
+    tokens: HashMap<String, String>,  // process name → hex token
+}
+
+impl ProcessTokens {
+    pub fn generate(name: &str) -> String {
+        let bytes: [u8; 32] = rand::thread_rng().gen();
+        hex::encode(bytes)
+    }
+}
 ```
-process:agentscope:authToken  — random 32-byte hex, regenerated every boot
-process:{name}:authToken      — pattern for future processes
-```
+
+Stored in `PreflightResult` and registered as Tauri managed state.
 
 **Flow**:
-1. Phase 2: `vault.store("process:agentscope:authToken", random_hex(32))`
-2. Phase 5: `spawn_runtime()` reads token from vault, passes as `SNAPFZZ_AUTH_TOKEN` env var
-3. Python `app.py` reads `SNAPFZZ_AUTH_TOKEN`, adds FastAPI middleware that checks `Authorization: Bearer {token}`
+1. Phase 2: `process_tokens.insert("agentscope", generate_token())`
+2. Phase 5: `spawn_runtime()` reads token, passes as `SNAPFZZ_AUTH_TOKEN` env var
+3. Python `app.py` reads `SNAPFZZ_AUTH_TOKEN`, adds Starlette middleware that checks `Authorization: Bearer {token}` using `secrets.compare_digest()` (timing-attack safe)
 4. All Rust HTTP calls to AgentScope include `Authorization: Bearer {token}` header
+5. On restart: new token generated, old one dies with the old process
 
-This ensures only the Snapfzz supervisor can access the AgentScope API, even on localhost.
+This ensures only the Snapfzz supervisor can access the AgentScope API, even on localhost. `127.0.0.1` binding blocks remote access; the token blocks local unauthorized access.
 
 ---
 
