@@ -712,6 +712,8 @@ async fn spawn_runtime(
     let mut cmd = tokio::process::Command::new("uv");
     cmd.args(["run", "python", "app.py"])
         .current_dir(intelligence_dir)
+        .env("SNAPFZZ_HOST", &host)
+        .env("SNAPFZZ_PORT", port.to_string())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
