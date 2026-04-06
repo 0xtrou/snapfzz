@@ -601,3 +601,87 @@ describe('A007/settings-general: saving applies font to document.body', () => {
     expect(document.body.style.fontSize).toBe('14px');
   });
 });
+
+describe('A007/settings-general: remove installed font', () => {
+  it('A007/settings-general: remove font button shows confirmation modal', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont']);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await waitFor(() => {
+      expect(screen.getByText('CustomFont')).toBeInTheDocument();
+    });
+
+    // Tag with closable prop renders a close button - query by aria-label or testid
+    const closeBtn = screen.getByLabelText('Close') || screen.getByText('×');
+    await userEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/are you sure you want to remove the font/i)).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-general: confirm remove calls remove_font and reloads fonts', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont']);
+      if (cmd === 'remove_font') return Promise.resolve(undefined);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await waitFor(() => {
+      expect(screen.getByText('CustomFont')).toBeInTheDocument();
+    });
+
+    const closeBtn = screen.getByLabelText('Close') || screen.getByText('×');
+    await userEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => {
+      const call = mockInvoke.mock.calls.find((c) => c[0] === 'remove_font');
+      expect(call).toBeDefined();
+      expect(call![1]).toMatchObject({ name: 'CustomFont' });
+    });
+  });
+
+  it('A007/settings-general: cancel remove closes modal without removing', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve(['CustomFont']);
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await waitFor(() => {
+      expect(screen.getByText('CustomFont')).toBeInTheDocument();
+    });
+
+    const closeBtn = screen.getByLabelText('Close') || screen.getByText('×');
+    await userEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/are you sure you want to remove the font/i)).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // Modal should close, and remove_font should NOT be called
+    await new Promise((r) => setTimeout(r, 100));
+    expect(mockInvoke.mock.calls.some((c) => c[0] === 'remove_font')).toBe(false);
+  });
+});

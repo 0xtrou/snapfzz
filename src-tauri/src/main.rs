@@ -909,6 +909,33 @@ async fn list_installed_fonts() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+// A004/Workspace: removes a font file from the fonts/ subdirectory by name.
+// Deletes all format variants (.ttf, .otf, .woff, .woff2) for the given name.
+#[tauri::command]
+async fn remove_font(name: String) -> Result<(), String> {
+    let fonts_dir = resolve_data_dir().join("fonts");
+    if !fonts_dir.exists() {
+        return Err("Fonts directory does not exist".to_string());
+    }
+
+    let extensions = ["ttf", "otf", "woff", "woff2"];
+    let mut removed_any = false;
+
+    for ext in &extensions {
+        let path = fonts_dir.join(format!("{name}.{ext}"));
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| e.to_string())?;
+            removed_any = true;
+        }
+    }
+
+    if !removed_any {
+        return Err(format!("No font found with name '{name}'"));
+    }
+
+    Ok(())
+}
+
 // A008/BudgetRegistry: expose hardware info so the frontend can compute
 // hardware-scaled Performance preset badge values without a second round-trip.
 #[tauri::command]
@@ -1010,6 +1037,7 @@ fn main() {
             install_font_from_url,
             install_font_from_file,
             list_installed_fonts,
+            remove_font,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

@@ -1,7 +1,7 @@
 // A007/SettingsSections: General settings form — preferences surface only.
 // A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Form, Input, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
+import { Button, Checkbox, Form, Input, Modal, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { SettingsHeader } from '@snapfzz/shared';
@@ -91,6 +91,8 @@ export default function GeneralSettings(): React.ReactElement {
   const [fontUrlError, setFontUrlError] = useState<string | null>(null);
   const [fileInstalling, setFileInstalling] = useState(false);
   const [fileInstallError, setFileInstallError] = useState<string | null>(null);
+  const [fontToRemove, setFontToRemove] = useState<string | null>(null);
+  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
 
   const loadingRef = useRef(false);
 
@@ -205,6 +207,29 @@ export default function GeneralSettings(): React.ReactElement {
     return false;
   }, [loadInstalledFonts]);
 
+  const handleRemoveFont = useCallback(async (name: string) => {
+    setFontToRemove(name);
+    setRemoveConfirmVisible(true);
+  }, []);
+
+  const confirmRemoveFont = useCallback(async () => {
+    if (!fontToRemove) return;
+    try {
+      await tauriInvoke('remove_font', { name: fontToRemove });
+      await loadInstalledFonts();
+    } catch (err) {
+      setFontUrlError(String(err));
+    } finally {
+      setFontToRemove(null);
+      setRemoveConfirmVisible(false);
+    }
+  }, [fontToRemove, loadInstalledFonts]);
+
+  const cancelRemoveFont = useCallback(() => {
+    setFontToRemove(null);
+    setRemoveConfirmVisible(false);
+  }, []);
+
   return (
     <div style={{ color: 'var(--text-primary)' }}>
       <SettingsHeader
@@ -267,24 +292,6 @@ export default function GeneralSettings(): React.ReactElement {
               </Form.Item>
             </section>
 
-            <section>
-              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
-                Font Size
-              </Text>
-              <Form.Item name="fontSize" style={{ marginBottom: 8 }}>
-                <Select options={FONT_SIZE_OPTIONS} style={{ width: 240 }} />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Input
-                  placeholder="Or type a custom size (e.g. 17)..."
-                  onChange={(e) => {
-                    if (e.target.value) form.setFieldValue('fontSize', e.target.value);
-                  }}
-                  style={{ width: 240 }}
-                  suffix="px"
-                />
-              </Form.Item>
-            </section>
 
             <section>
               <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
@@ -342,11 +349,40 @@ export default function GeneralSettings(): React.ReactElement {
                       Installed:
                     </Text>
                     {installedFonts.map((name) => (
-                      <Tag key={name}>{name}</Tag>
+                      <Tag 
+                        key={name} 
+                        closable
+                        onClose={(e) => {
+                          e.preventDefault();
+                          handleRemoveFont(name);
+                        }}
+                        style={{ cursor: 'default' }}
+                      >
+                        {name}
+                      </Tag>
                     ))}
                   </div>
                 )}
               </Space>
+            </section>
+
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Font Size
+              </Text>
+              <Form.Item name="fontSize" style={{ marginBottom: 8 }}>
+                <Select options={FONT_SIZE_OPTIONS} style={{ width: 240 }} />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Input
+                  placeholder="Or type a custom size (e.g. 17)..."
+                  onChange={(e) => {
+                    if (e.target.value) form.setFieldValue('fontSize', e.target.value);
+                  }}
+                  style={{ width: 240 }}
+                  suffix="px"
+                />
+              </Form.Item>
             </section>
 
             <section>
@@ -366,6 +402,17 @@ export default function GeneralSettings(): React.ReactElement {
           </Space>
         </Form>
       </div>
+      <Modal
+        title="Remove Font"
+        open={removeConfirmVisible}
+        onOk={confirmRemoveFont}
+        onCancel={cancelRemoveFont}
+        okText="Remove"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+      >
+        <p>Are you sure you want to remove the font "<strong>{fontToRemove}</strong>"? This action cannot be undone.</p>
+      </Modal>
     </div>
   );
 }
