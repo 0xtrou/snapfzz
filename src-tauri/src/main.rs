@@ -78,7 +78,7 @@ struct Settings {
     // continue working without a settings.json migration.
     #[serde(default = "default_agentscope_host")]
     agentscope_host: String,
-    #[serde(default = "default_agentscope_port")]
+    #[serde(default = "default_agentscope_port", deserialize_with = "deserialize_string_or_number")]
     agentscope_port: String,
 }
 
@@ -93,6 +93,16 @@ fn default_log_level() -> String { "info".to_string() }
 fn default_preset() -> String { "auto".to_string() }
 fn default_agentscope_host() -> String { "127.0.0.1".to_string() }
 fn default_agentscope_port() -> String { AGENTSCOPE_PORT.to_string() }
+
+fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
+where D: serde::Deserializer<'de> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        _ => Ok(default_agentscope_port()),
+    }
+}
 
 impl Default for Settings {
     fn default() -> Self {

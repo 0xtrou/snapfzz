@@ -58,7 +58,7 @@ function applyDomSettings(settings: AppSettings): RuntimeTheme {
     document.head.appendChild(styleEl);
   }
 
-  styleEl.textContent = `*, *::before, *::after { font-family: ${resolvedFontFamily} !important; font-size: inherit !important; } html { font-size: ${resolvedFontSize}px !important; }`;
+  styleEl.textContent = `*, *::before, *::after { font-family: ${resolvedFontFamily} !important; } body { font-size: ${resolvedFontSize}px !important; }`;
 
   return resolvedTheme;
 }
