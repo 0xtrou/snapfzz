@@ -83,7 +83,7 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - **Own PluginHost instance** per window — plugins declare which surface they target.
 - **`HostSurface`** union extends: `'launcher' | 'project' | 'preferences'`.
 - **`settingsSections`** — new contribution type for preferences layout.
-- **System settings plugins** — General, Runtime, Performance, Plugins, Advanced.
+- **System settings plugins** — General, Performance, Processes, Plugins, Advanced, LLM Providers.
 
 ### A008 — Budget Registry
 `docs/plans/A008-budget-registry.md`
@@ -102,6 +102,31 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - Shells are empty until plugins register content.
 - Boot: 0ms window → 50ms skeleton → 100ms manifests → 150ms critical plugins → 200ms interactive.
 - `@snapfzz/plugin-sdk` is the stable contract. Never modify without approval.
+
+### A011 — Secret Vault
+`docs/plans/A011-secret-vault.md`
+
+- **AES-256-GCM** encrypted storage for API keys and credentials.
+- **Master key** generated once on first boot, stored in OS keychain (fallback: local keyfile).
+- **Backend-only** — frontend never sees raw secrets, only masked references.
+- **Vault file** (`vault.enc`) is binary ciphertext, atomic writes via temp+rename.
+
+### A012 — Preflight Service
+`docs/plans/A012-preflight-service.md`
+
+- **Consolidated boot-time initialization** — filesystem, vault, settings, budget, processes.
+- **6 phases**: filesystem → vault → settings → budget → processes → background services.
+- **Sync phases (1-4) complete before first window opens** (<25ms budget).
+- **Async phases (5-6) run in background** — window opens immediately.
+
+### A013 — LLM Providers
+`docs/plans/A013-llm-providers.md`
+
+- **Multi-provider settings** — OpenAI, Anthropic, xAI, MiniMax, Alibaba, Generic OpenAI/Anthropic.
+- **Model auto-discovery** — GET /v1/models + LiteLLM pricing database merge.
+- **Usage metering** — append-only JSONL log, per-call token counts + cost.
+- **Budget enforcement** — per-provider daily/monthly caps with warning thresholds.
+- **API keys via Secret Vault (A011)** — never plaintext in settings.json.
 
 ---
 
