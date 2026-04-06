@@ -1,6 +1,5 @@
 import { useState, lazy, Suspense, useEffect, useCallback, type ComponentType } from 'react';
-import * as AntIcons from '@ant-design/icons';
-import { WindowShell } from '@snapfzz/shared';
+import { WindowShell, AntIcon } from '@snapfzz/shared';
 import {
   PluginHost,
   ContributionStore,
@@ -10,13 +9,6 @@ import {
   registerDiscoveredPlugins,
 } from '@snapfzz/plugin-host';
 import type { SettingsSectionContribution } from '@snapfzz/plugin-sdk';
-import { createElement } from 'react';
-
-function renderIcon(iconName: string) {
-  const IconComponent = (AntIcons as Record<string, ComponentType>)[iconName];
-  if (IconComponent) return createElement(IconComponent);
-  return <span>{iconName}</span>;
-}
 
 function LazySection({ loader, sectionId, onCrash }: {
   loader: () => Promise<{ default: ComponentType }>;
@@ -103,7 +95,7 @@ export function App() {
                     }`}
                     style={{ transform: 'translateZ(0)' }}
                   >
-                    <span className="shrink-0">{renderIcon(section.icon)}</span>
+                    <span className="shrink-0"><AntIcon name={section.icon} /></span>
                     <span>{section.label}</span>
                   </button>
                 ))}

@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense, useEffect, useCallback, type ComponentType } from 'react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
-import { WindowShell } from '@snapfzz/shared';
+import { WindowShell, AntIcon } from '@snapfzz/shared';
 import {
   PluginHost,
   ContributionStore,
@@ -44,7 +44,7 @@ function TabBar({ tabs, activeTabId, onTabClick }: {
               : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
           }`}
         >
-          <span>{tab.icon}</span>
+          <AntIcon name={tab.icon} />
           <span>{tab.label}</span>
         </button>
       ))}

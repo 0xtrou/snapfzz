@@ -20,8 +20,18 @@ function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unkno
   const tauri = w.__TAURI_INTERNALS__ as
     | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
     | undefined;
-  if (!tauri) return Promise.reject(new Error('Tauri not available'));
-  return tauri.invoke(cmd, args);
+  if (!tauri) {
+    console.error('[settings-runtime] __TAURI_INTERNALS__ not available');
+    return Promise.reject(new Error('Tauri not available'));
+  }
+  console.log('[settings-runtime] invoke:', cmd, args);
+  return tauri.invoke(cmd, args).then((result) => {
+    console.log('[settings-runtime] result:', cmd, result);
+    return result;
+  }).catch((err) => {
+    console.error('[settings-runtime] error:', cmd, err);
+    throw err;
+  });
 }
 
 interface AppSettings {
@@ -49,6 +59,7 @@ export default function RuntimeSettings() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -80,23 +91,27 @@ export default function RuntimeSettings() {
   }, [loadSettings, pollHealth]);
 
   const handleSave = useCallback(async () => {
+    console.log('[settings-runtime] handleSave clicked');
     setSaveError(null);
     setSaveSuccess(false);
     let values: AppSettings;
     try {
       values = await form.validateFields();
-    } catch {
+      console.log('[settings-runtime] validated:', values);
+    } catch (validationErr) {
+      console.error('[settings-runtime] validation failed:', validationErr);
       return;
     }
     setSaving(true);
     try {
       await tauriInvoke('save_settings', {
         settings: {
-          api_key: values.apiKey,
+          apiKey: values.apiKey,
           model: values.model,
-          api_url: values.apiUrl,
+          apiUrl: values.apiUrl,
         },
       });
+      setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
@@ -146,6 +161,7 @@ export default function RuntimeSettings() {
         layout="vertical"
         requiredMark={false}
         initialValues={{ model: 'gpt-4o', apiUrl: 'https://api.openai.com/v1' }}
+        onValuesChange={() => setIsDirty(true)}
       >
         <Text
           style={{
@@ -250,54 +266,75 @@ export default function RuntimeSettings() {
           />
         </Form.Item>
 
-        {saveError && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '8px 12px',
-              background: 'rgba(239,68,68,0.1)',
-              border: '1px solid var(--color-error)',
-              borderRadius: 6,
-              color: 'var(--color-error)',
-              fontSize: 13,
-            }}
-          >
-            {saveError}
-          </div>
-        )}
-
-        {saveSuccess && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '8px 12px',
-              background: 'rgba(34,197,94,0.1)',
-              border: '1px solid var(--color-success)',
-              borderRadius: 6,
-              color: 'var(--color-success)',
-              fontSize: 13,
-            }}
-          >
-            Settings saved.
-          </div>
-        )}
-
-        <Form.Item style={{ marginTop: 8 }}>
-          <Button
-            type="primary"
-            loading={saving}
-            onClick={handleSave}
-            style={{
-              background: 'var(--accent)',
-              borderColor: 'var(--accent)',
-              color: 'var(--bg-primary)',
-              fontWeight: 500,
-            }}
-          >
-            Save
-          </Button>
-        </Form.Item>
       </Form>
+
+      {isDirty && (
+        <div style={{
+          position: 'fixed',
+          bottom: 32,
+          left: 208,
+          right: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          padding: '10px 24px',
+          background: 'var(--bg-default)',
+          borderTop: '1px solid var(--border-default)',
+          zIndex: 100,
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>You have unsaved changes</span>
+          <button
+            type="button"
+            onClick={() => { loadSettings(); setIsDirty(false); }}
+            style={{
+              padding: '6px 16px',
+              background: 'none',
+              border: '1px solid var(--border-default)',
+              borderRadius: 6,
+              color: 'var(--text-primary)',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--accent)',
+              color: 'var(--bg-primary)',
+              border: 'none',
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: saving ? 'wait' : 'pointer',
+            }}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      )}
+
+      {saveSuccess && (
+        <div style={{
+          position: 'fixed',
+          bottom: 32,
+          left: 208,
+          right: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '10px 24px',
+          background: 'var(--bg-default)',
+          borderTop: '1px solid var(--border-default)',
+          zIndex: 100,
+        }}>
+          <span style={{ color: 'var(--color-success)', fontSize: 13 }}>Settings saved successfully</span>
+        </div>
+      )}
     </div>
   );
 }

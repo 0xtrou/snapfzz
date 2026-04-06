@@ -189,6 +189,54 @@ The shell renders it via `@ant-design/icons` component lookup. Never emoji.
 
 ---
 
+## Test Coverage — Non-Negotiable
+
+### The Rule
+
+Every plugin and core package must achieve **≥90% test coverage**. Contract-driven design means the contract is verified, not assumed.
+
+### What Must Be Tested
+
+| Layer | What to Test | Coverage Target |
+|---|---|---|
+| Plugin manifest | `definePlugin()` returns valid manifest, budget declared, surface correct | 100% |
+| Plugin activate/deactivate | activate returns PluginHandle, deactivate cleans up | 100% |
+| Plugin contributions | Components render, Tauri commands called correctly | ≥90% |
+| Plugin state hooks | State transitions, error handling, edge cases | ≥90% |
+| Core packages | All public API methods | ≥90% |
+| Rust crates | All public functions | ≥90% |
+
+### How to Measure
+
+```bash
+# Frontend (vitest)
+pnpm --filter @snapfzz/plugin-host exec npx vitest run --coverage
+
+# Rust
+cargo tarpaulin -p snapfzz-budget --out Html
+```
+
+### Naming Convention
+
+```
+{spec-number}/{section}: {specific behavior}
+```
+
+### What Counts as Coverage
+
+- Branch coverage, not just line coverage
+- Error paths tested (what happens when Tauri invoke fails?)
+- Edge cases (empty state, max values, corrupt data)
+- Contract verification (does the manifest match what the shell expects?)
+
+### What Does NOT Count
+
+- Snapshot tests (they test nothing)
+- Tests that only check "renders without crashing" (insufficient)
+- Tests with no assertions
+
+---
+
 ## Agent Delegation — Spec Enforcement
 
 When delegating work to an agent, ALWAYS include:

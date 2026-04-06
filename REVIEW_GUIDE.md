@@ -29,6 +29,7 @@ For every file changed, identify which spec it implements. Then verify:
 | Does it respect performance constraints? | Per A001: 60fps, CSS containment, GPU-only animations, lazy loading. | Layout animations (width/height/top/left). Eager loading of heavy resources. Main thread computation. |
 | Does it respect the UI spec? | Read the matching U-series spec. Compare layout, components, behavior. | UI doesn't match spec. Missing responsive breakpoints. Wrong components. |
 | Does it use the correct UI stack? | Per ENGINEERING_GUIDE/UI Stack: Ant Design + Ant Icons + Tailwind + CSS variables only. | Emoji as icons. Hardcoded hex/rgb colors. Non-Ant icon libraries. Non-Ant component libraries. |
+| Does it meet test coverage? | Per ENGINEERING_GUIDE/Test Coverage: ≥90% coverage for all plugins and core packages. | Coverage below 90%. Missing error path tests. Missing contract verification tests. Snapshot-only tests. |
 
 ### 2. Zone Verification
 
