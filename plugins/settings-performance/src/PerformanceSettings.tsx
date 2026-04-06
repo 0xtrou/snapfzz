@@ -1,6 +1,6 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
 // refreshes every 2s, displays preset selector and progress bars.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, Progress, Radio, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
@@ -58,28 +58,34 @@ export default function PerformanceSettings() {
   const [originalPreset, setOriginalPreset] = useState<Preset>('balanced');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-
   const isDirty = preset !== originalPreset;
-
-  const fetchMetrics = useCallback(async () => {
-    try {
-      const snap = await tauriInvoke<BudgetMetrics>('budget_snapshot');
-      setMetrics(snap);
-      const name = snap.presetName.toLowerCase() as Preset;
-      if (name in PRESET_LABELS) {
-        setPreset(name);
-        setOriginalPreset(name);
-      }
-    } catch {
-      // Tauri not available in browser preview — metrics remain null
-    }
-  }, []);
+  const presetLoadedRef = useRef(false);
 
   useEffect(() => {
-    void fetchMetrics();
-    const id = setInterval(() => { void fetchMetrics(); }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [fetchMetrics]);
+    let active = true;
+
+    const poll = async () => {
+      try {
+        const snap = await tauriInvoke<BudgetMetrics>('budget_snapshot');
+        if (!active) return;
+        setMetrics(snap);
+        if (!presetLoadedRef.current) {
+          const name = snap.presetName.toLowerCase() as Preset;
+          if (name in PRESET_LABELS) {
+            setPreset(name);
+            setOriginalPreset(name);
+          }
+          presetLoadedRef.current = true;
+        }
+      } catch {
+        void 0;
+      }
+    };
+
+    void poll();
+    const id = setInterval(poll, REFRESH_INTERVAL_MS);
+    return () => { active = false; clearInterval(id); };
+  }, []);
 
   // A001/PerformanceArchitecture: frame_target_ms is the budget ceiling, not a usage counter.
   // Display it as a configuration value; use 0% fill to avoid misleading 100% bar.
