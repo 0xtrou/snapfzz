@@ -129,7 +129,7 @@ These ship as system plugins — same API as third-party plugins, but registered
 
 ### Settings Persistence
 
-All settings stored at `~/.snapfzz-global/settings.json` via Tauri commands (`get_settings`, `save_settings`). Settings are read-only from the frontend — writes go through Rust IPC. This ensures:
+All settings stored at `~/.snapfzz/settings.json` via Tauri commands (`get_settings`, `save_settings`). Settings are read-only from the frontend — writes go through Rust IPC. This ensures:
 
 - Settings are available before any plugin loads
 - Rust process can read settings on startup (for Runtime config)

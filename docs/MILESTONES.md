@@ -327,7 +327,7 @@ User sees streaming text at 60fps
 | Eval runner (hard + LLM-as-judge) | Per-change (5s), per-checkpoint (60s), full suite (2-5min) |
 | Benchmark database client | Sync with api.snapfzz.com/benchmarks |
 | Auto-extraction pipeline | Approval → positive case, correction → negative + positive |
-| Memory persistence | `~/.snapfzz-global/memory/` cross-project accumulation |
+| Memory persistence | `~/.snapfzz/memory/` cross-project accumulation |
 | Deploy integrations | Vercel, Fly.io, Railway via agent-organized Deployments tab |
 
 ### V1 Exit Criteria

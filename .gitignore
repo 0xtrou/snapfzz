@@ -29,8 +29,8 @@ src-tauri/target/
 # OS
 Thumbs.db
 
-# Snapfzz project data (user data, not source)
-.snapfzz-global/
+# Snapfzz global data dir (A004: user data, not source)
+.snapfzz/
 intelligence/__pycache__/
 **/__pycache__/
 intelligence/.venv/

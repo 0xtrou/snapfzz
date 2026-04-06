@@ -39,9 +39,10 @@ impl BudgetRegistry {
     pub fn with_preset(preset: Preset) -> Self {
         let controlled = ControlledBudgets::from_preset(&preset);
 
+        // A004: Storage budget monitors ~/.snapfzz/ (the canonical global data dir).
         let global_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".snapfzz-global");
+            .join(".snapfzz");
 
         let supervised = SupervisedBudgets::new(StorageState {
             max_gb: preset.storage.max_gb,

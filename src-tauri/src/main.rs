@@ -290,6 +290,28 @@ async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Res
 }
 
 #[tauri::command]
+async fn get_data_dir() -> Result<String, String> {
+    Ok(resolve_data_dir().to_string_lossy().to_string())
+}
+
+// A004/pointer.json: Writes a new dataDir into ~/.snapfzz/pointer.json.
+// Does NOT migrate existing data — the app must restart for the new path to take effect.
+// Migration is out of scope (A004 deferred). Frontend handles restart confirmation.
+#[tauri::command]
+async fn set_data_dir(new_path: String) -> Result<(), String> {
+    let new_dir = PathBuf::from(&new_path);
+    fs::create_dir_all(&new_dir).map_err(|e| e.to_string())?;
+
+    let pointer = json!({ "dataDir": new_path });
+    let pointer_path = snapfzz_home().join("pointer.json");
+    if let Some(parent) = pointer_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&pointer_path, serde_json::to_string_pretty(&pointer).unwrap())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn open_preferences(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("preferences") {
         window.show().map_err(|e: tauri::Error| e.to_string())?;
@@ -340,12 +362,47 @@ fn flush_batch(
     Ok(())
 }
 
-fn settings_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".snapfzz-global").join("settings.json")
+// Per A004: Bootstrap anchor — this path NEVER changes. It holds pointer.json
+// that redirects all other data to a configurable location.
+// Uses ~/.snapfzz on all platforms for Alpha. Platform-appropriate paths
+// (~/Library/Application Support/, %APPDATA%, ~/.local/share/) deferred to V1.
+fn snapfzz_home() -> PathBuf {
+    dirs::home_dir().unwrap_or_default().join(".snapfzz")
 }
 
+// A004/pointer.json: Core resolution logic, injectable for testability.
+// Reads optional dataDir override from <home>/pointer.json.
+// Falls back to <home> if pointer is absent, malformed, or the target doesn't exist.
+fn resolve_data_dir_from(home: PathBuf) -> PathBuf {
+    let pointer_path = home.join("pointer.json");
+    if pointer_path.exists() {
+        if let Ok(content) = fs::read_to_string(&pointer_path) {
+            if let Ok(pointer) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(dir) = pointer.get("dataDir").and_then(|v| v.as_str()) {
+                    let custom = PathBuf::from(dir);
+                    if custom.exists() {
+                        return custom;
+                    }
+                }
+            }
+        }
+    }
+    home
+}
+
+// A004: Production entry point — resolves from the real ~/.snapfzz anchor.
+fn resolve_data_dir() -> PathBuf {
+    resolve_data_dir_from(snapfzz_home())
+}
+
+// A004: Settings live in the resolved data dir so they follow any user-configured location.
+fn settings_path() -> PathBuf {
+    resolve_data_dir().join("settings.json")
+}
+
+// A004: PID file lives in the resolved data dir alongside settings.
 fn pid_file_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".snapfzz-global").join("agent.pid")
+    resolve_data_dir().join("agent.pid")
 }
 
 fn uuid_string() -> String {
@@ -452,6 +509,8 @@ fn main() {
             agent_health,
             get_settings,
             save_settings,
+            get_data_dir,
+            set_data_dir,
             get_frame_target,
             get_startup_budget,
             budget_record_strike,
@@ -562,4 +621,69 @@ fn main() {
                 eprintln!("[budget] shutdown complete");
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn a004_persistence_resolve_data_dir_returns_default_when_no_pointer_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().to_path_buf();
+        let result = resolve_data_dir_from(home.clone());
+        assert_eq!(result, home);
+    }
+
+    #[test]
+    fn a004_persistence_resolve_data_dir_reads_custom_path_from_pointer_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().to_path_buf();
+        let custom = tmp.path().join("custom_data");
+        fs::create_dir_all(&custom).unwrap();
+
+        let pointer = serde_json::json!({ "dataDir": custom.to_str().unwrap() });
+        fs::write(home.join("pointer.json"), serde_json::to_string(&pointer).unwrap()).unwrap();
+
+        let result = resolve_data_dir_from(home);
+        assert_eq!(result, custom);
+    }
+
+    #[test]
+    fn a004_persistence_resolve_data_dir_falls_back_to_default_when_pointer_path_does_not_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().to_path_buf();
+
+        let pointer = serde_json::json!({ "dataDir": "/this/path/does/not/exist/xyz" });
+        fs::write(home.join("pointer.json"), serde_json::to_string(&pointer).unwrap()).unwrap();
+
+        let result = resolve_data_dir_from(home.clone());
+        assert_eq!(result, home);
+    }
+
+    #[test]
+    fn a004_persistence_resolve_data_dir_falls_back_to_default_when_pointer_is_corrupt() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().to_path_buf();
+
+        fs::write(home.join("pointer.json"), "not { valid json").unwrap();
+
+        let result = resolve_data_dir_from(home.clone());
+        assert_eq!(result, home);
+    }
+
+    #[test]
+    fn a004_persistence_settings_path_uses_resolved_data_dir() {
+        let path = settings_path();
+        assert!(path.to_str().unwrap().ends_with("settings.json"));
+        assert!(path.to_str().unwrap().contains(".snapfzz"));
+    }
+
+    #[test]
+    fn a004_persistence_pid_file_path_uses_resolved_data_dir() {
+        let path = pid_file_path();
+        assert!(path.to_str().unwrap().ends_with("agent.pid"));
+        assert!(path.to_str().unwrap().contains(".snapfzz"));
+    }
 }

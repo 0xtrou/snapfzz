@@ -40,5 +40,8 @@ dirs = "6"
 sysinfo = "0.38"
 snapfzz-budget = { path = "crates/snapfzz-budget" }
 
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]

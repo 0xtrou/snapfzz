@@ -70,7 +70,7 @@ Resources where the registry monitors externally and responds to violations. Can
 |---|---|---|
 | Process Memory | AgentScope RSS via sysinfo | Kill + restart if over limit |
 | Process Health | HTTP /health poll | Restart with backoff after N failures |
-| Storage | Disk usage of ~/.snapfzz-global/ and .snapfzz/ | Trigger cleanup, warn user |
+| Storage | Disk usage of ~/.snapfzz/ and .snapfzz/ | Trigger cleanup, warn user |
 
 ## Registry API
 

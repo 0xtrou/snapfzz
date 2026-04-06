@@ -51,7 +51,7 @@ The user owns their files. The launcher orchestrates around them.
 │   │   └── ...
 │   └── ...
 │
-└── .snapfzz-global/                         # Global launcher state (NOT per-project)
+└── .snapfzz/                         # Global launcher state (NOT per-project)
     ├── config.json                          # Global settings (LLM keys, default model, theme)
     ├── memory/                              # Cross-project memory (the moat)
     │   ├── profile.json                     # User preferences, business entity, preferred stack
@@ -111,16 +111,16 @@ This gitignores binary/session state but keeps config, requirements, ratings, an
 
 ### 3. Global State Lives Outside Projects
 
-User preferences, LLM keys, cross-project memory, cached images, and agent snapshots live in `~/.snapfzz-global/` (or platform-appropriate app data directory).
+User preferences, LLM keys, cross-project memory, cached images, and agent snapshots live in `~/.snapfzz/` (or platform-appropriate app data directory).
 
 | Data | Location | Why |
 |---|---|---|
-| LLM API keys | `~/.snapfzz-global/config.json` | Never inside a project (security) |
-| User preferences | `~/.snapfzz-global/config.json` | Shared across all projects |
-| Cross-project memory | `~/.snapfzz-global/memory/` | The moat — accumulates forever |
-| OCI image cache | `~/.snapfzz-global/images/` | Shared across projects (saves disk) |
-| Agent snapshots | `~/.snapfzz-global/snapshots/` | Base snapshots (project-specific ones in `.snapfzz/`) |
-| Eval datasets | `~/.snapfzz-global/eval/datasets/` | Benchmark inputs (versioned with app updates) |
+| LLM API keys | `~/.snapfzz/config.json` | Never inside a project (security) |
+| User preferences | `~/.snapfzz/config.json` | Shared across all projects |
+| Cross-project memory | `~/.snapfzz/memory/` | The moat — accumulates forever |
+| OCI image cache | `~/.snapfzz/images/` | Shared across projects (saves disk) |
+| Agent snapshots | `~/.snapfzz/snapshots/` | Base snapshots (project-specific ones in `.snapfzz/`) |
+| Eval datasets | `~/.snapfzz/eval/datasets/` | Benchmark inputs (versioned with app updates) |
 
 Platform paths:
 ```
@@ -304,7 +304,7 @@ Settings → App Preferences → Project workspace:
   Custom:  /any/path/the/user/wants/
 ```
 
-Stored in `~/.snapfzz-global/config.json`:
+Stored in `~/.snapfzz/config.json`:
 
 ```json
 {

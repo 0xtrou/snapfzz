@@ -34,7 +34,7 @@ We needed to run a Python process (AgentScope) as a sidecar inside a Tauri deskt
 
 ```
 First Launch (~60s one-time):
-  1. App downloads uv binary (~20MB) → ~/.snapfzz-global/bin/uv
+  1. App downloads uv binary (~20MB) → ~/.snapfzz/bin/uv
   2. uv sync → downloads Python 3.12 + creates venv + installs agentscope
   3. Progress bar shown in launcher
 

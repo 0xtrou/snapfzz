@@ -11,7 +11,7 @@
 | 3 | SSE parsing in Rust | PASS | Line buffering/parsing in Rust (main.rs:101-191) | A002:69-72 |
 | 4 | 16ms batch budget enforced | PASS | `TOKEN_BATCH_MS = 16` with elapsed gate (main.rs:15,168-170) | A001, A002:37 |
 | 5 | uv supervisor starts AgentScope | PASS | `uv run python -m agentscope.server` (main.rs:497-505) | A005:516-517 |
-| 6 | Settings at ~/.snapfzz-global/settings.json | FAIL | Uses settings.json but A004 specifies config.json | A004:118-119 |
+| 6 | Settings at ~/.snapfzz/settings.json | FAIL | Uses settings.json but A004 specifies config.json | A004:118-119 |
 | 7 | Zone 1 purity | PASS | All computation in Rust backend | A002 |
 | 8 | No frontend modified | PASS | Diff limited to src-tauri/ | — |
 | 9 | Inline spec comments | PARTIAL | Good comments exist but some decisions uncited | ENGINEERING_GUIDE |

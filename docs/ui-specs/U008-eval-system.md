@@ -354,7 +354,7 @@ Every agent interaction generates eval data automatically:
 │  → Positive case (input + modified version + score: 1.0)   │
 │                                                             │
 │  These accumulate in .snapfzz/eval/auto-benchmarks.jsonl   │
-│  and sync to ~/.snapfzz-global/eval/ for cross-project use │
+│  and sync to ~/.snapfzz/eval/ for cross-project use │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -445,7 +445,7 @@ Every agent interaction generates eval data automatically:
 ## Benchmark Storage
 
 ```
-~/.snapfzz-global/eval/
+~/.snapfzz/eval/
 ├── datasets/
 │   ├── built-in/                    # Ships with app
 │   │   ├── clarify-benchmark.json
@@ -482,5 +482,5 @@ Every agent interaction generates eval data automatically:
 4. **Auto-extraction is on by default.** Approval = positive case. Correction = negative + positive case. No manual labeling needed.
 5. **Judge model is configurable.** Cheap model (haiku) for per-change checks. Expensive model (sonnet) for full suite. Cost-aware eval.
 6. **Failed cases become benchmarks.** Click [Add to Benchmarks] on any failure → it becomes a test case the agent must pass next time.
-7. **Cross-project accumulation.** Local benchmarks sync to `~/.snapfzz-global/eval/`. A correction in project A improves agents in project B.
+7. **Cross-project accumulation.** Local benchmarks sync to `~/.snapfzz/eval/`. A correction in project A improves agents in project B.
 8. **Eval runs at 4 speeds.** Per-change (5s, hard only), per-checkpoint (60s, hard+judge), on-demand (2-5min, everything), CI (parallel via Ray).
