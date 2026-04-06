@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-tests:
+    name: Rust Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install system deps (Tauri)
+        run: |
+          brew install gtk+3 webkit2gtk
+
+      - name: Cargo check
+        run: cargo check
+        working-directory: src-tauri
+
+      - name: Budget crate tests
+        run: cargo test -p snapfzz-budget
+        working-directory: src-tauri
+
+      - name: Main binary tests
+        run: cargo test --bin Snapfzz
+        working-directory: src-tauri
+
+  frontend-core-tests:
+    name: Frontend Core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Plugin Host tests
+        run: pnpm --filter @snapfzz/plugin-host exec npx vitest run
+
+  chat-plugin-tests:
+    name: Chat Plugin (coverage ≥90%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Tests with coverage
+        run: pnpm --filter @snapfzz/chat-plugin exec npx vitest run --coverage --coverage.reporter=json-summary
+
+      - name: Assert ≥90% coverage
+        run: |
+          COVERAGE=$(node -e "const c=require('./plugins/chat/coverage/coverage-summary.json'); console.log(c.total.lines.pct)")
+          echo "Chat coverage: ${COVERAGE}%"
+          node -e "if (${COVERAGE} < 90) { console.error('Coverage ${COVERAGE}% < 90% threshold'); process.exit(1); }"
+
+  settings-general-tests:
+    name: Settings General (coverage ≥90%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @snapfzz/settings-general exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% coverage
+        run: |
+          COVERAGE=$(node -e "const c=require('./plugins/settings-general/coverage/coverage-summary.json'); console.log(c.total.lines.pct)")
+          echo "Coverage: ${COVERAGE}%"
+          node -e "if (${COVERAGE} < 90) { console.error('Coverage ${COVERAGE}% < 90%'); process.exit(1); }"
+
+  settings-runtime-tests:
+    name: Settings Runtime (coverage ≥90%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @snapfzz/settings-runtime exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% coverage
+        run: |
+          COVERAGE=$(node -e "const c=require('./plugins/settings-runtime/coverage/coverage-summary.json'); console.log(c.total.lines.pct)")
+          echo "Coverage: ${COVERAGE}%"
+          node -e "if (${COVERAGE} < 90) { console.error('Coverage ${COVERAGE}% < 90%'); process.exit(1); }"
+
+  settings-performance-tests:
+    name: Settings Performance (coverage ≥90%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @snapfzz/settings-performance exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% coverage
+        run: |
+          COVERAGE=$(node -e "const c=require('./plugins/settings-performance/coverage/coverage-summary.json'); console.log(c.total.lines.pct)")
+          echo "Coverage: ${COVERAGE}%"
+          node -e "if (${COVERAGE} < 90) { console.error('Coverage ${COVERAGE}% < 90%'); process.exit(1); }"
+
+  settings-plugins-tests:
+    name: Settings Plugins (coverage ≥90%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @snapfzz/settings-plugins exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% coverage
+        run: |
+          COVERAGE=$(node -e "const c=require('./plugins/settings-plugins/coverage/coverage-summary.json'); console.log(c.total.lines.pct)")
+          echo "Coverage: ${COVERAGE}%"
+          node -e "if (${COVERAGE} < 90) { console.error('Coverage ${COVERAGE}% < 90%'); process.exit(1); }"
+
+  settings-advanced-tests:
+    name: Settings Advanced (coverage ≥90%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @snapfzz/settings-advanced exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% coverage
+        run: |
+          COVERAGE=$(node -e "const c=require('./plugins/settings-advanced/coverage/coverage-summary.json'); console.log(c.total.lines.pct)")
+          echo "Coverage: ${COVERAGE}%"
+          node -e "if (${COVERAGE} < 90) { console.error('Coverage ${COVERAGE}% < 90%'); process.exit(1); }"

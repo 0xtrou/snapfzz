@@ -27,6 +27,7 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
             () => import('@snapfzz/settings-general'),
             () => import('@snapfzz/settings-runtime'),
             () => import('@snapfzz/settings-performance'),
+            () => import('@snapfzz/settings-processes'),
             () => import('@snapfzz/settings-plugins'),
             () => import('@snapfzz/settings-advanced'),
           ]
