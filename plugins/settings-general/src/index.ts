@@ -28,7 +28,7 @@ export default definePlugin({
       {
         id: 'general',
         label: 'General',
-        icon: '⚙️',
+        icon: 'SettingOutlined',
         order: 0,
         component: () => import('./GeneralSettings'),
       },

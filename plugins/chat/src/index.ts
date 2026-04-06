@@ -30,7 +30,7 @@ export default definePlugin({
       {
         id: 'chat',
         label: 'Chat',
-        icon: '💬',
+        icon: 'MessageOutlined',
         component: () => import('./contributions/ChatPanel'),
       },
     ],

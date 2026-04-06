@@ -12,14 +12,6 @@ interface MessageBubbleProps {
 }
 
 function roleLabel(role: ChatMessage['role'], name: string): string {
-  if (role === 'user') {
-    return `👤 ${name}`;
-  }
-
-  if (role === 'assistant') {
-    return `🎯 ${name}`;
-  }
-
   return name;
 }
 

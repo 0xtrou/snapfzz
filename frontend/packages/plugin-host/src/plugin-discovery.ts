@@ -19,26 +19,27 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
   // Ugly phase: hardcoded plugin list. Production: Rust reads .snapfzz/plugins/ manifests.
   const registry: DiscoveredManifest[] = [];
 
-  const pluginImports: Record<string, string[]> = {
-    project: ['@snapfzz/chat-plugin'],
-    preferences: [
-      '@snapfzz/settings-general',
-      '@snapfzz/settings-runtime',
-      '@snapfzz/settings-performance',
-      '@snapfzz/settings-plugins',
-      '@snapfzz/settings-advanced',
-    ],
-  };
+  const loaders: Array<() => Promise<{ default: PluginDefinition }>> =
+    surface === 'project'
+      ? [() => import('@snapfzz/chat-plugin')]
+      : surface === 'preferences'
+        ? [
+            () => import('@snapfzz/settings-general'),
+            () => import('@snapfzz/settings-runtime'),
+            () => import('@snapfzz/settings-performance'),
+            () => import('@snapfzz/settings-plugins'),
+            () => import('@snapfzz/settings-advanced'),
+          ]
+        : [];
 
-  const imports = pluginImports[surface] ?? [];
-  for (const pkg of imports) {
+  for (const load of loaders) {
     try {
-      const mod = await import(/* @vite-ignore */ pkg);
+      const mod = await load();
       const manifest = mod.default;
       console.log(`[PluginDiscovery] Loaded ${manifest.id}`);
       registry.push({ manifest, loader: async () => manifest });
     } catch (e) {
-      console.error(`[PluginDiscovery] Failed to load ${pkg}:`, e);
+      console.error('[PluginDiscovery] Failed to load plugin:', e);
     }
   }
 

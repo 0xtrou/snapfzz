@@ -28,6 +28,7 @@ For every file changed, identify which spec it implements. Then verify:
 | Does it follow the plugin contract? | Per A005: plugins use `definePlugin()`, register via ContributionStore, communicate via bus only. | Direct imports between plugins. Bypassing the bus. Modifying plugin-sdk. |
 | Does it respect performance constraints? | Per A001: 60fps, CSS containment, GPU-only animations, lazy loading. | Layout animations (width/height/top/left). Eager loading of heavy resources. Main thread computation. |
 | Does it respect the UI spec? | Read the matching U-series spec. Compare layout, components, behavior. | UI doesn't match spec. Missing responsive breakpoints. Wrong components. |
+| Does it use the correct UI stack? | Per ENGINEERING_GUIDE/UI Stack: Ant Design + Ant Icons + Tailwind + CSS variables only. | Emoji as icons. Hardcoded hex/rgb colors. Non-Ant icon libraries. Non-Ant component libraries. |
 
 ### 2. Zone Verification
 

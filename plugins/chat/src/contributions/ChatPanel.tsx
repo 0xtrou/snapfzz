@@ -55,7 +55,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
       {!message.groupedWithPrevious && (
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <strong style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-            {message.role === 'user' ? `👤 ${message.name}` : `🎯 ${message.name}`}
+            {message.name}
           </strong>
           <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{message.timestampLabel}</span>
         </header>

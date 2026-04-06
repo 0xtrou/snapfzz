@@ -154,6 +154,41 @@ The header comment identifies WHICH spec and WHICH section this test file covers
 
 ---
 
+## UI Stack — Non-Negotiable
+
+All UI code uses this stack consistently. No exceptions.
+
+### Allowed
+
+- **Ant Design 5** — primary component library (Button, Input, Form, Select, Table, etc.)
+- **Ant Design Icons** — all icons via `@ant-design/icons` (e.g., `SettingOutlined`, `MessageOutlined`)
+- **Tailwind CSS** — utility classes for layout, spacing, responsive
+- **CSS variables** — theme tokens from `tokens.css` (colors, fonts)
+- **Bare HTML/CSS/JS** — when no Ant component fits the need
+
+### Forbidden
+
+- **Emoji in UI** — never use emoji as icons, labels, or decorators. Use Ant Design Icons.
+- **Hardcoded colors** — always use CSS variables (`var(--text-primary)`, `var(--bg-default)`)
+- **Inline hex/rgb** — no `#22c55e` or `rgb(...)` in component code. Define tokens in `tokens.css`.
+- **Other icon libraries** — no Heroicons, Lucide, Feather. Only `@ant-design/icons`.
+- **Other component libraries** — no shadcn/ui, Radix, MUI, Chakra. Only Ant Design.
+
+### Plugin Icon Convention
+
+Plugin manifests declare `icon` as a string matching an Ant Design Icon name:
+
+```typescript
+contributes: {
+  leftPanelTabs: [{ id: 'chat', icon: 'MessageOutlined', ... }],
+  settingsSections: [{ id: 'runtime', icon: 'CloudServerOutlined', ... }],
+}
+```
+
+The shell renders it via `@ant-design/icons` component lookup. Never emoji.
+
+---
+
 ## Agent Delegation — Spec Enforcement
 
 When delegating work to an agent, ALWAYS include:

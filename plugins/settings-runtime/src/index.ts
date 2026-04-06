@@ -25,7 +25,7 @@ export default definePlugin({
       {
         id: 'runtime',
         label: 'Runtime',
-        icon: '🔧',
+        icon: 'CloudServerOutlined',
         order: 1,
         component: () => import('./RuntimeSettings'),
       },
