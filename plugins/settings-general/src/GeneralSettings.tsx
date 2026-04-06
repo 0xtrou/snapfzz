@@ -1,9 +1,10 @@
 // A007/SettingsSections: General settings form — preferences surface only.
 // A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
-import React, { useCallback, useEffect } from 'react';
-import { Checkbox, Form, Input, Radio, Select, Space, Typography } from 'antd';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, Checkbox, Form, Input, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
+import type { UploadFile } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
 import { SettingsHeader } from '@snapfzz/shared';
-import { useState } from 'react';
 
 const { Text } = Typography;
 
@@ -35,6 +36,15 @@ function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unkno
   return tauri.invoke(cmd, args);
 }
 
+// Per A007/MultiLayout: emit settings-changed so all windows re-apply font settings on save.
+function emitSettingsChanged(): void {
+  const w = window as unknown as Record<string, unknown>;
+  const tauri = w.__TAURI_INTERNALS__ as
+    | { event?: { emit?: (event: string, payload?: unknown) => Promise<void> } }
+    | undefined;
+  tauri?.event?.emit?.('settings-changed').catch(() => {});
+}
+
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
   { value: 'fr', label: 'Français (coming soon)', disabled: true },
@@ -59,6 +69,13 @@ const FONT_SIZE_OPTIONS = [
   { value: '18', label: '18px' },
 ];
 
+function applyFontToDom(fontFamily: string, fontSize: string): void {
+  document.documentElement.style.setProperty('--font-family', fontFamily);
+  document.body.style.fontFamily = fontFamily;
+  document.documentElement.style.setProperty('--font-size', fontSize + 'px');
+  document.body.style.fontSize = fontSize + 'px';
+}
+
 // A007/settingsSections: Default export required — preferences shell uses dynamic import().
 export default function GeneralSettings(): React.ReactElement {
   const [form] = Form.useForm<GeneralFormValues>();
@@ -67,7 +84,24 @@ export default function GeneralSettings(): React.ReactElement {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
-  const loadingRef = React.useRef(false);
+  const [installedFonts, setInstalledFonts] = useState<string[]>([]);
+  const [fontUrl, setFontUrl] = useState('');
+  const [fontUrlName, setFontUrlName] = useState('');
+  const [fontUrlInstalling, setFontUrlInstalling] = useState(false);
+  const [fontUrlError, setFontUrlError] = useState<string | null>(null);
+  const [fileInstalling, setFileInstalling] = useState(false);
+  const [fileInstallError, setFileInstallError] = useState<string | null>(null);
+
+  const loadingRef = useRef(false);
+
+  const loadInstalledFonts = useCallback(async () => {
+    try {
+      const names = (await tauriInvoke('list_installed_fonts')) as string[];
+      setInstalledFonts(Array.isArray(names) ? names : []);
+    } catch {
+      setInstalledFonts([]);
+    }
+  }, []);
 
   const loadSettings = useCallback(async () => {
     loadingRef.current = true;
@@ -88,7 +122,15 @@ export default function GeneralSettings(): React.ReactElement {
 
   useEffect(() => {
     void loadSettings();
-  }, [loadSettings]);
+    void loadInstalledFonts();
+  }, [loadSettings, loadInstalledFonts]);
+
+  const allFontOptions = [
+    ...FONT_FAMILY_PRESETS,
+    ...installedFonts
+      .filter((name) => !FONT_FAMILY_PRESETS.some((p) => p.value === name))
+      .map((name) => ({ value: name, label: name })),
+  ];
 
   const handleSave = useCallback(async () => {
     setSaveError(null);
@@ -111,6 +153,9 @@ export default function GeneralSettings(): React.ReactElement {
         fontSize: values.fontSize,
       };
       await tauriInvoke('save_settings', { settings: merged });
+      // Per A007/MultiLayout: notify all windows to re-apply the updated font settings.
+      emitSettingsChanged();
+      applyFontToDom(values.fontFamily, values.fontSize);
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -120,6 +165,45 @@ export default function GeneralSettings(): React.ReactElement {
       setSaving(false);
     }
   }, [form]);
+
+  const handleInstallFromUrl = useCallback(async () => {
+    setFontUrlError(null);
+    if (!fontUrl.trim() || !fontUrlName.trim()) {
+      setFontUrlError('Enter both a font URL and a name.');
+      return;
+    }
+    setFontUrlInstalling(true);
+    try {
+      await tauriInvoke('install_font_from_url', { url: fontUrl.trim(), name: fontUrlName.trim() });
+      setFontUrl('');
+      setFontUrlName('');
+      await loadInstalledFonts();
+    } catch (err) {
+      setFontUrlError(String(err));
+    } finally {
+      setFontUrlInstalling(false);
+    }
+  }, [fontUrl, fontUrlName, loadInstalledFonts]);
+
+  const handleInstallFromFile = useCallback(async (file: UploadFile) => {
+    setFileInstallError(null);
+    const name = (file.name ?? '').replace(/\.[^.]+$/, '');
+    const path = (file as unknown as { path?: string }).path ?? '';
+    if (!path) {
+      setFileInstallError('Could not determine file path.');
+      return false;
+    }
+    setFileInstalling(true);
+    try {
+      await tauriInvoke('install_font_from_file', { sourcePath: path, name });
+      await loadInstalledFonts();
+    } catch (err) {
+      setFileInstallError(String(err));
+    } finally {
+      setFileInstalling(false);
+    }
+    return false;
+  }, [loadInstalledFonts]);
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
@@ -170,13 +254,13 @@ export default function GeneralSettings(): React.ReactElement {
                 Font Family
               </Text>
               <Form.Item name="fontFamily" style={{ marginBottom: 8 }}>
-                <Select options={FONT_FAMILY_PRESETS} style={{ width: 240 }} />
+                <Select options={allFontOptions} style={{ width: 240 }} />
               </Form.Item>
               <Form.Item style={{ marginBottom: 0 }}>
                 <Input
                   placeholder="Or type a custom font name..."
                   onChange={(e) => {
-                    if (e.target.value) form.setFieldsValue({ fontFamily: e.target.value });
+                    if (e.target.value) form.setFieldValue('fontFamily', e.target.value);
                   }}
                   style={{ width: 240 }}
                 />
@@ -194,12 +278,75 @@ export default function GeneralSettings(): React.ReactElement {
                 <Input
                   placeholder="Or type a custom size (e.g. 17)..."
                   onChange={(e) => {
-                    if (e.target.value) form.setFieldsValue({ fontSize: e.target.value });
+                    if (e.target.value) form.setFieldValue('fontSize', e.target.value);
                   }}
                   style={{ width: 240 }}
                   suffix="px"
                 />
               </Form.Item>
+            </section>
+
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Custom Fonts
+              </Text>
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Space.Compact style={{ width: '100%', maxWidth: 480 }}>
+                  <Input
+                    placeholder="Font name"
+                    value={fontUrlName}
+                    onChange={(e) => setFontUrlName(e.target.value)}
+                    style={{ width: 140 }}
+                    aria-label="Font name for URL install"
+                  />
+                  <Input
+                    placeholder="https://example.com/font.woff2"
+                    value={fontUrl}
+                    onChange={(e) => setFontUrl(e.target.value)}
+                    aria-label="Font URL"
+                  />
+                  <Button
+                    onClick={handleInstallFromUrl}
+                    loading={fontUrlInstalling}
+                    aria-label="Install font from URL"
+                  >
+                    Install
+                  </Button>
+                </Space.Compact>
+                {fontUrlError && (
+                  <Text type="danger" style={{ fontSize: 12 }}>{fontUrlError}</Text>
+                )}
+
+                <Upload
+                  accept=".ttf,.otf,.woff,.woff2"
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    void handleInstallFromFile(file as unknown as UploadFile);
+                    return false;
+                  }}
+                >
+                  <Button icon={<UploadOutlined />} loading={fileInstalling}>
+                    Select Font File
+                  </Button>
+                </Upload>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Accepted formats: .ttf, .otf, .woff, .woff2
+                </Text>
+                {fileInstallError && (
+                  <Text type="danger" style={{ fontSize: 12 }}>{fileInstallError}</Text>
+                )}
+
+                {installedFonts.length > 0 && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>
+                      Installed:
+                    </Text>
+                    {installedFonts.map((name) => (
+                      <Tag key={name}>{name}</Tag>
+                    ))}
+                  </div>
+                )}
+              </Space>
             </section>
 
             <section>

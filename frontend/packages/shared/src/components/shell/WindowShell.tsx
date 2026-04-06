@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
 import { useTheme } from '../../hooks/use-theme';
+import { useAppSettings } from '../../hooks/use-app-settings';
 import { darkTheme, lightTheme } from '../../theme';
 import { useWindowDrag } from './use-window-drag';
 import { WindowHeader } from './WindowHeader';
@@ -14,6 +15,8 @@ interface WindowShellProps {
 
 export function WindowShell({ title, children, statusBarContent }: WindowShellProps) {
   const { theme, toggleTheme } = useTheme();
+  // Per A007/MultiLayout: apply font settings from settings.json across all windows.
+  useAppSettings();
   const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
   const titleBarRef = useWindowDrag();
 

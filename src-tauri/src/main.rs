@@ -844,6 +844,70 @@ async fn restart_process(
     spawn_runtime(&app, &registry, &runtime, &logs).await
 }
 
+// A004/Workspace: downloads a font from a URL into the fonts/ subdirectory of the data dir.
+// The returned path is used by the frontend to register a @font-face rule.
+#[tauri::command]
+async fn install_font_from_url(url: String, name: String) -> Result<String, String> {
+    let fonts_dir = resolve_data_dir().join("fonts");
+    fs::create_dir_all(&fonts_dir).map_err(|e| e.to_string())?;
+
+    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+
+    let ext = if url.contains(".woff2") {
+        "woff2"
+    } else if url.contains(".woff") {
+        "woff"
+    } else if url.contains(".otf") {
+        "otf"
+    } else {
+        "ttf"
+    };
+    let filename = format!("{name}.{ext}");
+    let path = fonts_dir.join(&filename);
+    fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+// A004/Workspace: copies a font file from the given source path into the fonts/ subdirectory.
+// The returned path is used by the frontend to register a @font-face rule.
+#[tauri::command]
+async fn install_font_from_file(source_path: String, name: String) -> Result<String, String> {
+    let fonts_dir = resolve_data_dir().join("fonts");
+    fs::create_dir_all(&fonts_dir).map_err(|e| e.to_string())?;
+
+    let source = PathBuf::from(&source_path);
+    let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("ttf");
+    let filename = format!("{name}.{ext}");
+    let dest = fonts_dir.join(&filename);
+    fs::copy(&source, &dest).map_err(|e| e.to_string())?;
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
+// A004/Workspace: returns the stem names of all font files in the fonts/ subdirectory.
+// Used on boot to register FontFace objects for every installed custom font.
+#[tauri::command]
+async fn list_installed_fonts() -> Result<Vec<String>, String> {
+    let fonts_dir = resolve_data_dir().join("fonts");
+    if !fonts_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut names = vec![];
+    for entry in fs::read_dir(&fonts_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if let Some(stem) = file_name.split('.').next() {
+            if !stem.is_empty() {
+                names.push(stem.to_string());
+            }
+        }
+    }
+    Ok(names)
+}
+
 // A008/BudgetRegistry: expose hardware info so the frontend can compute
 // hardware-scaled Performance preset badge values without a second round-trip.
 #[tauri::command]
@@ -942,6 +1006,9 @@ fn main() {
             kill_process,
             update_process_config,
             get_hardware_info,
+            install_font_from_url,
+            install_font_from_file,
+            list_installed_fonts,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -1301,5 +1368,51 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(5));
         let t2 = now_ms();
         assert!(t2 >= t1, "now_ms must be monotonically non-decreasing");
+    }
+
+    #[test]
+    fn a004_font_list_installed_fonts_empty_when_no_fonts_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fonts_dir = tmp.path().join("fonts");
+        assert!(!fonts_dir.exists(), "fonts dir must not exist before the test");
+
+        let mut names = vec![];
+        if fonts_dir.exists() {
+            for entry in fs::read_dir(&fonts_dir).unwrap() {
+                let entry = entry.unwrap();
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if let Some(stem) = file_name.split('.').next() {
+                    if !stem.is_empty() {
+                        names.push(stem.to_string());
+                    }
+                }
+            }
+        }
+        assert!(names.is_empty(), "no font names expected when fonts dir is absent");
+    }
+
+    #[test]
+    fn a004_font_list_installed_fonts_returns_stems() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fonts_dir = tmp.path().join("fonts");
+        fs::create_dir_all(&fonts_dir).unwrap();
+
+        fs::write(fonts_dir.join("Roboto.ttf"), b"fake").unwrap();
+        fs::write(fonts_dir.join("OpenSans.woff2"), b"fake").unwrap();
+        fs::write(fonts_dir.join("Lato.otf"), b"fake").unwrap();
+
+        let mut names = vec![];
+        for entry in fs::read_dir(&fonts_dir).unwrap() {
+            let entry = entry.unwrap();
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if let Some(stem) = file_name.split('.').next() {
+                if !stem.is_empty() {
+                    names.push(stem.to_string());
+                }
+            }
+        }
+        names.sort();
+
+        assert_eq!(names, vec!["Lato", "OpenSans", "Roboto"]);
     }
 }
