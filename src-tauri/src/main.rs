@@ -116,7 +116,6 @@ struct RuntimeState {
 /// Max 1000 lines per process — oldest lines evicted on overflow.
 /// Keyed by process name matching the registry registration name.
 struct ProcessLogs {
-    /// DashMap<process_name, Vec<log_line>> — push/tail/clear without whole-map lock.
     lines: DashMap<String, Vec<String>>,
 }
 
@@ -127,19 +126,44 @@ impl ProcessLogs {
         Self { lines: DashMap::new() }
     }
 
-    /// Push a single log line for the named process.
-    /// Evicts oldest lines when cap exceeded — O(n) drain is acceptable at 1000-line limit.
+    fn runtime_dir(name: &str) -> PathBuf {
+        resolve_data_dir().join("runtime").join(name)
+    }
+
+    fn log_path(name: &str) -> PathBuf {
+        Self::runtime_dir(name).join(format!("{name}.log"))
+    }
+
+    fn error_log_path(name: &str) -> PathBuf {
+        Self::runtime_dir(name).join(format!("{name}_error.log"))
+    }
+
+    fn ensure_dir(name: &str) {
+        let dir = Self::runtime_dir(name);
+        if !dir.exists() { let _ = fs::create_dir_all(&dir); }
+    }
+
     fn push(&self, name: &str, line: String) {
         let mut entry = self.lines.entry(name.to_string()).or_default();
         if entry.len() >= PROCESS_LOG_MAX_LINES {
-            // Remove oldest to stay within cap
             let excess = entry.len() - PROCESS_LOG_MAX_LINES + 1;
             entry.drain(..excess);
         }
+
+        Self::ensure_dir(name);
+        let log_file = if line.starts_with("[stderr]") {
+            Self::error_log_path(name)
+        } else {
+            Self::log_path(name)
+        };
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&log_file) {
+            use std::io::Write;
+            let _ = writeln!(f, "{}", line);
+        }
+
         entry.push(line);
     }
 
-    /// Return the last `n` lines for the named process, newest-last order.
     fn tail(&self, name: &str, n: usize) -> Vec<String> {
         let entry = match self.lines.get(name) {
             Some(e) => e,
@@ -154,6 +178,8 @@ impl ProcessLogs {
         if let Some(mut entry) = self.lines.get_mut(name) {
             entry.clear();
         }
+        let _ = fs::remove_file(Self::log_path(name));
+        let _ = fs::remove_file(Self::error_log_path(name));
     }
 }
 
@@ -526,7 +552,7 @@ fn settings_path() -> PathBuf {
 
 // A004: PID file lives in the resolved data dir alongside settings.
 fn pid_file_path() -> PathBuf {
-    resolve_data_dir().join("agent.pid")
+    resolve_data_dir().join("runtime").join("agentscope").join("agentscope.pid")
 }
 
 fn uuid_string() -> String {

@@ -338,7 +338,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           onClick={async () => {
             try {
               const dataDir = await tauriInvoke('get_data_dir') as string;
-              tauriInvoke('open_path', { path: dataDir });
+              tauriInvoke('open_path', { path: `${dataDir}/runtime/${process.name}` });
             } catch { void 0; }
           }}
           data-testid={`btn-open-log-file-${process.name}`}
