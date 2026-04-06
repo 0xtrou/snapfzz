@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sysinfo::{Pid as SysPid, ProcessesToUpdate, System};
 use tauri::ipc::Channel;
-use tauri::{Emitter, RunEvent};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::{Emitter, Manager, RunEvent};
 use tokio::sync::Mutex;
 
 use snapfzz_budget::supervised::{ProcessBudget, ProcessLocation};
@@ -290,22 +291,25 @@ async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Res
 
 #[tauri::command]
 async fn open_preferences(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::WebviewUrl;
-    use tauri::WebviewWindowBuilder;
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
 
     if let Some(window) = app.get_webview_window("preferences") {
-        window.set_focus().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e: tauri::Error| e.to_string())?;
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(
-        &app,
-        "preferences",
-        WebviewUrl::App("preferences.html".into()),
-    )
+    let url = if cfg!(debug_assertions) {
+        WebviewUrl::External("http://localhost:5175".parse().unwrap())
+    } else {
+        WebviewUrl::App("preferences.html".into())
+    };
+
+    WebviewWindowBuilder::new(&app, "preferences", url)
     .title("Snapfzz Preferences")
     .inner_size(720.0, 560.0)
     .min_inner_size(600.0, 400.0)
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .hidden_title(true)
     .build()
     .map_err(|e| e.to_string())?;
 
@@ -477,6 +481,86 @@ fn main() {
             let handle = app.handle().clone();
             let reg = setup_registry.clone();
             let rt = setup_runtime.clone();
+
+            let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
+
+            let about_item = MenuItemBuilder::with_id("about", "About Snapfzz")
+                .build(app)?;
+
+            let app_menu = SubmenuBuilder::new(app, "Snapfzz")
+                .item(&about_item)
+                .separator()
+                .item(&preferences_item)
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .fullscreen()
+                .build()?;
+
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .close_window()
+                .build()?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&app_menu)
+                .item(&edit_menu)
+                .item(&view_menu)
+                .item(&window_menu)
+                .build()?;
+
+            app.set_menu(menu)?;
+
+            let app_handle_for_menu = app.handle().clone();
+            app.on_menu_event(move |_app, event| {
+                use tauri::{WebviewUrl, WebviewWindowBuilder};
+                let h = app_handle_for_menu.clone();
+                match event.id().as_ref() {
+                    "preferences" => {
+                        tauri::async_runtime::spawn(async move {
+                            let _ = open_preferences(h).await;
+                        });
+                    }
+                    "about" => {
+                        if let Some(w) = h.get_webview_window("about") {
+                            let _ = w.set_focus();
+                            return;
+                        }
+                        let about_url = if cfg!(debug_assertions) {
+                            WebviewUrl::External("http://localhost:5174/about.html".parse().unwrap())
+                        } else {
+                            WebviewUrl::App("about.html".into())
+                        };
+                        let _ = WebviewWindowBuilder::new(&h, "about", about_url)
+                            .title("About Snapfzz")
+                            .inner_size(420.0, 520.0)
+                            .resizable(false)
+                            .maximizable(false)
+                            .minimizable(false)
+                            .center()
+                            .build();
+                    }
+                    _ => {}
+                }
+            });
 
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = spawn_runtime(&reg, &rt).await {
