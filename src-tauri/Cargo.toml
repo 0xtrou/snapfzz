@@ -40,6 +40,7 @@ dirs = "6"
 sysinfo = "0.38"
 rfd = "0.15"
 snapfzz-budget = { path = "crates/snapfzz-budget" }
+dashmap = "6"
 
 [dev-dependencies]
 tempfile = "3"

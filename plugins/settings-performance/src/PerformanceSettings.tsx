@@ -107,8 +107,30 @@ export default function PerformanceSettings() {
           setSaving(false);
         }}
         onDiscard={() => setPreset(originalPreset)}
-      />
-      <div style={{ padding: 16, maxWidth: 640 }}>
+      >
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '2px 8px',
+          borderRadius: 10,
+          background: metrics ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+          fontSize: 11,
+          fontWeight: 500,
+          color: metrics ? 'var(--color-success)' : 'var(--color-error)',
+        }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: metrics ? 'var(--color-success)' : 'var(--color-error)',
+            animation: metrics ? 'pulse 2s ease-in-out infinite' : 'none',
+          }} />
+          {metrics ? 'Live' : 'Offline'}
+        </span>
+      </SettingsHeader>
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+      <div style={{ padding: "16px 32px", maxWidth: 640 }}>
       <Card
         title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
         style={{ marginBottom: 20, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
@@ -139,7 +161,7 @@ export default function PerformanceSettings() {
 
       {/* A001/PerformanceArchitecture: frame budget — 60fps = 16ms target */}
       <Card
-        title={<Text style={{ color: 'var(--text-primary)' }}>Frame Budget</Text>}
+        title={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Text style={{ color: 'var(--text-primary)' }}>Frame Budget</Text>{metrics && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-success)', animation: 'pulse 2s ease-in-out infinite' }} />}</span>}
         style={{ marginBottom: 16, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={8}>

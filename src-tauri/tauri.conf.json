@@ -26,7 +26,7 @@
         "hiddenTitle": true
       },
       {
-        "title": "Preferences",
+        "title": "Settings",
         "label": "preferences",
         "url": "http://localhost:5175",
         "width": 1280,

@@ -133,7 +133,7 @@ export default function RuntimeSettings() {
         onDiscard={() => { loadSettings(); setIsDirty(false); }}
       />
 
-      <div style={{ padding: 16, maxWidth: 560 }}>
+      <div style={{ padding: "16px 32px", maxWidth: 560 }}>
       <div
         style={{
           display: 'flex',

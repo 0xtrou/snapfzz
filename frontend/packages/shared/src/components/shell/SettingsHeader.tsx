@@ -29,7 +29,7 @@ export function SettingsHeader({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '16px 24px',
+      padding: '16px 32px',
       background: 'var(--bg-primary)',
       borderBottom: '1px solid var(--border-default)',
     }}>

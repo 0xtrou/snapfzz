@@ -96,12 +96,14 @@ export default function AdvancedSettings(): React.ReactElement {
     }
   }, [form]);
 
+  const [modal, contextHolder] = Modal.useModal();
+
   function confirmReset(): void {
-    Modal.confirm({
-      title: 'Reset all settings?',
+    modal.confirm({
+      title: 'Reset all settings to defaults?',
       content:
-        'This will restore every setting to its factory default. Your projects and data are not affected.',
-      okText: 'Reset',
+        'This will restore every setting to its factory default. All API keys, theme preferences, and font settings will be cleared. Your projects and data are not affected.',
+      okText: 'Reset Everything',
       okButtonProps: { danger: true },
       cancelText: 'Cancel',
       async onOk() {
@@ -131,6 +133,7 @@ export default function AdvancedSettings(): React.ReactElement {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
+      {contextHolder}
       <SettingsHeader
         title="Advanced"
         isDirty={isDirty}
@@ -140,7 +143,7 @@ export default function AdvancedSettings(): React.ReactElement {
         onSave={handleSave}
         onDiscard={() => { void loadSettings(); setIsDirty(false); }}
       />
-      <div style={{ padding: 16, maxWidth: 560 }}>
+      <div style={{ padding: "16px 32px", maxWidth: 560 }}>
         <Form
           form={form}
           layout="vertical"

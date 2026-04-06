@@ -132,7 +132,7 @@ export default function GeneralSettings(): React.ReactElement {
         onSave={handleSave}
         onDiscard={() => { void loadSettings(); setIsDirty(false); }}
       />
-      <div style={{ padding: 16, maxWidth: 560 }}>
+      <div style={{ padding: "16px 32px", maxWidth: 560 }}>
         <Form
           form={form}
           layout="vertical"

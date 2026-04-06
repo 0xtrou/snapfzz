@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use dashmap::DashMap;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -12,6 +13,7 @@ use sysinfo::{Pid as SysPid, ProcessesToUpdate, System};
 use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager, RunEvent};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 
 use snapfzz_budget::supervised::{ProcessBudget, ProcessLocation};
@@ -108,6 +110,51 @@ struct SessionInfo {
 struct RuntimeState {
     child: Option<tokio::process::Child>,
     child_pid: Option<u32>,
+}
+
+/// A008/Supervised: per-process ring-buffer log store.
+/// Max 1000 lines per process — oldest lines evicted on overflow.
+/// Keyed by process name matching the registry registration name.
+struct ProcessLogs {
+    /// DashMap<process_name, Vec<log_line>> — push/tail/clear without whole-map lock.
+    lines: DashMap<String, Vec<String>>,
+}
+
+const PROCESS_LOG_MAX_LINES: usize = 1000;
+
+impl ProcessLogs {
+    fn new() -> Self {
+        Self { lines: DashMap::new() }
+    }
+
+    /// Push a single log line for the named process.
+    /// Evicts oldest lines when cap exceeded — O(n) drain is acceptable at 1000-line limit.
+    fn push(&self, name: &str, line: String) {
+        let mut entry = self.lines.entry(name.to_string()).or_default();
+        if entry.len() >= PROCESS_LOG_MAX_LINES {
+            // Remove oldest to stay within cap
+            let excess = entry.len() - PROCESS_LOG_MAX_LINES + 1;
+            entry.drain(..excess);
+        }
+        entry.push(line);
+    }
+
+    /// Return the last `n` lines for the named process, newest-last order.
+    fn tail(&self, name: &str, n: usize) -> Vec<String> {
+        let entry = match self.lines.get(name) {
+            Some(e) => e,
+            None => return Vec::new(),
+        };
+        let start = entry.len().saturating_sub(n);
+        entry[start..].to_vec()
+    }
+
+    /// Clear all stored lines for the named process.
+    fn clear(&self, name: &str) {
+        if let Some(mut entry) = self.lines.get_mut(name) {
+            entry.clear();
+        }
+    }
 }
 
 #[tauri::command]
@@ -504,19 +551,46 @@ fn remove_pid_file() { let _ = fs::remove_file(pid_file_path()); }
 async fn spawn_runtime(
     registry: &Arc<BudgetRegistry>,
     runtime: &Arc<Mutex<RuntimeState>>,
+    logs: &Arc<ProcessLogs>,
 ) -> Result<(), String> {
     cleanup_stale_pid();
     let intelligence_dir = resolve_intelligence_dir()?;
 
-    let child = tokio::process::Command::new("uv")
+    // A008/Supervised: pipe stdout+stderr before taking ownership of child.
+    // Reader tasks push lines into ProcessLogs so the main child handle stays clean.
+    let mut child = tokio::process::Command::new("uv")
         .args(["run", "python", "app.py"])
         .current_dir(intelligence_dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| e.to_string())?;
 
     let child_pid = child.id().unwrap_or(0);
     write_pid_file(child_pid);
+
+    // Capture stdout — take BEFORE moving child into RuntimeState.
+    if let Some(stdout) = child.stdout.take() {
+        let logs_out = logs.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                logs_out.push("agentscope", line);
+            }
+        });
+    }
+
+    // Capture stderr — take BEFORE moving child into RuntimeState.
+    if let Some(stderr) = child.stderr.take() {
+        let logs_err = logs.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                logs_err.push("agentscope", format!("[stderr] {line}"));
+            }
+        });
+    }
 
     {
         let mut guard = runtime.lock().await;
@@ -534,6 +608,9 @@ async fn spawn_runtime(
         location: ProcessLocation::Local,
         consecutive_failures: 0,
         restart_count: 0,
+        status: snapfzz_budget::metrics::ProcessStatus::Starting,
+        started_at: Some(std::time::Instant::now()),
+        owner: "system".to_string(),
     });
 
     for _ in 0..120 {
@@ -553,6 +630,78 @@ async fn shutdown_runtime(runtime: &Arc<Mutex<RuntimeState>>) {
     remove_pid_file();
 }
 
+// A008/Supervised: list all registered supervised processes with full snapshot.
+// Returns the processes array from BudgetMetrics so the frontend can render
+// the Agent Network panel without needing a separate IPC roundtrip.
+#[tauri::command]
+async fn list_processes(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<Value, String> {
+    let snap = registry.snapshot();
+    serde_json::to_value(snap.processes).map_err(|e| e.to_string())
+}
+
+// A008/Supervised: return the last `tail_n` log lines for a named process.
+#[tauri::command]
+async fn get_process_logs(
+    name: String,
+    tail_n: usize,
+    logs: tauri::State<'_, Arc<ProcessLogs>>,
+) -> Result<Vec<String>, String> {
+    Ok(logs.tail(&name, tail_n))
+}
+
+// A008/Supervised: clear stored log lines for a named process.
+#[tauri::command]
+async fn clear_process_logs(
+    name: String,
+    logs: tauri::State<'_, Arc<ProcessLogs>>,
+) -> Result<(), String> {
+    logs.clear(&name);
+    Ok(())
+}
+
+// A008/Supervised: restart the agentscope process — shutdown then respawn.
+// Only "agentscope" is supported in Alpha; name is validated for forward-compatibility.
+#[tauri::command]
+async fn restart_process(
+    name: String,
+    registry: tauri::State<'_, Arc<BudgetRegistry>>,
+    runtime: tauri::State<'_, Arc<Mutex<RuntimeState>>>,
+    logs: tauri::State<'_, Arc<ProcessLogs>>,
+) -> Result<(), String> {
+    if name != "agentscope" {
+        return Err(format!("restart_process: unknown process '{name}'"));
+    }
+    shutdown_runtime(&runtime).await;
+    spawn_runtime(&registry, &runtime, &logs).await
+}
+
+// A008/Supervised: send SIGKILL to a named process and clean up.
+#[tauri::command]
+async fn kill_process(
+    name: String,
+    runtime: tauri::State<'_, Arc<Mutex<RuntimeState>>>,
+) -> Result<(), String> {
+    if name != "agentscope" {
+        return Err(format!("kill_process: unknown process '{name}'"));
+    }
+    shutdown_runtime(&runtime).await;
+    Ok(())
+}
+
+// A008/Supervised: update the max_memory_mb ceiling for a named process in the registry.
+// Takes effect immediately on the next enforce_loop tick.
+#[tauri::command]
+async fn update_process_config(
+    name: String,
+    max_memory_mb: u64,
+    registry: tauri::State<'_, Arc<BudgetRegistry>>,
+) -> Result<(), String> {
+    let mut entry = registry.supervised.processes.get_mut(&name)
+        .ok_or_else(|| format!("update_process_config: process '{name}' not registered"))?;
+    entry.max_memory_mb = max_memory_mb;
+    Ok(())
+}
+
 fn main() {
     let registry = Arc::new(BudgetRegistry::from_hardware());
     eprintln!("[budget] preset: {} (frame={}ms, cpu={}, mem={}MB)",
@@ -560,13 +709,16 @@ fn main() {
         registry.preset.cpu.permits, registry.preset.memory.agentscope_max_mb);
 
     let runtime_state = Arc::new(Mutex::new(RuntimeState { child: None, child_pid: None }));
+    let process_logs = Arc::new(ProcessLogs::new());
 
     let setup_registry = registry.clone();
     let setup_runtime = runtime_state.clone();
+    let setup_logs = process_logs.clone();
 
     tauri::Builder::default()
         .manage(registry.clone())
         .manage(runtime_state.clone())
+        .manage(process_logs.clone())
         .invoke_handler(tauri::generate_handler![
             send_message,
             stop_generation,
@@ -584,13 +736,20 @@ fn main() {
             budget_report_violation,
             budget_snapshot,
             open_preferences,
+            list_processes,
+            get_process_logs,
+            clear_process_logs,
+            restart_process,
+            kill_process,
+            update_process_config,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
             let reg = setup_registry.clone();
             let rt = setup_runtime.clone();
+            let logs = setup_logs.clone();
 
-            let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences...")
+            let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences…")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
 
@@ -671,10 +830,24 @@ fn main() {
             });
 
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = spawn_runtime(&reg, &rt).await {
+                if let Err(e) = spawn_runtime(&reg, &rt, &logs).await {
                     eprintln!("[budget] {e}");
                 }
                 let _ = handle.emit("agent-status", "online");
+            });
+
+            // A008/Measurement: emit budget-metrics every 2s so Zone 3 can render status bar.
+            // Runs as a background task — never blocks the main thread.
+            let metrics_reg = setup_registry.clone();
+            let metrics_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(2000)).await;
+                    let snap = metrics_reg.snapshot();
+                    if let Err(e) = metrics_handle.emit("budget-metrics", &snap) {
+                        eprintln!("[budget] metrics emit error: {e}");
+                    }
+                }
             });
 
             Ok(())
@@ -752,5 +925,60 @@ mod tests {
         let path = pid_file_path();
         assert!(path.to_str().unwrap().ends_with("agent.pid"));
         assert!(path.to_str().unwrap().contains(".snapfzz"));
+    }
+
+    #[test]
+    fn a008_process_logs_push_tail_returns_last_n_lines() {
+        let store = ProcessLogs::new();
+        store.push("agentscope", "line-1".into());
+        store.push("agentscope", "line-2".into());
+        store.push("agentscope", "line-3".into());
+
+        let tail = store.tail("agentscope", 2);
+        assert_eq!(tail, vec!["line-2", "line-3"]);
+    }
+
+    #[test]
+    fn a008_process_logs_tail_returns_empty_for_unknown_process() {
+        let store = ProcessLogs::new();
+        assert!(store.tail("unknown", 10).is_empty());
+    }
+
+    #[test]
+    fn a008_process_logs_tail_n_greater_than_total_returns_all_lines() {
+        let store = ProcessLogs::new();
+        store.push("agentscope", "only-line".into());
+        let tail = store.tail("agentscope", 100);
+        assert_eq!(tail, vec!["only-line"]);
+    }
+
+    #[test]
+    fn a008_process_logs_clear_empties_lines_for_named_process() {
+        let store = ProcessLogs::new();
+        store.push("agentscope", "some-line".into());
+        store.clear("agentscope");
+        assert!(store.tail("agentscope", 10).is_empty());
+    }
+
+    #[test]
+    fn a008_process_logs_clear_does_not_affect_other_processes() {
+        let store = ProcessLogs::new();
+        store.push("agentscope", "agent-line".into());
+        store.push("boxlite", "boxlite-line".into());
+        store.clear("agentscope");
+        assert!(store.tail("agentscope", 10).is_empty());
+        assert_eq!(store.tail("boxlite", 10), vec!["boxlite-line"]);
+    }
+
+    #[test]
+    fn a008_process_logs_evicts_oldest_when_cap_exceeded() {
+        let store = ProcessLogs::new();
+        for i in 0..=PROCESS_LOG_MAX_LINES {
+            store.push("agentscope", format!("line-{i}"));
+        }
+        let lines = store.tail("agentscope", PROCESS_LOG_MAX_LINES + 1);
+        assert_eq!(lines.len(), PROCESS_LOG_MAX_LINES);
+        assert!(!lines.contains(&"line-0".to_string()), "oldest line must be evicted");
+        assert!(lines.contains(&format!("line-{PROCESS_LOG_MAX_LINES}")), "newest line must be retained");
     }
 }

@@ -141,16 +141,15 @@ impl BudgetRegistry {
     }
 
     pub fn snapshot(&self) -> BudgetMetrics {
-        let agentscope_rss = self.supervised.check_memory("agentscope");
-        let agentscope_status = if agentscope_rss.is_some() {
-            ProcessStatus::Online
-        } else {
-            ProcessStatus::Stopped
-        };
+        let processes = self.supervised.list_snapshots();
 
-        let disabled_plugins: Vec<String> = self
-            .controlled
-            .disabled_plugin_ids();
+        let agentscope_snapshot = processes.iter().find(|p| p.name == "agentscope");
+        let agentscope_rss_mb = agentscope_snapshot.and_then(|p| p.rss_mb);
+        let agentscope_status = agentscope_snapshot
+            .map(|p| p.status.clone())
+            .unwrap_or(ProcessStatus::Stopped);
+
+        let disabled_plugins: Vec<String> = self.controlled.disabled_plugin_ids();
 
         BudgetMetrics {
             preset_name: self.preset.name.clone(),
@@ -160,13 +159,14 @@ impl BudgetRegistry {
             invoke_total: self.controlled.invoke_total(),
             frame_target_ms: self.controlled.frame_target_ms.load(Ordering::Relaxed),
             batch_rate_ms: self.controlled.batch_rate_ms.load(Ordering::Relaxed),
-            agentscope_rss_mb: agentscope_rss,
+            agentscope_rss_mb,
             agentscope_max_mb: self.preset.memory.agentscope_max_mb,
             agentscope_status,
             storage_used_gb: self.supervised.measure_storage(),
             storage_max_gb: self.preset.storage.max_gb,
             disabled_plugins,
             uptime_secs: self.boot_time.elapsed().as_secs(),
+            processes,
         }
     }
 }

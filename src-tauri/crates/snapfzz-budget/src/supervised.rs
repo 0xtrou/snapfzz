@@ -1,9 +1,11 @@
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use sysinfo::{Pid as SysPid, ProcessesToUpdate, System};
+
+use crate::metrics::{ProcessSnapshot, ProcessStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -23,6 +25,9 @@ pub struct ProcessBudget {
     pub location: ProcessLocation,
     pub consecutive_failures: u32,
     pub restart_count: u32,
+    pub status: ProcessStatus,
+    pub started_at: Option<Instant>,
+    pub owner: String,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +123,54 @@ impl SupervisedBudgets {
             return entry.restart_count > entry.max_restarts;
         }
         false
+    }
+
+    pub fn list_snapshots(&self) -> Vec<ProcessSnapshot> {
+        self.processes
+            .iter()
+            .map(|entry| {
+                let name = entry.key().clone();
+                let budget = entry.value();
+
+                let rss_mb = budget.pid.and_then(|pid| match &budget.location {
+                    ProcessLocation::Local => {
+                        let mut sys = System::new();
+                        sys.refresh_processes(
+                            ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]),
+                            true,
+                        );
+                        sys.process(SysPid::from_u32(pid))
+                            .map(|p| p.memory() as f64 / 1_048_576.0)
+                    }
+                    ProcessLocation::Cloud { .. } => None,
+                });
+
+                let location = match &budget.location {
+                    ProcessLocation::Local => "local".to_string(),
+                    ProcessLocation::Cloud { endpoint } => endpoint.clone(),
+                };
+
+                let uptime_secs = budget
+                    .started_at
+                    .map(|t| t.elapsed().as_secs())
+                    .unwrap_or(0);
+
+                ProcessSnapshot {
+                    name,
+                    pid: budget.pid,
+                    status: budget.status.clone(),
+                    rss_mb,
+                    cpu_pct: None,
+                    max_memory_mb: budget.max_memory_mb,
+                    restart_count: budget.restart_count,
+                    consecutive_failures: budget.consecutive_failures,
+                    uptime_secs,
+                    location,
+                    health_url: budget.health_url.clone(),
+                    owner: budget.owner.clone(),
+                }
+            })
+            .collect()
     }
 
     pub fn measure_storage(&self) -> u64 {

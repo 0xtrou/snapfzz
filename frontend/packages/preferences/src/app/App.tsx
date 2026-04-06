@@ -85,7 +85,7 @@ export function App() {
 
   return (
     <PluginHostProvider host={host}>
-      <WindowShell title="Preferences" statusBarContent={<span className="text-[var(--color-success)]">● Connected</span>}>
+      <WindowShell title="Settings" statusBarContent={<span className="text-[var(--color-success)]">● Connected</span>}>
         <div className="flex h-full overflow-hidden">
           <aside
             className="flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-default)] overflow-y-auto"

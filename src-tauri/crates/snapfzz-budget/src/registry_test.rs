@@ -1,7 +1,26 @@
 #[cfg(test)]
 mod tests {
+    use crate::metrics::ProcessStatus;
     use crate::preset::PresetName;
+    use crate::supervised::{ProcessBudget, ProcessLocation};
     use crate::BudgetRegistry;
+
+    fn make_budget() -> ProcessBudget {
+        ProcessBudget {
+            pid: None,
+            max_memory_mb: 256,
+            health_url: "http://127.0.0.1:9999/health".into(),
+            health_interval_ms: 2000,
+            max_health_failures: 3,
+            max_restarts: 5,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: ProcessStatus::Starting,
+            started_at: None,
+            owner: "system".into(),
+        }
+    }
 
     #[test]
     fn a008_registry_from_preset_creates_valid_registry() {
@@ -71,16 +90,9 @@ mod tests {
         let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
         reg.register_process(
             "test-proc",
-            crate::supervised::ProcessBudget {
+            ProcessBudget {
                 pid: Some(12345),
-                max_memory_mb: 256,
-                health_url: "http://127.0.0.1:9999/health".into(),
-                health_interval_ms: 2000,
-                max_health_failures: 3,
-                max_restarts: 5,
-                location: crate::supervised::ProcessLocation::Local,
-                consecutive_failures: 0,
-                restart_count: 0,
+                ..make_budget()
             },
         );
         assert!(reg.supervised.processes.contains_key("test-proc"));
@@ -89,21 +101,41 @@ mod tests {
     #[test]
     fn a008_registry_update_process_pid() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
-        reg.register_process(
-            "proc",
-            crate::supervised::ProcessBudget {
-                pid: None,
-                max_memory_mb: 512,
-                health_url: "http://127.0.0.1:8090/health".into(),
-                health_interval_ms: 2000,
-                max_health_failures: 3,
-                max_restarts: 10,
-                location: crate::supervised::ProcessLocation::Local,
-                consecutive_failures: 0,
-                restart_count: 0,
-            },
-        );
+        reg.register_process("proc", make_budget());
         reg.update_process_pid("proc", 99);
         assert_eq!(reg.supervised.processes.get("proc").unwrap().pid, Some(99));
+    }
+
+    #[test]
+    fn a008_supervised_snapshot_includes_processes_vec() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        reg.register_process(
+            "svc-a",
+            ProcessBudget {
+                owner: "system.svc-a".into(),
+                ..make_budget()
+            },
+        );
+        reg.register_process(
+            "svc-b",
+            ProcessBudget {
+                owner: "system.svc-b".into(),
+                ..make_budget()
+            },
+        );
+        let snap = reg.snapshot();
+        assert_eq!(snap.processes.len(), 2);
+    }
+
+    #[test]
+    fn a008_registry_backward_compat_agentscope_fields() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Balanced);
+        let snap = reg.snapshot();
+        assert_eq!(snap.agentscope_max_mb, 512);
+        assert!(snap.agentscope_rss_mb.is_none());
+        assert!(matches!(
+            snap.agentscope_status,
+            crate::metrics::ProcessStatus::Stopped
+        ));
     }
 }
