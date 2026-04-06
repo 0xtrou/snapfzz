@@ -55,6 +55,10 @@ struct Settings {
     open_last_project: bool,
     #[serde(default = "default_language")]
     language: String,
+    #[serde(default = "default_font_family")]
+    font_family: String,
+    #[serde(default = "default_font_size")]
+    font_size: String,
 
     // Advanced
     #[serde(default = "default_true")]
@@ -67,6 +71,8 @@ fn default_model() -> String { "gpt-4o".to_string() }
 fn default_api_url() -> String { "https://api.openai.com/v1".to_string() }
 fn default_theme() -> String { "system".to_string() }
 fn default_true() -> bool { true }
+fn default_font_family() -> String { "Inter".to_string() }
+fn default_font_size() -> String { "14".to_string() }
 fn default_language() -> String { "en".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 
@@ -79,6 +85,8 @@ impl Default for Settings {
             theme: default_theme(),
             open_last_project: default_true(),
             language: default_language(),
+            font_family: default_font_family(),
+            font_size: default_font_size(),
             fps_counter: default_true(),
             log_level: default_log_level(),
         }
@@ -315,6 +323,16 @@ async fn budget_report_violation(class: String, metric: String, actual_ms: f64, 
 async fn budget_snapshot(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<Value, String> {
     let snap = registry.snapshot();
     serde_json::to_value(snap).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn pick_folder(default_path: Option<String>) -> Result<Option<String>, String> {
+    use rfd::FileDialog;
+    let mut dialog = FileDialog::new();
+    if let Some(p) = default_path {
+        dialog = dialog.set_directory(&p);
+    }
+    Ok(dialog.pick_folder().map(|p| p.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
@@ -558,6 +576,7 @@ fn main() {
             get_settings,
             save_settings,
             get_data_dir,
+            pick_folder,
             set_data_dir,
             get_frame_target,
             get_startup_budget,
@@ -639,7 +658,7 @@ fn main() {
                             WebviewUrl::App("about.html".into())
                         };
                         let _ = WebviewWindowBuilder::new(&h, "about", about_url)
-                            .title("About Snapfzz")
+                            .title("About")
                             .inner_size(420.0, 520.0)
                             .resizable(false)
                             .maximizable(false)

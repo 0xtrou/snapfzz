@@ -237,6 +237,31 @@ cargo tarpaulin -p snapfzz-budget --out Html
 
 ---
 
+## Plugin Loading UX — Non-Negotiable
+
+Every plugin UI must either load instantly or show a loading skeleton. No blank white screens.
+
+### Rules
+
+- **< 100ms load**: no skeleton needed — render directly
+- **≥ 100ms load**: show a loading skeleton that matches the layout shape of the loaded content
+- **Suspense fallback**: every `lazy()` component wrapped in `<Suspense fallback={<Skeleton />}>`
+- **Skeleton style**: use `var(--bg-subtle)` rectangles matching the expected content layout (header bar, form fields, cards)
+- **Spinner**: for inline loading (e.g., chat streaming), use a minimal spinner (border animation, GPU-only)
+- **Never**: blank white, "Loading..." text without structure, layout shift after load
+
+### Pattern
+
+```tsx
+<Suspense fallback={<SettingsSkeleton />}>
+  <PluginErrorBoundary>
+    <LazyComponent />
+  </PluginErrorBoundary>
+</Suspense>
+```
+
+---
+
 ## Agent Delegation — Spec Enforcement
 
 When delegating work to an agent, ALWAYS include:

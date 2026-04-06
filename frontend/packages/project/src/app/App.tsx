@@ -18,7 +18,12 @@ function LazyComponent({ loader, pluginId, onCrash }: {
 }) {
   const Component = lazy(loader);
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">Loading...</div>}>
+    <Suspense fallback={
+      <div className="h-full flex items-center justify-center" style={{ background: 'var(--bg-default)' }}>
+        <div style={{ width: 24, height: 24, border: '2px solid var(--border-default)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    }>
       <PluginErrorBoundary pluginId={pluginId} onCrash={onCrash}>
         <Component />
       </PluginErrorBoundary>
@@ -172,6 +177,7 @@ export function App() {
   return (
     <PluginHostProvider host={host}>
       <WindowShell
+        title="Snapfzz"
         statusBarContent={
           <>
             {leftItems.map((item) => (

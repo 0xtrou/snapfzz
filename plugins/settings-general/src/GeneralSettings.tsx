@@ -1,7 +1,7 @@
 // A007/SettingsSections: General settings form — preferences surface only.
 // A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
 import React, { useCallback, useEffect } from 'react';
-import { Checkbox, Form, Radio, Select, Space, Typography } from 'antd';
+import { Checkbox, Form, Input, Radio, Select, Space, Typography } from 'antd';
 import { SettingsHeader } from '@snapfzz/shared';
 import { useState } from 'react';
 
@@ -13,6 +13,8 @@ interface GeneralFormValues {
   theme: Theme;
   openLastProject: boolean;
   language: string;
+  fontFamily: string;
+  fontSize: string;
 }
 
 interface FullSettings extends GeneralFormValues {
@@ -40,6 +42,23 @@ const LANGUAGE_OPTIONS = [
   { value: 'ja', label: '日本語 (coming soon)', disabled: true },
 ];
 
+const FONT_FAMILY_PRESETS = [
+  { value: 'Inter', label: 'Inter' },
+  { value: 'System', label: 'System Default' },
+  { value: 'SF Pro', label: 'SF Pro' },
+  { value: 'Helvetica Neue', label: 'Helvetica Neue' },
+  { value: 'JetBrains Mono', label: 'JetBrains Mono' },
+];
+
+const FONT_SIZE_OPTIONS = [
+  { value: '12', label: '12px' },
+  { value: '13', label: '13px' },
+  { value: '14', label: '14px (default)' },
+  { value: '15', label: '15px' },
+  { value: '16', label: '16px' },
+  { value: '18', label: '18px' },
+];
+
 // A007/settingsSections: Default export required — preferences shell uses dynamic import().
 export default function GeneralSettings(): React.ReactElement {
   const [form] = Form.useForm<GeneralFormValues>();
@@ -58,6 +77,8 @@ export default function GeneralSettings(): React.ReactElement {
         theme: (settings.theme as Theme) ?? 'system',
         openLastProject: settings.openLastProject ?? true,
         language: settings.language ?? 'en',
+        fontFamily: (settings.fontFamily as string) ?? 'Inter',
+        fontSize: (settings.fontSize as string) ?? '14',
       });
     } catch {
       // First launch — defaults apply
@@ -86,6 +107,8 @@ export default function GeneralSettings(): React.ReactElement {
         theme: values.theme,
         openLastProject: values.openLastProject,
         language: values.language,
+        fontFamily: values.fontFamily,
+        fontSize: values.fontSize,
       };
       await tauriInvoke('save_settings', { settings: merged });
       setIsDirty(false);
@@ -114,7 +137,7 @@ export default function GeneralSettings(): React.ReactElement {
           form={form}
           layout="vertical"
           requiredMark={false}
-          initialValues={{ theme: 'system', openLastProject: true, language: 'en' }}
+          initialValues={{ theme: 'system', openLastProject: true, language: 'en', fontFamily: 'Inter', fontSize: '14' }}
           onValuesChange={() => { if (!loadingRef.current) setIsDirty(true); }}
         >
           <Space direction="vertical" size={32} style={{ width: '100%' }}>
@@ -139,6 +162,43 @@ export default function GeneralSettings(): React.ReactElement {
               </Text>
               <Form.Item name="openLastProject" valuePropName="checked" style={{ marginBottom: 0 }}>
                 <Checkbox>Reopen last project on launch</Checkbox>
+              </Form.Item>
+            </section>
+
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Font Family
+              </Text>
+              <Form.Item name="fontFamily" style={{ marginBottom: 8 }}>
+                <Select options={FONT_FAMILY_PRESETS} style={{ width: 240 }} />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Input
+                  placeholder="Or type a custom font name..."
+                  onChange={(e) => {
+                    if (e.target.value) form.setFieldsValue({ fontFamily: e.target.value });
+                  }}
+                  style={{ width: 240 }}
+                />
+              </Form.Item>
+            </section>
+
+            <section>
+              <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
+                Font Size
+              </Text>
+              <Form.Item name="fontSize" style={{ marginBottom: 8 }}>
+                <Select options={FONT_SIZE_OPTIONS} style={{ width: 240 }} />
+              </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Input
+                  placeholder="Or type a custom size (e.g. 17)..."
+                  onChange={(e) => {
+                    if (e.target.value) form.setFieldsValue({ fontSize: e.target.value });
+                  }}
+                  style={{ width: 240 }}
+                  suffix="px"
+                />
               </Form.Item>
             </section>
 

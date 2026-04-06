@@ -7,11 +7,12 @@ import { WindowHeader } from './WindowHeader';
 import { StatusBar } from './StatusBar';
 
 interface WindowShellProps {
+  title?: string;
   children: ReactNode;
   statusBarContent?: ReactNode;
 }
 
-export function WindowShell({ children, statusBarContent }: WindowShellProps) {
+export function WindowShell({ title, children, statusBarContent }: WindowShellProps) {
   const { theme, toggleTheme } = useTheme();
   const antdTheme = theme === 'dark' ? darkTheme : lightTheme;
   const titleBarRef = useWindowDrag();
@@ -19,7 +20,7 @@ export function WindowShell({ children, statusBarContent }: WindowShellProps) {
   return (
     <ConfigProvider theme={antdTheme}>
       <div className="flex flex-col h-screen overflow-hidden">
-        <WindowHeader titleBarRef={titleBarRef} theme={theme} toggleTheme={toggleTheme} />
+        <WindowHeader titleBarRef={titleBarRef} theme={theme} toggleTheme={toggleTheme} title={title} />
         <div className="flex-1 overflow-hidden" style={{ contain: 'strict' }}>
           {children}
         </div>

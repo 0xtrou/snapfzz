@@ -114,6 +114,8 @@ export default function AdvancedSettings(): React.ReactElement {
               theme: 'system',
               openLastProject: true,
               language: 'en',
+              fontFamily: 'Inter',
+              fontSize: '14',
               fpsCounter: true,
               logLevel: 'info',
             },
@@ -151,13 +153,30 @@ export default function AdvancedSettings(): React.ReactElement {
               <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
                 Data directory
               </Text>
-              <Input
-                value={dataDir}
-                readOnly
-                style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12 }}
-              />
+              <Space.Compact style={{ width: '100%' }}>
+                <Input
+                  value={dataDir}
+                  readOnly
+                  style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12 }}
+                />
+                <Button onClick={async () => {
+                  try {
+                    const selected = await tauriInvoke('pick_folder', { defaultPath: dataDir }) as string | null;
+                    if (selected) {
+                      await tauriInvoke('set_data_dir', { newPath: selected });
+                      setDataDir(selected);
+                      Modal.info({
+                        title: 'Restart Required',
+                        content: 'Data directory changed. Please restart Snapfzz for changes to take effect.',
+                      });
+                    }
+                  } catch { void 0; }
+                }}>
+                  Browse...
+                </Button>
+              </Space.Compact>
               <Text type="secondary" style={{ fontSize: 12, marginTop: 'var(--spacing-2, 8px)', display: 'block' }}>
-                Projects, logs, and workspace metadata are stored here.
+                Projects, logs, and workspace metadata are stored here. Changing this requires a restart.
               </Text>
             </section>
 

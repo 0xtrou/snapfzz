@@ -6,10 +6,11 @@ interface WindowHeaderProps {
   titleBarRef: RefObject<HTMLElement | null>;
   theme: string;
   toggleTheme: () => void;
+  title?: string;
   children?: ReactNode;
 }
 
-export function WindowHeader({ titleBarRef, theme, toggleTheme, children }: WindowHeaderProps) {
+export function WindowHeader({ titleBarRef, theme, toggleTheme, title, children }: WindowHeaderProps) {
   return (
     <header
       ref={titleBarRef}
@@ -17,6 +18,11 @@ export function WindowHeader({ titleBarRef, theme, toggleTheme, children }: Wind
       className="flex items-center gap-2 px-4 pr-3 border-b border-[var(--border-default)] bg-[var(--bg-default)] select-none cursor-default"
       style={{ paddingLeft: 78, height: 38 }}
     >
+      {title && (
+        <span className="text-sm font-semibold text-[var(--text-primary)] pointer-events-none truncate">
+          {title}
+        </span>
+      )}
       {children}
       <div className="ml-auto flex items-center gap-1 pointer-events-auto">
         <Button

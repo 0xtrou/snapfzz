@@ -2,7 +2,7 @@
 // A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
 import React, { useCallback, useEffect, useState } from 'react';
 import { Form, Input, Select, Space, Tag, Typography } from 'antd';
-import { SettingsHeader } from '@snapfzz/shared';
+import { SettingsHeader, safeParseSettings, type Settings } from '@snapfzz/shared';
 
 const { Text } = Typography;
 

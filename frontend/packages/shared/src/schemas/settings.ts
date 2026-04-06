@@ -6,6 +6,12 @@ export type Theme = z.infer<typeof ThemeSchema>;
 export const LogLevelSchema = z.enum(['error', 'warn', 'info', 'debug', 'trace']);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
+export const FontFamilySchema = z.string().default('Inter');
+export type FontFamily = z.infer<typeof FontFamilySchema>;
+
+export const FontSizeSchema = z.string().default('14');
+export type FontSize = z.infer<typeof FontSizeSchema>;
+
 export const SettingsSchema = z.object({
   apiKey: z.string().default(''),
   model: z.string().default('gpt-4o'),
@@ -14,6 +20,8 @@ export const SettingsSchema = z.object({
   theme: ThemeSchema.default('system'),
   openLastProject: z.boolean().default(true),
   language: z.string().default('en'),
+  fontFamily: FontFamilySchema.default('Inter'),
+  fontSize: FontSizeSchema.default('14'),
 
   fpsCounter: z.boolean().default(true),
   logLevel: LogLevelSchema.default('info'),

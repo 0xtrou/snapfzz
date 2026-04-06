@@ -55,13 +55,21 @@ const PRESET_LABELS: Record<Preset, string> = {
 export default function PerformanceSettings() {
   const [metrics, setMetrics] = useState<BudgetMetrics | null>(null);
   const [preset, setPreset] = useState<Preset>('balanced');
+  const [originalPreset, setOriginalPreset] = useState<Preset>('balanced');
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const isDirty = preset !== originalPreset;
 
   const fetchMetrics = useCallback(async () => {
     try {
       const snap = await tauriInvoke<BudgetMetrics>('budget_snapshot');
       setMetrics(snap);
       const name = snap.presetName.toLowerCase() as Preset;
-      if (name in PRESET_LABELS) setPreset(name);
+      if (name in PRESET_LABELS) {
+        setPreset(name);
+        setOriginalPreset(name);
+      }
     } catch {
       // Tauri not available in browser preview — metrics remain null
     }
@@ -82,7 +90,24 @@ export default function PerformanceSettings() {
 
   return (
     <div style={{ contain: 'content' }}>
-      <SettingsHeader title="Performance" />
+      <SettingsHeader
+        title="Performance"
+        isDirty={isDirty}
+        saving={saving}
+        saveSuccess={saveSuccess}
+        onSave={async () => {
+          setSaving(true);
+          try {
+            const current = await tauriInvoke<Record<string, unknown>>('get_settings');
+            await tauriInvoke('save_settings', { settings: { ...current, preset } });
+            setOriginalPreset(preset);
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 2500);
+          } catch { void 0; }
+          setSaving(false);
+        }}
+        onDiscard={() => setPreset(originalPreset)}
+      />
       <div style={{ padding: 16, maxWidth: 640 }}>
       <Card
         title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
@@ -99,6 +124,9 @@ export default function PerformanceSettings() {
                   {PRESET_LABELS[p]}
                 </Radio>
               ))}
+              <Radio value="custom" disabled style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+                Custom <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>(coming soon)</span>
+              </Radio>
             </Space>
           </Radio.Group>
           {metrics && (

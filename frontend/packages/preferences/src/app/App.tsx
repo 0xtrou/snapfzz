@@ -10,6 +10,22 @@ import {
 } from '@snapfzz/plugin-host';
 import type { SettingsSectionContribution } from '@snapfzz/plugin-sdk';
 
+function SettingsSkeleton() {
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ height: 54, borderBottom: '1px solid var(--border-default)', marginBottom: 16 }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {[180, 120, 160].map((w) => (
+          <div key={w}>
+            <div style={{ width: 80, height: 14, borderRadius: 4, background: 'var(--bg-subtle)', marginBottom: 12 }} />
+            <div style={{ width: w, height: 32, borderRadius: 6, background: 'var(--bg-subtle)' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LazySection({ loader, sectionId, onCrash }: {
   loader: () => Promise<{ default: ComponentType }>;
   sectionId?: string;
@@ -17,7 +33,7 @@ function LazySection({ loader, sectionId, onCrash }: {
 }) {
   const Component = lazy(loader);
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">Loading...</div>}>
+    <Suspense fallback={<SettingsSkeleton />}>
       <PluginErrorBoundary pluginId={sectionId} onCrash={onCrash}>
         <Component />
       </PluginErrorBoundary>
@@ -69,7 +85,7 @@ export function App() {
 
   return (
     <PluginHostProvider host={host}>
-      <WindowShell statusBarContent={<span className="text-[var(--color-success)]">● Connected</span>}>
+      <WindowShell title="Preferences" statusBarContent={<span className="text-[var(--color-success)]">● Connected</span>}>
         <div className="flex h-full overflow-hidden">
           <aside
             className="flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-default)] overflow-y-auto"
