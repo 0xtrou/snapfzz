@@ -31,6 +31,7 @@ For every file changed, identify which spec it implements. Then verify:
 | Does it use the correct UI stack? | Per ENGINEERING_GUIDE/UI Stack: Ant Design + Ant Icons + Tailwind + CSS variables only. | Emoji as icons. Hardcoded hex/rgb colors. Non-Ant icon libraries. Non-Ant component libraries. |
 | Does it meet test coverage? | Per ENGINEERING_GUIDE/Test Coverage: ≥90% coverage for all plugins and core packages. | Coverage below 90%. Missing error path tests. Missing contract verification tests. Snapshot-only tests. |
 | Is user-facing copy generic? | Per ENGINEERING_GUIDE/User-Facing Copy: no internal infrastructure names in text visible to users. | Mentions Tauri, Rust, AgentScope, Zone 1, ~/.snapfzz, ctx.rust.invoke, sysinfo, or any internal framework/path in tooltips, labels, errors, or notifications. |
+| Does it follow settings propagation? | Per ENGINEERING_GUIDE/Settings Propagation: plugins never apply settings to DOM directly. Save + emit only. | Plugin sets `document.body.style.*`, `document.documentElement.setAttribute('data-theme', ...)`, or injects style overrides directly after save. All DOM application must go through `useAppSettings → applyDomSettings`. |
 
 ### 2. Evidence-Based Verification (MANDATORY)
 
@@ -58,6 +59,7 @@ grep -n "restart_process" src-tauri/src/main.rs | grep "generate_handler"  # mus
 | "No TODO/FIXME" | `grep -rn "TODO\|FIXME\|HACK" <dir>` — must return 0 results |
 | "No hardcoded colors" | `grep -rn "#[0-9a-f]\|rgba(" <dir>` — must return 0 results |
 | "All tests pass" | Run the actual test command and verify output |
+| "Settings propagation correct" | `grep -rn "document\.body\.style\|document\.documentElement\.setAttribute.*data-theme\|document\.head\.appendChild" plugins/` — must find 0 results (only `use-app-settings.ts` may apply settings to DOM) |
 
 **A review that doesn't include grep evidence for every claimed deliverable is invalid.**
 
@@ -177,6 +179,7 @@ Use this to find the right spec for any code you're reviewing:
 | Eval benchmarks, graders | U008 Eval System |
 | Git diff, blame, log, branches | U010 Git Inspector |
 | Quality standards (13 checks) | U003 Perfectly From Day 1 |
+| Settings save, theme/font application | ENGINEERING_GUIDE Settings Propagation |
 
 ---
 

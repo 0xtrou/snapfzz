@@ -408,11 +408,14 @@ async fn get_settings() -> Result<Settings, String> {
 }
 
 #[tauri::command]
-async fn save_settings(settings: Settings) -> Result<(), String> {
+async fn save_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String> {
     let path = settings_path();
     if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
     let content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    fs::write(&path, content).map_err(|e| e.to_string())
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    // Per A007/MultiLayout: broadcast to ALL webview windows so every surface re-applies settings.
+    let _ = app.emit("settings-changed", ());
+    Ok(())
 }
 
 #[tauri::command]

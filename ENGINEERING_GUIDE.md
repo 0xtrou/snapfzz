@@ -289,6 +289,60 @@ Every plugin UI must either load instantly or show a loading skeleton. No blank 
 
 ---
 
+## Settings Propagation — Non-Negotiable
+
+All user-facing settings (theme, font, font size, and any future appearance/behavior settings) flow through a single propagation pipeline. No plugin applies settings to the DOM directly.
+
+### The Flow
+
+```
+Plugin saves settings
+  → tauriInvoke('save_settings', { settings: merged })
+      └─ Rust: persist to settings.json + app.emit("settings-changed")  // ALL webviews
+  → emitSettingsChanged()
+      └─ window.dispatchEvent(CustomEvent('snapfzz:settings-changed'))  // same window instant
+                    ↓
+  useAppSettings() (mounted in WindowShell + Launcher App)
+      → invoke('get_settings')        // fresh read from Rust
+      → applyDomSettings(settings)    // theme, font-family, font-size → DOM
+      → notifyThemeStorageChange()     // → useTheme re-renders ConfigProvider
+```
+
+### Rules
+
+- **Single source of truth**: `use-app-settings.ts → applyDomSettings()` is the ONLY function that applies settings to the DOM.
+- **Plugins never apply settings locally**: after `save_settings`, call `emitSettingsChanged()` and let the pipeline handle application. No `document.body.style.fontFamily = ...` in plugin code.
+- **Dual-event delivery**: `save_settings` in Rust emits `settings-changed` to ALL webviews via `app.emit()`. The frontend `emitSettingsChanged()` dispatches a DOM `CustomEvent` for same-window instant response. Both trigger `useAppSettings` to re-apply.
+- **All windows participate**: every window must mount `useAppSettings()` at its top-level component. `WindowShell` does this automatically. If a window doesn't use `WindowShell` (e.g., Launcher), it must call `useAppSettings()` directly.
+- **Theme resolution**: the settings value `'system'` is resolved to `'light'` or `'dark'` at application time via `matchMedia`. Never pass `'system'` to `data-theme` or `localStorage`.
+- **Font override**: CSS `!important` is injected via `<style id="snapfzz-font-override">` to override Ant Design's `ConfigProvider` scoped styles. Both `font-family` and `font-size` are forced globally.
+
+### Adding a New Setting
+
+When adding a new user-facing setting that affects visual appearance:
+
+1. Add the field to `GeneralSettings` form (or the relevant settings plugin)
+2. Include it in the `save_settings` merge object
+3. Handle it in `applyDomSettings()` in `use-app-settings.ts`
+4. Call `emitSettingsChanged()` after save — done. All windows update automatically.
+
+Do NOT:
+- Apply the setting to the DOM in the plugin's save handler
+- Create a separate propagation mechanism per setting
+- Read the setting from localStorage (use Tauri `get_settings` as the source of truth)
+
+### Key Files
+
+| File | Role |
+|---|---|
+| `shared/src/hooks/use-app-settings.ts` | Single source of truth for DOM application |
+| `shared/src/hooks/use-theme.ts` | React state for theme — synced via StorageEvent |
+| `shared/src/components/shell/WindowShell.tsx` | Mounts `useAppSettings()` for preferences + project |
+| `launcher/src/app/App.tsx` | Mounts `useAppSettings()` for launcher window |
+| `plugins/settings-general/src/GeneralSettings.tsx` | Saves settings + emits change event |
+
+---
+
 ## Agent Delegation — Spec Enforcement
 
 When delegating work to an agent, ALWAYS include:

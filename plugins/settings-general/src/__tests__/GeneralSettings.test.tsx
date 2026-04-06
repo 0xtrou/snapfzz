@@ -565,13 +565,10 @@ describe('A007/settings-general: installed fonts appear in dropdown', () => {
 });
 
 describe('A007/settings-general: saving emits settings-changed with correct values', () => {
-  it('A007/settings-general: saving theme emits settings-changed after save_settings', async () => {
+  it('A007/settings-general: saving theme persists and dispatches local settings-changed event', async () => {
     const user = userEvent.setup();
-    const mockEmit = vi.fn().mockResolvedValue(undefined);
-    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {
-      invoke: mockInvoke,
-      event: { emit: mockEmit },
-    };
+    const settingsChangedSpy = vi.fn();
+    window.addEventListener('snapfzz:settings-changed', settingsChangedSpy);
 
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'get_settings') return Promise.resolve(fullSettings({ theme: 'light' }));
@@ -595,7 +592,9 @@ describe('A007/settings-general: saving emits settings-changed with correct valu
 
     const saveCall = mockInvoke.mock.calls.find((c) => c[0] === 'save_settings');
     expect(saveCall![1].settings).toMatchObject({ theme: 'dark' });
-    expect(mockEmit).toHaveBeenCalledWith('settings-changed');
+    expect(settingsChangedSpy).toHaveBeenCalled();
+
+    window.removeEventListener('snapfzz:settings-changed', settingsChangedSpy);
   });
 
   it('A007/settings-general: saving font size persists correct value via save_settings', async () => {
