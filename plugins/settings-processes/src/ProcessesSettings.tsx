@@ -246,7 +246,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
               marginBottom: 12,
             }}
           >
-            Connection
+            Configuration
           </Text>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 10 }}>
             <div style={{ flex: 1 }}>
