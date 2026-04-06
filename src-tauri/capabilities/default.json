@@ -2,6 +2,9 @@
   "identifier": "default",
   "description": "Default capabilities for Snapfzz windows",
   "windows": ["*"],
+  "remote": {
+    "urls": ["http://localhost:*"]
+  },
   "permissions": [
     "core:default",
     "core:event:default",
