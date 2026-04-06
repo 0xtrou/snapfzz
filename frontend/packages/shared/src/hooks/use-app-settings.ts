@@ -1,6 +1,6 @@
 // Per A007/MultiLayout: applied across all windows so every surface uses the same font settings.
 // Per A004/Workspace: reads fontFamily and fontsize from settings.json on boot.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // A007/TauriIPC: accesses __TAURI_INTERNALS__ directly — no @tauri-apps/api bundle.
 function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null {
@@ -28,23 +28,24 @@ function applyFontSettings(settings: AppSettings): void {
   }
 }
 
-async function loadInstalledFonts(invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>): Promise<void> {
+async function loadAndRegisterCustomFonts(invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>): Promise<string[]> {
   // Per A004/Workspace: fonts directory lives under the resolved data dir.
   let names: string[];
   try {
     names = (await invoke('list_installed_fonts')) as string[];
   } catch {
-    return;
+    return [];
   }
-  if (!Array.isArray(names) || names.length === 0) return;
+  if (!Array.isArray(names) || names.length === 0) return [];
 
   let dataDir: string;
   try {
     dataDir = (await invoke('get_data_dir')) as string;
   } catch {
-    return;
+    return names; // Return names but skip FontFace registration
   }
 
+  const registeredNames: string[] = [];
   for (const name of names) {
     try {
       // Attempt woff2 first, then ttf — both extensions are written by install_font_from_file / install_font_from_url.
@@ -59,15 +60,20 @@ async function loadInstalledFonts(invoke: (cmd: string, args?: Record<string, un
         await fontFace.load();
       }
       document.fonts.add(fontFace);
+      registeredNames.push(name);
     } catch {
       // Silently skip fonts that fail to load — app continues with remaining fonts.
     }
   }
+  return registeredNames;
 }
 
 // Per A007/MultiLayout: call this hook in WindowShell so all windows apply font settings.
 // Per A004/Workspace: reads from settings.json on boot; re-applies on settings-changed event.
-export function useAppSettings(): void {
+// Returns loaded custom font names for use in dropdown options.
+export function useAppSettings(): string[] {
+  const [customFonts, setCustomFonts] = useState<string[]>([]);
+
   useEffect(() => {
     async function applySettings(): Promise<void> {
       const invoke = getTauriInvoke();
@@ -75,7 +81,8 @@ export function useAppSettings(): void {
       try {
         const settings = (await invoke('get_settings')) as AppSettings;
         applyFontSettings(settings);
-        await loadInstalledFonts(invoke);
+        const registered = await loadAndRegisterCustomFonts(invoke);
+        setCustomFonts(registered);
       } catch {
         // First launch or Tauri unavailable — silently continue with CSS defaults.
       }
@@ -105,4 +112,6 @@ export function useAppSettings(): void {
       if (unlisten) unlisten();
     };
   }, []);
+
+  return customFonts;
 }
