@@ -25,9 +25,10 @@ const { Text } = Typography;
 // A008/SupervisedDomain: mirrors serde camelCase output of ProcessSnapshot in metrics.rs
 export interface ProcessSnapshot {
   name: string;
-  pid: number;
+  pid: number | null;
   status: 'starting' | 'online' | 'unhealthy' | 'restarting' | 'stopped' | 'errored';
-  rssMb: number;
+  rssMb: number | null;
+  cpuPct: number | null;
   maxMemoryMb: number;
   restartCount: number;
   consecutiveFailures: number;
@@ -44,14 +45,14 @@ const LOG_REFRESH_INTERVAL_MS = 3000;
 function statusColor(status: ProcessSnapshot['status']): string {
   switch (status) {
     case 'online':
-      return 'var(--color-success, #52c41a)';
+      return 'var(--color-success)';
     case 'unhealthy':
-      return 'var(--color-warning, #faad14)';
+      return 'var(--color-warning)';
     case 'stopped':
     case 'errored':
-      return 'var(--color-error, #ff4d4f)';
+      return 'var(--color-error)';
     default:
-      return 'var(--text-muted, #8c8c8c)';
+      return 'var(--text-muted)';
   }
 }
 
@@ -76,7 +77,8 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
-function memoryPct(rss: number, max: number): number {
+function memoryPct(rss: number | null, max: number): number {
+  if (rss == null) return 0;
   if (max === 0) return 0;
   return Math.min(100, Math.round((rss / max) * 100));
 }
@@ -215,7 +217,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
           <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Memory</Text>
           <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-            {Math.round(process.rssMb)}/{process.maxMemoryMb} MB ({memPct}%)
+            {process.rssMb != null ? Math.round(process.rssMb) : '—'}/{process.maxMemoryMb} MB ({memPct}%)
           </Text>
         </div>
         <Progress
@@ -359,7 +361,7 @@ export default function ProcessesSettings() {
     return () => clearInterval(id);
   }, [fetchProcesses]);
 
-  const totalMemoryMb = processes.reduce((sum, p) => sum + p.rssMb, 0);
+  const totalMemoryMb = processes.reduce((sum, p) => sum + (p.rssMb ?? 0), 0);
 
   const columns = [
     {
@@ -413,7 +415,7 @@ export default function ProcessesSettings() {
               }
               trailColor="var(--bg-subtle)"
               size="small"
-              format={() => `${Math.round(record.rssMb)}/${record.maxMemoryMb} MB`}
+              format={() => `${record.rssMb != null ? Math.round(record.rssMb) : '—'}/${record.maxMemoryMb} MB`}
             />
           </div>
         );
