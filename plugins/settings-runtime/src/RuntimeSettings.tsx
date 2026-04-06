@@ -61,7 +61,10 @@ export default function RuntimeSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
+  const loadingRef = React.useRef(false);
+
   const loadSettings = useCallback(async () => {
+    loadingRef.current = true;
     try {
       const settings = await tauriInvoke('get_settings') as AppSettings;
       form.setFieldsValue({
@@ -70,8 +73,9 @@ export default function RuntimeSettings() {
         apiUrl: settings.apiUrl ?? 'https://api.openai.com/v1',
       });
     } catch {
-      // Settings file may not exist yet on first launch — defaults apply.
+      // First launch — defaults apply
     }
+    setTimeout(() => { loadingRef.current = false; }, 100);
   }, [form]);
 
   const pollHealth = useCallback(async () => {
@@ -161,7 +165,7 @@ export default function RuntimeSettings() {
         layout="vertical"
         requiredMark={false}
         initialValues={{ model: 'gpt-4o', apiUrl: 'https://api.openai.com/v1' }}
-        onValuesChange={() => setIsDirty(true)}
+        onValuesChange={() => { if (!loadingRef.current) setIsDirty(true); }}
       >
         <Text
           style={{
@@ -248,7 +252,7 @@ export default function RuntimeSettings() {
           <Select
             options={MODEL_OPTIONS}
             style={{ background: 'var(--bg-input)' }}
-            popupClassName="runtime-settings-model-popup"
+            classNames={{ popup: { root: 'runtime-settings-model-popup' } }}
           />
         </Form.Item>
 
@@ -268,73 +272,58 @@ export default function RuntimeSettings() {
 
       </Form>
 
-      {isDirty && (
-        <div style={{
-          position: 'fixed',
-          bottom: 32,
-          left: 208,
-          right: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 12,
-          padding: '10px 24px',
-          background: 'var(--bg-default)',
-          borderTop: '1px solid var(--border-default)',
-          zIndex: 100,
-        }}>
-          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>You have unsaved changes</span>
-          <button
-            type="button"
-            onClick={() => { loadSettings(); setIsDirty(false); }}
-            style={{
-              padding: '6px 16px',
-              background: 'none',
-              border: '1px solid var(--border-default)',
-              borderRadius: 6,
-              color: 'var(--text-primary)',
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
-            Discard
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              padding: '6px 16px',
-              background: 'var(--accent)',
-              color: 'var(--bg-primary)',
-              border: 'none',
-              borderRadius: 6,
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: saving ? 'wait' : 'pointer',
-            }}
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </div>
-      )}
-
-      {saveSuccess && (
-        <div style={{
-          position: 'fixed',
-          bottom: 32,
-          left: 208,
-          right: 0,
-          display: 'flex',
-          justifyContent: 'center',
-          padding: '10px 24px',
-          background: 'var(--bg-default)',
-          borderTop: '1px solid var(--border-default)',
-          zIndex: 100,
-        }}>
-          <span style={{ color: 'var(--color-success)', fontSize: 13 }}>Settings saved successfully</span>
-        </div>
-      )}
+      <div style={{
+        marginTop: 24,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 0',
+        borderTop: '1px solid var(--border-default)',
+      }}>
+        {isDirty && (
+          <>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Unsaved changes</span>
+            <button
+              type="button"
+              onClick={() => { loadSettings(); setIsDirty(false); }}
+              style={{
+                padding: '6px 16px',
+                background: 'none',
+                border: '1px solid var(--border-default)',
+                borderRadius: 6,
+                color: 'var(--text-primary)',
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Discard
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !isDirty}
+          style={{
+            padding: '6px 16px',
+            background: isDirty ? 'var(--accent)' : 'var(--bg-subtle)',
+            color: isDirty ? 'var(--bg-primary)' : 'var(--text-muted)',
+            border: 'none',
+            borderRadius: 6,
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: isDirty && !saving ? 'pointer' : 'default',
+          }}
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+        {saveSuccess && (
+          <span style={{ color: 'var(--color-success)', fontSize: 13 }}>Saved</span>
+        )}
+        {saveError && (
+          <span style={{ color: 'var(--color-error)', fontSize: 13 }}>{saveError}</span>
+        )}
+      </div>
     </div>
   );
 }
