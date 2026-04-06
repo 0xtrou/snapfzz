@@ -377,18 +377,6 @@ describe('A007/settings-general: error paths and discard', () => {
     });
   });
 
-  it('A007/settings-general: custom font family input is rendered and accepts text input', async () => {
-    const user = userEvent.setup();
-    render(<GeneralSettings />);
-    await waitForSettingsLoad();
-
-    const customFontInput = screen.getByPlaceholderText('Or type a custom font name...');
-    expect(customFontInput).toBeInTheDocument();
-    await user.clear(customFontInput);
-    await user.type(customFontInput, 'Roboto');
-    expect((customFontInput as HTMLInputElement).value).toBe('Roboto');
-  });
-
   it('A007/settings-general: custom font size input is rendered and accepts text input', async () => {
     const user = userEvent.setup();
     render(<GeneralSettings />);

@@ -69,9 +69,12 @@ const FONT_SIZE_OPTIONS = [
   { value: '18', label: '18px' },
 ];
 
+const SYSTEM_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
 function applyFontToDom(fontFamily: string, fontSize: string): void {
-  document.documentElement.style.setProperty('--font-family', fontFamily);
-  document.body.style.fontFamily = fontFamily;
+  const resolvedFont = fontFamily === 'System' ? SYSTEM_FONT_STACK : fontFamily;
+  document.documentElement.style.setProperty('--font-family', resolvedFont);
+  document.body.style.fontFamily = resolvedFont;
   document.documentElement.style.setProperty('--font-size', fontSize + 'px');
   document.body.style.fontSize = fontSize + 'px';
 }
@@ -278,17 +281,8 @@ export default function GeneralSettings(): React.ReactElement {
               <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
                 Font Family
               </Text>
-              <Form.Item name="fontFamily" style={{ marginBottom: 8 }}>
+              <Form.Item name="fontFamily" style={{ marginBottom: 0 }}>
                 <Select options={allFontOptions} style={{ width: 240 }} />
-              </Form.Item>
-              <Form.Item style={{ marginBottom: 0 }}>
-                <Input
-                  placeholder="Or type a custom font name..."
-                  onChange={(e) => {
-                    if (e.target.value) form.setFieldValue('fontFamily', e.target.value);
-                  }}
-                  style={{ width: 240 }}
-                />
               </Form.Item>
             </section>
 

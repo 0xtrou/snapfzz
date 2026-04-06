@@ -17,10 +17,13 @@ interface AppSettings {
   installedFonts?: string[];
 }
 
+const SYSTEM_FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
 function applyFontSettings(settings: AppSettings): void {
   if (settings.fontFamily) {
-    document.documentElement.style.setProperty('--font-family', settings.fontFamily);
-    document.body.style.fontFamily = settings.fontFamily;
+    const resolved = settings.fontFamily === 'System' ? SYSTEM_FONT_STACK : settings.fontFamily;
+    document.documentElement.style.setProperty('--font-family', resolved);
+    document.body.style.fontFamily = resolved;
   }
   if (settings.fontSize) {
     document.documentElement.style.setProperty('--font-size', settings.fontSize + 'px');
