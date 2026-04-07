@@ -479,3 +479,365 @@ A015/manifest: port 0 in manifest triggers random port assignment
 - Max 3 concurrent mini app processes per plugin — prevents resource exhaustion
 - Mini app windows close → process killed. No orphan processes.
 - Bookmarks survive app restart. Mini app processes don't (spawned on demand).
+
+---
+
+## CEF Capabilities — 4 Tiers
+
+### Tier 1: Mini App Launcher
+
+| Capability | API | Status |
+|---|---|---|
+| Open URL in CEF window | `CefRuntime::create_window(url, config)` | Alpha |
+| Window lifecycle | create, close, focus, resize | Alpha |
+| Process tied to window | close window → kill process | Alpha |
+| Bookmarks | pin to launcher, persist across restarts | Alpha |
+
+### Tier 2: Full Browser Experience
+
+| Capability | API | Status |
+|---|---|---|
+| DevTools | `CefWindow::devtools_open/close()` via `CefBrowserHost::ShowDevTools` | Alpha |
+| Console capture | `DisplayHandler::on_console_message` → kernel logs | Alpha |
+| Navigation | back/forward/reload/stop via `CefBrowser::GoBack/Forward/Reload/StopLoad` | Alpha |
+| Find in page | `CefBrowserHost::Find(searchText)` | Beta |
+| Zoom | `CefBrowserHost::SetZoomLevel` per window, persisted per mini app | Beta |
+| Fullscreen | `CefBrowserHost::SetFullscreen` toggle | Beta |
+| Print / PDF | `CefBrowserHost::Print()`, `PrintToPDF()` | Beta |
+| Downloads | `DownloadHandler::OnBeforeDownload` → kernel download manager | Beta |
+
+### Tier 3: Vibe Coding
+
+| Capability | API | Status |
+|---|---|---|
+| Live preview | HMR proxy — file watcher triggers CEF reload | V1 |
+| Split view | Monaco left + CEF right in project window | V1 |
+| Responsive | viewport size presets (phone/tablet/desktop) | V1 |
+| Network inspector | `ResourceRequestHandler::OnBeforeResourceLoad` capture | V1 |
+| Console panel | `on_console_message` → bottom panel in project window | V1 |
+| Screenshot | `CefBrowserHost::CaptureScreenshot` → PNG bytes | V1 |
+| Performance | page load timing via CDP `Performance.getMetrics` | V1 |
+
+### Tier 4: Platform
+
+| Capability | API | Status |
+|---|---|---|
+| Custom schemes | `CefApp::OnRegisterCustomSchemes` + `CefRegisterSchemeHandlerFactory` | Beta |
+| JS injection | `CefRenderProcessHandler::OnContextCreated` + `CefRegisterExtension` | Beta |
+| Cookie isolation | `CefRequestContext::CreateContext` per mini app | Alpha |
+| Network intercept | `CefResourceRequestHandler::OnBeforeResourceLoad` | Beta |
+| Chrome extensions | `CefRegisterExtension` for React/Vue DevTools | V1 |
+
+---
+
+## snapfzz-cef Crate
+
+### Structure
+
+```
+src-tauri/crates/snapfzz-cef/
+├── Cargo.toml
+└── src/
+    ├── lib.rs           # pub mod runtime, window, download
+    ├── runtime.rs       # CefRuntime — singleton, lazy init, shutdown
+    ├── window.rs        # CefWindow — per-browser lifecycle, navigation, devtools
+    ├── download.rs      # CefDownloader — lazy download from Spotify CDN
+    └── types.rs         # WindowConfig, ConsoleMessage, DownloadProgress
+```
+
+### CefRuntime — Singleton, Lazy
+
+```rust
+pub struct CefRuntime {
+    initialized: bool,
+    cef_dir: PathBuf,           // ~/.snapfzz/runtime/cef/
+    windows: HashMap<String, CefWindow>,
+}
+
+impl CefRuntime {
+    pub fn new(data_dir: &Path) -> Self;
+
+    /// Lazy init — downloads CEF if missing, then cef_rs::initialize().
+    /// Returns progress stream for download UI.
+    pub async fn ensure_ready(&mut self) -> Result<(), CefError>;
+
+    pub fn is_ready(&self) -> bool;
+
+    /// Create a new CEF browser window.
+    pub fn create_window(&mut self, id: &str, url: &str, config: WindowConfig) -> Result<&CefWindow, CefError>;
+
+    /// Get existing window by ID.
+    pub fn window(&self, id: &str) -> Option<&CefWindow>;
+    pub fn window_mut(&mut self, id: &str) -> Option<&mut CefWindow>;
+
+    /// Close a specific window.
+    pub fn close_window(&mut self, id: &str) -> Result<(), CefError>;
+
+    /// Close all windows and shutdown CEF. Called on app exit.
+    pub fn shutdown(&mut self);
+}
+```
+
+### CefWindow — Per Browser
+
+```rust
+pub struct CefWindow {
+    id: String,
+    browser: CefBrowser,
+    plugin_id: String,
+    miniapp_id: String,
+    process_name: String,
+    backend_port: u16,
+    zoom_level: f64,
+    devtools_open: bool,
+    console_messages: Vec<ConsoleMessage>,
+    created_at: Instant,
+}
+
+impl CefWindow {
+    // Navigation
+    pub fn navigate(&self, url: &str);
+    pub fn back(&self);
+    pub fn forward(&self);
+    pub fn reload(&self);
+    pub fn stop(&self);
+    pub fn current_url(&self) -> String;
+
+    // DevTools
+    pub fn devtools_open(&mut self);
+    pub fn devtools_close(&mut self);
+    pub fn is_devtools_open(&self) -> bool;
+
+    // Search
+    pub fn find(&self, query: &str, forward: bool);
+    pub fn find_stop(&self);
+
+    // Zoom
+    pub fn set_zoom(&mut self, level: f64);
+    pub fn zoom_level(&self) -> f64;
+
+    // Capture
+    pub fn screenshot(&self) -> Result<Vec<u8>, CefError>;  // PNG bytes
+    pub fn print_to_pdf(&self) -> Result<Vec<u8>, CefError>;
+
+    // Console
+    pub fn console_messages(&self) -> &[ConsoleMessage];
+    pub fn clear_console(&mut self);
+
+    // Lifecycle
+    pub fn close(&self);
+}
+```
+
+### CefDownloader — Lazy Download
+
+```rust
+pub struct CefDownloader {
+    cef_dir: PathBuf,
+    cdn_base: String,       // https://cef-builds.spotifycdn.com
+}
+
+impl CefDownloader {
+    pub fn is_cached(&self) -> bool;
+
+    /// Download CEF binary for current platform.
+    /// Returns a stream of DownloadProgress events.
+    pub async fn download(&self) -> Result<impl Stream<Item = DownloadProgress>, CefError>;
+
+    /// Verify downloaded binary checksum.
+    pub fn verify(&self) -> Result<(), CefError>;
+}
+
+pub struct DownloadProgress {
+    pub bytes_downloaded: u64,
+    pub bytes_total: u64,
+    pub percent: f32,
+    pub status: DownloadStatus,
+}
+
+pub enum DownloadStatus {
+    Downloading,
+    Extracting,
+    Verifying,
+    Ready,
+    Failed(String),
+}
+```
+
+---
+
+## Kernel CEF Management
+
+### Window Registry in main.rs
+
+```rust
+struct ManagedCefWindow {
+    window_id: String,
+    plugin_id: String,
+    miniapp_id: String,
+    process_name: String,
+    backend_port: u16,
+    created_at: Instant,
+}
+
+// Managed state
+.manage(Mutex::new(CefRuntime::new(&data_dir)))
+```
+
+### Tauri Commands — CEF
+
+```rust
+// Window lifecycle
+cef_open_window(url, config) -> window_id
+cef_close_window(window_id)
+cef_focus_window(window_id)
+
+// Navigation
+cef_navigate(window_id, url)
+cef_go_back(window_id)
+cef_go_forward(window_id)
+cef_reload(window_id)
+
+// DevTools
+cef_devtools(window_id, open: bool)
+
+// Search
+cef_find(window_id, query, forward: bool)
+
+// Zoom
+cef_zoom(window_id, level: f64)
+
+// Capture
+cef_screenshot(window_id) -> base64 PNG
+cef_print_pdf(window_id) -> bytes
+
+// Console
+cef_console_messages(window_id) -> Vec<ConsoleMessage>
+
+// Download status
+cef_download_status() -> DownloadProgress
+cef_ensure_cef_ready() -> Result<(), String>
+
+// Mini app orchestration (combines process + CEF)
+open_miniapp(plugin_id, miniapp_id) -> MiniAppInfo
+close_miniapp(plugin_id, miniapp_id)
+```
+
+### Orchestration Flow
+
+```
+open_miniapp:
+  1. cef_runtime.ensure_ready()?           ← download if missing (~124MB, once)
+  2. process_mgr.spawn(name, config)?      ← start backend process
+  3. registry.register_process(name, budget)?  ← budget gate
+  4. wait_until_healthy(port)?             ← HTTP health check
+  5. cef_runtime.create_window(id, url, config)?  ← open CEF browser
+  6. app.emit("miniapp-opened", info)      ← notify frontend
+
+close_miniapp:
+  1. cef_runtime.close_window(id)?         ← destroy browser
+  2. process_mgr.kill(name)?               ← kill backend
+  3. registry deregister process           ← free budget
+  4. app.emit("miniapp-closed", id)        ← notify frontend
+
+on_app_exit:
+  1. cef_runtime.shutdown()                ← close all browsers + cef_rs::shutdown()
+  2. process_mgr.shutdown_all()            ← kill all processes
+```
+
+---
+
+## Performance Guarantees (Non-Negotiable, per A001/A003/A008)
+
+### CEF Window Performance
+
+| Metric | Target | Enforcement |
+|---|---|---|
+| Window open time | < 500ms (after CEF ready) | `create_window` profiled, logged |
+| Navigation time | < 100ms to start loading | CEF browser navigation is async |
+| DevTools open | < 200ms | ShowDevTools is native CEF |
+| Screenshot | < 500ms | CaptureScreenshot async callback |
+| Memory per window | ≤ 256MB default | BudgetRegistry supervised, kill on exceed |
+
+### CEF does NOT affect Tauri windows
+
+```
+Tauri windows (launcher, project, preferences):
+  ├── Rendered by platform webview (WKWebView/WebView2)
+  ├── Independent of CEF — CEF crash doesn't affect Tauri
+  ├── 60fps rendering unaffected by CEF load
+  └── Separate process from CEF browsers
+
+CEF windows (mini apps):
+  ├── Separate Chromium process per window
+  ├── Own frame budget — one slow mini app doesn't affect others
+  ├── Memory-gated by BudgetRegistry (256MB default, kill on exceed)
+  └── CPU isolated — Chromium multi-process architecture
+```
+
+### CEF Lazy Loading — No Boot Impact
+
+```
+App boot (A003 targets preserved):
+  < 200ms to visible (no CEF loaded)
+  < 500ms to interactive (no CEF loaded)
+  CEF binary: NOT loaded, NOT initialized
+  CEF download: NOT started
+
+First mini app open:
+  CEF download: ~30s on fast connection (124MB)
+  CEF init: ~200ms (cef_rs::initialize)
+  Window open: ~50ms after init
+
+Subsequent mini app opens:
+  CEF already initialized: ~50ms to window
+```
+
+### Resource Budget Integration
+
+```rust
+// Per mini app window
+ProcessBudget {
+    max_memory_mb: 256,         // per A008 supervised domain
+    health_interval_ms: 5000,   // slower than system processes
+    max_health_failures: 3,     // kill after 3 failures
+    max_restarts: 3,            // auto-restart up to 3 times
+}
+
+// Per plugin: max 3 concurrent mini app processes
+// Global: max 10 concurrent CEF windows (prevents memory exhaustion)
+```
+
+### Main Thread Protection (A001)
+
+- CEF runs in separate processes — ZERO main thread work
+- `cef_rs::initialize()` is called from `tokio::spawn` — never blocks Tauri event loop
+- Console message capture is callback-based — no polling
+- Screenshot/PDF are async with callbacks — no blocking
+- Window creation is async — returns immediately, CEF creates browser in background
+
+---
+
+## Additional Test Specifications
+
+```
+A015/cef: CefRuntime lazy init only on first create_window
+A015/cef: CefRuntime downloads CEF if not cached
+A015/cef: CefRuntime reuses cached CEF on subsequent launches
+A015/cef: CefDownloader reports progress events during download
+A015/cef: CefDownloader verifies checksum after download
+A015/cef: CefWindow navigate changes URL
+A015/cef: CefWindow back/forward navigates history
+A015/cef: CefWindow devtools_open sets flag and calls ShowDevTools
+A015/cef: CefWindow zoom level persisted per window
+A015/cef: CefWindow console_messages captures on_console_message events
+A015/cef: CefWindow close destroys browser
+A015/cef: CefRuntime shutdown closes all windows
+A015/cef: CEF crash does not affect Tauri windows
+A015/cef: max 10 concurrent CEF windows enforced
+A015/cef: cookie isolation — separate CefRequestContext per window
+A015/perf: window open < 500ms after CEF ready
+A015/perf: CEF init does not block Tauri main thread
+A015/perf: app boot completes without loading CEF
+A015/perf: memory limit enforced — window killed at 256MB
+```
