@@ -439,7 +439,7 @@ describe('A008/settings-processes: log panel', () => {
     await waitFor(() => {
       const logPanel = screen.getByTestId('log-panel-agentscope');
       expect(logPanel).toBeInTheDocument();
-      expect(logPanel).toHaveStyle({ fontFamily: 'var(--font-mono)' });
+      expect(logPanel.style.fontFamily).toBe('var(--font-mono)');
     });
   });
 

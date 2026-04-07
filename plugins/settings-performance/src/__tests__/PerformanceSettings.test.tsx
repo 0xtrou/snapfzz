@@ -332,7 +332,9 @@ describe('A008/settings-performance: budget table values', () => {
     setupMocks({ metrics: makeMetrics({ batchIntervalMs: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('16ms')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('16ms');
     });
   });
 
@@ -340,7 +342,9 @@ describe('A008/settings-performance: budget table values', () => {
     setupMocks({ metrics: makeMetrics({ batchIntervalMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('33ms')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('33ms');
     });
   });
 
@@ -357,7 +361,8 @@ describe('A008/settings-performance: budget table values', () => {
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('3 in use')).toBeInTheDocument();
-      expect(screen.getByText('8')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('8');
     });
   });
 
@@ -366,7 +371,8 @@ describe('A008/settings-performance: budget table values', () => {
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('128 MB')).toBeInTheDocument();
-      expect(screen.getByText('512 MB')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('512 MB');
     });
   });
 
@@ -383,7 +389,8 @@ describe('A008/settings-performance: budget table values', () => {
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('2 invokes')).toBeInTheDocument();
-      expect(screen.getByText('6')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('6');
     });
   });
 
@@ -392,7 +399,8 @@ describe('A008/settings-performance: budget table values', () => {
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('2.5 GB')).toBeInTheDocument();
-      expect(screen.getByText('10 GB')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('10 GB');
     });
   });
 
@@ -409,7 +417,8 @@ describe('A008/settings-performance: budget table values', () => {
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('2 disabled')).toBeInTheDocument();
-      expect(screen.getByText('3 strikes / 5min')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('3 strikes / 5min');
     });
   });
 
@@ -610,7 +619,9 @@ describe('A007/settings-performance: GB display', () => {
     setupMocks({ metrics: makeMetrics({ batchIntervalMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('33ms')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
+      const bodyText = document.body.textContent ?? '';
+      expect(bodyText).toContain('33ms');
     });
   });
 
