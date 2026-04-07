@@ -36,3 +36,5 @@ intelligence/__pycache__/
 intelligence/.venv/
 intelligence/uv.lock
 coverage/
+src-tauri/*.json
+!src-tauri/tauri.conf.json
