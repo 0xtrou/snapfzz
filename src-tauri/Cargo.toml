@@ -4,6 +4,7 @@ members = [
   "crates/snapfzz-plugin-bridge",
   "crates/snapfzz-stream",
   "crates/snapfzz-kernel",
+  "crates/snapfzz-vault",
 ]
 resolver = "2"
 
@@ -35,6 +36,7 @@ dirs = "6"
 rfd = "0.15"
 snapfzz-kernel = { path = "crates/snapfzz-kernel" }
 snapfzz-stream = { path = "crates/snapfzz-stream" }
+snapfzz-vault = { path = "crates/snapfzz-vault" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

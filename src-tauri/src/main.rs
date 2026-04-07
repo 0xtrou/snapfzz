@@ -2,12 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use snapfzz_kernel::boot::{OnPreflightReady, PhaseTimingDto, PreflightContext, PreflightError, PreflightService};
+use snapfzz_kernel::boot::{
+    OnPreflightInit, OnPreflightReady, Phase, PhaseTimingDto, PreflightContext, PreflightError,
+    PreflightService,
+};
 use snapfzz_kernel::budget::{self, BudgetRegistry};
 use snapfzz_kernel::process::{self, ProcessManager, SpawnConfig};
 use snapfzz_kernel::settings::{Settings, SettingsManager};
 use snapfzz_stream::{send_and_consume, ContentBlockBatch, MessageResult, StreamError};
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use snapfzz_vault::{load_or_generate_master_key, SecretVault};
+use std::{fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
 use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager, RunEvent};
@@ -105,6 +109,27 @@ async fn agent_health(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result
 }
 #[tauri::command]
 async fn get_settings(settings_mgr: tauri::State<'_, Arc<SettingsManager>>) -> Result<Settings, String> { settings_mgr.load().map_err(|e| e.to_string()) }
+#[tauri::command]
+async fn vault_store(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, value: String) -> Result<(), String> {
+    vault.lock().unwrap().store(&key, value.as_bytes()).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn vault_read(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String) -> Result<String, String> {
+    let bytes = vault.lock().unwrap().read(&key).map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn vault_delete(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String) -> Result<(), String> {
+    vault.lock().unwrap().delete(&key).map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn vault_list(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>) -> Result<Vec<String>, String> {
+    Ok(vault.lock().unwrap().list())
+}
+#[tauri::command]
+async fn vault_has(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String) -> Result<bool, String> {
+    Ok(vault.lock().unwrap().has(&key))
+}
 #[tauri::command]
 async fn save_settings(app: tauri::AppHandle, settings_mgr: tauri::State<'_, Arc<SettingsManager>>, settings: Settings) -> Result<(), String> {
     settings_mgr.save(&settings).map_err(|e| e.to_string())?;
@@ -300,6 +325,29 @@ async fn run_metrics_loop(registry: Arc<BudgetRegistry>, handle: tauri::AppHandl
             }
         }
         if let Err(error) = handle.emit("budget-metrics", &registry.snapshot()) { eprintln!("[budget] metrics emit error: {error}"); }
+    }
+}
+
+struct VaultInitializer;
+
+impl OnPreflightInit for VaultInitializer {
+    fn on_preflight_init(&self, ctx: &mut PreflightContext) -> Result<(), PreflightError> {
+        // Per A011/KeyManagement: load from OS keychain first with local keyfile fallback.
+        let master_key = load_or_generate_master_key(&ctx.data_dir).map_err(|e| PreflightError::HookFailed {
+            phase: Phase::Vault,
+            detail: format!("vault key: {e}"),
+        })?;
+
+        // Per A011/FileFormat: vault ciphertext is persisted in data_dir/vault.enc.
+        let vault_path = ctx.data_dir.join("vault.enc");
+        let vault = SecretVault::open(&master_key, vault_path).map_err(|e| PreflightError::HookFailed {
+            phase: Phase::Vault,
+            detail: format!("vault open: {e}"),
+        })?;
+
+        ctx.set_extension("vault", Mutex::new(vault));
+        eprintln!("[preflight] Phase 2: vault — initialized");
+        Ok(())
     }
 }
 
