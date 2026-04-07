@@ -413,26 +413,6 @@ async fn agent_health(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result
     Ok(HealthStatus { status: status.into() })
 }
 
-fn get_settings_sync() -> Settings {
-    let path = settings_path();
-    eprintln!("[settings] reading from: {}", path.display());
-    if !path.exists() {
-        eprintln!("[settings] file not found, using defaults");
-        return Settings::default();
-    }
-    let content = fs::read_to_string(&path).unwrap_or_default();
-    match serde_json::from_str::<Settings>(&content) {
-        Ok(s) => {
-            eprintln!("[settings] loaded preset: '{}'", s.preset);
-            s
-        }
-        Err(e) => {
-            eprintln!("[settings] parse error: {e}, using defaults");
-            Settings::default()
-        }
-    }
-}
-
 #[tauri::command]
 async fn get_settings() -> Result<Settings, String> {
     let path = settings_path();
