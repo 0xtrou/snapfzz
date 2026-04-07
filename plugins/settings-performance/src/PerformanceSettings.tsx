@@ -1,7 +1,7 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
 // refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
-import { Card, Progress, Radio, Space, Tag, Typography } from 'antd';
+import { Card, Progress, Radio, Space, Typography } from 'antd';
 import { AntIcon, createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -51,15 +51,10 @@ async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): 
 
 type Preset = 'performance' | 'balanced' | 'battery';
 
-function PresetOption({ name, specs }: { name: string; specs: { cpu: number; ram: string; fps: number } }) {
+function PresetOption({ name }: { name: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <Text strong style={{ fontSize: 13 }}>{name}</Text>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        <Tag color="blue">{specs.cpu} CPU</Tag>
-        <Tag color="purple">{specs.ram}</Tag>
-        <Tag>{specs.fps}fps</Tag>
-      </div>
     </div>
   );
 }
@@ -69,22 +64,13 @@ function PresetOption({ name, specs }: { name: string; specs: { cpu: number; ram
 function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
   return [
     {
-      key: 'frame',
-      name: 'Frame',
+      key: 'batch',
+      name: 'Batch Interval',
       icon: 'ThunderboltOutlined',
       current: '—',
-      limit: `${metrics.batchIntervalMs}ms (${metrics.batchIntervalMs <= 16 ? '60' : '30'}fps)`,
+      limit: `${metrics.batchIntervalMs}ms`,
       percent: -1,
-      description: 'Maximum time per render frame. At 16ms the UI renders at 60fps with no jank. Battery mode relaxes to 33ms (30fps) to save power. Example: streaming 100 tokens/sec stays smooth because tokens are batched at this interval.',
-    },
-    {
-      key: 'batch',
-      name: 'Batch Rate',
-      icon: 'SwapOutlined',
-      current: '—',
-      limit: `${metrics.batchRateMs}ms`,
-      percent: -1,
-      description: 'How often streaming tokens are flushed to the UI. Matches the frame budget — tokens are coalesced and sent once per frame. Example: 50 tokens arriving in 16ms are batched into one update.',
+      description: 'How often streaming tokens are flushed to the UI. At 16ms, tokens arrive ~60 times/sec. Battery mode relaxes to 33ms (~30 times/sec) to reduce CPU usage.',
     },
     {
       key: 'cpu',
@@ -276,16 +262,13 @@ export default function PerformanceSettings() {
             >
               <Space>
                 <Radio value="battery" style={{ color: 'var(--text-primary)' }}>
-                  <PresetOption name="Battery" specs={{ cpu: 2, ram: '512MB', fps: 30 }} />
+                  <PresetOption name="Battery" />
                 </Radio>
                 <Radio value="balanced" style={{ color: 'var(--text-primary)' }}>
-                  <PresetOption name="Balanced" specs={{ cpu: 4, ram: '1GB', fps: 60 }} />
+                  <PresetOption name="Balanced" />
                 </Radio>
                 <Radio value="performance" style={{ color: 'var(--text-primary)' }}>
-                  <PresetOption
-                    name="Performance"
-                    specs={{ cpu: perfCpu, ram: perfRam, fps: 60 }}
-                  />
+                  <PresetOption name="Performance" />
                 </Radio>
                 <Radio value="custom" disabled style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
                   Custom <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>(coming soon)</span>
@@ -294,7 +277,7 @@ export default function PerformanceSettings() {
             </Radio.Group>
             {metrics && (
               <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.batchIntervalMs <= 16 ? '60fps' : '30fps'} · uptime {Math.floor(metrics.uptimeSecs / 60)}m
+                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.batchIntervalMs}ms batch · uptime {Math.floor(metrics.uptimeSecs / 60)}m
               </Text>
             )}
           </Space>
