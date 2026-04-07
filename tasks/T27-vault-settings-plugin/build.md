@@ -40,3 +40,36 @@
 - Run plugin-host test suite because discovery list changed
 - Run preferences tests because alias registration changed
 - Run diagnostics on changed TS/TSX files
+
+## Verification results
+- `pnpm install` (workspace sync) ✅
+- `pnpm --filter @snapfzz/settings-vault test:coverage` ✅
+  - 14/14 tests passed
+  - Coverage: lines **97.4%**, branches **91.17%**, functions **94.11%**
+- `pnpm --filter @snapfzz/settings-vault exec npx vitest run --coverage --coverage.reporter=json-summary` ✅
+- `pnpm --filter @snapfzz/plugin-host exec npx vitest run src/plugin-discovery.test.ts` ✅
+  - 8/8 tests passed (preferences discovery now includes `settings.vault`)
+- `pnpm --filter @snapfzz/plugin-host exec npx vitest run` ✅
+  - 111/111 tests passed
+- LSP diagnostics:
+  - `plugins/settings-vault/src` ✅ 0 diagnostics
+  - `frontend/packages/plugin-host/src` ✅ 0 diagnostics
+  - `frontend/packages/preferences/vite.config.ts` ✅ 0 diagnostics
+  - `frontend/packages/project/vite.config.ts` ✅ 0 diagnostics
+
+## Root-cause notes from verification
+- Initial plugin test failures were caused by workspace dependencies not installed (`pnpm install` resolved missing `@vitejs/plugin-react`).
+- Four vault tests failed due strict accessible-name matching (`Add` vs icon-prefixed `plus Add`).
+  - Fixed by querying add button with regex: `/Add$/`.
+
+## Current delta after verification
+- `plugins/settings-vault/src/__tests__/VaultSettings.test.tsx` (test selector fix)
+- `pnpm-lock.yaml` (workspace dependency lock update)
+
+## Scope/risk check
+- `gitnexus_impact(target: discoverPlugins)` → **LOW** risk, direct impact limited to `plugin-discovery.test.ts`.
+- No high/critical impact warnings encountered.
+
+## Status
+- Vault plugin verification is passing for modified scope.
+- Ready for commit/PR when requested.
