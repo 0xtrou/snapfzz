@@ -905,7 +905,7 @@ Theme is NOT a plugin. Theme is core infrastructure in `@snapfzz/shared/src/them
 
 Plugins receive theme tokens via CSS variables (`:root[data-theme="dark"]`). Plugins do NOT control the theme — they consume it.
 
-The `useTheme()` hook toggles dark/light and persists to localStorage. This is core behavior, not pluggable.
+The `useAppSettings()` hook manages theme state and persists to `settings.json` via Rust. This is core behavior, not pluggable.
 
 Why not a plugin:
 - Every plugin depends on theme tokens at render time

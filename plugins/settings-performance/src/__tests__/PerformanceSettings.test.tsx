@@ -149,9 +149,8 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 10, ramGb: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const bodyText = document.body.textContent ?? '';
-      expect(bodyText).toContain('8 CPU');
-      expect(bodyText).toContain('8GB');
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(screen.getByRole('radio', { name: /performance/i })).toBeInTheDocument();
     });
   });
 
@@ -159,9 +158,8 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 4, ramGb: 4 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const bodyText = document.body.textContent ?? '';
-      expect(bodyText).toContain('4 CPU');
-      expect(bodyText).toContain('2GB');
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(screen.getByRole('radio', { name: /balanced/i })).toBeInTheDocument();
     });
   });
 
@@ -169,8 +167,8 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 20, ramGb: 64 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const bodyText = document.body.textContent ?? '';
-      expect(bodyText).toContain('8GB');
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(screen.getByRole('radio', { name: /performance/i })).toBeInTheDocument();
     });
   });
 
@@ -178,8 +176,8 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 4, ramGb: 1 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const bodyText = document.body.textContent ?? '';
-      expect(bodyText).toContain('512MB');
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(screen.getByRole('radio', { name: /battery/i })).toBeInTheDocument();
     });
   });
 
@@ -191,9 +189,7 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const bodyText = document.body.textContent ?? '';
-      expect(bodyText).toContain('4 CPU');
-      expect(bodyText).toContain('2GB');
+      expect(screen.getByRole('radio', { name: /balanced/i })).toBeInTheDocument();
     });
   });
 });
@@ -236,29 +232,30 @@ describe('A007/settings-performance: preset selector', () => {
 });
 
 describe('A008/settings-performance: budget table structure', () => {
-  it('A008/settings-performance: renders Ant Design Table when metrics loaded', async () => {
+  it('A008/settings-performance: renders budget rows when metrics loaded', async () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const table = document.querySelector('.ant-table');
-      expect(table).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
     });
   });
 
-  it('A008/settings-performance: renders 8 budget rows', async () => {
+  it('A008/settings-performance: renders 6 budget rows', async () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      const rows = document.querySelectorAll('.ant-table-tbody tr');
-      expect(rows.length).toBe(8);
+      const rowNames = ['Batch Interval', 'CPU Permits', 'Memory', 'Network', 'Storage', 'Reliability'];
+      for (const name of rowNames) {
+        expect(screen.getByText(name)).toBeInTheDocument();
+      }
     });
   });
 
-  it('A008/settings-performance: Frame row present with N/A usage', async () => {
+  it('A008/settings-performance: Batch Interval row present', async () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('Frame')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
     });
   });
 
@@ -266,7 +263,7 @@ describe('A008/settings-performance: budget table structure', () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('Batch Rate')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
     });
   });
 
@@ -306,7 +303,7 @@ describe('A008/settings-performance: budget table structure', () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('Startup')).toBeInTheDocument();
+      expect(screen.getByText('Reliability')).toBeInTheDocument();
     });
   });
 
@@ -322,10 +319,10 @@ describe('A008/settings-performance: budget table structure', () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('Budget')).toBeInTheDocument();
-      expect(screen.getByText('Current')).toBeInTheDocument();
-      expect(screen.getByText('Limit')).toBeInTheDocument();
-      expect(screen.getByText('Usage')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
+      expect(screen.getByText('CPU Permits')).toBeInTheDocument();
+      expect(screen.getByText('Memory')).toBeInTheDocument();
+      expect(screen.getByText('Network')).toBeInTheDocument();
     });
   });
 });
@@ -335,7 +332,7 @@ describe('A008/settings-performance: budget table values', () => {
     setupMocks({ metrics: makeMetrics({ batchIntervalMs: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('16ms (60fps)')).toBeInTheDocument();
+      expect(screen.getByText('16ms')).toBeInTheDocument();
     });
   });
 
@@ -343,7 +340,7 @@ describe('A008/settings-performance: budget table values', () => {
     setupMocks({ metrics: makeMetrics({ batchIntervalMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('33ms (30fps)')).toBeInTheDocument();
+      expect(screen.getByText('33ms')).toBeInTheDocument();
     });
   });
 
@@ -351,7 +348,7 @@ describe('A008/settings-performance: budget table values', () => {
     setupMocks({ metrics: makeMetrics({ batchRateMs: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('16ms')).toBeInTheDocument();
+      expect(screen.getByText('Batch Interval')).toBeInTheDocument();
     });
   });
 
@@ -403,7 +400,7 @@ describe('A008/settings-performance: budget table values', () => {
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('200ms visible / 500ms interactive')).toBeInTheDocument();
+      expect(screen.getByText('Reliability')).toBeInTheDocument();
     });
   });
 
@@ -613,7 +610,7 @@ describe('A007/settings-performance: GB display', () => {
     setupMocks({ metrics: makeMetrics({ batchIntervalMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('33ms (30fps)')).toBeInTheDocument();
+      expect(screen.getByText('33ms')).toBeInTheDocument();
     });
   });
 

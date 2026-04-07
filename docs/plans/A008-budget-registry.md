@@ -26,25 +26,25 @@ Presets are the initial budget allocation based on hardware and power state. Use
 
 ```
 Performance (desktop, plugged in, ≥8 cores, ≥16GB RAM):
-  cpu_permits:     4
-  memory_mb:       2048
-  storage_gb:      10
-  frame_target_ms: 16    (60fps)
-  batch_rate_ms:   16
+  cpu_permits:       80% of cores (min 4)
+  memory_mb:         80% of RAM (cap 16GB)
+  storage_gb:        10
+  batch_interval_ms: 16
+  batch_rate_ms:     16
 
 Balanced (laptop, plugged in, ≥4 cores, ≥8GB RAM):
-  cpu_permits:     2
-  memory_mb:       1024
-  storage_gb:      5
-  frame_target_ms: 16    (60fps)
-  batch_rate_ms:   16
+  cpu_permits:       4
+  memory_mb:         1024
+  storage_gb:        5
+  batch_interval_ms: 16
+  batch_rate_ms:     16
 
 Battery (laptop, on battery):
-  cpu_permits:     2
-  memory_mb:       1024
-  storage_gb:      5
-  frame_target_ms: 33    (30fps)
-  batch_rate_ms:   33
+  cpu_permits:       2
+  memory_mb:         1024
+  storage_gb:        5
+  batch_interval_ms: 33
+  batch_rate_ms:     33
 ```
 
 ## Two Domains
@@ -55,7 +55,7 @@ Resources where the registry prevents violations from happening. Semaphore-based
 
 | Budget | What It Gates | Enforcement |
 |---|---|---|
-| Frame | Render cycle time per window | `frame_target_ms` emitted to frontend, PerformanceObserver measures |
+| Frame | Render cycle time per window | `batch_interval_ms` emitted to frontend, PerformanceObserver measures |
 | CPU | Zone 1/2 work permits | `Semaphore::try_acquire()` before spawning compute tasks |
 | Reliability | Plugin crash tolerance | Strike counter per plugin, auto-disable at threshold |
 | Network | SSE batch flush rate | Rate limiter gates `channel.send()` |
@@ -85,7 +85,7 @@ pub struct ControlledBudgets {
     cpu_permits: Arc<Semaphore>,
     network_rate: RateLimiter,
     plugin_strikes: DashMap<String, StrikeState>,
-    frame_target_ms: AtomicU64,
+    frame_target_ms: AtomicU64,  // now batch_interval_ms in implementation
     startup_budget_ms: u64,
 }
 
@@ -99,7 +99,7 @@ pub struct Preset {
     pub cpu_permits: usize,
     pub memory_mb: u64,
     pub storage_gb: u64,
-    pub frame_target_ms: u64,
+    pub frame_target_ms: u64,  // now batch_interval_ms in implementation
     pub batch_rate_ms: u64,
 }
 
@@ -199,8 +199,8 @@ drop(permit);
 ### Zone 3 (Main thread) — Frame budget
 
 ```typescript
-// Frontend reads frame_target_ms from registry
-const target = await ctx.rust.invoke('get_frame_target'); // 16 or 33
+// Frontend reads batch_interval_ms from registry
+const target = await ctx.rust.invoke('get_batch_interval'); // 16 or 33
 // PerformanceObserver measures against target
 ```
 
@@ -266,7 +266,7 @@ app_handle.emit("budget-metrics", BudgetMetrics {
     storage_used_gb: measure_disk_usage(),
     storage_limit_gb: preset.storage_gb,
     frame_avg_ms: frame_timing.average(),
-    frame_target_ms: preset.frame_target_ms,
+    batch_interval_ms: preset.batch_interval_ms,
     plugin_violations: plugin_strikes.total_violations(),
     uptime_secs: start_time.elapsed().as_secs(),
 });
@@ -319,7 +319,7 @@ Workers can't call Rust directly. Instead, Rust pre-allocates a budget envelope 
 // Rust: acquire bulk permit for the Worker
 let worker_budget = registry.try_acquire("zone2.state", Resource::CpuPermit(2))?;
 // Pass envelope to Worker via initial message
-worker.post_message(BudgetEnvelope { cpu_permits: 2, frame_target_ms: 16 });
+worker.post_message(BudgetEnvelope { cpu_permits: 2, batch_interval_ms: 16 });
 ```
 
 No per-task round-trip through the main thread. Worker is autonomous within its envelope.

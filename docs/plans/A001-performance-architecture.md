@@ -15,17 +15,16 @@ How the app protects the user's visual fluency. Every rendering decision traces 
 ```
 Budget class: "frame"
 Domain: Controlled (in-process)
-Source of truth: A008 preset.frame_target_ms
-  Performance: 16ms (60fps)
-  Balanced:    16ms (60fps)
-  Battery:     33ms (30fps)
+Source of truth: A008 preset.batch_interval_ms
+  Performance: 16ms (batch every 16ms)
+  Balanced:    16ms (batch every 16ms)
+  Battery:     33ms (batch every 33ms)
 
 Enforcement:
   - CSS containment (structural — browser enforces)
   - Pretext arithmetic layout (structural — no DOM measurement possible)
   - GPU-only animations (structural — never trigger layout)
   - 16ms/33ms SSE batch coalescing (registry-governed rate)
-
 Measurement:
   - PerformanceObserver for longtask > frame_target_ms
   - FPS counter in status bar (continuous display)
@@ -164,7 +163,7 @@ await invoke('send_message', { text, sessionId, onToken: channel });
 | Metric | Target (from A008 preset) | Tool |
 |---|---|---|
 | Frame drops during scroll | 0 | PerformanceObserver |
-| Long tasks (>preset.frame_target_ms) | 0 during interaction | Long Task API |
+| Long tasks (>50ms) | 0 during interaction | Long Task API |
 | LCP | < 2.5s | Web Vitals |
 | CLS | < 0.1 | Web Vitals |
 | JS bundle (initial) | < 200KB gzipped | Bundle analyzer |

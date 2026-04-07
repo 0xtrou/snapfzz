@@ -98,10 +98,11 @@ The ContributionStore in each window only receives contributions from plugins th
 ├────────────┬────────────────────────────────────┤
 │            │                                    │
 │  General   │  [Active section content]          │
-│  Runtime   │                                    │
-│  Perform.  │  Settings controls rendered here   │
+│  Perform.  │                                    │
+│  Processes │  Settings controls rendered here   │
 │  Plugins   │  from plugin contributions         │
 │  Advanced  │                                    │
+│  LLM Prov. │                                    │
 │            │                                    │
 │            │                                    │
 │            │                                    │
@@ -121,11 +122,13 @@ These ship as system plugins — same API as third-party plugins, but registered
 
 | Plugin | Section | What It Configures |
 |---|---|---|
-| `snapfzz.settings.general` | General | Theme (dark/light/system), language, startup behavior |
-| `snapfzz.settings.runtime` | Runtime | AgentScope host/port, Python/uv path, model config (API key, model, URL), process status + restart |
-| `snapfzz.settings.performance` | Performance | Preset (Performance/Balanced/Battery), max Runtime memory, frame budget target, background preload |
-| `snapfzz.settings.plugins` | Plugins | Installed list, enable/disable toggle, plugin info, install from path |
-| `snapfzz.settings.advanced` | Advanced | Dev tools toggle, log level, data directory, reset to defaults |
+| `snapfzz.settings.general` | General | Theme (dark/light/system), language, font family/size, custom font install, startup behavior |
+| `snapfzz.settings.performance` | Performance | Preset (Performance/Balanced/Battery), budget table, hardware-scaled limits |
+| `snapfzz.settings.processes` | Processes | Process table, AgentScope host/port config, logs, restart/kill |
+| `snapfzz.settings.plugins` | Plugins | Installed list, enable/disable toggle, plugin info |
+| `snapfzz.settings.advanced` | Advanced | FPS counter toggle, log level, data directory, reset to defaults |
+| `snapfzz.settings.llm-providers` | LLM Providers | Multi-provider config, API keys (via vault), model discovery, usage metering (A013) |
+| `snapfzz.settings.vault` | Secret Vault | Stored secrets list, add/remove secrets, master key status (A011) |
 
 ### Settings Persistence
 
@@ -193,10 +196,12 @@ frontend/packages/
 
 plugins/
   settings-general/            # system plugin
-  settings-runtime/            # system plugin
   settings-performance/        # system plugin
+  settings-processes/          # system plugin
   settings-plugins/            # system plugin
   settings-advanced/           # system plugin
+  settings-llm-providers/      # system plugin (A013)
+  settings-vault/              # system plugin (A011)
 ```
 
 ## Tauri Config

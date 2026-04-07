@@ -435,16 +435,10 @@ describe('A008/settings-processes: log panel', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
 
     await waitFor(() => {
       const logPanel = screen.getByTestId('log-panel-agentscope');
       expect(logPanel).toBeInTheDocument();
-      const style = window.getComputedStyle(logPanel);
       expect(logPanel).toHaveStyle({ fontFamily: 'var(--font-mono)' });
     });
   });
@@ -466,11 +460,6 @@ describe('A008/settings-processes: log panel', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
 
     await waitFor(() => {
       expect(screen.getByText('[14:22:01] INFO: Started on port 8090')).toBeInTheDocument();
@@ -588,11 +577,6 @@ describe('A008/settings-processes: clear logs', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
     await waitFor(() => screen.getByTestId('log-panel-agentscope'));
 
     await act(async () => {
@@ -682,10 +666,6 @@ describe('A008/settings-processes: error handling when Tauri unavailable', () =>
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
     await waitFor(() => screen.getByTestId('log-panel-agentscope'));
 
     await act(async () => {
@@ -878,11 +858,6 @@ describe('A008/settings-processes: log panel empty state', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
 
     await waitFor(() => {
       expect(screen.getByTestId('log-panel-agentscope')).toHaveTextContent('No logs');
@@ -902,11 +877,6 @@ describe('A008/settings-processes: log panel empty state', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
     await waitFor(() => screen.getByTestId('log-panel-agentscope'));
 
     await act(async () => {
@@ -931,11 +901,6 @@ describe('A008/settings-processes: log panel empty state', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-view-logs-agentscope'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('btn-view-logs-agentscope'));
-    });
 
     await waitFor(() => {
       expect(screen.getByTestId('btn-view-logs-agentscope')).toBeInTheDocument();
@@ -1171,7 +1136,11 @@ describe('A007/settings-processes: agentscope config section', () => {
     if (expandBtn) {
       await act(async () => { fireEvent.click(expandBtn); });
     }
-    await waitFor(() => screen.getByTestId('btn-save-restart-agentscope'));
+    await waitFor(() => screen.getByTestId('agentscope-port-input'));
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('agentscope-port-input'), { target: { value: '9000' } });
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('btn-save-restart-agentscope'));

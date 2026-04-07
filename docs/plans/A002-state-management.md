@@ -96,7 +96,7 @@ EXTERNAL: AgentScope Runtime (Supervised)
 Parse SSE in Rust. Data arrives at the main thread already structured and batched.
 
 ```rust
-let batch_rate = registry.query("frame").batch_rate_ms;  // from A008 preset
+let batch_rate = registry.batch_interval();  // from A008 preset
 
 while let Some(line) = reader.next_line().await? {
     if let Some(data) = line.strip_prefix("data: ") {
@@ -180,7 +180,7 @@ If it computes → Zone 1 or Zone 2. If it renders → Zone 3. No exceptions.
 // PerformanceObserver detects computation that leaked to Zone 3
 const observer = new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
-    if (entry.duration > frame_target_ms) {
+    if (entry.duration > batch_interval_ms) {
       invoke('budget_report_violation', {
         class: 'cpu',
         zone: 'zone3',

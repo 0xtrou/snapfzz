@@ -96,7 +96,7 @@ PluginContext {
 |---|---|
 | `@snapfzz/plugin-sdk` | `definePlugin()`, all TypeScript types, contribution interfaces |
 | `@snapfzz/plugin-host` | `PluginHost` class, `ContributionStore`, manifest discovery, dep resolution, lazy loading, activation, PluginContext factory, ErrorBoundary wrapping |
-| `@snapfzz/shared` | Entities (Project, Agent), lib (EventBus, TauriBridge, formatters), hooks (useTheme, useTauriEvent), theme (Ant Design zinc tokens) |
+| `@snapfzz/shared` | Entities (Project, Agent), lib (EventBus, TauriBridge, formatters), hooks (useAppSettings, useTauriEvent), theme (Ant Design zinc tokens), ConfirmAction |
 | `@snapfzz/launcher` | Thin shell: reads ContributionStore, renders registered content. Header + main + status bar slots. |
 | `@snapfzz/project` | Thin shell: reads ContributionStore. Left panel tabs + right panel tabs + bottom panel + status bar. Resizable split pane. |
 

@@ -371,7 +371,7 @@ describe('A007/settings-advanced: save error', () => {
 
     await waitFor(() => {
       const bodyText = document.body.textContent ?? '';
-      expect(bodyText).toMatch(/disk full|error/i);
+      expect(bodyText).toMatch(/unable to save|save settings|error/i);
     });
   });
 });
