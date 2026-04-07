@@ -25,42 +25,47 @@ jobs:
       - name: Kernel crate tests with coverage
         run: cargo llvm-cov test -p snapfzz-kernel --lib --json --output-path kernel-cov.json
         working-directory: src-tauri
-      - name: Assert kernel coverage ≥90%
+      - name: Assert kernel coverage ≥90% (lines + functions)
         working-directory: src-tauri
         run: |
-          LINE_PCT=$(python3 -c "
-          import json
+          python3 -c "
+          import json, sys
           d = json.load(open('kernel-cov.json'))
-          totals = d['data'][0]['totals']
-          lines = totals['lines']
-          pct = (lines['covered'] / lines['count'] * 100) if lines['count'] > 0 else 0
-          print(f'{pct:.2f}')
-          ")
-          echo "snapfzz-kernel line coverage: ${LINE_PCT}%"
-          python3 -c "import sys; sys.exit(0 if float('${LINE_PCT}') >= 90 else 1)"
+          t = d['data'][0]['totals']
+          lines = t['lines']['covered'] / t['lines']['count'] * 100 if t['lines']['count'] > 0 else 0
+          funcs = t['functions']['covered'] / t['functions']['count'] * 100 if t['functions']['count'] > 0 else 0
+          print(f'snapfzz-kernel: lines={lines:.1f}% functions={funcs:.1f}%')
+          if lines < 90 or funcs < 90:
+              print(f'FAIL: lines={lines:.1f}% funcs={funcs:.1f}% (need ≥90% each)')
+              sys.exit(1)
+          "
       - name: Stream crate tests with coverage
         run: cargo llvm-cov test -p snapfzz-stream --lib --json --output-path stream-cov.json
         working-directory: src-tauri
-      - name: Assert stream coverage ≥90%
+      - name: Assert stream coverage ≥90% (lines + functions)
         working-directory: src-tauri
         run: |
-          LINE_PCT=$(python3 -c "
-          import json
+          python3 -c "
+          import json, sys
           d = json.load(open('stream-cov.json'))
-          totals = d['data'][0]['totals']
-          lines = totals['lines']
-          pct = (lines['covered'] / lines['count'] * 100) if lines['count'] > 0 else 0
-          print(f'{pct:.2f}')
-          ")
-          echo "snapfzz-stream line coverage: ${LINE_PCT}%"
-          python3 -c "import sys; sys.exit(0 if float('${LINE_PCT}') >= 90 else 1)"
+          t = d['data'][0]['totals']
+          lines = t['lines']['covered'] / t['lines']['count'] * 100 if t['lines']['count'] > 0 else 0
+          funcs = t['functions']['covered'] / t['functions']['count'] * 100 if t['functions']['count'] > 0 else 0
+          print(f'snapfzz-stream: lines={lines:.1f}% functions={funcs:.1f}%')
+          if lines < 90 or funcs < 90:
+              print(f'FAIL: lines={lines:.1f}% funcs={funcs:.1f}% (need ≥90% each)')
+              sys.exit(1)
+          "
       - name: Main binary tests
         run: cargo test --bin Snapfzz
         working-directory: src-tauri
 
-  frontend-core:
-    name: Frontend Core
+  frontend-packages:
+    name: Frontend Packages
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [shared, plugin-sdk, plugin-host, launcher, project, preferences]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -71,7 +76,26 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install
-      - run: pnpm --filter @snapfzz/plugin-host exec npx vitest run
+      - name: Test with coverage
+        run: pnpm --filter @snapfzz/${{ matrix.package }} exec npx vitest run --coverage --coverage.reporter=json-summary
+      - name: Assert ≥90% overall coverage (lines + branches + functions)
+        run: |
+          SUMMARY="frontend/packages/${{ matrix.package }}/coverage/coverage-summary.json"
+          if [ -f "$SUMMARY" ]; then
+            node -e "
+              const s = require('./$SUMMARY').total;
+              const lines = s.lines.pct;
+              const branches = s.branches.pct;
+              const functions = s.functions.pct;
+              console.log('${{ matrix.package }}: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
+              if (lines < 90 || branches < 90 || functions < 90) {
+                console.error('FAIL: need ≥90% on lines + branches + functions');
+                process.exit(1);
+              }
+            "
+          else
+            echo "No coverage report — skipping threshold check"
+          fi
 
   plugin-chat:
     name: Chat Plugin
@@ -87,11 +111,19 @@ jobs:
           cache: pnpm
       - run: pnpm install
       - run: pnpm --filter @snapfzz/chat-plugin exec npx vitest run --coverage --coverage.reporter=json-summary
-      - name: Assert coverage
+      - name: Assert ≥90% overall coverage (lines + branches + functions)
         run: |
-          COV=$(node -e "console.log(require('./plugins/chat/coverage/coverage-summary.json').total.lines.pct)")
-          echo "Chat: ${COV}%"
-          node -e "if (${COV} < 90) process.exit(1)"
+          node -e "
+            const s = require('./plugins/chat/coverage/coverage-summary.json').total;
+            const lines = s.lines.pct;
+            const branches = s.branches.pct;
+            const functions = s.functions.pct;
+            console.log('chat: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
+            if (lines < 90 || branches < 90 || functions < 90) {
+              console.error('FAIL: need ≥90% on lines + branches + functions');
+              process.exit(1);
+            }
+          "
 
   plugin-settings:
     name: Settings Plugins
@@ -111,13 +143,21 @@ jobs:
       - run: pnpm install
       - name: Test with coverage
         run: pnpm --filter @snapfzz/${{ matrix.plugin }} exec npx vitest run --coverage --coverage.reporter=json-summary
-      - name: Assert ≥90% coverage
+      - name: Assert ≥90% overall coverage (lines + branches + functions)
         run: |
           SUMMARY="plugins/${{ matrix.plugin }}/coverage/coverage-summary.json"
           if [ -f "$SUMMARY" ]; then
-            COV=$(node -e "console.log(require('./$SUMMARY').total.lines.pct)")
-            echo "${{ matrix.plugin }}: ${COV}%"
-            node -e "if (${COV} < 90) { console.error('Coverage ${COV}% < 90%'); process.exit(1); }"
+            node -e "
+              const s = require('./$SUMMARY').total;
+              const lines = s.lines.pct;
+              const branches = s.branches.pct;
+              const functions = s.functions.pct;
+              console.log('${{ matrix.plugin }}: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
+              if (lines < 90 || branches < 90 || functions < 90) {
+                console.error('FAIL: need ≥90% on lines + branches + functions');
+                process.exit(1);
+              }
+            "
           else
             echo "No coverage report found — tests passed without coverage"
           fi

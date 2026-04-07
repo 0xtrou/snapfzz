@@ -332,13 +332,11 @@ struct VaultInitializer;
 
 impl OnPreflightInit for VaultInitializer {
     fn on_preflight_init(&self, ctx: &mut PreflightContext) -> Result<(), PreflightError> {
-        // Per A011/KeyManagement: load from OS keychain first with local keyfile fallback.
         let master_key = load_or_generate_master_key(&ctx.data_dir).map_err(|e| PreflightError::HookFailed {
             phase: Phase::Vault,
             detail: format!("vault key: {e}"),
         })?;
 
-        // Per A011/FileFormat: vault ciphertext is persisted in data_dir/vault.enc.
         let vault_path = ctx.data_dir.join("vault.enc");
         let vault = SecretVault::open(&master_key, vault_path).map_err(|e| PreflightError::HookFailed {
             phase: Phase::Vault,
@@ -373,8 +371,16 @@ async fn spawn_agentscope(handle: tauri::AppHandle, registry: Arc<BudgetRegistry
 fn main() {
     let data_dir = resolve_data_dir();
     let mut preflight = PreflightService::new(data_dir.clone());
+    preflight.register_init(Phase::Vault, Box::new(VaultInitializer));
     preflight.register_ready(Box::new(BootLogger));
     let result = preflight.run_sync().expect("[kernel] boot failed");
+
+    let vault = result
+        .context
+        .get_extension::<Mutex<SecretVault>>("vault")
+        .map(|v| Arc::new(v.clone()))
+        .unwrap_or_else(|| Arc::new(Mutex::new(SecretVault::empty(data_dir.join("vault.enc")))));
+
     let registry = result.registry.clone();
     let process_mgr = Arc::new(ProcessManager::with_parts(
         Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
@@ -384,9 +390,10 @@ fn main() {
     let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) = (registry.clone(), process_mgr.clone(), process_mgr.clone(), settings_mgr.clone());
 
     tauri::Builder::default()
-        .manage(registry).manage(process_mgr).manage(settings_mgr).manage(result.phase_timings_dto())
+        .manage(registry).manage(process_mgr).manage(settings_mgr).manage(vault).manage(result.phase_timings_dto())
         .invoke_handler(tauri::generate_handler![
-            send_message, stop_generation, create_session, load_session, agent_health, get_settings, save_settings,
+            send_message, stop_generation, create_session, load_session, agent_health, get_settings,
+            vault_store, vault_read, vault_delete, vault_list, vault_has, save_settings,
             get_data_dir, open_path, pick_folder, set_data_dir, get_batch_interval, get_startup_budget,
             budget_record_strike, budget_report_violation, budget_snapshot, set_preset, open_preferences,
             list_processes, get_process_logs, clear_process_logs, restart_process, kill_process, update_process_config,
