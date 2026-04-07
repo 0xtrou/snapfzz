@@ -124,7 +124,7 @@ describe('U011/vault-settings', () => {
 
     await user.type(screen.getByLabelText('Secret name'), 'invalid-name');
     await user.type(screen.getByLabelText('Secret value'), 'super-secret');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     expect(screen.getByText('Name must match provider:{id}:apiKey or custom:{name}.')).toBeInTheDocument();
     expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
@@ -137,7 +137,7 @@ describe('U011/vault-settings', () => {
     render(<VaultSettings />);
 
     await user.type(screen.getByLabelText('Secret value'), 'super-secret');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     expect(screen.getByText('Secret name is required.')).toBeInTheDocument();
     expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
@@ -150,7 +150,7 @@ describe('U011/vault-settings', () => {
     render(<VaultSettings />);
 
     await user.type(screen.getByLabelText('Secret name'), 'provider:openai:apiKey');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     expect(screen.getByText('Secret value is required.')).toBeInTheDocument();
     expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
@@ -165,7 +165,7 @@ describe('U011/vault-settings', () => {
 
     await user.type(screen.getByLabelText('Secret name'), 'provider:openai:apiKey');
     await user.type(screen.getByLabelText('Secret value'), 'sk-new-secret');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
