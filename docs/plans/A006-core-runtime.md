@@ -33,15 +33,24 @@ CORE RUNTIME (build first)              PLUGINS (build after core)
   Resizable split pane
   All empty until plugins load
 
-Rust: snapfzz-tauri-shell
+Rust: main.rs (orchestrator — A014)
   Tauri IPC (invoke + events)
-  EventBus bridge (JS ↔ Rust ↔ other WebView)
-  Window management
+  Window management, menus
+  Delegates to crates:
 
-Rust: snapfzz-stream-pipeline
+Rust: snapfzz-kernel
+  Boot (preflight phases + hooks)
+  Budget (registry, presets, permits)
+  Process (spawn, health, logs, supervisor)
+  Settings (schema, load/save)
+
+Rust: snapfzz-stream
   SSE consumer (reqwest-eventsource)
-  16ms batching
+  Token batching at batch_interval_ms
   Channel API to frontend
+
+Rust: snapfzz-vault
+  AES-256-GCM secret storage (A011)
 ```
 
 ## What Core Runtime Provides to Plugins
@@ -104,12 +113,11 @@ PluginContext {
 
 | Crate | What It Does |
 |---|---|
-| `snapfzz-core` | PluginManifest, HostSurface, BusMessage types |
-| `snapfzz-tauri-shell` | Window management, IPC invoke/event handlers, EventBus bridge |
-| `snapfzz-plugin-host` | Manifest registry (Rust side), capability checking |
-| `snapfzz-plugin-bridge` | Schema validation (serde ↔ zod), typed command routing |
-| `snapfzz-agent-supervisor` | Spawn AgentScope Runtime via `uv`, PID file, cleanup on exit. Runtime handles health/restart/sandbox internally. |
-| `snapfzz-stream-pipeline` | SSE consumer, 16ms batcher, Channel emitter, multiplexer |
+| `snapfzz-kernel` | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs), settings (schema + load/save), plugin_host (lifecycle types), shared types |
+| `snapfzz-stream` | SSE consumer, token batching at batch_interval_ms, Channel API to frontend |
+| `snapfzz-vault` | AES-256-GCM encrypted secret storage, master key from OS keychain |
+| `snapfzz-plugin-bridge` | Schema validation (serde ↔ zod), capability checking, typed command routing (Beta scope) |
+| `main.rs` | Orchestrator: Tauri command handlers, window/menu management, event emission, process spawning (A014) |
 
 ---
 
@@ -169,7 +177,7 @@ Both shells read from ContributionStore:
 
 ### Rust IPC — Wired for Real
 
-`snapfzz-tauri-shell` needs:
+`main.rs` (the orchestrator, per A014) handles:
 
 - **Invoke handlers**: register Tauri commands that plugins call via `ctx.rust.invoke()`
 - **Event bridge**: Rust emits events → JS EventBus receives. JS emits → Rust receives → forwards to other WebViews.

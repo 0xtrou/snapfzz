@@ -60,27 +60,12 @@ jobs:
         run: cargo test --bin Snapfzz
         working-directory: src-tauri
 
-  frontend-shared:
-    name: Shared Package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install
-      - run: pnpm --filter @snapfzz/shared exec npx vitest run --coverage --coverage.reporter=json-summary
-
   frontend-packages:
     name: Frontend Packages
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [plugin-sdk, plugin-host, launcher, project, preferences]
+        package: [shared, plugin-sdk, plugin-host, launcher, project, preferences]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

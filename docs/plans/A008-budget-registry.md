@@ -288,12 +288,12 @@ src-tauri/crates/
 All other crates register with `snapfzz-budget`:
 
 ```
-snapfzz-budget (kernel)
+snapfzz-kernel/budget (BudgetRegistry)
   ↑ registered by:
-  ├── snapfzz-agent-supervisor  → process budget (memory, health)
-  ├── snapfzz-stream-pipeline   → network budget (batch rate)
-  ├── snapfzz-tauri-shell       → window budget (per-layout)
-  ├── snapfzz-plugin-host       → reliability budget (strikes)
+  ├── snapfzz-kernel/process    → process budget (memory, health) — AgentScope + mini apps
+  ├── snapfzz-stream            → network budget (batch rate)
+  ├── main.rs (orchestrator)    → window budget (per-layout)
+  ├── snapfzz-kernel/plugin_host → reliability budget (strikes)
   └── snapfzz-plugin-bridge     → startup budget (activation timeout)
 ```
 

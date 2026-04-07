@@ -687,28 +687,20 @@ System plugins are unsigned — they ship with the app binary and are trusted im
 ### Core (Rust crates)
 
 ```
-snapfzz-core/               # Manifest schema, lifecycle contracts, bus types
-snapfzz-tauri-shell/        # Window/WebView management, IPC
-snapfzz-plugin-host/        # Resolver, loader, supervisor, crash containment
-snapfzz-plugin-bridge/      # Rust↔JS bridge, schema validation (serde + zod)
-snapfzz-agent-supervisor/   # Spawn AgentScope Runtime via uv, PID file, cleanup on exit. Runtime handles health/restart/sandbox.
-snapfzz-stream-pipeline/    # SSE consume from AgentScope Runtime, 16ms batch, Channel emit
+snapfzz-kernel/               # Boot, budget, process management, settings, shared types
+  ├── boot/                    # Preflight phases + hooks (A012)
+  ├── budget/                  # Resource registry, presets, permits (A008)
+  ├── process/                 # ProcessManager, health, logs, supervisor
+  ├── settings/                # Settings schema, load/save
+  ├── plugin_host/             # Plugin lifecycle types (Beta scope)
+  └── types.rs                 # PluginManifest, HostSurface, BusMessage
+
+snapfzz-stream/                # SSE consumer, token batching, Channel API
+snapfzz-vault/                 # AES-256-GCM secret vault (A011)
+snapfzz-plugin-bridge/         # Plugin→kernel validation, capability checking (Beta scope)
 ```
 
-#### snapfzz-agent-supervisor
-
-Spawns AgentScope Runtime via `uv run python app.py`. Manages PID file for orphan cleanup. Kills process on app exit via `RunEvent::ExitRequested`.
-
-AgentScope Runtime (agentscope-runtime package) provides everything else:
-- **AgentApp** — FastAPI server with SSE streaming, health endpoint, session management
-- **LocalDeployManager** — health checks, monitoring, lifecycle management, graceful shutdown
-- **Sandbox Service** — browser, filesystem, GUI, cloud, mobile sandboxes for code execution
-- **Session Service** — Redis, JSON, Tablestore session persistence
-- **Memory Service** — InMemory, Redis, SQLAlchemy memory backends
-- **A2A Protocol** — agent-to-agent communication
-- **OpenAI SDK compatible** — clients can call via standard OpenAI SDK
-
-Our Rust crate does ~50 LOC: spawn, PID file, wait for health, cleanup on exit.
+main.rs is the orchestrator — routes, gates, emits. Manages windows, menus, process spawning, event emission. Delegates work to crates. See A014.
 
 ### Core (Frontend packages)
 

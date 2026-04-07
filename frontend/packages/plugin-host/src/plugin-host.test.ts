@@ -614,6 +614,16 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(host.getPluginState('never-activated')).toBe('registered');
   });
 
+  it('A005/lifecycle: enabling already-enabled plugin keeps state unchanged', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    host.register(defineTestPlugin({ id: 'already-enabled' }));
+
+    await host.enable('already-enabled');
+
+    expect(host.getPluginState('already-enabled')).toBe('registered');
+  });
+
   it('A005/lifecycle: activateByEvent skips disabled dependencies even if collected', async () => {
     const host = new PluginHost(new ContributionStore());
     const order: string[] = [];
