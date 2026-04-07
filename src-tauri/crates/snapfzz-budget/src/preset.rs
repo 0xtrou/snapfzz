@@ -126,10 +126,10 @@ pub fn select_preset(hw: &HardwareInfo) -> PresetName {
 pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
     match name {
         PresetName::Performance => {
-            // Leave 2 cores for OS; guarantee at least 4 permits.
-            let cpu_permits = std::cmp::max(hw.cores.saturating_sub(2), 4);
-            // Cap app memory at 50% of RAM or 8192 MB, whichever is smaller.
-            let app_total_mb = std::cmp::min(hw.ram_gb * 512, 8192);
+            // 80% of cores, minimum 4 permits.
+            let cpu_permits = std::cmp::max((hw.cores * 4 / 5) as usize, 4);
+            // 80% of RAM in MB, capped at 16GB.
+            let app_total_mb = std::cmp::min((hw.ram_gb as u64) * 1024 * 4 / 5, 16384);
             // AgentScope gets 75% of the app total.
             let agentscope_max_mb = app_total_mb * 3 / 4;
             Preset {

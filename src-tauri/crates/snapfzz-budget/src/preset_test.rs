@@ -97,8 +97,10 @@ mod tests {
         };
         let preset = build_preset(PresetName::Performance, &hw);
         assert_eq!(preset.cpu.permits, 6);
-        assert_eq!(preset.memory.app_total_mb, 8192);
-        assert_eq!(preset.memory.agentscope_max_mb, 6144);
+        // 16 * 1024 * 4 / 5 = 13107
+        assert_eq!(preset.memory.app_total_mb, 13107);
+        // 13107 * 3 / 4 = 9830
+        assert_eq!(preset.memory.agentscope_max_mb, 9830);
     }
 
     #[test]
@@ -110,20 +112,23 @@ mod tests {
         };
         let preset = build_preset(PresetName::Performance, &hw);
         assert_eq!(preset.cpu.permits, 4);
-        assert_eq!(preset.memory.app_total_mb, 4096);
-        assert_eq!(preset.memory.agentscope_max_mb, 3072);
+        // 8 * 1024 * 4 / 5 = 6553
+        assert_eq!(preset.memory.app_total_mb, 6553);
+        // 6553 * 3 / 4 = 4914
+        assert_eq!(preset.memory.agentscope_max_mb, 4914);
     }
 
     #[test]
-    fn a008_preset_performance_caps_memory_at_8192mb() {
+    fn a008_preset_performance_caps_memory_at_16384mb() {
         let hw = HardwareInfo {
             cores: 20,
             ram_gb: 64,
             on_battery: false,
         };
         let preset = build_preset(PresetName::Performance, &hw);
-        assert_eq!(preset.memory.app_total_mb, 8192);
-        assert_eq!(preset.memory.agentscope_max_mb, 6144);
+        assert_eq!(preset.memory.app_total_mb, 16384);
+        // 16384 * 3 / 4 = 12288
+        assert_eq!(preset.memory.agentscope_max_mb, 12288);
     }
 
     #[test]

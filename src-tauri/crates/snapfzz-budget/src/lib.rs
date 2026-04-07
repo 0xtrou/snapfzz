@@ -13,7 +13,6 @@ mod supervised_test;
 mod registry_test;
 
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
@@ -24,7 +23,7 @@ use supervised::{ProcessBudget, StorageState, SupervisedBudgets};
 
 pub struct BudgetRegistry {
     pub preset: RwLock<Preset>,
-    pub controlled: ControlledBudgets,
+    pub controlled: RwLock<ControlledBudgets>,
     pub supervised: SupervisedBudgets,
     boot_time: Instant,
 }
@@ -40,7 +39,6 @@ impl BudgetRegistry {
     pub fn with_preset(preset: Preset) -> Self {
         let controlled = ControlledBudgets::from_preset(&preset);
 
-        // A004: Storage budget monitors ~/.snapfzz/ (the canonical global data dir).
         let global_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".snapfzz");
@@ -53,7 +51,7 @@ impl BudgetRegistry {
 
         Self {
             preset: RwLock::new(preset),
-            controlled,
+            controlled: RwLock::new(controlled),
             supervised,
             boot_time: Instant::now(),
         }
@@ -64,37 +62,34 @@ impl BudgetRegistry {
         Self::with_preset(build_preset(name, &hw))
     }
 
-    // A008: swap_preset updates both the atomics (hot path) and the stored
-    // Preset (for snapshot() accuracy) atomically under the write lock.
     pub fn swap_preset(&self, new_preset: Preset) {
-        self.controlled
-            .batch_interval_ms
-            .store(new_preset.frame.target_ms, Ordering::Relaxed);
-        self.controlled
-            .batch_rate_ms
-            .store(new_preset.network.batch_rate_ms, Ordering::Relaxed);
-        let mut guard = self.preset.write().unwrap();
-        *guard = new_preset;
+        let new_controlled = ControlledBudgets::from_preset(&new_preset);
+        {
+            let mut guard = self.controlled.write().unwrap();
+            *guard = new_controlled;
+        }
+        let mut preset_guard = self.preset.write().unwrap();
+        *preset_guard = new_preset;
     }
 
     pub fn try_acquire_cpu(&self) -> Option<CpuPermit> {
-        self.controlled.try_acquire_cpu()
+        self.controlled.read().unwrap().try_acquire_cpu()
     }
 
     pub fn try_acquire_invoke(&self, plugin_id: &str) -> Option<InvokePermit> {
-        self.controlled.try_acquire_invoke(plugin_id)
+        self.controlled.read().unwrap().try_acquire_invoke(plugin_id)
     }
 
     pub fn record_strike(&self, plugin_id: &str) {
-        self.controlled.record_strike(plugin_id);
+        self.controlled.read().unwrap().record_strike(plugin_id);
     }
 
     pub fn is_plugin_disabled(&self, plugin_id: &str) -> bool {
-        self.controlled.is_plugin_disabled(plugin_id)
+        self.controlled.read().unwrap().is_plugin_disabled(plugin_id)
     }
 
     pub fn enable_plugin(&self, plugin_id: &str) {
-        self.controlled.enable_plugin(plugin_id);
+        self.controlled.read().unwrap().enable_plugin(plugin_id);
     }
 
     pub fn register_process(&self, name: &str, budget: ProcessBudget) {
@@ -106,18 +101,19 @@ impl BudgetRegistry {
     }
 
     pub fn batch_interval(&self) -> u64 {
-        self.controlled.batch_interval()
+        self.controlled.read().unwrap().batch_interval()
     }
 
     pub fn batch_rate(&self) -> u64 {
-        self.controlled.batch_rate()
+        self.controlled.read().unwrap().batch_rate()
     }
 
     pub fn startup_budget(&self) -> (u64, u64, u64) {
+        let ctrl = self.controlled.read().unwrap();
         (
-            self.controlled.startup_visible_ms,
-            self.controlled.startup_interactive_ms,
-            self.controlled.activation_timeout_ms,
+            ctrl.startup_visible_ms,
+            ctrl.startup_interactive_ms,
+            ctrl.activation_timeout_ms,
         )
     }
 
@@ -164,17 +160,18 @@ impl BudgetRegistry {
             .map(|p| p.status.clone())
             .unwrap_or(ProcessStatus::Stopped);
 
-        let disabled_plugins: Vec<String> = self.controlled.disabled_plugin_ids();
+        let ctrl = self.controlled.read().unwrap();
+        let disabled_plugins: Vec<String> = ctrl.disabled_plugin_ids();
 
         let preset = self.preset.read().unwrap();
         BudgetMetrics {
             preset_name: preset.name.clone(),
-            cpu_used: self.controlled.cpu_total() - self.controlled.cpu_available(),
-            cpu_total: self.controlled.cpu_total(),
-            invoke_used: self.controlled.invoke_total() - self.controlled.invoke_available(),
-            invoke_total: self.controlled.invoke_total(),
-            batch_interval_ms: self.controlled.batch_interval_ms.load(Ordering::Relaxed),
-            batch_rate_ms: self.controlled.batch_rate_ms.load(Ordering::Relaxed),
+            cpu_used: ctrl.cpu_total() - ctrl.cpu_available(),
+            cpu_total: ctrl.cpu_total(),
+            invoke_used: ctrl.invoke_total() - ctrl.invoke_available(),
+            invoke_total: ctrl.invoke_total(),
+            batch_interval_ms: ctrl.batch_interval(),
+            batch_rate_ms: ctrl.batch_rate(),
             agentscope_rss_mb,
             agentscope_max_mb: preset.memory.agentscope_max_mb,
             agentscope_status,
