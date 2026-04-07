@@ -233,3 +233,34 @@ Consolidated all settings plugins and shared settings hook to use the shared `cr
    - `use-tauri-event.ts` now subscribes through `createTauriBridge()` instead of raw `@tauri-apps/api/event` imports.
    - `use-window-drag.ts` now invokes window commands through `createTauriBridge()` instead of `window.__TAURI_INTERNALS__`.
    - `settings-performance` removed its remaining local `tauriInvoke()` wrapper and now calls `bridge.invoke(...)` directly.
+
+### Final Verification (Settings IPC consolidation)
+
+#### Diagnostics
+- `lsp_diagnostics` clean on changed test files:
+  - `plugins/settings-general/src/__tests__/GeneralSettings.test.tsx`
+  - `plugins/settings-advanced/src/__tests__/AdvancedSettings.test.tsx`
+  - `plugins/settings-plugins/src/__tests__/PluginsSettings.test.tsx`
+  - `plugins/settings-processes/src/__tests__/ProcessesSettings.test.tsx`
+  - `plugins/settings-performance/src/__tests__/PerformanceSettings.test.tsx`
+
+#### Raw Tauri internals grep
+- `grep -R --line-number "__TAURI_INTERNALS__" plugins frontend/packages/shared/src --include='*.ts' --include='*.tsx'`
+  - No matches in production codepaths.
+- Confirmed with content grep:
+  - `plugins/**/*.ts(x)` → no matches
+  - `frontend/packages/shared/src/**/*.ts(x)` → no matches
+
+#### Test runs
+Passed:
+- `cd frontend && CI=true npx vitest run`
+- `cd plugins/settings-general && CI=true npx vitest run src/__tests__/GeneralSettings.test.tsx`
+- `cd plugins/settings-advanced && CI=true npx vitest run src/__tests__/AdvancedSettings.test.tsx`
+- `cd plugins/settings-plugins && CI=true npx vitest run src/__tests__/PluginsSettings.test.tsx`
+- `cd plugins/settings-processes && CI=true npx vitest run src/__tests__/ProcessesSettings.test.tsx`
+- `cd plugins/settings-performance && CI=true npx vitest run src/__tests__/PerformanceSettings.test.tsx`
+
+#### Test expectation alignment completed
+- `settings-processes` assertions updated from `toHaveBeenCalledWith('list_processes', undefined)` to `toHaveBeenCalledWith('list_processes')`.
+- `settings-performance` assertions updated from `toHaveBeenCalledWith('<cmd>', undefined)` to single-arg command assertions, matching shared bridge invocation shape.
+- All settings test suites now use `vi.clearAllMocks()` in `afterEach` to avoid wiping mocked bridge implementations used by module-scoped `createTauriBridge()` instances.

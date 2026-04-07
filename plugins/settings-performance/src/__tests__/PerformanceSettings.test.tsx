@@ -58,7 +58,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe('A008/settings-performance: stateless preset from backend', () => {
@@ -149,7 +149,7 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 10, ramGb: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info');
       expect(screen.getByRole('radio', { name: /performance/i })).toBeInTheDocument();
     });
   });
@@ -158,7 +158,7 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 4, ramGb: 4 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info');
       expect(screen.getByRole('radio', { name: /balanced/i })).toBeInTheDocument();
     });
   });
@@ -167,7 +167,7 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 20, ramGb: 64 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info');
       expect(screen.getByRole('radio', { name: /performance/i })).toBeInTheDocument();
     });
   });
@@ -176,7 +176,7 @@ describe('A008/settings-performance: hardware-scaled performance badge', () => {
     setupMocks({ hwInfo: makeHwInfo({ cores: 4, ramGb: 1 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info');
       expect(screen.getByRole('radio', { name: /battery/i })).toBeInTheDocument();
     });
   });
@@ -478,7 +478,7 @@ describe('A007/settings-performance: budget metrics display (API compat)', () =>
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(mockBridgeInvoke).toHaveBeenCalledWith('budget_snapshot', undefined);
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('budget_snapshot');
     });
   });
 
@@ -486,7 +486,7 @@ describe('A007/settings-performance: budget metrics display (API compat)', () =>
     setupMocks();
     render(<PerformanceSettings />);
     await waitFor(() => {
-      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info', undefined);
+      expect(mockBridgeInvoke).toHaveBeenCalledWith('get_hardware_info');
     });
   });
 
@@ -509,7 +509,7 @@ describe('A007/settings-performance: metrics refresh', () => {
     try {
       setupMocks();
       render(<PerformanceSettings />);
-      await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledWith('budget_snapshot', undefined));
+      await waitFor(() => expect(mockBridgeInvoke).toHaveBeenCalledWith('budget_snapshot'));
 
       const callsBefore = mockBridgeInvoke.mock.calls.filter(([cmd]) => cmd === 'budget_snapshot').length;
       await act(async () => { vi.advanceTimersByTime(2001); await Promise.resolve(); });

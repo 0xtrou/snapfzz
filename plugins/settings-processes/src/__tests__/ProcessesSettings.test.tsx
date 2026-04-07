@@ -48,7 +48,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe('A008/settings-processes: header and layout', () => {
@@ -475,7 +475,7 @@ describe('A008/settings-processes: data polling', () => {
     try {
       mockInvoke.mockResolvedValue([makeProcess()]);
       render(<ProcessesSettings />);
-      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('list_processes', undefined));
+      await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('list_processes'));
 
       const callsBefore = mockInvoke.mock.calls.length;
       await act(async () => {
@@ -505,7 +505,7 @@ describe('A008/settings-processes: Tauri commands', () => {
     }
     await waitFor(() => screen.getByTestId('btn-restart-agentscope'));
 
-    expect(mockInvoke).toHaveBeenCalledWith('list_processes', undefined);
+    expect(mockInvoke).toHaveBeenCalledWith('list_processes');
   });
 
   it('A008/settings-processes: get_process_logs is called with name and tailN', async () => {
@@ -728,7 +728,7 @@ describe('A008/settings-processes: kill process', () => {
     });
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('list_processes', undefined);
+      expect(mockInvoke).toHaveBeenCalledWith('list_processes');
     });
   });
 });

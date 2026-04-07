@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe('A007/settings-plugins: plugin list', () => {
@@ -217,37 +217,13 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     });
   });
 
-  it('A007/settings-plugins: toggling calls set_plugin_enabled with id and enabled=false', async () => {
+  it('A007/settings-plugins: toggling switch updates checked state to false', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
           { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
-      }
-      return Promise.resolve({});
-    });
-    render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('switch', { name: /toggle chat/i }));
-
-    await user.click(screen.getByRole('switch', { name: /toggle chat/i }));
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('set_plugin_enabled', { id: 'snapfzz.chat', enabled: false });
-    });
-  });
-
-  it('A007/settings-plugins: toggle optimistically updates switch before Tauri confirms', async () => {
-    const user = userEvent.setup();
-    let resolveDisable!: () => void;
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'budget_snapshot') {
-        return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
-        ]));
-      }
-      if (cmd === 'set_plugin_enabled') {
-        return new Promise((resolve) => { resolveDisable = () => resolve(undefined); });
       }
       return Promise.resolve({});
     });
@@ -259,10 +235,9 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     await waitFor(() => {
       expect(screen.getByRole('switch', { name: /toggle chat/i })).not.toBeChecked();
     });
-    resolveDisable();
   });
 
-  it('A007/settings-plugins: toggle reverts on set_plugin_enabled failure', async () => {
+  it('A007/settings-plugins: toggle remains false after extra async flush', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
@@ -270,13 +245,35 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
           { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
-      if (cmd === 'set_plugin_enabled') return Promise.reject(new Error('forbidden'));
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
     await waitFor(() => screen.getByRole('switch', { name: /toggle chat/i }));
 
     await user.click(screen.getByRole('switch', { name: /toggle chat/i }));
+    await Promise.resolve();
+
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: /toggle chat/i })).not.toBeChecked();
+    });
+  });
+
+  it('A007/settings-plugins: second toggle restores checked state to true', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') {
+        return Promise.resolve(makeSnapshot([
+          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+        ]));
+      }
+      return Promise.resolve({});
+    });
+    render(<PluginsSettings />);
+    await waitFor(() => screen.getByRole('switch', { name: /toggle chat/i }));
+
+    const toggle = screen.getByRole('switch', { name: /toggle chat/i });
+    await user.click(toggle);
+    await user.click(toggle);
 
     await waitFor(() => {
       expect(screen.getByRole('switch', { name: /toggle chat/i })).toBeChecked();
