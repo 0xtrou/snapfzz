@@ -112,30 +112,15 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - **main.rs < 300 lines** — thin Tauri command handlers that delegate to crate methods.
 - **Delete 6 stub crates** — merged into kernel or removed (tauri-shell, plugin-host Rust).
 
-### A011 — Secret Vault
-`docs/plans/A011-secret-vault.md`
+### A015 — Mini App Runtime
+`docs/plans/A015-miniapp-runtime.md`
 
-- **AES-256-GCM** encrypted storage for API keys and credentials.
-- **Master key** generated once on first boot, stored in OS keychain (fallback: local keyfile).
-- **Backend-only** — frontend never sees raw secrets, only masked references.
-- **Vault file** (`vault.enc`) is binary ciphertext, atomic writes via temp+rename.
-
-### A012 — Preflight Service
-`docs/plans/A012-preflight-service.md`
-
-- **Consolidated boot-time initialization** — filesystem, vault, settings, budget, processes.
-- **6 phases**: filesystem → vault → settings → budget → processes → background services.
-- **Sync phases (1-4) complete before first window opens** (<25ms budget).
-- **Async phases (5-6) run in background** — window opens immediately.
-
-### A013 — LLM Providers
-`docs/plans/A013-llm-providers.md`
-
-- **Multi-provider settings** — OpenAI, Anthropic, xAI, MiniMax, Alibaba, Generic OpenAI/Anthropic.
-- **Model auto-discovery** — GET /v1/models + LiteLLM pricing database merge.
-- **Usage metering** — append-only JSONL log, per-call token counts + cost.
-- **Budget enforcement** — per-provider daily/monthly caps with warning thresholds.
-- **API keys via Secret Vault (A011)** — never plaintext in settings.json.
+- **Full-stack apps** — mini app = complete backend + frontend, not just an iframe.
+- **Kernel-managed processes** — all mini app backends registered with ProcessManager.
+- **CEF windows** — each mini app gets its own Chromium window, no Tauri IPC.
+- **Plugin-jailed** — CWD locked to `~/.snapfzz/plugins/{id}/dist/`, inherits plugin capabilities.
+- **Internal network** — plugin processes can reach each other, CANNOT reach system processes.
+- **Bookmarkable** — users pin mini apps to launcher for quick access.
 
 ---
 

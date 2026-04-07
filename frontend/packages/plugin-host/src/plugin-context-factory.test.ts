@@ -76,6 +76,18 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
     expect(context.logger).toBeDefined();
   });
 
+  it('A005/isolation: falls back to in-memory storage when adapter is not provided', async () => {
+    const context = createPluginContext('plugin.inmemory', 'project', new ContributionStore());
+
+    expect(context.settings.get('missing')).toBeUndefined();
+
+    context.settings.set('theme', { mode: 'dark' });
+    expect(context.settings.get<{ mode: string }>('theme')).toEqual({ mode: 'dark' });
+
+    await context.storage.set('session', { id: 7 });
+    await expect(context.storage.get<{ id: number }>('session')).resolves.toEqual({ id: 7 });
+  });
+
   it('A005/communication: provides namespaced EventBus that isolates plugin topics', () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
     const handler = vi.fn();
@@ -335,5 +347,57 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
     disposePluginContext(context);
 
     expect(() => context.apis.get('service.token')).toThrow(/not provided/i);
+  });
+
+  it('A005/communication: disposing non-owner context does not remove shared API token', () => {
+    const ownerContext = createPluginContext('plugin.owner', 'launcher', new ContributionStore(), undefined, storage);
+    const observerContext = createPluginContext('plugin.observer', 'launcher', new ContributionStore(), undefined, storage);
+
+    ownerContext.apis.provide('shared.token', { ok: true });
+
+    disposePluginContext(observerContext);
+
+    expect(ownerContext.apis.get<{ ok: boolean }>('shared.token')).toEqual({ ok: true });
+
+    disposePluginContext(ownerContext);
+    expect(() => ownerContext.apis.get('shared.token')).toThrow(/not provided/i);
+  });
+
+  it('A005/isolation: attachDisposable no-ops after context disposal', () => {
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
+
+    disposePluginContext(context);
+
+    expect(() => context.commands.register('late.command', async () => undefined)).not.toThrow();
+  });
+
+  it('A005/isolation: settings onChange keeps key when multiple listeners remain', () => {
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
+    const first = vi.fn();
+    const second = vi.fn();
+
+    const disposeFirst = context.settings.onChange('theme', first);
+    context.settings.onChange('theme', second);
+
+    disposeFirst();
+    context.settings.set('theme', { mode: 'blue' });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith({ mode: 'blue' });
+  });
+
+  it('A005/communication: API owner replacement keeps token after old owner disposal', () => {
+    const ownerA = createPluginContext('plugin.a', 'launcher', new ContributionStore(), undefined, storage);
+    const ownerB = createPluginContext('plugin.b', 'launcher', new ContributionStore(), undefined, storage);
+
+    ownerA.apis.provide('shared.token', { owner: 'a' });
+    ownerB.apis.provide('shared.token', { owner: 'b' });
+
+    disposePluginContext(ownerA);
+
+    expect(ownerB.apis.get<{ owner: string }>('shared.token')).toEqual({ owner: 'b' });
+
+    disposePluginContext(ownerB);
+    expect(() => ownerB.apis.get('shared.token')).toThrow(/not provided/i);
   });
 });

@@ -104,6 +104,7 @@ describe('A005/lifecycle: PluginHost registration, resolution, and lifecycle con
     expect(mockActivate).toHaveBeenCalledTimes(1);
     const ctx = mockActivate.mock.calls[0][0] as PluginContext;
     expect(ctx.surface).toBe('launcher');
+    expect(ctx.projectPath).toBeUndefined();
     expect(ctx.bus).toBeDefined();
     expect(ctx.commands).toBeDefined();
     expect(ctx.registry).toBeDefined();
@@ -578,6 +579,41 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(order).toEqual(['dep-core', 'dependent']);
   });
 
+  it('A005/lifecycle: enable re-activates disabled plugin after event has already fired', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const activate = vi.fn().mockResolvedValue({});
+
+    host.register(
+      defineTestPlugin({
+        id: 'fired-event-reenable',
+        activationEvents: ['onStartupFinished'],
+        activate,
+      }),
+    );
+
+    await host.activateByEvent('onStartupFinished');
+    await host.disable('fired-event-reenable');
+
+    activate.mockClear();
+    await host.enable('fired-event-reenable');
+
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(host.getPluginState('fired-event-reenable')).toBe('running');
+  });
+
+  it('A005/lifecycle: enable sets registered state when plugin had been disabled before activation', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    host.register(defineTestPlugin({ id: 'never-activated' }));
+    await host.disable('never-activated');
+
+    expect(host.getPluginState('never-activated')).toBe('disabled');
+
+    await host.enable('never-activated');
+
+    expect(host.getPluginState('never-activated')).toBe('registered');
+  });
+
   it('A005/lifecycle: activateByEvent skips disabled dependencies even if collected', async () => {
     const host = new PluginHost(new ContributionStore());
     const order: string[] = [];
@@ -611,6 +647,18 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(order).toEqual(['depends-on-disabled']);
   });
 
+  it('A005/lifecycle: collectDependencies returns early for unknown plugin ids', () => {
+    const host = new PluginHost(new ContributionStore());
+    const collector = new Set<string>();
+
+    (host as unknown as { collectDependencies: (pluginId: string, sink: Set<string>) => void }).collectDependencies(
+      'unknown.plugin',
+      collector,
+    );
+
+    expect(Array.from(collector)).toEqual([]);
+  });
+
   it('A005/lifecycle: readDisabledPlugins tolerates invalid JSON', () => {
     const badStorage: StorageInterface = {
       getItem: (key) => (key === 'snapfzz:disabledPlugins' ? '{bad-json' : null),
@@ -634,6 +682,18 @@ describe('A005/lifecycle: additional branch coverage', () => {
 
     expect(host.getDisabledPlugins().sort()).toEqual(['persisted.one', 'persisted.two']);
     expect(host.isEnabled('persisted.one')).toBe(false);
+  });
+
+  it('A005/lifecycle: readDisabledPlugins returns empty set when persisted value is empty', () => {
+    const storageWithEmpty: StorageInterface = {
+      getItem: (key) => (key === 'snapfzz:disabledPlugins' ? '' : null),
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
+
+    const host = new PluginHost(new ContributionStore(), 'launcher', storageWithEmpty);
+
+    expect(host.getDisabledPlugins()).toEqual([]);
   });
 
   it('A005/lifecycle: persistDisabledPlugins no-ops without storage adapter', async () => {
@@ -753,6 +813,26 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(host.getPluginState('loaderless')).toBe('registered');
   });
 
+  it('A005/lifecycle: warns when startup activation budget is exceeded', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    host.register(
+      defineTestPlugin({
+        id: 'slow-startup',
+        activationEvents: ['onStartupFinished'],
+        activate: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 230));
+          return {};
+        },
+      }),
+    );
+
+    await host.activateByEvent('onStartupFinished');
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Startup activation budget exceeded'));
+  });
+
   it('A005/lifecycle: activate registers manifest contributions into store', async () => {
     const store = new ContributionStore();
     const host = new PluginHost(store);
@@ -792,6 +872,29 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(store.getCommands()).toHaveLength(1);
     expect(store.getShortcuts()).toHaveLength(1);
     expect(store.getSettingsSections()).toHaveLength(1);
+  });
+
+  it('A005/lifecycle: activate skips contribution registration when manifest has no contributes', async () => {
+    const store = new ContributionStore();
+    const host = new PluginHost(store);
+
+    host.register(
+      defineTestPlugin({
+        id: 'without-contributions',
+        contributes: undefined,
+        activate: async () => ({}),
+      }),
+    );
+
+    await host.activate('without-contributions');
+
+    expect(store.getLeftPanelTabs()).toEqual([]);
+    expect(store.getWorkspaceTabs()).toEqual([]);
+    expect(store.getBottomPanels()).toEqual([]);
+    expect(store.getStatusItems()).toEqual([]);
+    expect(store.getCommands()).toEqual([]);
+    expect(store.getShortcuts()).toEqual([]);
+    expect(store.getSettingsSections()).toEqual([]);
   });
 });
 
