@@ -5,11 +5,11 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 
-use snapfzz_budget::{
+use crate::budget::{
     supervised::{ProcessBudget, ProcessLocation},
     BudgetRegistry,
 };
-use snapfzz_budget::metrics::ProcessStatus;
+use crate::budget::metrics::ProcessStatus;
 use crate::process::health::{apply_health_check, wait_until_healthy};
 use crate::process::logs::ProcessLogs;
 use crate::process::runtime::{piped_stdio, RuntimeState};

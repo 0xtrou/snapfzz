@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use crate::budget::{metrics::ProcessStatus, BudgetRegistry};
 use crate::process::{ProcessError, ProcessManager, SpawnConfig};
-use snapfzz_budget::{metrics::ProcessStatus, BudgetRegistry};
 
 pub async fn restart_runtime(
     manager: &ProcessManager,

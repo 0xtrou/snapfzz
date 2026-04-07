@@ -1,7 +1,6 @@
 use std::time::Duration;
 
-use snapfzz_budget::{metrics::ProcessStatus, BudgetRegistry};
-
+use crate::budget::{metrics::ProcessStatus, BudgetRegistry};
 use crate::process::ProcessError;
 
 pub async fn wait_until_healthy(
