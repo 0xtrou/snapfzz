@@ -54,6 +54,19 @@ jobs:
             fi
           done
 
+      - name: Run coverage for plugin-host
+        run: |
+          mkdir -p .badges
+          pnpm --filter @snapfzz/plugin-host exec npx vitest run --coverage --coverage.reporter=json-summary 2>/dev/null || true
+          SUMMARY="frontend/packages/plugin-host/coverage/coverage-summary.json"
+          if [ -f "$SUMMARY" ]; then
+            COV=$(node -e "console.log(require('./$SUMMARY').total.lines.pct)")
+            COLOR="red"
+            if [ "$(echo "$COV >= 90" | bc)" = "1" ]; then COLOR="brightgreen"; fi
+            if [ "$(echo "$COV >= 80" | bc)" = "1" ] && [ "$(echo "$COV < 90" | bc)" = "1" ]; then COLOR="yellow"; fi
+            echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > ".badges/plugin-host.json"
+          fi
+
       - name: Run coverage for all plugins
         run: |
           mkdir -p .badges
