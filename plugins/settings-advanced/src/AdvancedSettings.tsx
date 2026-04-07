@@ -2,7 +2,7 @@
 // A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Checkbox, Form, Input, Modal, Select, Space, Typography } from 'antd';
-import { SettingsHeader } from '@snapfzz/shared';
+import { SettingsHeader, ConfirmAction } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -97,48 +97,35 @@ export default function AdvancedSettings(): React.ReactElement {
     }
   }, [form]);
 
-  const [modal, contextHolder] = Modal.useModal();
-
-  function confirmReset(): void {
-    modal.confirm({
-      title: 'Reset all settings to defaults?',
-      content:
-        'This will restore every setting to its factory default. All API keys, theme preferences, and font settings will be cleared. Your projects and data are not affected.',
-      okText: 'Reset Everything',
-      okButtonProps: { danger: true },
-      cancelText: 'Cancel',
-      async onOk() {
-        try {
-          await tauriInvoke('save_settings', {
-            settings: {
-              apiKey: '',
-              model: 'gpt-4o',
-              apiUrl: 'https://api.openai.com/v1',
-              theme: 'system',
-              openLastProject: true,
-              language: 'en',
-              fontFamily: 'Inter',
-              fontSize: '13',
-              fpsCounter: true,
-              logLevel: 'info',
-              preset: 'auto',
-              agentscopeHost: '127.0.0.1',
-              agentscopePort: '8090',
-            },
-          });
-          window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
-          await loadSettings();
-          setIsDirty(false);
-        } catch {
-          // Reset failed silently
-        }
-      },
-    });
+  async function handleReset(): Promise<void> {
+    try {
+      await tauriInvoke('save_settings', {
+        settings: {
+          apiKey: '',
+          model: 'gpt-4o',
+          apiUrl: 'https://api.openai.com/v1',
+          theme: 'system',
+          openLastProject: true,
+          language: 'en',
+          fontFamily: 'Inter',
+          fontSize: '13',
+          fpsCounter: true,
+          logLevel: 'info',
+          preset: 'auto',
+          agentscopeHost: '127.0.0.1',
+          agentscopePort: '8090',
+        },
+      });
+      window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
+      await loadSettings();
+      setIsDirty(false);
+    } catch {
+      // Reset failed silently
+    }
   }
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      {contextHolder}
       <SettingsHeader
         title="Advanced"
         isDirty={isDirty}
@@ -213,9 +200,17 @@ export default function AdvancedSettings(): React.ReactElement {
               <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>
                 Reset
               </Text>
-              <Button danger onClick={confirmReset}>
-                Reset all settings to defaults
-              </Button>
+              <ConfirmAction
+                title="Reset all settings to defaults?"
+                description="All API keys, theme preferences, and font settings will be cleared. Projects and data are not affected."
+                onConfirm={handleReset}
+                okText="Reset Everything"
+                danger
+              >
+                <Button danger>
+                  Reset all settings to defaults
+                </Button>
+              </ConfirmAction>
               <Text type="secondary" style={{ fontSize: 12, marginTop: 'var(--spacing-2, 8px)', display: 'block' }}>
                 Projects and data are not deleted.
               </Text>

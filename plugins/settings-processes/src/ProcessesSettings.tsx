@@ -6,11 +6,10 @@ import {
   Tag,
   Progress,
   Button,
-  Popconfirm,
   Space,
+  Input,
   Typography,
   Tooltip,
-  Input,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -22,7 +21,7 @@ import {
   FolderOpenOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { SettingsHeader, AgentscopeHostSchema, AgentscopePortSchema } from '@snapfzz/shared';
+import { SettingsHeader, ConfirmAction, AgentscopeHostSchema, AgentscopePortSchema } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -300,13 +299,12 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
             <Text style={{ color: 'var(--text-muted)', fontSize: 11 }}>
               Changes require process restart to take effect
             </Text>
-            <Popconfirm
+            <ConfirmAction
               title="Save and restart agent runtime?"
               description="The agent runtime will restart with the new connection settings."
               onConfirm={handleSaveAndRestart}
               okText="Save & Restart"
-              okButtonProps={{ type: 'primary', danger: true }}
-              cancelText="Cancel"
+              danger
               disabled={!configDirty || !configValid}
             >
               <Button
@@ -318,7 +316,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
               >
                 Save & Restart
               </Button>
-            </Popconfirm>
+            </ConfirmAction>
           </div>
         </div>
       )}
@@ -415,12 +413,11 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
       </div>
 
       <Space size={8} style={{ marginBottom: 16 }}>
-        <Popconfirm
+        <ConfirmAction
           title="Restart process?"
           description={`This will restart ${process.name}.`}
           onConfirm={handleRestart}
           okText="Restart"
-          cancelText="Cancel"
         >
           <Button
             size="small"
@@ -429,15 +426,14 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           >
             Restart
           </Button>
-        </Popconfirm>
+        </ConfirmAction>
 
-        <Popconfirm
+        <ConfirmAction
           title="Kill process?"
           description={`This will forcibly terminate ${process.name}.`}
           onConfirm={handleKill}
           okText="Kill"
-          cancelText="Cancel"
-          okButtonProps={{ danger: true }}
+          danger
         >
           <Button
             size="small"
@@ -447,7 +443,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           >
             Kill
           </Button>
-        </Popconfirm>
+        </ConfirmAction>
 
         <Button
           size="small"
