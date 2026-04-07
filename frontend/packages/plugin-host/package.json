@@ -10,6 +10,11 @@
   },
   "dependencies": {
     "@snapfzz/plugin-sdk": "workspace:*",
+    "@snapfzz/settings-advanced": "workspace:*",
+    "@snapfzz/settings-general": "workspace:*",
+    "@snapfzz/settings-performance": "workspace:*",
+    "@snapfzz/settings-plugins": "workspace:*",
+    "@snapfzz/settings-processes": "workspace:*",
     "@snapfzz/shared": "workspace:*",
     "react": "^19.0.0"
   },
@@ -23,9 +28,11 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/react-test-renderer": "^19.1.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "jsdom": "^29.0.1",
     "react-dom": "^19.0.0",
     "react-test-renderer": "^19.2.4",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
   }
 }

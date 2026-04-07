@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
   CommandContribution,
+  ComponentContribution,
   PanelContribution,
   SettingsContribution,
   SettingsSectionContribution,
@@ -46,6 +47,12 @@ const createSetting = (id: string): SettingsContribution => ({
   id,
   label: id,
   schema: { type: 'string' },
+});
+
+const createComponent = (id: string): ComponentContribution => ({
+  id,
+  name: id,
+  component: async () => ({ default: (() => null) as never }),
 });
 
 const createSettingsSection = (id: string, order?: number): SettingsSectionContribution => ({
@@ -184,5 +191,53 @@ describe('A005/store: ContributionStore registration + snapshot behavior', () =>
     store.registerSettingsSection(createSettingsSection('general'));
 
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('A005/store: registerGenericComponent adds and removes generic components', () => {
+    const store = new ContributionStore();
+    const component = createComponent('launcher:header:meta');
+
+    const dispose = store.registerGenericComponent(component);
+    expect(store.getGenericComponents()).toEqual([component]);
+
+    dispose();
+    expect(store.getGenericComponents()).toEqual([]);
+  });
+
+  it('A005/store: deduplicates commands, shortcuts, settings, and generic components', () => {
+    const store = new ContributionStore();
+
+    const command = createCommand('command.one');
+    store.registerCommand(command);
+    store.registerCommand(command);
+
+    const shortcut = createShortcut('command.one');
+    store.registerShortcut(shortcut);
+    store.registerShortcut(shortcut);
+
+    const setting = createSetting('setting.one');
+    store.registerSetting(setting);
+    store.registerSetting(setting);
+
+    const component = createComponent('component.one');
+    store.registerGenericComponent(component);
+    store.registerGenericComponent(component);
+
+    expect(store.getCommands()).toEqual([command]);
+    expect(store.getShortcuts()).toEqual([shortcut]);
+    expect(store.getSettings()).toEqual([setting]);
+    expect(store.getGenericComponents()).toEqual([component]);
+  });
+
+  it('A002/store-reactivity: unsubscribe stops listener notifications', () => {
+    const store = new ContributionStore();
+    const listener = vi.fn();
+
+    const unsubscribe = store.subscribe(listener);
+    unsubscribe();
+
+    store.registerWorkspaceTab(createTab('tab.workspace'));
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });

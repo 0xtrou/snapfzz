@@ -343,7 +343,7 @@ impl OnPreflightInit for VaultInitializer {
             detail: format!("vault open: {e}"),
         })?;
 
-        ctx.set_extension("vault", Mutex::new(vault));
+        ctx.set_extension("vault", Arc::new(Mutex::new(vault)));
         eprintln!("[preflight] Phase 2: vault — initialized");
         Ok(())
     }
@@ -377,8 +377,8 @@ fn main() {
 
     let vault = result
         .context
-        .get_extension::<Mutex<SecretVault>>("vault")
-        .map(|v| Arc::new(v.clone()))
+        .get_extension::<Arc<Mutex<SecretVault>>>("vault")
+        .cloned()
         .unwrap_or_else(|| Arc::new(Mutex::new(SecretVault::empty(data_dir.join("vault.enc")))));
 
     let registry = result.registry.clone();

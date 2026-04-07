@@ -7,6 +7,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     exclude: ['**/node_modules/**', '**/dist/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.*', 'src/**/index.ts', 'src/main.tsx'],
+      thresholds: { branches: 90, lines: 90, functions: 90 },
+    },
   },
   build: {
     outDir: '../../dist/preferences',

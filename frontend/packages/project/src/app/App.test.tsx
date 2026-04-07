@@ -19,6 +19,7 @@ const emptySnapshot = {
 };
 
 let snapshot = { ...emptySnapshot };
+let crashingPluginIds = new Set<string>();
 
 vi.mock('@snapfzz/shared', () => ({
   darkTheme: { algorithm: undefined, token: {} },
@@ -50,6 +51,7 @@ const { PluginHostMock } = vi.hoisted(() => ({
       activateAll: () => Promise.resolve(),
       activateByEvent: () => Promise.resolve(),
       deactivate: () => Promise.resolve(),
+      reportCrash: vi.fn(),
     };
   }),
 }));
@@ -58,7 +60,21 @@ vi.mock('@snapfzz/plugin-host', () => ({
   ContributionStore: class ContributionStore {},
   PluginHost: PluginHostMock,
   PluginHostProvider: ({ children }: { children: React.ReactNode }) => createElement('div', { 'data-testid': 'plugin-host-provider' }, children),
-  PluginErrorBoundary: ({ children }: { children: React.ReactNode }) => createElement('div', null, children),
+  PluginErrorBoundary: ({
+    children,
+    pluginId,
+    onCrash,
+  }: {
+    children: React.ReactNode;
+    pluginId?: string;
+    onCrash?: (pluginId: string, error: Error) => void;
+  }) => {
+    if (pluginId && crashingPluginIds.has(pluginId)) {
+      onCrash?.(pluginId, new Error('crash'));
+      return createElement('div', null, `crashed:${pluginId}`);
+    }
+    return createElement('div', null, children);
+  },
   registerDiscoveredPlugins: () => Promise.resolve(),
   useContributionStore: () => snapshot,
 }));
@@ -71,6 +87,7 @@ describe('A006/shell: Project App', () => {
     const existing = document.getElementById('skeleton');
     if (existing) existing.remove();
     snapshot = { ...emptySnapshot };
+    crashingPluginIds = new Set<string>();
   });
 
   afterEach(() => {
@@ -143,6 +160,58 @@ describe('A006/shell: Project App', () => {
 
     await waitFor(() => {
       expect(screen.getByText('left-status')).toBeTruthy();
+    });
+  });
+
+  it('A006/shell: renders active tab and bottom panel content from contributions', async () => {
+    snapshot.leftPanelTabs = [
+      { id: 'chat', label: 'Chat', icon: 'MessageOutlined', component: async () => ({ default: () => createElement('div', null, 'chat-content') }) } as TabContribution,
+    ];
+    snapshot.workspaceTabs = [
+      { id: 'preview', label: 'Preview', icon: 'EyeOutlined', component: async () => ({ default: () => createElement('div', null, 'preview-content') }) } as TabContribution,
+    ];
+    snapshot.bottomPanels = [
+      { id: 'agents', label: 'Agents', component: async () => ({ default: () => createElement('div', null, 'agents-panel') }) } as any,
+    ];
+
+    render(createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByText('chat-content')).toBeTruthy();
+      expect(screen.getByText('preview-content')).toBeTruthy();
+      expect(screen.getByText('agents-panel')).toBeTruthy();
+    });
+  });
+
+  it('A006/shell: updates active tab content when selecting another tab', async () => {
+    snapshot.leftPanelTabs = [
+      { id: 'chat', label: 'Chat', icon: 'MessageOutlined', component: async () => ({ default: () => createElement('div', null, 'chat-content') }) } as TabContribution,
+      { id: 'team', label: 'Team', icon: 'TeamOutlined', component: async () => ({ default: () => createElement('div', null, 'team-content') }) } as TabContribution,
+    ];
+
+    render(createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByText('chat-content')).toBeTruthy();
+    });
+
+    screen.getByRole('button', { name: /team/i }).click();
+
+    await waitFor(() => {
+      expect(screen.getByText('team-content')).toBeTruthy();
+    });
+  });
+
+  it('A005/isolation: renders crash fallback when a plugin panel crashes', async () => {
+    crashingPluginIds = new Set(['chat']);
+    snapshot.leftPanelTabs = [
+      { id: 'chat', label: 'Chat', icon: 'MessageOutlined', component: async () => ({ default: () => createElement('div', null, 'chat-content') }) } as TabContribution,
+    ];
+
+    render(createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByText('crashed:chat')).toBeTruthy();
     });
   });
 });

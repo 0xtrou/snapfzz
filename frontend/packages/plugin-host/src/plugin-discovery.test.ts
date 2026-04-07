@@ -8,6 +8,30 @@ import { discoverPlugins, registerDiscoveredPlugins } from './plugin-discovery';
 import { PluginHost } from './plugin-host';
 import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 
+vi.mock('@snapfzz/chat-plugin', () => ({
+  default: fakeManifest('chat.plugin'),
+}));
+
+vi.mock('@snapfzz/settings-general', () => ({
+  default: fakeManifest('settings.general'),
+}));
+
+vi.mock('@snapfzz/settings-performance', () => ({
+  default: fakeManifest('settings.performance'),
+}));
+
+vi.mock('@snapfzz/settings-processes', () => ({
+  default: fakeManifest('settings.processes'),
+}));
+
+vi.mock('@snapfzz/settings-plugins', () => ({
+  default: fakeManifest('settings.plugins'),
+}));
+
+vi.mock('@snapfzz/settings-advanced', () => {
+  throw new Error('settings advanced failed to load');
+});
+
 function fakeManifest(id: string): PluginDefinition {
   return { id, activationEvents: [], contributes: {} } as unknown as PluginDefinition;
 }
@@ -16,24 +40,44 @@ describe('A006/boot: discoverPlugins', () => {
   it('A006/boot: discoverPlugins returns array for launcher surface', async () => {
     const result = await discoverPlugins('launcher');
     expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual([]);
   });
 
   it('A006/boot: discoverPlugins returns array for project surface', async () => {
     const result = await discoverPlugins('project');
     expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.manifest.id).toBe('chat.plugin');
   });
 
   it('A006/boot: discoverPlugins returns array for preferences surface', async () => {
     const result = await discoverPlugins('preferences');
     expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(4);
+    expect(result.map((item) => item.manifest.id)).toEqual([
+      'settings.general',
+      'settings.performance',
+      'settings.processes',
+      'settings.plugins',
+    ]);
   });
 
   it('A006/boot: discoverPlugins result items have manifest and loader', async () => {
-    const result = await discoverPlugins('launcher');
+    const result = await discoverPlugins('project');
     for (const item of result) {
       expect(item).toHaveProperty('manifest');
       expect(typeof item.loader).toBe('function');
+      await expect(item.loader()).resolves.toEqual(item.manifest);
     }
+  });
+
+  it('A006/boot: discoverPlugins logs and skips loader failures', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const result = await discoverPlugins('preferences');
+
+    expect(result).toHaveLength(4);
+    expect(errorSpy).toHaveBeenCalled();
   });
 });
 

@@ -586,4 +586,218 @@ mod tests {
         let vault = SecretVault::open(&key, path).unwrap();
         assert!(vault.list().is_empty());
     }
+
+    #[test]
+    fn a011_vault_delete_nonexistent_key_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+        let mut vault = SecretVault::open(&test_master_key(), path).unwrap();
+
+        let err = vault.delete("custom:missing").unwrap_err();
+        assert!(matches!(err, VaultError::NotFound(key) if key == "custom:missing"));
+    }
+
+    #[test]
+    fn a011_vault_open_invalid_magic_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"BAD!");
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        fs::write(&path, bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_open_invalid_version_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&999_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        fs::write(&path, bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_open_nonzero_reserved_header_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        fs::write(&path, bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_open_truncated_file_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        fs::write(&path, b"tiny").unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_open_trailing_bytes_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.push(7);
+        fs::write(&path, bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_open_ciphertext_shorter_than_tag_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let key_name = b"custom:short";
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&(key_name.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(key_name);
+        bytes.extend_from_slice(&[1_u8; GCM_NONCE_LEN]);
+        bytes.extend_from_slice(&8_u32.to_le_bytes());
+        bytes.extend_from_slice(&[9_u8; 8]);
+        fs::write(&path, bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_open_invalid_utf8_key_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.push(0xff);
+        bytes.extend_from_slice(&[0_u8; GCM_NONCE_LEN]);
+        bytes.extend_from_slice(&(GCM_TAG_LEN as u32).to_le_bytes());
+        bytes.extend_from_slice(&[0_u8; GCM_TAG_LEN]);
+        fs::write(&path, bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::Utf8(_)));
+    }
+
+    #[test]
+    fn a011_vault_helpers_decode_hex_rejects_invalid_inputs() {
+        let invalid_len = decode_hex_key("abcd").unwrap_err();
+        assert!(matches!(invalid_len, VaultError::InvalidVaultFormat(_)));
+
+        let invalid_hex = decode_hex_key(&"z".repeat(64)).unwrap_err();
+        assert!(matches!(invalid_hex, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_helpers_encode_decode_hex_roundtrip() {
+        let key = test_master_key();
+        let encoded = encode_hex_key(&key);
+        let decoded = decode_hex_key(&encoded).unwrap();
+        assert_eq!(decoded, key);
+    }
+
+    #[test]
+    fn a011_vault_helpers_read_u16_u32_eof_returns_error() {
+        assert!(matches!(
+            read_u16(&[], 0),
+            Err(VaultError::InvalidVaultFormat(_))
+        ));
+        assert!(matches!(
+            read_u32(&[], 0),
+            Err(VaultError::InvalidVaultFormat(_))
+        ));
+    }
+
+    #[test]
+    fn a011_vault_keyfile_loader_generates_then_reuses_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.key");
+
+        let key_a = load_or_generate_master_keyfile(&path).unwrap();
+        let key_b = load_or_generate_master_keyfile(&path).unwrap();
+
+        assert_eq!(key_a, key_b);
+        assert_eq!(fs::read(&path).unwrap(), key_a);
+    }
+
+    #[test]
+    fn a011_vault_keyfile_loader_invalid_size_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.key");
+        fs::write(&path, [1_u8; 12]).unwrap();
+
+        let err = load_or_generate_master_keyfile(&path).unwrap_err();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_load_or_generate_master_key_returns_32_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = load_or_generate_master_key(dir.path()).unwrap();
+        assert_eq!(key.len(), 32);
+    }
+
+    #[test]
+    fn a011_vault_display_formats_all_error_variants() {
+        let io_err = VaultError::Io(io::Error::other("io"));
+        let keyring_err = VaultError::Keyring("k".to_string());
+        let format_err = VaultError::InvalidVaultFormat("f".to_string());
+        let crypto_err = VaultError::Crypto("c".to_string());
+        let not_found = VaultError::NotFound("missing".to_string());
+        let utf8_err = String::from_utf8(vec![0xff]).unwrap_err();
+        let utf8_variant = VaultError::Utf8(utf8_err);
+
+        let rendered = [
+            io_err.to_string(),
+            keyring_err.to_string(),
+            format_err.to_string(),
+            crypto_err.to_string(),
+            not_found.to_string(),
+            utf8_variant.to_string(),
+        ];
+
+        assert!(rendered[0].contains("io error"));
+        assert!(rendered[1].contains("keyring error"));
+        assert!(rendered[2].contains("invalid vault format"));
+        assert!(rendered[3].contains("crypto error"));
+        assert!(rendered[4].contains("secret not found"));
+        assert!(rendered[5].contains("utf8 error"));
+    }
 }

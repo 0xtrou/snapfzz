@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -31,5 +31,27 @@ if (!document.documentElement.style.setProperty) {
       getPropertyValue: (prop: string) => _props[prop] ?? '',
       removeProperty: (prop: string) => { delete _props[prop]; return ''; },
     }),
+  });
+}
+
+class MockResizeObserver {
+  observe() {}
+
+  unobserve() {}
+
+  disconnect() {}
+}
+
+Object.defineProperty(globalThis, 'ResizeObserver', {
+  configurable: true,
+  writable: true,
+  value: MockResizeObserver,
+});
+
+if (!HTMLElement.prototype.scrollTo) {
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    writable: true,
+    value: () => {},
   });
 }

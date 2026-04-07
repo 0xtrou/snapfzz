@@ -5,7 +5,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type { PluginContext, HostSurface } from '@snapfzz/plugin-sdk';
 import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PluginHost } from './plugin-host';
 import { ContributionStore } from './contribution-store';
 
@@ -440,9 +440,161 @@ describe('A005/lifecycle/state: plugin state query (5-state model)', () => {
   });
 });
 
+describe('A005/lifecycle: additional branch coverage', () => {
+  it('A005/lifecycle: activate returns existing handle when already running', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const deactivate = vi.fn().mockResolvedValue(undefined);
+    const plugin = defineTestPlugin({
+      id: 'existing-handle',
+      activate: async () => ({ deactivate }),
+    });
+
+    host.register(plugin);
+    const first = await host.activate('existing-handle');
+    const second = await host.activate('existing-handle');
+
+    expect(second).toBe(first);
+  });
+
+  it('A005/lifecycle: activating disabled plugin returns empty handle', async () => {
+    const host = new PluginHost(new ContributionStore());
+    host.register(defineTestPlugin({ id: 'disabled-now' }));
+
+    await host.disable('disabled-now');
+    const handle = await host.activate('disabled-now');
+
+    expect(handle).toEqual({});
+  });
+
+  it('A005/lifecycle: deactivate no-op when plugin is not active', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    await expect(host.deactivate('not-active')).resolves.toBeUndefined();
+  });
+
+  it('A005/lifecycle: registerAsSystem marks plugin and blocks uninstall', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const systemPlugin = defineTestPlugin({ id: 'system.plugin' });
+
+    host.registerAsSystem(systemPlugin);
+
+    expect(host.isSystemPlugin('system.plugin')).toBe(true);
+    await expect(host.uninstall('system.plugin')).rejects.toThrow(/cannot uninstall system plugin/i);
+  });
+
+  it('A005/lifecycle: getPlugins uses host default surface when omitted', () => {
+    const host = new PluginHost(new ContributionStore(), 'project');
+
+    host.register(defineTestPlugin({ id: 'project-visible', surface: ['project'] }));
+    host.register(defineTestPlugin({ id: 'launcher-only', surface: ['launcher'] }));
+
+    expect(host.getPlugins().map((plugin) => plugin.id)).toEqual(['project-visible']);
+  });
+
+  it('A005/lifecycle: loading plugin keeps id from registered manifest', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    await host.registerWithLoader(
+      defineTestPlugin({ id: 'manifest-id', activationEvents: ['onStartupFinished'] }),
+      async () => ({
+        ...defineTestPlugin({
+          id: 'loaded-id',
+          activationEvents: ['onStartupFinished'],
+          activate: async () => ({}),
+        }),
+      }),
+    );
+
+    await host.activate('manifest-id');
+
+    expect(host.getPlugin('manifest-id')?.id).toBe('manifest-id');
+  });
+
+  it('A005/lifecycle: resolve throws on circular dependency', () => {
+    const host = new PluginHost(new ContributionStore());
+    host.register(defineTestPlugin({ id: 'a', dependencies: { b: '^1.0.0' } }));
+    host.register(defineTestPlugin({ id: 'b', dependencies: { a: '^1.0.0' } }));
+
+    expect(() => host.resolve()).toThrow(/circular dependency/i);
+  });
+
+  it('A005/lifecycle: update throws when plugin id does not exist', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    await expect(host.update('missing-plugin', async () => defineTestPlugin({ id: 'missing-plugin' }))).rejects.toThrow(
+      /plugin not found/i,
+    );
+  });
+
+  it('A005/lifecycle: activateByEvent includes dependencies even when only dependent matches event', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const order: string[] = [];
+
+    host.register(
+      defineTestPlugin({
+        id: 'dep-core',
+        activationEvents: ['onStartupFinished'],
+        activate: async () => {
+          order.push('dep-core');
+          return {};
+        },
+      }),
+    );
+
+    host.register(
+      defineTestPlugin({
+        id: 'dependent',
+        activationEvents: ['onEvent:trigger'],
+        dependencies: { 'dep-core': '^1.0.0' },
+        activate: async () => {
+          order.push('dependent');
+          return {};
+        },
+      }),
+    );
+
+    await host.activateByEvent('onEvent:trigger');
+
+    expect(order).toEqual(['dep-core', 'dependent']);
+  });
+
+  it('A005/lifecycle: readDisabledPlugins tolerates invalid JSON', () => {
+    const badStorage: StorageInterface = {
+      getItem: (key) => (key === 'snapfzz:disabledPlugins' ? '{bad-json' : null),
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
+
+    const host = new PluginHost(new ContributionStore(), 'launcher', badStorage);
+
+    expect(host.getDisabledPlugins()).toEqual([]);
+  });
+
+  it('A005/lifecycle: readDisabledPlugins parses persisted disabled list', () => {
+    const storageWithValues: StorageInterface = {
+      getItem: (key) => (key === 'snapfzz:disabledPlugins' ? JSON.stringify(['persisted.one', 'persisted.two']) : null),
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
+
+    const host = new PluginHost(new ContributionStore(), 'launcher', storageWithValues);
+
+    expect(host.getDisabledPlugins().sort()).toEqual(['persisted.one', 'persisted.two']);
+    expect(host.isEnabled('persisted.one')).toBe(false);
+  });
+
+  it('A005/lifecycle: persistDisabledPlugins no-ops without storage adapter', async () => {
+    const host = new PluginHost(new ContributionStore());
+    host.register(defineTestPlugin({ id: 'nostorage' }));
+
+    await expect(host.disable('nostorage')).resolves.toBeUndefined();
+    expect(host.getPluginState('nostorage')).toBe('disabled');
+  });
+});
+
 describe('A002/zones: PluginHost Zone 2 purity', () => {
   it('A002/zones: PluginHost has no direct DOM/window/localStorage dependencies', () => {
-    const srcDir = new URL('.', import.meta.url).pathname;
+    const srcDir = dirname(new URL(import.meta.url).pathname);
     const zone2Files = ['plugin-host.ts', 'contribution-store.ts', 'plugin-context-factory.ts'];
 
     for (const file of zone2Files) {
