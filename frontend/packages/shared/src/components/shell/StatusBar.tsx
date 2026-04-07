@@ -1,22 +1,9 @@
-// Per A001/Performance: measures actual browser paint rate via RAF.
-// Target FPS from A008/BudgetRegistry preset shown for reference.
-// SSE batch enforcement is in Rust (batch_rate_ms). UI rendering is not throttled.
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 
 function FpsCounter() {
   const [fps, setFps] = useState(0);
-  const [targetFps, setTargetFps] = useState(60);
   const framesRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
-
-  useEffect(() => {
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<{ frameTargetMs?: number }>('budget-metrics', (event) => {
-        const ms = event.payload?.frameTargetMs;
-        if (ms && ms > 0) setTargetFps(Math.round(1000 / ms));
-      }).catch(() => {});
-    }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     let rafId: number;
@@ -34,16 +21,8 @@ function FpsCounter() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  const color = fps >= targetFps * 0.9 ? 'var(--color-success)'
-    : fps >= targetFps * 0.5 ? 'var(--color-warning)'
-    : 'var(--color-error)';
-
-  return (
-    <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-      <span style={{ color }}>{fps}</span>
-      <span style={{ color: 'var(--text-muted)' }}>/{targetFps} fps</span>
-    </span>
-  );
+  const color = fps >= 55 ? 'var(--color-success)' : fps >= 30 ? 'var(--color-warning)' : 'var(--color-error)';
+  return <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{fps} fps</span>;
 }
 
 interface StatusBarProps {
