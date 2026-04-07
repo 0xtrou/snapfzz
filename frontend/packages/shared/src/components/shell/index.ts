@@ -5,3 +5,4 @@ export { WindowShell, useCustomFonts, CustomFontsContext } from './WindowShell';
 export { AntIcon } from './AntIcon';
 export { SettingsHeader } from './SettingsHeader';
 export { ConfirmAction } from './ConfirmAction';
+export { AppButton } from './AppButton';

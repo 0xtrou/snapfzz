@@ -5,7 +5,6 @@ import {
   Table,
   Tag,
   Progress,
-  Button,
   Space,
   Input,
   Typography,
@@ -21,7 +20,7 @@ import {
   FolderOpenOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { createTauriBridge, SettingsHeader, ConfirmAction, AgentscopeHostSchema, AgentscopePortSchema } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, ConfirmAction, AgentscopeHostSchema, AgentscopePortSchema, AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -298,7 +297,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
               danger
               disabled={!configDirty || !configValid}
             >
-              <Button
+              <AppButton
                 size="small"
                 icon={<SaveOutlined />}
                 loading={configSaving}
@@ -306,7 +305,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                 data-testid="btn-save-restart-agentscope"
               >
                 Save & Restart
-              </Button>
+              </AppButton>
             </ConfirmAction>
           </div>
         </div>
@@ -340,16 +339,16 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
             {process.healthUrl && (
               <>
                 <Tooltip title="Copy URL">
-                  <Button
-                    type="text"
+                  <AppButton
+                    variant="text"
                     size="small"
                     icon={<CopyOutlined />}
                     onClick={() => navigator.clipboard.writeText(process.healthUrl)}
                   />
                 </Tooltip>
                 <Tooltip title="Open in browser">
-                  <Button
-                    type="text"
+                  <AppButton
+                    variant="text"
                     size="small"
                     icon={<LinkOutlined />}
                     onClick={() => void bridge.invoke<void>('open_path', { path: process.healthUrl })}
@@ -410,13 +409,13 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           onConfirm={handleRestart}
           okText="Restart"
         >
-          <Button
+          <AppButton
             size="small"
             icon={<ReloadOutlined />}
             data-testid={`btn-restart-${process.name}`}
           >
             Restart
-          </Button>
+          </AppButton>
         </ConfirmAction>
 
         <ConfirmAction
@@ -426,35 +425,35 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           okText="Kill"
           danger
         >
-          <Button
+          <AppButton
             size="small"
-            danger
+            variant="danger"
             icon={<CloseCircleOutlined />}
             data-testid={`btn-kill-${process.name}`}
           >
             Kill
-          </Button>
+          </AppButton>
         </ConfirmAction>
 
-        <Button
+        <AppButton
           size="small"
           icon={<FileTextOutlined />}
           onClick={() => setShowLogs((v) => !v)}
           data-testid={`btn-view-logs-${process.name}`}
         >
           {showLogs ? 'Hide Logs' : 'View Latest 100 Logs'}
-        </Button>
+        </AppButton>
 
-        <Button
+        <AppButton
           size="small"
           icon={<DeleteOutlined />}
           onClick={handleClearLogs}
           data-testid={`btn-clear-logs-${process.name}`}
         >
           Clear Logs
-        </Button>
+        </AppButton>
 
-        <Button
+        <AppButton
           size="small"
           icon={<FolderOpenOutlined />}
           onClick={async () => {
@@ -466,7 +465,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           data-testid={`btn-open-log-file-${process.name}`}
         >
           Open Log Folder
-        </Button>
+        </AppButton>
       </Space>
 
       {showLogs && (

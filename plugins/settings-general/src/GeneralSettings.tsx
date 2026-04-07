@@ -1,10 +1,10 @@
 // A007/SettingsSections: General settings form — preferences surface only.
 // A008/BudgetRegistry: All Tauri invokes go through shared TauriBridge for preferences IPC.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Form, Input, Modal, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
+import { Checkbox, Form, Input, Modal, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
-import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -278,13 +278,13 @@ export default function GeneralSettings(): React.ReactElement {
                     onChange={(e) => setFontUrl(e.target.value)}
                     aria-label="Font URL"
                   />
-                  <Button
+                  <AppButton
                     onClick={handleInstallFromUrl}
                     loading={fontUrlInstalling}
                     aria-label="Install font from URL"
                   >
                     Install
-                  </Button>
+                  </AppButton>
                 </Space.Compact>
                 {fontUrlError && (
                   <Text type="danger" style={{ fontSize: 12 }}>{fontUrlError}</Text>
@@ -298,9 +298,9 @@ export default function GeneralSettings(): React.ReactElement {
                     return false;
                   }}
                 >
-                  <Button icon={<UploadOutlined />} loading={fileInstalling}>
+                  <AppButton icon={<UploadOutlined />} loading={fileInstalling}>
                     Select Font File
-                  </Button>
+                  </AppButton>
                 </Upload>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   Accepted formats: .ttf, .otf, .woff, .woff2

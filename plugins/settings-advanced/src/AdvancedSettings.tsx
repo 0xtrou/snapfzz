@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Input, Modal, Space, Typography } from 'antd';
-import { createTauriBridge, SettingsHeader, ConfirmAction } from '@snapfzz/shared';
+import { Input, Modal, Space, Typography } from 'antd';
+import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -60,7 +60,7 @@ export default function AdvancedSettings(): React.ReactElement {
                 readOnly
                 style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12 }}
               />
-              <Button onClick={async () => {
+              <AppButton onClick={async () => {
                 try {
                   const selected = await bridge.invoke<string | null>('pick_folder', { defaultPath: dataDir });
                   if (selected) {
@@ -74,7 +74,7 @@ export default function AdvancedSettings(): React.ReactElement {
                 } catch { void 0; }
               }}>
                 Browse...
-              </Button>
+              </AppButton>
             </Space.Compact>
             <Text type="secondary" style={{ fontSize: 12, marginTop: 'var(--spacing-2, 8px)', display: 'block' }}>
               Projects, logs, and workspace metadata are stored here. Changing this requires a restart.
@@ -92,9 +92,9 @@ export default function AdvancedSettings(): React.ReactElement {
               okText="Reset Everything"
               danger
             >
-              <Button danger>
+              <AppButton variant="danger">
                 Reset all settings to defaults
-              </Button>
+              </AppButton>
             </ConfirmAction>
             <Text type="secondary" style={{ fontSize: 12, marginTop: 'var(--spacing-2, 8px)', display: 'block' }}>
               Projects and data are not deleted.

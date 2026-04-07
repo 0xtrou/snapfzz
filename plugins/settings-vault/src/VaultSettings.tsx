@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Input, Skeleton, Space, Table, Tag, Typography } from 'antd';
+import { Empty, Input, Skeleton, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { createTauriBridge, ConfirmAction, SettingsHeader } from '@snapfzz/shared';
+import { createTauriBridge, ConfirmAction, SettingsHeader, AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -121,10 +121,9 @@ export default function VaultSettings() {
             okText="Delete"
             danger
           >
-            <Button
+            <AppButton
               aria-label={`Delete ${record.name}`}
-              danger
-              type="text"
+              variant="danger"
               icon={<DeleteOutlined />}
               loading={deletingName === record.name}
             />
@@ -256,9 +255,9 @@ export default function VaultSettings() {
                     if (valueError) setValueError(null);
                   }}
                 />
-                <Button icon={<PlusOutlined />} loading={submitting} onClick={() => void handleAdd()}>
+                <AppButton icon={<PlusOutlined />} loading={submitting} onClick={() => void handleAdd()}>
                   Add
-                </Button>
+                </AppButton>
               </Space.Compact>
               {nameError && <Text type="danger">{nameError}</Text>}
               {valueError && <Text type="danger">{valueError}</Text>}
