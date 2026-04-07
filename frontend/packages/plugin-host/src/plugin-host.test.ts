@@ -2,6 +2,18 @@
 // Sections: Plugin Lifecycle, Dependency Resolution, Plugin Context, Activation Events, Enable/Disable, Crash Supervision, Reload, State
 // Verifies: plugin registration, surface filtering, dependency ordering, activation, deactivation, activation events, enable/disable, crash supervision, reload, plugin state
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('@snapfzz/shared', async () => {
+  const actual = await vi.importActual<typeof import('@snapfzz/shared')>('@snapfzz/shared');
+  return {
+    ...actual,
+    createTauriBridge: () => ({
+      invoke: vi.fn(async () => undefined),
+      listen: vi.fn(async () => () => undefined),
+      isAvailable: false,
+    }),
+  };
+});
 import type { PluginContext, HostSurface } from '@snapfzz/plugin-sdk';
 import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 import { readFileSync } from 'node:fs';
@@ -558,6 +570,39 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(order).toEqual(['dep-core', 'dependent']);
   });
 
+  it('A005/lifecycle: activateByEvent skips disabled dependencies even if collected', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const order: string[] = [];
+
+    host.register(
+      defineTestPlugin({
+        id: 'dep-disabled',
+        activationEvents: ['onStartupFinished'],
+        activate: async () => {
+          order.push('dep-disabled');
+          return {};
+        },
+      }),
+    );
+
+    host.register(
+      defineTestPlugin({
+        id: 'depends-on-disabled',
+        activationEvents: ['onEvent:trigger-disabled-dep'],
+        dependencies: { 'dep-disabled': '^1.0.0' },
+        activate: async () => {
+          order.push('depends-on-disabled');
+          return {};
+        },
+      }),
+    );
+
+    await host.disable('dep-disabled');
+    await host.activateByEvent('onEvent:trigger-disabled-dep');
+
+    expect(order).toEqual(['depends-on-disabled']);
+  });
+
   it('A005/lifecycle: readDisabledPlugins tolerates invalid JSON', () => {
     const badStorage: StorageInterface = {
       getItem: (key) => (key === 'snapfzz:disabledPlugins' ? '{bad-json' : null),
@@ -589,6 +634,117 @@ describe('A005/lifecycle: additional branch coverage', () => {
 
     await expect(host.disable('nostorage')).resolves.toBeUndefined();
     expect(host.getPluginState('nostorage')).toBe('disabled');
+  });
+
+  it('A005/lifecycle: preload marks non-startup plugin as ready during idle scheduling', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    const lazyManifest = defineTestPlugin({
+      id: 'lazy.preload',
+      activationEvents: ['onViewVisible:preview'],
+    });
+
+    await host.registerWithLoader(lazyManifest, async () => lazyManifest);
+
+    await host.activateByEvent('onCommand:trigger-idle-preload');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(host.getPluginState('lazy.preload')).toBe('ready');
+  });
+
+  it('A005/lifecycle: activateAll sets host surface and activates matching plugins', async () => {
+    const host = new PluginHost(new ContributionStore(), 'launcher');
+    const activate = vi.fn().mockResolvedValue({});
+
+    host.register(
+      defineTestPlugin({
+        id: 'project.startup',
+        surface: ['project'],
+        activationEvents: ['onStartupFinished'],
+        activate,
+      }),
+    );
+
+    await host.activateAll('project');
+
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(host.getPlugins().map((plugin) => plugin.id)).toEqual(['project.startup']);
+  });
+
+  it('A005/lifecycle: loadPluginDefinition marks error state when loader throws', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    await host.registerWithLoader(defineTestPlugin({ id: 'loader-fail' }), async () => {
+      throw new Error('loader failed');
+    });
+
+    await expect(host.activate('loader-fail')).rejects.toThrow('loader failed');
+    expect(host.getPluginState('loader-fail')).toBe('error');
+  });
+
+  it('A005/lifecycle: activate throws when loader is missing for manifest id', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    host.register(defineTestPlugin({ id: 'loader-removed' }));
+    await host.update('loader-removed', async () => defineTestPlugin({ id: 'loader-removed' }));
+
+    await host.disable('loader-removed');
+    await host.enable('loader-removed');
+    await host.uninstall('loader-removed');
+
+    await expect(host.activate('loader-removed')).rejects.toThrow(/plugin not found/i);
+  });
+
+  it('A005/lifecycle: activate throws when manifest exists but loader is absent', async () => {
+    const host = new PluginHost(new ContributionStore());
+    const plugin = defineTestPlugin({ id: 'loaderless' });
+
+    host.register(plugin);
+    (host as unknown as { pluginLoaders: Map<string, () => Promise<PluginDefinition>> }).pluginLoaders.delete('loaderless');
+
+    await expect(host.activate('loaderless')).rejects.toThrow(/loader not found/i);
+    expect(host.getPluginState('loaderless')).toBe('registered');
+  });
+
+  it('A005/lifecycle: activate registers manifest contributions into store', async () => {
+    const store = new ContributionStore();
+    const host = new PluginHost(store);
+
+    host.register(
+      defineTestPlugin({
+        id: 'with-contributions',
+        contributes: {
+          leftPanelTabs: [
+            { id: 'left.one', label: 'Left', icon: 'icon', component: async () => ({ default: () => null }) },
+          ],
+          workspaceTabs: [
+            { id: 'workspace.one', label: 'Workspace', icon: 'icon', component: async () => ({ default: () => null }) },
+          ],
+          bottomPanels: [
+            { id: 'panel.one', label: 'Panel', component: async () => ({ default: () => null }) },
+          ],
+          statusItems: [
+            { id: 'status.one', position: 'left', component: async () => ({ default: () => null }) },
+          ],
+          commands: [{ id: 'command.one', title: 'Command One' }],
+          shortcuts: [{ command: 'command.one', key: 'Cmd+1' }],
+          settingsSections: [
+            { id: 'settings.one', label: 'Settings', icon: 'icon', component: async () => ({ default: () => null }) },
+          ],
+        },
+        activate: async () => ({}),
+      }),
+    );
+
+    await host.activate('with-contributions');
+
+    expect(store.getLeftPanelTabs()).toHaveLength(1);
+    expect(store.getWorkspaceTabs()).toHaveLength(1);
+    expect(store.getBottomPanels()).toHaveLength(1);
+    expect(store.getStatusItems()).toHaveLength(1);
+    expect(store.getCommands()).toHaveLength(1);
+    expect(store.getShortcuts()).toHaveLength(1);
+    expect(store.getSettingsSections()).toHaveLength(1);
   });
 });
 

@@ -59,4 +59,33 @@ describe('PretextMarkdown', () => {
     expect((textNode as HTMLElement).style.font).toContain('16px');
     expect((textNode as HTMLElement).style.lineHeight).toBe('28px');
   });
+
+  it('handles ordered lists, deeper headings, empty fenced language fallback, and class/style passthrough', () => {
+    const markdown = [
+      '###### Tiny heading',
+      '',
+      '1. first ordered',
+      '2. second ordered',
+      '',
+      '```',
+      'console.log("x")',
+      '```',
+    ].join('\n');
+
+    const { container } = render(
+      <PretextMarkdown text={markdown} className="md-root" style={{ marginTop: 7 }} />,
+    );
+
+    const root = container.querySelector('.md-root') as HTMLDivElement;
+    expect(root).toBeTruthy();
+    expect(root.style.marginTop).toBe('7px');
+
+    const heading = screen.getByText('Tiny heading') as HTMLElement;
+    expect(heading.style.font).toContain('14px');
+
+    expect(screen.getByText('first ordered').tagName).toBe('LI');
+    expect(screen.getByText('second ordered').tagName).toBe('LI');
+    expect(screen.getByText('code')).toBeTruthy();
+    expect(screen.getByText('console.log("x")')).toBeTruthy();
+  });
 });

@@ -23,7 +23,10 @@ describe('StatusBar', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders children and updates fps counter color based on sampled frames', async () => {
+  it('renders children and shows error color before one-second sample', async () => {
+    let now = 0;
+    vi.mocked(performance.now).mockImplementation(() => now);
+
     const { StatusBar } = await import('./StatusBar');
     render(<StatusBar><span>left-status</span></StatusBar>);
 
@@ -31,12 +34,49 @@ describe('StatusBar', () => {
     expect(rafState.callback).toBeTruthy();
 
     act(() => {
+      now = 16;
       rafState.callback?.(16);
     });
 
     const fpsNode = screen.getByText(/fps/);
     expect(fpsNode.textContent).toBe('0 fps');
     expect((fpsNode as HTMLElement).style.color).toBe('var(--color-error)');
+  });
+
+  it('switches to warning and success colors for 30+ and 55+ fps windows', async () => {
+    let now = 0;
+    vi.mocked(performance.now).mockImplementation(() => now);
+
+    const { StatusBar } = await import('./StatusBar');
+    render(<StatusBar />);
+
+    for (let i = 0; i < 34; i++) {
+      act(() => {
+        now = 500;
+        rafState.callback?.(500);
+      });
+    }
+    act(() => {
+      now = 1000;
+      rafState.callback?.(1000);
+    });
+
+    const fpsNode = screen.getByText('35 fps');
+    expect((fpsNode as HTMLElement).style.color).toBe('var(--color-warning)');
+
+    for (let i = 0; i < 54; i++) {
+      act(() => {
+        now = 1500;
+        rafState.callback?.(1500);
+      });
+    }
+    act(() => {
+      now = 2000;
+      rafState.callback?.(2000);
+    });
+
+    const updatedFpsNode = screen.getByText('55 fps');
+    expect((updatedFpsNode as HTMLElement).style.color).toBe('var(--color-success)');
   });
 
   it('cancels animation frame on unmount', async () => {

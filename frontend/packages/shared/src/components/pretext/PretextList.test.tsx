@@ -133,4 +133,34 @@ describe('PretextList', () => {
 
     expect(screen.getByText('Value 3')).toBeTruthy();
   });
+
+  it('does not emit bottom transition when bottom state does not change and applies custom style/className', () => {
+    const onAtBottomChange = vi.fn();
+
+    const { container } = render(
+      <PretextList
+        items={items}
+        estimateHeight={() => 30}
+        renderItem={(item) => <div>{item.value}</div>}
+        keyExtractor={(item) => item.id}
+        onAtBottomChange={onAtBottomChange}
+        className="custom-list"
+        style={{ border: '1px solid red' }}
+      />,
+    );
+
+    const viewport = container.querySelector('.custom-list') as HTMLDivElement;
+    expect(viewport).toBeTruthy();
+    expect(viewport.style.border).toContain('1px');
+
+    Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 300 });
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 50, writable: true });
+
+    fireEvent.scroll(viewport);
+    fireEvent.scroll(viewport);
+
+    expect(onAtBottomChange).toHaveBeenCalledTimes(1);
+    expect(onAtBottomChange).toHaveBeenCalledWith(false);
+  });
 });

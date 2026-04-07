@@ -64,6 +64,17 @@ describe('PretextInput', () => {
     expect(onSubmit).toHaveBeenCalledTimes(2);
   });
 
+  it('uses fallback prepared text and minimum one-line height for empty value and zero line layout', () => {
+    pretextMock.usePretextLayout.mockReturnValue({ height: 0, lineCount: 0 });
+
+    render(<PretextInput value="" onChange={vi.fn()} />);
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(pretextMock.usePreparedText).toHaveBeenCalledWith(' ', '14px Inter', { whiteSpace: 'pre-wrap' });
+    expect(textarea.style.height).toBe('42px');
+    expect(textarea.style.overflowY).toBe('hidden');
+  });
+
   it('respects disabled prop', () => {
     render(<PretextInput value="draft" onChange={vi.fn()} disabled />);
 

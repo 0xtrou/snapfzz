@@ -2,6 +2,22 @@
 // Sections: Plugin Context, Plugin Communication, Isolation
 // Verifies: PluginContext shape, namespaced bus, command registry, logger prefixing, settings/storage namespacing
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const tauriInvokeMock = vi.fn(async () => undefined);
+const tauriListenMock = vi.fn(async () => () => undefined);
+
+vi.mock('@snapfzz/shared', async () => {
+  const actual = await vi.importActual<typeof import('@snapfzz/shared')>('@snapfzz/shared');
+  return {
+    ...actual,
+    createTauriBridge: () => ({
+      invoke: tauriInvokeMock,
+      listen: tauriListenMock,
+      isAvailable: false,
+    }),
+  };
+});
+
 import { ContributionStore } from './contribution-store';
 import { createPluginContext, disposePluginContext, type ContextStorageAdapter } from './plugin-context-factory';
 
@@ -38,6 +54,10 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    tauriInvokeMock.mockReset();
+    tauriListenMock.mockReset();
+    tauriInvokeMock.mockResolvedValue(undefined);
+    tauriListenMock.mockResolvedValue(() => undefined);
     storage = new MemoryStorage();
   });
 
@@ -262,6 +282,25 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
 
     expect(() => context.apis.get('missing.token')).toThrow(/not provided/i);
+  });
+
+  it('A006/rust-bridge: rust.invoke delegates to tauri bridge', async () => {
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
+
+    tauriInvokeMock.mockResolvedValueOnce({ ok: true });
+
+    await expect(context.rust.invoke('demo.command', { value: 1 })).resolves.toEqual({ ok: true });
+    expect(tauriInvokeMock).toHaveBeenCalledWith('demo.command', { value: 1 });
+  });
+
+  it('A006/rust-bridge: rust.listen delegates to tauri bridge', async () => {
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
+    const handler = vi.fn();
+
+    const unlisten = await context.rust.listen('demo.event', handler);
+
+    expect(tauriListenMock).toHaveBeenCalledWith('demo.event', handler);
+    expect(typeof unlisten).toBe('function');
   });
 
   it('A005/isolation: plugin storage stores and deletes namespaced values', async () => {

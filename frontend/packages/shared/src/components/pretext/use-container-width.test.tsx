@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useContainerWidth } from './use-container-width';
 
 describe('useContainerWidth', () => {
@@ -14,17 +14,22 @@ describe('useContainerWidth', () => {
     expect(Number(screen.getByTestId('width').textContent)).toBe(0);
   });
 
-  it('reads clientWidth and updates from ResizeObserver callback when ref is attached', async () => {
+  it('reads clientWidth, updates on resize entries, ignores empty entries, and disconnects on unmount', async () => {
     let triggerResize: ((width: number) => void) | undefined;
+    let triggerEmpty: (() => void) | undefined;
+    const disconnectSpy = vi.fn();
 
     class ResizeObserverMock {
       constructor(callback: (entries: Array<{ contentRect: { width: number } }>) => void) {
         triggerResize = (width: number) => callback([{ contentRect: { width } }]);
+        triggerEmpty = () => callback([]);
       }
 
       observe() {}
 
-      disconnect() {}
+      disconnect() {
+        disconnectSpy();
+      }
     }
 
     Object.defineProperty(globalThis, 'ResizeObserver', {
@@ -48,7 +53,7 @@ describe('useContainerWidth', () => {
       );
     };
 
-    render(<Probe />);
+    const { unmount } = render(<Probe />);
 
     await waitFor(() => {
       expect(Number(screen.getByTestId('width').textContent)).toBe(240);
@@ -59,5 +64,14 @@ describe('useContainerWidth', () => {
     });
 
     expect(Number(screen.getByTestId('width').textContent)).toBe(512);
+
+    act(() => {
+      triggerEmpty?.();
+    });
+
+    expect(Number(screen.getByTestId('width').textContent)).toBe(512);
+
+    unmount();
+    expect(disconnectSpy).toHaveBeenCalledTimes(1);
   });
 });

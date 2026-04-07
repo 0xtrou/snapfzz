@@ -72,13 +72,20 @@ describe('pretext hooks', () => {
       layoutWithLines,
     } = await import('./pretext');
 
-    const { result } = renderHook(() => {
-      const prepared = usePreparedSegments('segmented text', '12px Inter', { whiteSpace: 'pre-wrap' });
+    const { result, rerender } = renderHook(({ maxWidth, whiteSpace }: { maxWidth: number; whiteSpace?: 'normal' | 'pre-wrap' }) => {
+      const prepared = usePreparedSegments('segmented text', '12px Inter', whiteSpace ? { whiteSpace } : undefined);
       return {
         prepared,
-        layout: useSegmentLayout(prepared, 240, 18),
+        layout: useSegmentLayout(prepared, maxWidth, 18),
       };
+    }, {
+      initialProps: { maxWidth: 0, whiteSpace: undefined },
     });
+
+    expect(result.current.layout).toEqual({ height: 0, lineCount: 0, lines: [] });
+    expect(pretextMock.prepareWithSegments).toHaveBeenCalledWith('segmented text', '12px Inter', undefined);
+
+    rerender({ maxWidth: 240, whiteSpace: 'pre-wrap' });
 
     await waitFor(() => {
       expect(result.current.layout.lineCount).toBe(3);
