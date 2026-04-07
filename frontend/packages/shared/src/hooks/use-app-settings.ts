@@ -140,18 +140,13 @@ export function useAppSettings(): AppSettingsState {
     window.addEventListener('snapfzz:settings-changed', handleSettingsChanged);
 
     let unlisten: (() => void) | null = null;
-    const w = window as unknown as Record<string, unknown>;
-    const tauri = w.__TAURI_INTERNALS__ as
-      | { event?: { listen?: (event: string, cb: (payload: unknown) => void) => Promise<() => void> } }
-      | undefined;
-
-    if (tauri?.event?.listen) {
-      tauri.event.listen('settings-changed', () => {
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('settings-changed', () => {
         void applySettings();
       }).then((fn) => {
         unlisten = fn;
       }).catch(() => {});
-    }
+    }).catch(() => {});
 
     return () => {
       window.removeEventListener('snapfzz:settings-changed', handleSettingsChanged);

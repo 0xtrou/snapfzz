@@ -491,7 +491,12 @@ async fn set_preset(
         _ => return Err(format!("Unknown preset: {preset_name}")),
     };
     let new_preset = build_preset(name, &hw);
+    let new_agentscope_max_mb = new_preset.memory.agentscope_max_mb;
     registry.swap_preset(new_preset);
+    // Propagate memory limit to live supervised process entries.
+    if let Some(mut entry) = registry.supervised.processes.get_mut("agentscope") {
+        entry.max_memory_mb = new_agentscope_max_mb;
+    }
     eprintln!("[budget] preset swapped to: {preset_name}");
     Ok(())
 }

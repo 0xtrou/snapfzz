@@ -86,6 +86,7 @@ export default function AdvancedSettings(): React.ReactElement {
         logLevel: values.logLevel,
       };
       await tauriInvoke('save_settings', { settings: merged });
+      window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -117,11 +118,15 @@ export default function AdvancedSettings(): React.ReactElement {
               openLastProject: true,
               language: 'en',
               fontFamily: 'Inter',
-              fontSize: '14',
+              fontSize: '13',
               fpsCounter: true,
               logLevel: 'info',
+              preset: 'auto',
+              agentscopeHost: '127.0.0.1',
+              agentscopePort: '8090',
             },
           });
+          window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
           await loadSettings();
           setIsDirty(false);
         } catch {
