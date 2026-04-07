@@ -12,8 +12,7 @@ let _listenCache:
 export function createTauriBridge(): TauriBridge {
   const isTauri =
     typeof window !== 'undefined' &&
-    typeof window.navigator?.userAgent === 'string' &&
-    /\btauri\b/i.test(window.navigator.userAgent);
+    '__TAURI_INTERNALS__' in window;
 
   if (!isTauri) {
     return {
