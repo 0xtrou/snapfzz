@@ -311,37 +311,81 @@ Clicking "Open":
 
 ## CEF Integration
 
-CEF (Chromium Embedded Framework) via Tauri's WebviewWindow:
+CEF (Chromium Embedded Framework) via `tauri-apps/cef-rs` — full Chromium, NOT platform webview.
+
+### Why CEF, not WebviewUrl::External
+
+| | CEF (`cef-rs`) | `WebviewUrl::External` |
+|---|---|---|
+| Engine | Full Chromium (consistent everywhere) | Platform webview (WKWebView/WebView2/WebKitGTK) |
+| DevTools | Built-in, always available | macOS only (WKWebView inspector) |
+| Web APIs | Full: WebRTC, WebGL, service workers, WebUSB | Subset, varies by platform |
+| Rendering | Identical on all platforms | Different per platform |
+| Tauri IPC | None (correct — mini apps are pure web) | Injected (`__TAURI_INTERNALS__`) — security risk |
+| Process model | Separate Chromium process per window | Shares platform webview process |
+| Vibe coding | Full browser = build + preview in-app | Limited preview capability |
+
+### CEF Lifecycle
+
+```
+App boot:
+  CEF NOT initialized (lazy — only on first mini app open)
+
+First mini app open:
+  1. cef_rs::initialize(CefSettings) — one-time, ~200ms
+  2. CefBrowser::create(url, settings, window_info)
+
+Subsequent mini app opens:
+  1. CefBrowser::create(url, settings, window_info) — ~50ms (CEF already initialized)
+
+Mini app close:
+  1. CefBrowser::close() — destroys browser
+  2. If last CEF window → CEF stays initialized (no shutdown until app exit)
+
+App exit:
+  1. All CefBrowser instances closed
+  2. cef_rs::shutdown() — clean Chromium teardown
+```
+
+### Window Creation
 
 ```rust
-// In main.rs (orchestrator)
+use cef_rs::{CefApp, CefBrowser, CefSettings, CefWindowInfo};
+
 fn open_miniapp_window(
-    app: &tauri::AppHandle,
     miniapp_id: &str,
     url: &str,
-    config: &MiniAppFrontendConfig,
-) -> Result<(), String> {
-    let label = format!("miniapp-{miniapp_id}");
-    let builder = tauri::WebviewWindowBuilder::new(
-        app,
-        &label,
-        tauri::WebviewUrl::External(url.parse().unwrap()),
-    )
-    .title(&config.title)
-    .inner_size(config.width as f64, config.height as f64)
-    .min_inner_size(config.min_width as f64, config.min_height as f64)
-    .resizable(config.resizable);
+    title: &str,
+    width: u32,
+    height: u32,
+) -> Result<CefBrowser, String> {
+    let window_info = CefWindowInfo::new()
+        .with_title(title)
+        .with_size(width, height);
 
-    builder.build().map_err(|e| e.to_string())?;
-    Ok(())
+    CefBrowser::create(url, &window_info)
+        .map_err(|e| e.to_string())
 }
 ```
 
-**Window rules:**
-- Each mini app gets its own WebviewWindow (separate process, own frame budget per A007)
-- Mini app windows are NOT Tauri IPC-connected — they load external URLs (the local backend)
-- Mini app windows do NOT have access to `__TAURI_INTERNALS__` — they're pure web apps
-- Window close event triggers process shutdown via kernel
+### CEF has NO Tauri IPC
+
+Mini app CEF windows are pure Chromium:
+- No `__TAURI_INTERNALS__` injected
+- No `invoke()` or `listen()` available
+- No access to other Tauri windows
+- Communication with kernel is ONLY through the mini app's own backend (localhost HTTP)
+- This is the correct boundary: mini apps are web apps, not Tauri extensions
+
+### Dependencies
+
+Add to `src-tauri/Cargo.toml`:
+```toml
+[dependencies]
+cef-rs = { git = "https://github.com/tauri-apps/cef-rs" }
+```
+
+CEF binary (~300MB) is downloaded on first build via `download-cef` build script from `cef-rs`.
 
 ---
 

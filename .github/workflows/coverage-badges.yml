@@ -86,7 +86,7 @@ jobs:
           done
 
           # Plugins
-          for plugin in chat settings-general settings-performance settings-plugins settings-advanced settings-processes; do
+          for plugin in chat settings-general settings-performance settings-plugins settings-advanced settings-processes settings-vault; do
             DIR="plugins/$plugin"
             if [ "$plugin" = "chat" ]; then
               FILTER="@snapfzz/chat-plugin"

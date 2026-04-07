@@ -24,6 +24,10 @@ vi.mock('@snapfzz/settings-processes', () => ({
   default: fakeManifest('settings.processes'),
 }));
 
+vi.mock('@snapfzz/settings-vault', () => ({
+  default: fakeManifest('settings.vault'),
+}));
+
 vi.mock('@snapfzz/settings-plugins', () => ({
   default: fakeManifest('settings.plugins'),
 }));
@@ -53,11 +57,12 @@ describe('A006/boot: discoverPlugins', () => {
   it('A006/boot: discoverPlugins returns array for preferences surface', async () => {
     const result = await discoverPlugins('preferences');
     expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(5);
     expect(result.map((item) => item.manifest.id)).toEqual([
       'settings.general',
       'settings.performance',
       'settings.processes',
+      'settings.vault',
       'settings.plugins',
     ]);
   });
@@ -76,7 +81,7 @@ describe('A006/boot: discoverPlugins', () => {
 
     const result = await discoverPlugins('preferences');
 
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(5);
     expect(errorSpy).toHaveBeenCalled();
   });
 });
@@ -107,11 +112,12 @@ describe('A006/boot: registerDiscoveredPlugins', () => {
 
     await registerDiscoveredPlugins(host, 'preferences');
 
-    expect(registerSpy).toHaveBeenCalledTimes(4);
+    expect(registerSpy).toHaveBeenCalledTimes(5);
     expect(registerSpy.mock.calls.map(([manifest]) => manifest.id)).toEqual([
       'settings.general',
       'settings.performance',
       'settings.processes',
+      'settings.vault',
       'settings.plugins',
     ]);
   });

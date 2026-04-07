@@ -137,7 +137,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        plugin: [settings-general, settings-performance, settings-plugins, settings-advanced, settings-processes]
+        plugin: [settings-general, settings-performance, settings-plugins, settings-advanced, settings-processes, settings-vault]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
