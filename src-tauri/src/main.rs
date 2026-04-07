@@ -152,15 +152,51 @@ async fn get_settings(settings_mgr: tauri::State<'_, Arc<SettingsManager>>) -> R
 #[tauri::command]
 async fn save_settings(app: tauri::AppHandle, settings_mgr: tauri::State<'_, Arc<SettingsManager>>, settings: Settings) -> Result<(), String> { settings_mgr.save(&settings).map_err(|e| e.to_string())?; let _ = app.emit("settings-changed", ()); Ok(()) }
 #[tauri::command]
-async fn vault_store(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, value: String, plugin_id: Option<String>) -> Result<(), String> { ensure_system_vault_caller(plugin_id.as_deref())?; vault.lock().unwrap().store(&key, value.as_bytes()).map_err(|e| e.to_string()) }
+async fn vault_store(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, value: String, plugin_id: Option<String>) -> Result<(), String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
+    let mut guard = vault.lock().unwrap();
+    if !guard.is_initialized() {
+        return Err("Vault not initialized — restart the app to regenerate the master key".to_string());
+    }
+    guard.store(&key, value.as_bytes()).map_err(|e| e.to_string())
+}
 #[tauri::command]
-async fn vault_read(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<String, String> { ensure_system_vault_caller(plugin_id.as_deref())?; let bytes = vault.lock().unwrap().read(&key).map_err(|e| e.to_string())?; String::from_utf8(bytes).map_err(|e| e.to_string()) }
+async fn vault_read(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<String, String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
+    let mut guard = vault.lock().unwrap();
+    if !guard.is_initialized() {
+        return Err("Vault not initialized — restart the app to regenerate the master key".to_string());
+    }
+    let bytes = guard.read(&key).map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
 #[tauri::command]
-async fn vault_delete(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<(), String> { ensure_system_vault_caller(plugin_id.as_deref())?; vault.lock().unwrap().delete(&key).map_err(|e| e.to_string()) }
+async fn vault_delete(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<(), String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
+    let mut guard = vault.lock().unwrap();
+    if !guard.is_initialized() {
+        return Err("Vault not initialized — restart the app to regenerate the master key".to_string());
+    }
+    guard.delete(&key).map_err(|e| e.to_string())
+}
 #[tauri::command]
-async fn vault_list(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, plugin_id: Option<String>) -> Result<Vec<String>, String> { ensure_system_vault_caller(plugin_id.as_deref())?; Ok(vault.lock().unwrap().list()) }
+async fn vault_list(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, plugin_id: Option<String>) -> Result<Vec<String>, String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
+    let mut guard = vault.lock().unwrap();
+    if !guard.is_initialized() {
+        return Err("Vault not initialized — restart the app to regenerate the master key".to_string());
+    }
+    guard.list().map_err(|e| e.to_string())
+}
 #[tauri::command]
-async fn vault_has(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<bool, String> { ensure_system_vault_caller(plugin_id.as_deref())?; Ok(vault.lock().unwrap().has(&key)) }
+async fn vault_has(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<bool, String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
+    let guard = vault.lock().unwrap();
+    if !guard.is_initialized() {
+        return Err("Vault not initialized — restart the app to regenerate the master key".to_string());
+    }
+    Ok(guard.has(&key))
+}
 #[tauri::command]
 async fn get_batch_interval(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<u64, String> { Ok(registry.batch_interval()) }
 #[tauri::command]

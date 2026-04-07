@@ -27,6 +27,9 @@ pub struct SecretVault {
     master_key: LessSafeKey,
     vault_path: PathBuf,
     entries: HashMap<String, EncryptedEntry>,
+    initialized: bool,
+    last_access: std::time::Instant,
+    access_count: u32,
 }
 
 #[derive(Debug)]
@@ -37,6 +40,7 @@ pub enum VaultError {
     Crypto(String),
     NotFound(String),
     Utf8(std::string::FromUtf8Error),
+    RateLimited,
 }
 
 impl fmt::Display for VaultError {
@@ -48,6 +52,9 @@ impl fmt::Display for VaultError {
             VaultError::Crypto(err) => write!(f, "crypto error: {err}"),
             VaultError::NotFound(key) => write!(f, "secret not found: {key}"),
             VaultError::Utf8(err) => write!(f, "utf8 error: {err}"),
+            VaultError::RateLimited => {
+                write!(f, "rate limited: too many vault operations per second")
+            }
         }
     }
 }
@@ -79,6 +86,9 @@ impl SecretVault {
             master_key,
             vault_path,
             entries,
+            initialized: true,
+            last_access: std::time::Instant::now(),
+            access_count: 0,
         })
     }
 
@@ -91,6 +101,29 @@ impl SecretVault {
             master_key,
             vault_path,
             entries: HashMap::new(),
+            initialized: false,
+            last_access: std::time::Instant::now(),
+            access_count: 0,
+        }
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
+    pub fn check_rate_limit(&mut self) -> Result<(), VaultError> {
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last_access).as_secs() >= 1 {
+            self.last_access = now;
+            self.access_count = 1;
+            Ok(())
+        } else {
+            self.access_count += 1;
+            if self.access_count > 10 {
+                Err(VaultError::RateLimited)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -119,7 +152,8 @@ impl SecretVault {
         Ok(())
     }
 
-    pub fn read(&self, key: &str) -> Result<Vec<u8>, VaultError> {
+    pub fn read(&mut self, key: &str) -> Result<Vec<u8>, VaultError> {
+        self.check_rate_limit()?;
         let entry = self
             .entries
             .get(key)
@@ -150,10 +184,11 @@ impl SecretVault {
         Ok(())
     }
 
-    pub fn list(&self) -> Vec<String> {
+    pub fn list(&mut self) -> Result<Vec<String>, VaultError> {
+        self.check_rate_limit()?;
         let mut keys: Vec<String> = self.entries.keys().cloned().collect();
         keys.sort();
-        keys
+        Ok(keys)
     }
 
     pub fn has(&self, key: &str) -> bool {
@@ -187,6 +222,18 @@ pub fn load_or_generate_master_key(data_dir: &Path) -> Result<[u8; 32], VaultErr
 fn load_or_generate_master_keyfile(path: &Path) -> Result<[u8; 32], VaultError> {
     if path.exists() {
         let raw = fs::read(path)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(path).map_err(VaultError::Io)?;
+            let mode = meta.permissions().mode() & 0o777;
+            if mode != 0o600 {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                    .map_err(VaultError::Io)?;
+            }
+        }
+
         if raw.len() != 32 {
             return Err(VaultError::InvalidVaultFormat(format!(
                 "master key file has invalid size: {}",
@@ -437,6 +484,47 @@ mod tests {
     }
 
     #[test]
+    fn a011_vault_is_initialized_false_for_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = SecretVault::empty(dir.path().join("v.enc"));
+        assert!(!vault.is_initialized());
+    }
+
+    #[test]
+    fn a011_vault_is_initialized_true_for_opened() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        assert!(vault.is_initialized());
+    }
+
+    #[test]
+    fn a011_vault_rate_limit_allows_10_per_second() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        vault.store("test:key:val", b"secret").unwrap();
+        for _ in 0..10 {
+            assert!(vault.read("test:key:val").is_ok());
+        }
+        assert!(vault.read("test:key:val").is_err());
+    }
+
+    #[test]
+    fn a011_vault_rate_limit_resets_after_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        vault.store("test:key:val", b"secret").unwrap();
+        for _ in 0..10 {
+            vault.read("test:key:val").unwrap();
+        }
+        vault.last_access = std::time::Instant::now() - std::time::Duration::from_secs(2);
+        vault.access_count = 0;
+        assert!(vault.read("test:key:val").is_ok());
+    }
+
+    #[test]
     fn a011_vault_store_and_read_roundtrip_returns_original_plaintext() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.enc");
@@ -454,7 +542,7 @@ mod tests {
     fn a011_vault_read_nonexistent_key_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.enc");
-        let vault = SecretVault::open(&test_master_key(), path).unwrap();
+        let mut vault = SecretVault::open(&test_master_key(), path).unwrap();
 
         let err = vault.read("missing").unwrap_err();
         assert!(matches!(err, VaultError::NotFound(key) if key == "missing"));
@@ -482,7 +570,7 @@ mod tests {
         vault.store("provider:openai:apiKey", b"key-a").unwrap();
         vault.store("webhook:stripe:secret", b"key-b").unwrap();
 
-        let names = vault.list();
+        let names = vault.list().unwrap();
         assert_eq!(
             names,
             vec!["provider:openai:apiKey", "webhook:stripe:secret"]
@@ -527,7 +615,7 @@ mod tests {
                 .unwrap();
         }
 
-        let reopened = SecretVault::open(&key, path).unwrap();
+        let mut reopened = SecretVault::open(&key, path).unwrap();
         assert_eq!(
             reopened.read("provider:minimax:apiKey").unwrap(),
             b"persisted"
@@ -544,7 +632,7 @@ mod tests {
         let mut vault = SecretVault::open(&key_a, path.clone()).unwrap();
         vault.store("provider:anthropic:apiKey", b"secret").unwrap();
 
-        let wrong = SecretVault::open(&key_b, path).unwrap();
+        let mut wrong = SecretVault::open(&key_b, path).unwrap();
         let err = wrong.read("provider:anthropic:apiKey").unwrap_err();
         assert!(matches!(err, VaultError::Crypto(_)));
     }
@@ -566,7 +654,7 @@ mod tests {
             .insert("key-b".to_string(), ciphertext_from_a);
         persist_entries_atomically(&path, &tampered.entries).unwrap();
 
-        let reopened = SecretVault::open(&key, path).unwrap();
+        let mut reopened = SecretVault::open(&key, path).unwrap();
         let err = reopened.read("key-b").unwrap_err();
         assert!(matches!(err, VaultError::Crypto(_)));
     }
@@ -587,7 +675,7 @@ mod tests {
         let err = vault.store("custom:new", b"new-value").unwrap_err();
         assert!(matches!(err, VaultError::Io(_)));
 
-        let reopened = SecretVault::open(&key, valid_path).unwrap();
+        let mut reopened = SecretVault::open(&key, valid_path).unwrap();
         assert_eq!(reopened.read("custom:stable").unwrap(), b"stable-value");
         assert!(matches!(
             reopened.read("custom:new"),
@@ -605,8 +693,8 @@ mod tests {
         let bytes = serialize_entries(&empty_entries).unwrap();
         fs::write(&path, bytes).unwrap();
 
-        let vault = SecretVault::open(&key, path).unwrap();
-        assert!(vault.list().is_empty());
+        let mut vault = SecretVault::open(&key, path).unwrap();
+        assert!(vault.list().unwrap().is_empty());
     }
 
     #[test]
@@ -805,6 +893,7 @@ mod tests {
         let not_found = VaultError::NotFound("missing".to_string());
         let utf8_err = String::from_utf8(vec![0xff]).unwrap_err();
         let utf8_variant = VaultError::Utf8(utf8_err);
+        let rate_limited = VaultError::RateLimited;
 
         let rendered = [
             io_err.to_string(),
@@ -813,6 +902,7 @@ mod tests {
             crypto_err.to_string(),
             not_found.to_string(),
             utf8_variant.to_string(),
+            rate_limited.to_string(),
         ];
 
         assert!(rendered[0].contains("io error"));
@@ -821,5 +911,6 @@ mod tests {
         assert!(rendered[3].contains("crypto error"));
         assert!(rendered[4].contains("secret not found"));
         assert!(rendered[5].contains("utf8 error"));
+        assert!(rendered[6].contains("rate limited"));
     }
 }
