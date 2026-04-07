@@ -232,6 +232,10 @@ export default function PerformanceSettings() {
             await bridge.invoke('save_settings', { settings: { ...current, preset: displayPreset } });
             window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
             setPendingPreset(null);
+            try {
+              const snap = await bridge.invoke<BudgetMetrics>('budget_snapshot');
+              setMetrics(snap);
+            } catch { void 0; }
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2500);
           } catch { void 0; }

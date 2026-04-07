@@ -571,6 +571,23 @@ describe('A007/settings-performance: save and discard', () => {
     });
   });
 
+  it('A007/settings-performance: saving immediately refreshes budget snapshot', async () => {
+    const user = userEvent.setup();
+    setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => screen.getByRole('radio', { name: /battery/i }));
+    const initialSnapshotCalls = mockBridgeInvoke.mock.calls.filter(([cmd]) => cmd === 'budget_snapshot').length;
+
+    await user.click(screen.getByRole('radio', { name: /battery/i }));
+    await waitFor(() => screen.getByRole('button', { name: /save/i }));
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      const snapshotCalls = mockBridgeInvoke.mock.calls.filter(([cmd]) => cmd === 'budget_snapshot').length;
+      expect(snapshotCalls).toBeGreaterThan(initialSnapshotCalls);
+    });
+  });
+
   it('A007/settings-performance: discard restores original preset', async () => {
     const user = userEvent.setup();
     setupMocks({ metrics: makeMetrics({ presetName: 'balanced' }) });
