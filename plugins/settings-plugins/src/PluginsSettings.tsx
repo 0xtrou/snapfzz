@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { List, Space, Switch, Tag, Typography } from 'antd';
-import { SettingsHeader } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -24,14 +24,7 @@ interface BudgetSnapshot {
   }>;
 }
 
-function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
-  const w = window as unknown as Record<string, unknown>;
-  const tauri = w.__TAURI_INTERNALS__ as
-    | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-    | undefined;
-  if (!tauri) return Promise.reject('Tauri not available');
-  return tauri.invoke(cmd, args);
-}
+const bridge = createTauriBridge();
 
 function strikeColor(strikes: number): 'success' | 'warning' | 'error' {
   if (strikes === 0) return 'success';
@@ -44,9 +37,8 @@ export default function PluginsSettings(): React.ReactElement {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    tauriInvoke('budget_snapshot')
-      .then((raw) => {
-        const snapshot = raw as BudgetSnapshot;
+    bridge.invoke<BudgetSnapshot>('budget_snapshot')
+      .then((snapshot) => {
         const entries: PluginEntry[] = (snapshot.plugins ?? []).map((p) => ({
           id: p.id,
           name: p.name ?? p.id,
@@ -67,11 +59,6 @@ export default function PluginsSettings(): React.ReactElement {
     setPlugins((prev) =>
       prev.map((p) => (p.id === id ? { ...p, enabled } : p)),
     );
-    tauriInvoke('set_plugin_enabled', { id, enabled }).catch(() => {
-      setPlugins((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, enabled: !enabled } : p)),
-      );
-    });
   }
 
   return (

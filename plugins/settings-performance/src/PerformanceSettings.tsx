@@ -1,4 +1,4 @@
-// A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via tauriInvoke,
+// A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via shared bridge IPC,
 // refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
 import { Card, Progress, Radio, Space, Typography } from 'antd';
@@ -44,10 +44,6 @@ interface BudgetRow {
 const REFRESH_INTERVAL_MS = 2000;
 
 const bridge = createTauriBridge();
-
-async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  return bridge.invoke<T>(command, args);
-}
 
 type Preset = 'performance' | 'balanced' | 'battery';
 
@@ -175,7 +171,7 @@ export default function PerformanceSettings() {
   const isDirty = pendingPreset !== null && pendingPreset !== activePreset;
 
   useEffect(() => {
-    tauriInvoke<HardwareInfo>('get_hardware_info')
+    bridge.invoke<HardwareInfo>('get_hardware_info')
       .then(setHwInfo)
       .catch(() => {});
   }, []);
@@ -185,7 +181,7 @@ export default function PerformanceSettings() {
 
     const poll = async () => {
       try {
-        const snap = await tauriInvoke<BudgetMetrics>('budget_snapshot');
+        const snap = await bridge.invoke<BudgetMetrics>('budget_snapshot');
         if (!active) return;
         setMetrics(snap);
       } catch {
@@ -195,7 +191,22 @@ export default function PerformanceSettings() {
 
     void poll();
     const id = setInterval(poll, REFRESH_INTERVAL_MS);
-    return () => { active = false; clearInterval(id); };
+
+    let unlisten: (() => void) | null = null;
+    bridge.listen<BudgetMetrics>('budget-metrics', (payload) => {
+      if (!active) return;
+      setMetrics(payload);
+    }).then((fn) => {
+      unlisten = fn;
+    }).catch(() => {
+      void 0;
+    });
+
+    return () => {
+      active = false;
+      clearInterval(id);
+      if (unlisten) unlisten();
+    };
   }, []);
 
   // A008/PerformancePreset: compute hardware-scaled Performance badge values.
@@ -207,7 +218,7 @@ export default function PerformanceSettings() {
   const budgetRows: BudgetRow[] = metrics ? buildBudgetRows(metrics) : [];
 
   return (
-    <div style={{ contain: 'content' }}>
+    <div style={{ contain: 'strict' }}>
       <SettingsHeader
         title="Performance"
         isDirty={isDirty}
@@ -216,9 +227,9 @@ export default function PerformanceSettings() {
         onSave={async () => {
           setSaving(true);
           try {
-            await tauriInvoke('set_preset', { presetName: displayPreset });
-            const current = await tauriInvoke<Record<string, unknown>>('get_settings');
-            await tauriInvoke('save_settings', { settings: { ...current, preset: displayPreset } });
+            await bridge.invoke('set_preset', { presetName: displayPreset });
+            const current = await bridge.invoke<Record<string, unknown>>('get_settings');
+            await bridge.invoke('save_settings', { settings: { ...current, preset: displayPreset } });
             window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
             setPendingPreset(null);
             setSaveSuccess(true);

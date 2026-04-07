@@ -1,4 +1,4 @@
-// A008/SupervisedDomain: Zone 3 render — reads live process snapshots from Rust via tauriInvoke,
+// A008/SupervisedDomain: Zone 3 render — reads live process snapshots from Rust via shared TauriBridge,
 // refreshes every 2s, displays process table with detail panels, logs, and controls.
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -21,7 +21,7 @@ import {
   FolderOpenOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { SettingsHeader, ConfirmAction, AgentscopeHostSchema, AgentscopePortSchema } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, ConfirmAction, AgentscopeHostSchema, AgentscopePortSchema } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -43,6 +43,8 @@ export interface ProcessSnapshot {
 
 const REFRESH_INTERVAL_MS = 2000;
 const LOG_REFRESH_INTERVAL_MS = 3000;
+
+const bridge = createTauriBridge();
 
 // A001/GPUOnlyAnimations: all color decisions via CSS variables — no hardcoded hex.
 function statusColor(status: ProcessSnapshot['status']): string {
@@ -87,16 +89,6 @@ function memoryPct(rss: number | null, max: number): number {
   return Math.min(100, Math.round((rss / max) * 100));
 }
 
-// A008/BudgetRegistry: tauriInvoke bridges Zone 3 rendering to Zone 1 Rust commands.
-function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
-  const w = window as unknown as Record<string, unknown>;
-  const tauri = w.__TAURI_INTERNALS__ as
-    | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-    | undefined;
-  if (!tauri) return Promise.reject(new Error('Tauri not available'));
-  return tauri.invoke(cmd, args);
-}
-
 interface DetailPanelProps {
   process: ProcessSnapshot;
   onAction: () => void;
@@ -131,8 +123,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
   useEffect(() => {
     if (process.name !== 'agentscope') return;
-    tauriInvoke('get_settings').then((s) => {
-      const settings = s as Record<string, unknown>;
+    bridge.invoke<Record<string, unknown>>('get_settings').then((settings) => {
       const host = typeof settings.agentscopeHost === 'string' ? settings.agentscopeHost : '127.0.0.1';
       const port = typeof settings.agentscopePort === 'string' ? settings.agentscopePort
         : typeof settings.agentscopePort === 'number' ? String(settings.agentscopePort)
@@ -147,14 +138,14 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
   const handleSaveAndRestart = useCallback(async () => {
     setConfigSaving(true);
     try {
-      const current = await tauriInvoke('get_settings') as Record<string, unknown>;
-      await tauriInvoke('save_settings', {
+      const current = await bridge.invoke<Record<string, unknown>>('get_settings');
+      await bridge.invoke<void>('save_settings', {
         settings: { ...current, agentscopeHost, agentscopePort },
       });
       emitSettingsChanged();
       setSavedHost(agentscopeHost);
       setSavedPort(agentscopePort);
-      await tauriInvoke('restart_process', { name: 'agentscope' });
+      await bridge.invoke<void>('restart_process', { name: 'agentscope' });
       onAction();
     } catch {
       void 0;
@@ -165,8 +156,8 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const result = await tauriInvoke('get_process_logs', { name: process.name, tailN: 100 });
-      setLogs(result as string[]);
+      const result = await bridge.invoke<string[]>('get_process_logs', { name: process.name, tailN: 100 });
+      setLogs(result);
     } catch {
       void 0;
     }
@@ -189,7 +180,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
   const handleRestart = async () => {
     try {
-      await tauriInvoke('restart_process', { name: process.name });
+      await bridge.invoke<void>('restart_process', { name: process.name });
       onAction();
     } catch {
       void 0;
@@ -198,7 +189,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
   const handleKill = async () => {
     try {
-      await tauriInvoke('kill_process', { name: process.name });
+      await bridge.invoke<void>('kill_process', { name: process.name });
       onAction();
     } catch {
       void 0;
@@ -207,7 +198,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
   const handleClearLogs = async () => {
     try {
-      await tauriInvoke('clear_process_logs', { name: process.name });
+      await bridge.invoke<void>('clear_process_logs', { name: process.name });
       setLogs([]);
     } catch {
       void 0;
@@ -361,7 +352,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
                     type="text"
                     size="small"
                     icon={<LinkOutlined />}
-                    onClick={() => tauriInvoke('open_path', { path: process.healthUrl })}
+                    onClick={() => void bridge.invoke<void>('open_path', { path: process.healthUrl })}
                   />
                 </Tooltip>
               </>
@@ -468,8 +459,8 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
           icon={<FolderOpenOutlined />}
           onClick={async () => {
             try {
-              const dataDir = await tauriInvoke('get_data_dir') as string;
-              tauriInvoke('open_path', { path: `${dataDir}/runtime/${process.name}` });
+              const dataDir = await bridge.invoke<string>('get_data_dir');
+              void bridge.invoke<void>('open_path', { path: `${dataDir}/runtime/${process.name}` });
             } catch { void 0; }
           }}
           data-testid={`btn-open-log-file-${process.name}`}
@@ -516,8 +507,8 @@ export default function ProcessesSettings() {
 
   const fetchProcesses = useCallback(async () => {
     try {
-      const result = await tauriInvoke('list_processes');
-      setProcesses(result as ProcessSnapshot[]);
+      const result = await bridge.invoke<ProcessSnapshot[]>('list_processes');
+      setProcesses(result);
       setHasData(true);
     } catch {
       void 0;
@@ -607,7 +598,7 @@ export default function ProcessesSettings() {
   ];
 
   return (
-    <div style={{ contain: 'content' }}>
+    <div style={{ contain: 'strict' }}>
       <SettingsHeader title="Processes">
         <span
           data-testid="live-indicator"

@@ -103,6 +103,15 @@ If your code computes → Zone 1 or 2. If it renders → Zone 3. No exceptions.
 - Boot: 0ms window → 50ms skeleton → 100ms manifests → 150ms critical plugins → 200ms interactive.
 - `@snapfzz/plugin-sdk` is the stable contract. Never modify without approval.
 
+### A014 — Kernel Architecture
+`docs/plans/A014-kernel-architecture.md`
+
+- **main.rs is the orchestrator** — routes, gates, emits. Crates do the work.
+- **snapfzz-kernel** merges budget + preflight + core + agent-supervisor + settings + process management.
+- **snapfzz-stream** owns SSE consumer + token batching + Channel API.
+- **main.rs < 300 lines** — thin Tauri command handlers that delegate to crate methods.
+- **Delete 6 stub crates** — merged into kernel or removed (tauri-shell, plugin-host Rust).
+
 ### A011 — Secret Vault
 `docs/plans/A011-secret-vault.md`
 

@@ -133,22 +133,74 @@ pub struct PhaseTiming {
     pub status: PhaseStatus,
 }
 
-// Per A012/Architecture: PreflightResult holds everything main.rs needs to manage
-// as Tauri state. runtime_state and process_logs stay in main.rs types —
-// the preflight crate receives them as Arc<Mutex<T>> from the caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Phase {
+    Filesystem = 1,
+    Vault = 2,
+    Settings = 3,
+    Budget = 4,
+}
+
+#[derive(Clone)]
+pub struct PreflightContext {
+    pub data_dir: PathBuf,
+    settings: Option<PreflightSettings>,
+    registry: Option<Arc<BudgetRegistry>>,
+}
+
+impl PreflightContext {
+    pub fn new(data_dir: PathBuf) -> Self {
+        Self {
+            data_dir,
+            settings: None,
+            registry: None,
+        }
+    }
+
+    pub fn settings(&self) -> &PreflightSettings {
+        self.settings
+            .as_ref()
+            .expect("[preflight] settings accessed before Phase 3")
+    }
+
+    pub fn registry(&self) -> &Arc<BudgetRegistry> {
+        self.registry
+            .as_ref()
+            .expect("[preflight] registry accessed before Phase 4")
+    }
+
+    pub fn set_settings(&mut self, settings: PreflightSettings) {
+        self.settings = Some(settings);
+    }
+
+    pub fn set_registry(&mut self, registry: Arc<BudgetRegistry>) {
+        self.registry = Some(registry);
+    }
+}
+
+pub trait OnPreflightInit: Send + Sync {
+    fn on_preflight_init(&self, ctx: &mut PreflightContext) -> Result<(), PreflightError>;
+}
+
+pub trait OnPreflightReady: Send + Sync {
+    fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError>;
+}
+
+#[derive(Clone)]
 pub struct PreflightResult {
     pub settings: PreflightSettings,
     pub registry: Arc<BudgetRegistry>,
     pub durations: Vec<PhaseTiming>,
+    pub context: PreflightContext,
 }
 
 #[derive(Debug)]
 pub enum PreflightError {
-    // Per A012/Phase1: filesystem failure is the only fatal error — app cannot start.
     FilesystemFailed(String),
-    // Phase 3-4 errors degrade gracefully to defaults.
     SettingsError(String),
     BudgetError(String),
+    HookFailed { phase: Phase, detail: String },
+    ReadyHookFailed(String),
 }
 
 impl std::fmt::Display for PreflightError {
@@ -159,30 +211,45 @@ impl std::fmt::Display for PreflightError {
             }
             PreflightError::SettingsError(msg) => write!(f, "[preflight] settings error: {msg}"),
             PreflightError::BudgetError(msg) => write!(f, "[preflight] budget error: {msg}"),
+            PreflightError::HookFailed { phase, detail } => {
+                write!(f, "[preflight] hook failed in phase {:?}: {detail}", phase)
+            }
+            PreflightError::ReadyHookFailed(msg) => {
+                write!(f, "[preflight] ready hook failed: {msg}")
+            }
         }
     }
 }
 
 impl std::error::Error for PreflightError {}
 
-// Per A012/Architecture: PreflightService owns the data_dir and orchestrates all
-// boot phases in the correct order. main.rs delegates — it never initializes directly.
 pub struct PreflightService {
     data_dir: PathBuf,
+    init_hooks: std::collections::HashMap<Phase, Vec<Box<dyn OnPreflightInit>>>,
+    ready_hooks: Vec<Box<dyn OnPreflightReady>>,
 }
 
 impl PreflightService {
     pub fn new(data_dir: PathBuf) -> Self {
-        Self { data_dir }
+        Self {
+            data_dir,
+            init_hooks: std::collections::HashMap::new(),
+            ready_hooks: Vec::new(),
+        }
     }
 
-    // Per A012/Phases: run_sync executes phases 1-4 in order.
-    // Total budget <25ms. Phase 1 failure is fatal (returns Err).
-    // Phase 2-4 failures degrade to defaults (return Ok with Degraded status).
-    pub fn run_sync(&self) -> Result<PreflightResult, PreflightError> {
-        let mut durations = Vec::new();
+    pub fn register_init(&mut self, phase: Phase, hook: Box<dyn OnPreflightInit>) {
+        self.init_hooks.entry(phase).or_default().push(hook);
+    }
 
-        // Phase 1: Filesystem — FATAL if fails
+    pub fn register_ready(&mut self, hook: Box<dyn OnPreflightReady>) {
+        self.ready_hooks.push(hook);
+    }
+
+    pub fn run_sync(&mut self) -> Result<PreflightResult, PreflightError> {
+        let mut durations = Vec::new();
+        let mut context = PreflightContext::new(self.data_dir.clone());
+
         let fs_timing = self.phase_filesystem()?;
         eprintln!(
             "[preflight] Phase 1: filesystem — {}ms ({})",
@@ -190,8 +257,8 @@ impl PreflightService {
             format_status(&fs_timing.status)
         );
         durations.push(fs_timing);
+        self.run_phase_hooks(Phase::Filesystem, &mut context)?;
 
-        // Phase 2: Secret Vault — STUB (A011 not yet implemented)
         let vault_timing = self.phase_vault_stub();
         eprintln!(
             "[preflight] Phase 2: vault — {}ms ({})",
@@ -199,38 +266,66 @@ impl PreflightService {
             format_status(&vault_timing.status)
         );
         durations.push(vault_timing);
+        self.run_phase_hooks(Phase::Vault, &mut context)?;
 
-        // Phase 3: Settings — degrades to defaults on failure
         let (settings, settings_timing) = self.phase_settings();
+        context.set_settings(settings);
         eprintln!(
             "[preflight] Phase 3: settings — {}ms ({})",
             settings_timing.duration_ms,
             format_status(&settings_timing.status)
         );
         durations.push(settings_timing);
+        self.run_phase_hooks(Phase::Settings, &mut context)?;
 
-        // Phase 4: Budget Registry — degrades to hardware-detected on failure
-        let (registry, budget_timing) = self.phase_budget(&settings);
+        let (registry, budget_timing) = self.phase_budget(context.settings());
+        context.set_registry(registry);
         eprintln!(
             "[preflight] Phase 4: budget — {}ms ({})",
             budget_timing.duration_ms,
             format_status(&budget_timing.status)
         );
         durations.push(budget_timing);
+        self.run_phase_hooks(Phase::Budget, &mut context)?;
+
+        self.run_ready_hooks(&context)?;
 
         let total_ms: u64 = durations.iter().map(|d| d.duration_ms).sum();
         eprintln!("[preflight] Sync phases complete: {total_ms}ms total");
 
         Ok(PreflightResult {
-            settings,
-            registry,
+            settings: context.settings().clone(),
+            registry: context.registry().clone(),
             durations,
+            context,
         })
     }
 
-    // Per A012/Phase1: creates all required data directories.
-    // Uses create_dir_all — idempotent, safe to run on every boot.
-    // Fatal on failure — the app cannot function without its filesystem layout.
+    fn run_phase_hooks(
+        &mut self,
+        phase: Phase,
+        context: &mut PreflightContext,
+    ) -> Result<(), PreflightError> {
+        if let Some(hooks) = self.init_hooks.get_mut(&phase) {
+            for hook in hooks {
+                hook.on_preflight_init(context)
+                    .map_err(|err| PreflightError::HookFailed {
+                        phase,
+                        detail: err.to_string(),
+                    })?;
+            }
+        }
+        Ok(())
+    }
+
+    fn run_ready_hooks(&self, context: &PreflightContext) -> Result<(), PreflightError> {
+        for hook in &self.ready_hooks {
+            hook.on_preflight_ready(context)
+                .map_err(|err| PreflightError::ReadyHookFailed(err.to_string()))?;
+        }
+        Ok(())
+    }
+
     fn phase_filesystem(&self) -> Result<PhaseTiming, PreflightError> {
         let start = Instant::now();
 
@@ -256,8 +351,6 @@ impl PreflightService {
         })
     }
 
-    // Per A012/Phase2: Secret Vault is a STUB until A011 is implemented (T23).
-    // Returns Degraded — non-fatal. App continues without vault.
     fn phase_vault_stub(&self) -> PhaseTiming {
         let start = Instant::now();
         eprintln!("[preflight] Phase 2: vault — skipped (A011 not yet implemented)");
@@ -269,8 +362,6 @@ impl PreflightService {
         }
     }
 
-    // Per A012/Phase3: loads settings.json from data_dir.
-    // Degrades gracefully to defaults on missing file or parse error.
     fn phase_settings(&self) -> (PreflightSettings, PhaseTiming) {
         let start = Instant::now();
         let path = self.data_dir.join("settings.json");
@@ -342,8 +433,6 @@ impl PreflightService {
         }
     }
 
-    // Per A012/Phase4: builds BudgetRegistry from settings preset + detected hardware.
-    // Per A008/BudgetRegistry: preset selection order: explicit > auto-detected.
     fn phase_budget(&self, settings: &PreflightSettings) -> (Arc<BudgetRegistry>, PhaseTiming) {
         let start = Instant::now();
 
@@ -548,7 +637,7 @@ mod tests {
     #[test]
     fn a012_preflight_run_sync_completes_in_reasonable_time() {
         let tmp = tempfile::tempdir().unwrap();
-        let svc = PreflightService::new(tmp.path().to_path_buf());
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
 
         let start = Instant::now();
         let result = svc.run_sync();
@@ -581,7 +670,7 @@ mod tests {
     #[test]
     fn a012_preflight_run_sync_durations_contains_all_4_phases() {
         let tmp = tempfile::tempdir().unwrap();
-        let svc = PreflightService::new(tmp.path().to_path_buf());
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
 
         let result = svc.run_sync().unwrap();
 
@@ -635,5 +724,241 @@ mod tests {
         assert_eq!(timing.status, PhaseStatus::Ok);
         let preset = registry.preset.read().unwrap();
         assert_eq!(preset.name, "battery");
+    }
+
+    #[test]
+    fn a012_hooks_register_init_adds_hook_to_correct_phase() {
+        let mut svc = PreflightService::new(PathBuf::from("/tmp/unused"));
+        svc.register_init(Phase::Settings, Box::new(TestInitHook::new(vec![])));
+
+        assert_eq!(svc.init_hooks.get(&Phase::Settings).map(Vec::len), Some(1));
+        assert!(svc.init_hooks.get(&Phase::Filesystem).is_none());
+    }
+
+    #[test]
+    fn a012_hooks_run_sync_executes_init_hooks_after_built_in_phase() {
+        let tmp = tempfile::tempdir().unwrap();
+        let phases = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_init(
+            Phase::Filesystem,
+            Box::new(TestInitHook::new(vec![InitAction::RecordPhase(
+                phases.clone(),
+                Phase::Filesystem,
+            )])),
+        );
+
+        let result = svc.run_sync().unwrap();
+
+        assert!(
+            tmp.path().join("runtime").exists(),
+            "built-in phase must run first"
+        );
+        assert_eq!(&*phases.lock().unwrap(), &[Phase::Filesystem]);
+        assert_eq!(result.durations[0].phase, 1);
+    }
+
+    #[test]
+    fn a012_hooks_init_hooks_run_in_registration_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_init(
+            Phase::Vault,
+            Box::new(TestInitHook::new(vec![InitAction::RecordOrder(
+                order.clone(),
+                1,
+            )])),
+        );
+        svc.register_init(
+            Phase::Vault,
+            Box::new(TestInitHook::new(vec![InitAction::RecordOrder(
+                order.clone(),
+                2,
+            )])),
+        );
+
+        svc.run_sync().unwrap();
+
+        assert_eq!(&*order.lock().unwrap(), &[1, 2]);
+    }
+
+    #[test]
+    fn a012_hooks_ready_hooks_run_after_all_sync_phases() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ready = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_ready(Box::new(TestReadyHook::new(ready.clone())));
+
+        let result = svc.run_sync().unwrap();
+
+        assert_eq!(&*ready.lock().unwrap(), &["ready:settings-registry"]);
+        assert_eq!(result.context.settings().preset, result.settings.preset);
+        assert_eq!(
+            result.context.registry().preset.read().unwrap().name,
+            result.registry.preset.read().unwrap().name
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "[preflight] settings accessed before Phase 3")]
+    fn a012_hooks_context_settings_accessor_panics_before_phase_3() {
+        let ctx = PreflightContext::new(PathBuf::from("/tmp/unused"));
+        let _ = ctx.settings();
+    }
+
+    #[test]
+    #[should_panic(expected = "[preflight] registry accessed before Phase 4")]
+    fn a012_hooks_context_registry_accessor_panics_before_phase_4() {
+        let ctx = PreflightContext::new(PathBuf::from("/tmp/unused"));
+        let _ = ctx.registry();
+    }
+
+    #[test]
+    fn a012_hooks_context_settings_accessible_after_phase_3() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_ready(Box::new(AssertSettingsReadyHook));
+
+        let result = svc.run_sync().unwrap();
+
+        assert_eq!(result.context.settings().preset, result.settings.preset);
+    }
+
+    #[test]
+    fn a012_hooks_context_registry_accessible_after_phase_4() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_ready(Box::new(AssertRegistryReadyHook));
+
+        let result = svc.run_sync().unwrap();
+
+        assert_eq!(
+            result.context.registry().preset.read().unwrap().name,
+            result.registry.preset.read().unwrap().name
+        );
+    }
+
+    #[test]
+    fn a012_hooks_failing_init_hook_returns_error_with_phase_info() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_init(
+            Phase::Budget,
+            Box::new(TestInitHook::new(vec![InitAction::Fail("boom")])),
+        );
+
+        let err = match svc.run_sync() {
+            Ok(_) => panic!("expected init hook failure"),
+            Err(err) => err,
+        };
+
+        match err {
+            PreflightError::HookFailed { phase, detail } => {
+                assert_eq!(phase, Phase::Budget);
+                assert!(detail.contains("boom"));
+            }
+            other => panic!("expected hook failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a012_hooks_multiple_hooks_on_same_phase_all_execute() {
+        let tmp = tempfile::tempdir().unwrap();
+        let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_init(
+            Phase::Settings,
+            Box::new(TestInitHook::new(vec![InitAction::RecordOrder(
+                order.clone(),
+                1,
+            )])),
+        );
+        svc.register_init(
+            Phase::Settings,
+            Box::new(TestInitHook::new(vec![InitAction::RecordOrder(
+                order.clone(),
+                2,
+            )])),
+        );
+        svc.register_init(
+            Phase::Settings,
+            Box::new(TestInitHook::new(vec![InitAction::RecordOrder(
+                order.clone(),
+                3,
+            )])),
+        );
+
+        svc.run_sync().unwrap();
+
+        assert_eq!(&*order.lock().unwrap(), &[1, 2, 3]);
+    }
+
+    enum InitAction {
+        RecordOrder(Arc<std::sync::Mutex<Vec<u8>>>, u8),
+        RecordPhase(Arc<std::sync::Mutex<Vec<Phase>>>, Phase),
+        Fail(&'static str),
+    }
+
+    struct TestInitHook {
+        actions: Vec<InitAction>,
+    }
+
+    impl TestInitHook {
+        fn new(actions: Vec<InitAction>) -> Self {
+            Self { actions }
+        }
+    }
+
+    impl OnPreflightInit for TestInitHook {
+        fn on_preflight_init(&self, _ctx: &mut PreflightContext) -> Result<(), PreflightError> {
+            for action in &self.actions {
+                match action {
+                    InitAction::RecordOrder(order, value) => order.lock().unwrap().push(*value),
+                    InitAction::RecordPhase(phases, phase) => phases.lock().unwrap().push(*phase),
+                    InitAction::Fail(message) => {
+                        return Err(PreflightError::SettingsError((*message).to_string()))
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    struct TestReadyHook {
+        ready: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    impl TestReadyHook {
+        fn new(ready: Arc<std::sync::Mutex<Vec<&'static str>>>) -> Self {
+            Self { ready }
+        }
+    }
+
+    impl OnPreflightReady for TestReadyHook {
+        fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
+            let _ = ctx.settings();
+            let _ = ctx.registry();
+            self.ready.lock().unwrap().push("ready:settings-registry");
+            Ok(())
+        }
+    }
+
+    struct AssertSettingsReadyHook;
+
+    impl OnPreflightReady for AssertSettingsReadyHook {
+        fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
+            assert!(!ctx.settings().theme.is_empty());
+            Ok(())
+        }
+    }
+
+    struct AssertRegistryReadyHook;
+
+    impl OnPreflightReady for AssertRegistryReadyHook {
+        fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
+            assert!(!ctx.registry().preset.read().unwrap().name.is_empty());
+            Ok(())
+        }
     }
 }

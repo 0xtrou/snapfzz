@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect, useCallback, type ComponentType } from 'react';
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { WindowShell, AntIcon } from '@snapfzz/shared';
 import {
@@ -172,7 +172,10 @@ export function App() {
     });
   }, []);
 
-  const leftItems = contributions.statusItems.filter((item) => item.position === 'left');
+  const leftItems = useMemo(
+    () => contributions.statusItems.filter((item) => item.position === 'left'),
+    [contributions.statusItems],
+  );
 
   return (
     <PluginHostProvider host={host}>
@@ -189,7 +192,7 @@ export function App() {
           </>
         }
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full" style={{ contain: 'strict' }}>
           <PanelGroup direction="horizontal" className="flex-1" style={{ contain: 'strict' }}>
             <Panel defaultSize={40} minSize={20}>
               <LeftPanel tabs={leftPanelTabs} activeTabId={leftPanelActiveTab || ''} onTabChange={setLeftPanelActiveTab} onCrash={handleCrash} />

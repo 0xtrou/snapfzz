@@ -83,48 +83,52 @@ Tauri .setup()
 
 ### Hookable Lifecycle
 
-Inspired by NestJS `OnModuleInit` / `OnApplicationBootstrap`. Each phase can register hooks that run at specific lifecycle points. This allows crates and plugins to participate in boot without coupling to `PreflightService` internals.
+Inspired by NestJS `OnModuleInit` / `OnApplicationBootstrap`. Sync phases can register hooks that run at specific lifecycle points. This allows crates to participate in boot without coupling to `PreflightService` internals.
+
+Two hook types (sync only — async work belongs in Zone 1 via `tokio::spawn` in `main.rs .setup()`):
 
 ```rust
-/// Trait for components that need initialization during preflight.
+/// Runs during a specific sync phase (1-4).
 /// Similar to NestJS OnModuleInit — called during the phase that owns the component.
-pub trait OnPreflightInit {
-    fn on_preflight_init(&mut self, ctx: &PreflightContext) -> Result<(), PreflightError>;
+pub trait OnPreflightInit: Send + Sync {
+    fn on_preflight_init(&self, ctx: &mut PreflightContext) -> Result<(), PreflightError>;
 }
 
-/// Trait for components that need work after all sync phases complete.
-/// Similar to NestJS OnApplicationBootstrap — called after Phase 4, before window opens.
-pub trait OnPreflightReady {
+/// Runs after all sync phases complete, before window opens.
+/// Similar to NestJS OnApplicationBootstrap.
+pub trait OnPreflightReady: Send + Sync {
     fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError>;
-}
-
-/// Trait for async components that start in Phase 5-6.
-/// Called after window opens — used for process spawning, background services.
-#[async_trait]
-pub trait OnPreflightAsync {
-    async fn on_preflight_async(&self, ctx: &PreflightContext) -> Result<(), PreflightError>;
 }
 
 pub struct PreflightContext {
     pub data_dir: PathBuf,
-    pub vault: Arc<Mutex<SecretVault>>,
-    pub settings: Settings,
-    pub registry: Arc<BudgetRegistry>,
+    settings: Option<PreflightSettings>,
+    registry: Option<Arc<BudgetRegistry>>,
 }
 ```
 
-**Registration**: components register hooks via `PreflightService::register()` before `run_sync()`.
+**No `OnPreflightAsync` hook.** Async background services (process spawning, metrics loop, pricing refresh) need `tauri::AppHandle` which is only available in `.setup()`. These stay explicitly wired in `main.rs` where they have Tauri runtime access. The preflight crate doesn't know about Tauri — this is the correct boundary.
+
+```
+Preflight hooks (sync, crate-level, no Tauri dependency):
+  OnPreflightInit(Phase)   ← vault init, token generation, settings migration
+  OnPreflightReady         ← cross-phase validation, boot logging
+
+Zone 1 async work (main.rs .setup, has AppHandle):
+  spawn_runtime()          ← needs app.emit("agent-status")
+  run_metrics_loop()       ← needs app.emit("budget-metrics")
+```
+
+**Registration**: components register hooks via `PreflightService::register_init()` / `register_ready()` before `run_sync()`.
 
 ```rust
 let mut preflight = PreflightService::new(data_dir);
-preflight.register_init(Phase::Vault, Box::new(process_token_generator));
-preflight.register_ready(Box::new(settings_validator));
-preflight.register_async(Box::new(agentscope_spawner));
-preflight.register_async(Box::new(metrics_loop));
+preflight.register_init(Phase::Vault, Box::new(vault_initializer));
+preflight.register_ready(Box::new(boot_logger));
 let result = preflight.run_sync()?;
 ```
 
-**Execution order**: within a phase, hooks run in registration order. Cross-phase order is guaranteed by phase numbering.
+**Execution order**: within a phase, hooks run in registration order. Cross-phase order is guaranteed by phase numbering. Hooks run AFTER the built-in phase logic.
 
 ### Process Auth Tokens
 

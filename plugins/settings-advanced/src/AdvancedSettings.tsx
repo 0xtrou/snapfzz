@@ -1,8 +1,8 @@
 // A007/SettingsSections: Advanced settings form — preferences surface only.
-// A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
+// A008/BudgetRegistry: All Tauri invokes go through shared TauriBridge for preferences IPC.
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Checkbox, Form, Input, Modal, Select, Space, Typography } from 'antd';
-import { SettingsHeader, ConfirmAction } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, ConfirmAction } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -13,19 +13,7 @@ interface AdvancedFormValues {
   logLevel: LogLevel;
 }
 
-// A007/TauriIPC: Preferences window loads from an external URL; __TAURI_INTERNALS__
-// provides invoke() without requiring @tauri-apps/api to be bundled.
-function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
-  const w = window as unknown as Record<string, unknown>;
-  const tauri = w.__TAURI_INTERNALS__ as
-    | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-    | undefined;
-  if (!tauri) {
-    console.error('[settings-advanced] __TAURI_INTERNALS__ not available');
-    return Promise.reject(new Error('Tauri not available'));
-  }
-  return tauri.invoke(cmd, args);
-}
+const bridge = createTauriBridge();
 
 const LOG_LEVEL_OPTIONS: { value: LogLevel; label: string }[] = [
   { value: 'error', label: 'Error' },
@@ -50,8 +38,8 @@ export default function AdvancedSettings(): React.ReactElement {
     loadingRef.current = true;
     try {
       const [dir, settings] = await Promise.all([
-        tauriInvoke('get_data_dir') as Promise<string>,
-        tauriInvoke('get_settings') as Promise<Record<string, unknown>>,
+        bridge.invoke<string>('get_data_dir'),
+        bridge.invoke<Record<string, unknown>>('get_settings'),
       ]);
       setDataDir(dir ?? '');
       form.setFieldsValue({
@@ -79,13 +67,13 @@ export default function AdvancedSettings(): React.ReactElement {
     }
     setSaving(true);
     try {
-      const current = await tauriInvoke('get_settings') as Record<string, unknown>;
+      const current = await bridge.invoke<Record<string, unknown>>('get_settings');
       const merged = {
         ...current,
         fpsCounter: values.fpsCounter,
         logLevel: values.logLevel,
       };
-      await tauriInvoke('save_settings', { settings: merged });
+      await bridge.invoke<void>('save_settings', { settings: merged });
       window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
       setIsDirty(false);
       setSaveSuccess(true);
@@ -99,7 +87,7 @@ export default function AdvancedSettings(): React.ReactElement {
 
   async function handleReset(): Promise<void> {
     try {
-      await tauriInvoke('save_settings', {
+      await bridge.invoke<void>('save_settings', {
         settings: {
           apiKey: '',
           model: 'gpt-4o',
@@ -156,9 +144,9 @@ export default function AdvancedSettings(): React.ReactElement {
                 />
                 <Button onClick={async () => {
                   try {
-                    const selected = await tauriInvoke('pick_folder', { defaultPath: dataDir }) as string | null;
+                    const selected = await bridge.invoke<string | null>('pick_folder', { defaultPath: dataDir });
                     if (selected) {
-                      await tauriInvoke('set_data_dir', { newPath: selected });
+                      await bridge.invoke<void>('set_data_dir', { newPath: selected });
                       setDataDir(selected);
                       Modal.info({
                         title: 'Restart Required',

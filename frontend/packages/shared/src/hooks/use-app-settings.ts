@@ -2,17 +2,12 @@
 // Per A004/Workspace: reads persisted settings from settings.json via Rust backend.
 // No localStorage — backend is the only source. Frontend is stateless.
 import { useCallback, useEffect, useState } from 'react';
+import { createTauriBridge } from '../lib';
 
 export type RuntimeTheme = 'dark' | 'light';
 export type SettingsTheme = RuntimeTheme | 'system';
 
-function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null {
-  const w = window as unknown as Record<string, unknown>;
-  const tauri = w.__TAURI_INTERNALS__ as
-    | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-    | undefined;
-  return tauri?.invoke ?? null;
-}
+const bridge = createTauriBridge();
 
 interface AppSettings {
   theme?: SettingsTheme;
@@ -118,13 +113,12 @@ export function useAppSettings(): AppSettingsState {
 
   useEffect(() => {
     async function applySettings(): Promise<void> {
-      const invoke = getTauriInvoke();
-      if (!invoke) return;
+      if (!bridge.isAvailable) return;
       try {
-        const settings = (await invoke('get_settings')) as AppSettings;
+        const settings = await bridge.invoke<AppSettings>('get_settings');
         const resolved = applyDomSettings(settings);
         setTheme(resolved);
-        const registered = await loadAndRegisterCustomFonts(invoke);
+        const registered = await loadAndRegisterCustomFonts(bridge.invoke);
         setCustomFonts(registered);
       } catch {
         // First launch or Tauri unavailable — continue with CSS defaults.
@@ -140,12 +134,10 @@ export function useAppSettings(): AppSettingsState {
     window.addEventListener('snapfzz:settings-changed', handleSettingsChanged);
 
     let unlisten: (() => void) | null = null;
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen('settings-changed', () => {
-        void applySettings();
-      }).then((fn) => {
-        unlisten = fn;
-      }).catch(() => {});
+    bridge.listen('settings-changed', () => {
+      void applySettings();
+    }).then((fn) => {
+      unlisten = fn;
     }).catch(() => {});
 
     return () => {
@@ -157,12 +149,11 @@ export function useAppSettings(): AppSettingsState {
   // Per A007/MultiLayout: toggle saves to backend and triggers the propagation chain.
   // No localStorage — save_settings in Rust emits settings-changed to all webviews.
   const toggleTheme = useCallback(async () => {
-    const invoke = getTauriInvoke();
-    if (!invoke) return;
+    if (!bridge.isAvailable) return;
     try {
-      const current = (await invoke('get_settings')) as AppSettings;
+      const current = await bridge.invoke<AppSettings>('get_settings');
       const newTheme: SettingsTheme = resolveTheme(current.theme) === 'dark' ? 'light' : 'dark';
-      await invoke('save_settings', { settings: { ...current, theme: newTheme } });
+      await bridge.invoke<void>('save_settings', { settings: { ...current, theme: newTheme } });
       window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
     } catch {
       // Fallback: toggle DOM directly if backend unavailable

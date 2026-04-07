@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
+import { createTauriBridge } from '../../lib';
+
+const bridge = createTauriBridge();
 
 function invokeWindowCommand(cmd: string) {
-  const w = window as unknown as Record<string, unknown>;
-  const tauri = w.__TAURI_INTERNALS__ as
-    | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-    | undefined;
-  if (!tauri) return;
-  tauri.invoke(cmd).catch(() => {});
+  if (!bridge.isAvailable) return;
+  bridge.invoke(cmd).catch(() => {
+    void 0;
+  });
 }
 
 export function useWindowDrag() {

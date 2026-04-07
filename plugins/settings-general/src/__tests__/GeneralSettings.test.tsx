@@ -1,9 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import GeneralSettings from '../GeneralSettings';
 
-const mockInvoke = vi.fn();
+const { mockInvoke } = vi.hoisted(() => ({
+  mockInvoke: vi.fn(),
+}));
+
+vi.mock('@snapfzz/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@snapfzz/shared')>();
+  return {
+    ...actual,
+    createTauriBridge: () => ({
+      isAvailable: true,
+      invoke: mockInvoke,
+      listen: vi.fn().mockResolvedValue(() => {}),
+    }),
+  };
+});
+
+import GeneralSettings from '../GeneralSettings';
 
 function fullSettings(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,7 +37,6 @@ function fullSettings(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  (window as Record<string, unknown>).__TAURI_INTERNALS__ = { invoke: mockInvoke };
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     if (cmd === 'get_settings') return Promise.resolve(fullSettings());
@@ -32,7 +46,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
   vi.restoreAllMocks();
   localStorage.clear();
 });
@@ -259,8 +272,8 @@ describe('A007/settings-general: dirty tracking and save bar', () => {
 });
 
 describe('A007/settings-general: Tauri unavailable', () => {
-  it('A007/settings-general: renders without crashing when Tauri is not available', async () => {
-    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  it('A007/settings-general: renders without crashing when get_settings rejects', async () => {
+    mockInvoke.mockRejectedValue(new Error('Tauri not available'));
     render(<GeneralSettings />);
     await waitFor(() => {
       expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument();

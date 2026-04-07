@@ -21,7 +21,7 @@ use snapfzz_budget::supervised::{ProcessBudget, ProcessLocation};
 use snapfzz_budget::BudgetRegistry;
 // Per A012/Architecture: PreflightService owns all boot-time initialization.
 // main.rs delegates — it never calls get_settings_sync directly in main().
-use snapfzz_preflight::{PhaseTimingDto, PreflightService};
+use snapfzz_preflight::{OnPreflightReady, PhaseTimingDto, PreflightContext, PreflightError, PreflightService};
 
 const AGENTSCOPE_PORT: u16 = 8090;
 
@@ -1158,11 +1158,26 @@ async fn preflight_status(
     Ok(timings.inner().clone())
 }
 
+struct BootLogger;
+
+impl OnPreflightReady for BootLogger {
+    fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
+        let preset = ctx.registry().preset.read().unwrap();
+        eprintln!(
+            "[preflight] Ready: preset={}, data_dir={}",
+            preset.name,
+            ctx.data_dir.display()
+        );
+        Ok(())
+    }
+}
+
 fn main() {
     // Per A012/Architecture: phases 1-4 complete synchronously before any window opens.
     // Total budget <25ms. Phase 1 (filesystem) failure is fatal.
     // resolve_data_dir() stays in main.rs — it's the A004 anchor, not a preflight concern.
-    let preflight = PreflightService::new(resolve_data_dir());
+    let mut preflight = PreflightService::new(resolve_data_dir());
+    preflight.register_ready(Box::new(BootLogger));
 
     let preflight_result = preflight
         .run_sync()

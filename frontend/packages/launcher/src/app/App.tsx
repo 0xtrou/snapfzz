@@ -95,16 +95,18 @@ export function App() {
 function LauncherShell({ contributions, onCrash }: { contributions: ContributionSnapshot; onCrash: (pluginId: string, error: Error) => void }) {
   const launcherContributions = contributions as LauncherContributionSnapshot;
 
-  const headerItems =
-    launcherContributions.headerItems ??
-    contributions.genericComponents.filter((item: ComponentContribution) => item.id.startsWith('launcher:header:'));
+  const headerItems = useMemo(
+    () => launcherContributions.headerItems ?? contributions.genericComponents.filter((item: ComponentContribution) => item.id.startsWith('launcher:header:')),
+    [launcherContributions.headerItems, contributions.genericComponents],
+  );
 
-  const mainContent =
-    launcherContributions.mainContent ??
-    contributions.genericComponents.filter((item: ComponentContribution) => item.id.startsWith('launcher:main:'));
+  const mainContent = useMemo(
+    () => launcherContributions.mainContent ?? contributions.genericComponents.filter((item: ComponentContribution) => item.id.startsWith('launcher:main:')),
+    [launcherContributions.mainContent, contributions.genericComponents],
+  );
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-primary)', contain: 'strict' }}>
       <header className="h-12 flex items-center px-4 border-b gap-3" style={{ borderColor: 'var(--border-default)' }}>
         <img src="/logo.svg" alt="Snapfzz" className="w-6 h-6" />
         <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -152,8 +154,8 @@ function RenderComponentContributions({ items, onCrash }: { items: readonly Comp
 }
 
 function StatusBar({ statusItems, onCrash }: { statusItems: readonly StatusItemContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
-  const leftItems = statusItems.filter((item) => item.position === 'left');
-  const rightItems = statusItems.filter((item) => item.position === 'right');
+  const leftItems = useMemo(() => statusItems.filter((item) => item.position === 'left'), [statusItems]);
+  const rightItems = useMemo(() => statusItems.filter((item) => item.position === 'right'), [statusItems]);
 
   return (
     <footer

@@ -1,20 +1,23 @@
 import { useEffect, useRef } from 'react';
+import { createTauriBridge } from '../lib';
 
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+const bridge = createTauriBridge();
 
 export function useTauriEvent<T>(event: string, handler: (payload: T) => void) {
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   useEffect(() => {
-    if (!isTauri) return;
+    if (!bridge.isAvailable) return;
 
     let unlisten: (() => void) | undefined;
 
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      listen<T>(event, (e) => handlerRef.current(e.payload)).then((fn) => {
-        unlisten = fn;
-      });
+    bridge.listen<T>(event, (payload) => {
+      handlerRef.current(payload);
+    }).then((fn) => {
+      unlisten = fn;
+    }).catch(() => {
+      void 0;
     });
 
     return () => unlisten?.();

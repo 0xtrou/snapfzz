@@ -341,6 +341,37 @@ Do NOT:
 | `launcher/src/app/App.tsx` | Mounts `useAppSettings()` for launcher window |
 | `plugins/settings-general/src/GeneralSettings.tsx` | Saves settings + emits change event |
 
+## Tauri IPC — Single Bridge Pattern (Non-Negotiable)
+
+All frontend-to-Rust communication goes through `TauriBridge` from `@snapfzz/shared`. No exceptions.
+
+### The Pattern
+
+```typescript
+import { createTauriBridge } from '@snapfzz/shared';
+const bridge = createTauriBridge();
+
+// Invoke a Tauri command
+const result = await bridge.invoke<ReturnType>('command_name', { arg1, arg2 });
+
+// Listen to a Tauri event
+const unlisten = await bridge.listen<PayloadType>('event-name', (payload) => { ... });
+```
+
+### Rules
+
+- **Single import**: always `createTauriBridge` from `@snapfzz/shared`. Never access `__TAURI_INTERNALS__` directly.
+- **Module-level bridge**: create the bridge once at module scope, not inside components or hooks.
+- **Typed returns**: always specify the generic type parameter: `bridge.invoke<Settings>(...)`, not `bridge.invoke(...)`.
+- **Cached imports**: TauriBridge internally caches `@tauri-apps/api/core` and `@tauri-apps/api/event` imports. First call pays the dynamic import cost, subsequent calls are instant.
+- **Test mocking**: mock `createTauriBridge` via `vi.mock('@snapfzz/shared')`, never mock `window.__TAURI_INTERNALS__`.
+
+### Do NOT
+
+- Access `window.__TAURI_INTERNALS__` directly in any plugin or shared code
+- Create per-plugin `tauriInvoke()` wrapper functions
+- Use `import('@tauri-apps/api/core')` directly in plugin code
+
 ---
 
 ## Agent Delegation — Spec Enforcement

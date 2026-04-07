@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect, useCallback, type ComponentType } from 'react';
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { WindowShell, AntIcon } from '@snapfzz/shared';
 import {
   PluginHost,
@@ -48,8 +48,9 @@ let pluginsInitialized = false;
 export function App() {
   const contributions = useContributionStore(() => store);
 
-  const sections: readonly SettingsSectionContribution[] = [...contributions.settingsSections].sort(
-    (a, b) => (a.order ?? 999) - (b.order ?? 999),
+  const sections: readonly SettingsSectionContribution[] = useMemo(
+    () => [...contributions.settingsSections].sort((a, b) => (a.order ?? 999) - (b.order ?? 999)),
+    [contributions.settingsSections],
   );
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export function App() {
   return (
     <PluginHostProvider host={host}>
       <WindowShell title="Settings" statusBarContent={<span className="text-[var(--color-success)]">● Connected</span>}>
-        <div className="flex h-full overflow-hidden">
+        <div className="flex h-full overflow-hidden" style={{ contain: 'strict' }}>
           <aside
             className="flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-default)] overflow-y-auto"
             style={{ width: 208, contain: 'strict' }}

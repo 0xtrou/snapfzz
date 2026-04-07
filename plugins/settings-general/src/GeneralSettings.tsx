@@ -1,10 +1,10 @@
 // A007/SettingsSections: General settings form — preferences surface only.
-// A008/BudgetRegistry: All Tauri invokes go through __TAURI_INTERNALS__ for cross-origin preferences window.
+// A008/BudgetRegistry: All Tauri invokes go through shared TauriBridge for preferences IPC.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Form, Input, Modal, Radio, Select, Space, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
-import { SettingsHeader } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -22,19 +22,7 @@ interface FullSettings extends GeneralFormValues {
   [key: string]: unknown;
 }
 
-// A007/TauriIPC: Preferences window loads from an external URL; __TAURI_INTERNALS__
-// provides invoke() without requiring @tauri-apps/api to be bundled.
-function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
-  const w = window as unknown as Record<string, unknown>;
-  const tauri = w.__TAURI_INTERNALS__ as
-    | { invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-    | undefined;
-  if (!tauri) {
-    console.error('[settings-general] __TAURI_INTERNALS__ not available');
-    return Promise.reject(new Error('Tauri not available'));
-  }
-  return tauri.invoke(cmd, args);
-}
+const bridge = createTauriBridge();
 
 // Per A007/MultiLayout: notify same-window useAppSettings listener immediately after save.
 // Cross-window delivery is handled by Rust save_settings which emits to all webviews.
@@ -86,7 +74,7 @@ export default function GeneralSettings(): React.ReactElement {
 
   const loadInstalledFonts = useCallback(async () => {
     try {
-      const names = (await tauriInvoke('list_installed_fonts')) as string[];
+      const names = await bridge.invoke<string[]>('list_installed_fonts');
       setInstalledFonts(Array.isArray(names) ? names : []);
     } catch {
       setInstalledFonts([]);
@@ -96,7 +84,7 @@ export default function GeneralSettings(): React.ReactElement {
   const loadSettings = useCallback(async () => {
     loadingRef.current = true;
     try {
-      const settings = await tauriInvoke('get_settings') as FullSettings;
+      const settings = await bridge.invoke<FullSettings>('get_settings');
       form.setFieldsValue({
         theme: (settings.theme as Theme) ?? 'system',
         openLastProject: settings.openLastProject ?? true,
@@ -133,7 +121,7 @@ export default function GeneralSettings(): React.ReactElement {
     }
     setSaving(true);
     try {
-      const current = await tauriInvoke('get_settings') as Record<string, unknown>;
+      const current = await bridge.invoke<Record<string, unknown>>('get_settings');
       const merged = {
         ...current,
         theme: values.theme,
@@ -142,7 +130,7 @@ export default function GeneralSettings(): React.ReactElement {
         fontFamily: values.fontFamily,
         fontSize: values.fontSize,
       };
-      await tauriInvoke('save_settings', { settings: merged });
+      await bridge.invoke<void>('save_settings', { settings: merged });
       // Per A007/PreferencesLayout: broadcast settings writes so every window re-applies persisted appearance state.
       emitSettingsChanged();
       setIsDirty(false);
@@ -163,7 +151,7 @@ export default function GeneralSettings(): React.ReactElement {
     }
     setFontUrlInstalling(true);
     try {
-      await tauriInvoke('install_font_from_url', { url: fontUrl.trim(), name: fontUrlName.trim() });
+      await bridge.invoke<void>('install_font_from_url', { url: fontUrl.trim(), name: fontUrlName.trim() });
       setFontUrl('');
       setFontUrlName('');
       await loadInstalledFonts();
@@ -184,7 +172,7 @@ export default function GeneralSettings(): React.ReactElement {
     }
     setFileInstalling(true);
     try {
-      await tauriInvoke('install_font_from_file', { sourcePath: path, name });
+      await bridge.invoke<void>('install_font_from_file', { sourcePath: path, name });
       await loadInstalledFonts();
     } catch (err) {
       setFileInstallError(String(err));
@@ -202,7 +190,7 @@ export default function GeneralSettings(): React.ReactElement {
   const confirmRemoveFont = useCallback(async () => {
     if (!fontToRemove) return;
     try {
-      await tauriInvoke('remove_font', { name: fontToRemove });
+      await bridge.invoke<void>('remove_font', { name: fontToRemove });
       await loadInstalledFonts();
     } catch (err) {
       setFontUrlError(String(err));

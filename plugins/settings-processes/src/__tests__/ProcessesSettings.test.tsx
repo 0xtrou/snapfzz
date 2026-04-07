@@ -1,17 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
-const mockInvoke = vi.fn();
-
-Object.defineProperty(window, '__TAURI_INTERNALS__', {
-  writable: true,
-  value: { invoke: mockInvoke },
-});
+const { mockInvoke } = vi.hoisted(() => ({
+  mockInvoke: vi.fn(),
+}));
 
 vi.mock('@snapfzz/shared', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@snapfzz/shared')>();
   return {
     ...actual,
+    createTauriBridge: () => ({
+      isAvailable: true,
+      invoke: mockInvoke,
+      listen: vi.fn().mockResolvedValue(() => {}),
+    }),
     SettingsHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
       <div>
         <h3>{title}</h3>

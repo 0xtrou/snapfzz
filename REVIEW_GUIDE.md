@@ -32,6 +32,7 @@ For every file changed, identify which spec it implements. Then verify:
 | Does it meet test coverage? | Per ENGINEERING_GUIDE/Test Coverage: ≥90% coverage for all plugins and core packages. | Coverage below 90%. Missing error path tests. Missing contract verification tests. Snapshot-only tests. |
 | Is user-facing copy generic? | Per ENGINEERING_GUIDE/User-Facing Copy: no internal infrastructure names in text visible to users. | Mentions Tauri, Rust, AgentScope, Zone 1, ~/.snapfzz, ctx.rust.invoke, sysinfo, or any internal framework/path in tooltips, labels, errors, or notifications. |
 | Does it follow settings propagation? | Per ENGINEERING_GUIDE/Settings Propagation: plugins never apply settings to DOM directly. Save + emit only. | Plugin sets `document.body.style.*`, `document.documentElement.setAttribute('data-theme', ...)`, or injects style overrides directly after save. All DOM application must go through `useAppSettings → applyDomSettings`. |
+| Uses TauriBridge for IPC? | Per ENGINEERING_GUIDE/Tauri IPC: all invoke/listen goes through createTauriBridge from @snapfzz/shared. | Direct access to __TAURI_INTERNALS__, per-plugin tauriInvoke() wrappers, or raw import('@tauri-apps/api/core'). |
 
 ### 2. Evidence-Based Verification (MANDATORY)
 
@@ -60,6 +61,7 @@ grep -n "restart_process" src-tauri/src/main.rs | grep "generate_handler"  # mus
 | "No hardcoded colors" | `grep -rn "#[0-9a-f]\|rgba(" <dir>` — must return 0 results |
 | "All tests pass" | Run the actual test command and verify output |
 | "Settings propagation correct" | `grep -rn "document\.body\.style\|document\.documentElement\.setAttribute.*data-theme\|document\.head\.appendChild" plugins/` — must find 0 results (only `use-app-settings.ts` may apply settings to DOM) |
+| "No raw Tauri access" | `grep -rn "__TAURI_INTERNALS__" plugins/ frontend/packages/shared/src/ --include="*.ts" --include="*.tsx" \\| grep -v test \\| grep -v node_modules` — must find 0 results |
 
 **A review that doesn't include grep evidence for every claimed deliverable is invalid.**
 
