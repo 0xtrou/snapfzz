@@ -8,8 +8,6 @@ const { Text } = Typography;
 
 const bridge = createTauriBridge();
 
-const SECRET_NAME_PATTERN = /^(provider|custom|webhook):[a-z0-9-]+:[a-zA-Z0-9-]+$/;
-
 interface SecretEntry {
   name: string;
   masked: string;
@@ -139,19 +137,8 @@ export default function VaultSettings() {
 
     if (!trimmedName) {
       setNameError('Secret name is required.');
-    } else if (!SECRET_NAME_PATTERN.test(trimmedName)) {
-      setNameError('Name must match provider:{id}:apiKey or custom:{name}.');
-    } else {
-      setNameError(null);
-    }
-
-    if (!newValue) {
-      setValueError('Secret value is required.');
-    } else {
-      setValueError(null);
-    }
-
-    if (!trimmedName || !SECRET_NAME_PATTERN.test(trimmedName) || !newValue) {
+    } else if (!trimmedName.trim()) {
+      setNameError('Secret name is required');
       return;
     }
 
@@ -237,7 +224,7 @@ export default function VaultSettings() {
               <Space.Compact style={{ width: '100%' }}>
                 <Input
                   aria-label="Secret name"
-                  placeholder="provider:openai:apiKey"
+                  placeholder="Secret name"
                   value={newName}
                   status={nameError ? 'error' : undefined}
                   onChange={(event) => {
@@ -261,7 +248,6 @@ export default function VaultSettings() {
               </Space.Compact>
               {nameError && <Text type="danger">{nameError}</Text>}
               {valueError && <Text type="danger">{valueError}</Text>}
-              <Text type="secondary">Name format: provider:&#123;id&#125;:apiKey or custom:&#123;name&#125;</Text>
             </Space>
           </section>
         </Space>
@@ -270,4 +256,4 @@ export default function VaultSettings() {
   );
 }
 
-export { maskSecretValue, SECRET_NAME_PATTERN };
+export { maskSecretValue };
