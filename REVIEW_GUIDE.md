@@ -182,6 +182,12 @@ Use this to find the right spec for any code you're reviewing:
 | Git diff, blame, log, branches | U010 Git Inspector |
 | Quality standards (13 checks) | U003 Perfectly From Day 1 |
 | Settings save, theme/font application | ENGINEERING_GUIDE Settings Propagation |
+| Tauri IPC, invoke, listen | ENGINEERING_GUIDE Tauri IPC |
+| Boot phases, preflight hooks | A012 Preflight Service |
+| Budget presets, resource gating | A008 Budget Registry |
+| Kernel crate organization | A014 Kernel Architecture |
+| API key encryption, vault | A011 Secret Vault |
+| LLM provider config, usage metering | A013 LLM Providers |
 
 ---
 

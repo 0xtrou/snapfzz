@@ -195,7 +195,7 @@ Both serve the specs. Disagreement = the spec wins.
 
 ```
 frontend/packages/
-  @snapfzz/shared          Core: entities, lib, hooks, theme
+  @snapfzz/shared          Core: entities, lib, hooks (useAppSettings), theme, TauriBridge, ConfirmAction
   @snapfzz/plugin-sdk      Core: stable contract — additive extensions only
   @snapfzz/plugin-host     Core: plugin loader, ContributionStore
   @snapfzz/launcher        Core: thin shell, reads from store
@@ -203,9 +203,14 @@ frontend/packages/
   @snapfzz/preferences     Core: settings shell, reads settingsSections from store
   plugins/                  Features: each is a package
 
-src-tauri/crates/           Rust: Zone 1
+src-tauri/
+  src/main.rs              Orchestrator: routes, gates, emits (~400 lines)
+  crates/
+    snapfzz-kernel/        Core: boot, budget, process, settings, plugin_host, types
+    snapfzz-stream/        SSE consumer, token batching, channel API
+    snapfzz-plugin-bridge/ Stub: plugin→kernel validation (Beta scope)
 
-docs/plans/                 A001-A006: architecture specs
+docs/plans/                 A001-A014: architecture specs
 docs/ui-specs/              U001-U010: UI specs
 docs/learning/              Compounded knowledge
 ```

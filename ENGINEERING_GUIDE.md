@@ -38,6 +38,10 @@ Spec numbers:
 - `A006` = Core Runtime
 - `A007` = Multi-Layout Architecture
 - `A008` = Budget Registry
+- `A011` = Secret Vault
+- `A012` = Preflight Service
+- `A013` = LLM Providers
+- `A014` = Kernel Architecture
 
 ### Layer 2: Inline Code Comments Reference Specs
 
@@ -199,7 +203,7 @@ Every plugin and core package must achieve **≥90% test coverage**. Contract-dr
 pnpm --filter @snapfzz/plugin-host exec npx vitest run --coverage
 
 # Rust
-cargo tarpaulin -p snapfzz-budget --out Html
+cargo tarpaulin -p snapfzz-kernel --out Html
 ```
 
 ### Naming Convention
@@ -305,7 +309,6 @@ Plugin saves settings
   useAppSettings() (mounted in WindowShell + Launcher App)
       → invoke('get_settings')        // fresh read from Rust
       → applyDomSettings(settings)    // theme, font-family, font-size → DOM
-      → notifyThemeStorageChange()     // → useTheme re-renders ConfigProvider
 ```
 
 ### Rules
@@ -335,8 +338,7 @@ Do NOT:
 
 | File | Role |
 |---|---|
-| `shared/src/hooks/use-app-settings.ts` | Single source of truth for DOM application |
-| `shared/src/hooks/use-theme.ts` | React state for theme — synced via StorageEvent |
+| `shared/src/hooks/use-app-settings.ts` | Single source of truth for DOM application + theme state |
 | `shared/src/components/shell/WindowShell.tsx` | Mounts `useAppSettings()` for preferences + project |
 | `launcher/src/app/App.tsx` | Mounts `useAppSettings()` for launcher window |
 | `plugins/settings-general/src/GeneralSettings.tsx` | Saves settings + emits change event |
@@ -442,11 +444,17 @@ CONTRIBUTING.md                               # How to contribute
 | Number | Spec | Key Decisions |
 |---|---|---|
 | `A001` | Performance Architecture | 60fps, child WebViews, react-resizable-panels, Monaco, HMR, CSS containment |
-| `A002` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. 16ms batch budget |
+| `A002` | State Management | 3 zones: Rust SSE → Web Workers → Main thread render. batch_interval_ms budget |
 | `A003` | Instant Loading | BoxLite <50ms boot, snapshots, lazy agent boot, <500ms to interactive |
 | `A004` | Workspace Architecture | .snapfzz/ folder-first, human-readable JSON/MD, append-only logs |
 | `A005` | Plugin Architecture | Core + system plugins + third-party. JS-only. Manifest-driven. Bus-only communication. Lifecycle: lazy activation, enable/disable, reload, uninstall, crash supervision. Theme is core not plugin. |
 | `A006` | Core Runtime | Plugin host, shell layout, Rust IPC. Boot sequence. What's core vs plugin |
+| `A007` | Multi-Layout Architecture | Separate Tauri windows. settingsSections. System settings plugins |
+| `A008` | Budget Registry | Controlled + Supervised domains. Presets. Hardware scaling (80% rule) |
+| `A011` | Secret Vault | AES-256-GCM. Master key in OS keychain. Backend-only |
+| `A012` | Preflight Service | 6-phase boot. Hookable lifecycle. <25ms sync budget |
+| `A013` | LLM Providers | Multi-provider. Model discovery. Usage metering. Budget enforcement |
+| `A014` | Kernel Architecture | main.rs orchestrator. snapfzz-kernel + snapfzz-stream crates |
 
 ### UI Specs (`docs/ui-specs/`)
 

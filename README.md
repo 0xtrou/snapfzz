@@ -24,8 +24,9 @@ Coverage ≥90% enforced by CI on every push. Badges update automatically from C
 
 | Layer | Package | Coverage | CI |
 |---|---|---|---|
-| Rust | [`snapfzz-budget`](src-tauri/crates/snapfzz-budget/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=budget)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Rust | [`main.rs`](src-tauri/src/main.rs) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=runtime)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Rust | [`snapfzz-kernel`](src-tauri/crates/snapfzz-kernel/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=kernel)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Rust | [`snapfzz-stream`](src-tauri/crates/snapfzz-stream/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=stream)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Rust | [`main.rs`](src-tauri/src/main.rs) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=orchestrator)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Frontend | [`@snapfzz/plugin-host`](frontend/packages/plugin-host/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugin-host)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 
 ### Plugins
@@ -34,7 +35,6 @@ Coverage ≥90% enforced by CI on every push. Badges update automatically from C
 |---|---|---|---|
 | Chat | [`plugins/chat`](plugins/chat/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/chat.json)](plugins/chat/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=chat)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Settings General | [`plugins/settings-general`](plugins/settings-general/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-general.json)](plugins/settings-general/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=general)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Settings Runtime | [`plugins/settings-runtime`](plugins/settings-runtime/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-runtime.json)](plugins/settings-runtime/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=runtime)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Settings Performance | [`plugins/settings-performance`](plugins/settings-performance/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-performance.json)](plugins/settings-performance/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=performance)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Settings Plugins | [`plugins/settings-plugins`](plugins/settings-plugins/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-plugins.json)](plugins/settings-plugins/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugins)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Settings Advanced | [`plugins/settings-advanced`](plugins/settings-advanced/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-advanced.json)](plugins/settings-advanced/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=advanced)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
@@ -46,15 +46,15 @@ Resource-budgeted. Nine budgets govern the app:
 
 | Budget | What It Protects | Enforcement |
 |---|---|---|
-| Frame | Visual fluency | 16ms/33ms target, CSS containment, Pretext |
-| CPU | Processing power | 3-zone model (Rust/Worker/Main) |
+| Streaming | Data throughput | 16ms/33ms batch interval, SSE coalescing |
+| CPU | Processing power | 3-zone model (Rust/Worker/Main), semaphore permits |
 | Memory | RAM | Per-process RSS limits, auto-kill |
 | Startup | User attention | < 200ms visible, < 500ms interactive |
-| Network | Bandwidth | 16ms SSE batch coalescing |
+| Network | Bandwidth | Per-plugin invoke concurrency limits |
 | Reliability | User trust | Plugin 3-strike auto-disable |
 | Window | Multitasking | Independent frame budgets per window |
 | Storage | Disk | Append-only logs, cleanup thresholds |
-| Engineering | Maintenance cost | AgentScope delegation, thin boundaries |
+| Engineering | Maintenance cost | Agent delegation, thin boundaries |
 
 See [`docs/learning/011_resource-budgeted-architecture.md`](docs/learning/011_resource-budgeted-architecture.md) for the full philosophy.
 
