@@ -28,9 +28,6 @@ export function ConfirmAction({
   const okButtonProps: PopconfirmProps['okButtonProps'] = {
     type: 'primary',
     ...(danger ? { danger: true } : {}),
-    style: danger
-      ? undefined
-      : { background: 'var(--color-info)', borderColor: 'var(--color-info)', color: '#fff' },
   };
 
   return (
