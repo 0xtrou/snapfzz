@@ -20,8 +20,11 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-      - name: Budget crate tests
-        run: cargo test -p snapfzz-budget
+      - name: Kernel crate tests
+        run: cargo test -p snapfzz-kernel --lib
+        working-directory: src-tauri
+      - name: Stream crate tests
+        run: cargo test -p snapfzz-stream --lib
         working-directory: src-tauri
       - name: Main binary tests
         run: cargo test --bin Snapfzz
