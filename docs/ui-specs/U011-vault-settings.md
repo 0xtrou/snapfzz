@@ -1,5 +1,7 @@
 # U011 — Vault Settings Plugin
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Settings section for managing the Secret Vault (A011). Shows stored secrets, master key status, and allows manual secret management. Never displays raw secret values.
 
 ---

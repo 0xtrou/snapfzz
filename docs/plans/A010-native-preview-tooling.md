@@ -9,6 +9,8 @@ scope: plugin-only (NOT core)
 
 # A010 — Native Preview Tooling
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Agent tools for controlling native emulators and desktop apps. Every capability in this spec is a **plugin** — not core. Core provides web preview only (A009/CEF). Native tooling is optional, installable, and independently budgeted.
 
 ## Decision

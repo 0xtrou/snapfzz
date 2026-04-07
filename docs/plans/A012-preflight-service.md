@@ -20,59 +20,9 @@ The Preflight Service consolidates ALL first-boot and every-boot initialization 
 
 ## Architecture
 
-```
-Tauri .setup()
-      │
-      ▼
-┌─────────────────────────────────────────────┐
-│              PreflightService               │
-│                                             │
-│  Phase 1: Filesystem         (sync, <5ms)   │
-│    ├─ ensure ~/.snapfzz/ exists             │
-│    ├─ ensure ~/.snapfzz/runtime/ exists     │
-│    ├─ ensure ~/.snapfzz/fonts/ exists       │
-│    ├─ ensure ~/.snapfzz/usage/ exists       │
-│    └─ ensure ~/.snapfzz/vault.enc touchable │
-│                                             │
-│  Phase 2: Secret Vault       (sync, <10ms)  │
-│    ├─ load or generate master key           │
-│    │   ├─ try OS keychain first             │
-│    │   └─ fall back to ~/.snapfzz/vault.key │
-│    ├─ open SecretVault                      │
-│    ├─ generate ephemeral process auth tokens│
-│    │   └─ held in memory only, not vault    │
-│    └─ migrate plaintext secrets from        │
-│       settings.json (one-time)              │
-│                                             │
-│  Phase 3: Settings           (sync, <5ms)   │
-│    ├─ load settings.json                    │
-│    ├─ validate with defaults                │
-│    └─ register as Tauri managed state       │
-│                                             │
-│  Phase 4: Budget Registry    (sync, <5ms)   │
-│    ├─ detect hardware                       │
-│    ├─ select preset                         │
-│    ├─ build BudgetRegistry                  │
-│    └─ register as Tauri managed state       │
-│                                             │
-│  Phase 5: Supervised Processes (async)      │
-│    ├─ spawn AgentScope runtime              │
-│    │   ├─ read host/port from settings      │
-│    │   ├─ register with BudgetRegistry      │
-│    │   └─ emit agent-status event           │
-│    └─ (future: spawn other processes)       │
-│                                             │
-│  Phase 6: Background Services (async)       │
-│    ├─ start metrics loop (2s interval)      │
-│    ├─ start pricing database refresh        │
-│    └─ (future: usage aggregation, etc.)     │
-│                                             │
-│  Emit: preflight-complete event             │
-└─────────────────────────────────────────────┘
-      │
-      ▼
-  Window opens (launcher)
-```
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
+Preflight remains a phased pipeline (filesystem → vault → settings → budget) before window open, with async services started after setup.
 
 ### Phase Guarantees
 

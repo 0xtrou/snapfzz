@@ -1,5 +1,7 @@
 # Design System — Theme, Typography, Colors
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Ant Design 5 base with shadcn aesthetic. Inter font family. No custom colors — pure dark/light defaults. Snapfzz brand reserved for logo only.
 
 ---

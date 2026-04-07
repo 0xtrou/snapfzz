@@ -1,5 +1,7 @@
 # Git Inspector — Version Control in the Workspace
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Git is infrastructure. The orchestrator uses it. The human inspects it. Both need a rich view of what happened, when, and why — without leaving the workspace.
 
 Git operations run in a **dedicated Web Worker** (`git-worker.ts`) to keep the UI at 60fps while parsing large repos.

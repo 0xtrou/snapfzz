@@ -1,5 +1,7 @@
 # Preview & Build Engine — Deep Dive
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Technical spec for the Preview tab, HMR pipeline, triple viewport, responsive enforcement, and quality gate. This is the engine underneath the 👁 Preview tab and the 🔨 BuildAgent workflow.
 
 All previews run inside BoxLite micro-VMs. Port-forwarded to host. Fully interactive.

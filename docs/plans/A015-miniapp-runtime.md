@@ -19,37 +19,9 @@ These need their own processes, their own ports, their own windows. They're full
 
 ## Architecture
 
-```
-Plugin registers mini app
-  ↓
-Kernel ProcessManager spawns backend process
-  ↓
-CEF window opens → loads frontend from local backend URL
-  ↓
-User can bookmark → appears in launcher as a pinned shortcut
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-┌─────────────────────────────────────────────────────────┐
-│ Kernel (main.rs orchestrator)                           │
-│                                                         │
-│  ProcessManager                                         │
-│  ├─ agentscope (system — ISOLATED, no plugin access)    │
-│  ├─ miniapp:community.supabase:dashboard (plugin proc)  │
-│  ├─ miniapp:community.stripe:tax-calc (plugin proc)     │
-│  └─ miniapp:snapfzz.deployments:traffic (system proc)   │
-│                                                         │
-│  WindowManager                                          │
-│  ├─ launcher window                                     │
-│  ├─ project window                                      │
-│  ├─ preferences window                                  │
-│  ├─ miniapp:dashboard (CEF window)                      │
-│  └─ miniapp:tax-calc (CEF window)                       │
-│                                                         │
-│  Internal Network                                       │
-│  ├─ plugin processes → plugin processes (allowed)       │
-│  ├─ plugin processes → system processes (BLOCKED)       │
-│  └─ system processes → plugin processes (BLOCKED)       │
-└─────────────────────────────────────────────────────────┘
-```
+Mini app runtime extends that architecture with plugin-owned backend processes and CEF windows, while preserving kernel supervision boundaries.
 
 ---
 

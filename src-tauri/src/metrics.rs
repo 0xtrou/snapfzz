@@ -4,7 +4,7 @@ use std::time::Duration;
 use snapfzz_kernel::budget::BudgetRegistry;
 use tauri::Emitter;
 
-use crate::emit_supervisor;
+use crate::commands::process::emit_supervisor;
 
 pub async fn run_metrics_loop(registry: Arc<BudgetRegistry>, handle: tauri::AppHandle) {
     loop {

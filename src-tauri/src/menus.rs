@@ -1,4 +1,4 @@
-use crate::open_preferences;
+use crate::commands::system::open_preferences;
 use tauri::Manager;
 
 pub fn setup_menus(app: &mut tauri::App) -> Result<(), tauri::Error> {

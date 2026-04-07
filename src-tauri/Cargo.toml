@@ -5,6 +5,7 @@ members = [
   "crates/snapfzz-stream",
   "crates/snapfzz-kernel",
   "crates/snapfzz-vault",
+  "crates/snapfzz-cef",
 ]
 resolver = "2"
 
@@ -37,6 +38,8 @@ rfd = "0.15"
 snapfzz-kernel = { path = "crates/snapfzz-kernel" }
 snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
+snapfzz-cef = { path = "crates/snapfzz-cef" }
+cef-rs = { package = "cef", git = "https://github.com/tauri-apps/cef-rs", branch = "dev" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

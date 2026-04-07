@@ -8,6 +8,8 @@ budget: cpu
 
 # A002 — CPU Budget Enforcement (Zone Placement)
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 The main thread does ONE thing: render. Everything else runs somewhere else. Zone placement is how the CPU budget is enforced.
 
 ## Registry Contract

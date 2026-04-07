@@ -12,17 +12,9 @@ Separate windows = separate WebViews = separate frame budgets. Chat streams at 6
 
 ## Architecture
 
-```
-Each Layout:
-  - Own Tauri WebviewWindow (own native WebView process)
-  - Own Vite entry point (own dev port, own build target)
-  - Own React tree (own render cycle)
-  - Own PluginHost instance (own ContributionStore)
-  - Own frame budget (own requestAnimationFrame loop)
-  - Shared @snapfzz/shared (theme, hooks, bridge — imported, not instantiated)
-  - Shared @snapfzz/plugin-sdk (contract — types only)
-  - Shared Tauri IPC (invoke/listen — cross-window via app handle)
-```
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
+Each layout still runs in its own window with independent rendering budget and host instance; this spec defines the multi-layout constraints and behavior.
 
 ## Current Layouts
 

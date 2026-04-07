@@ -6,6 +6,8 @@ date: 2026-04-02
 
 # Workspace Architecture
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 A Snapfzz project is a **folder on disk**. The folder contains the user's actual code plus a `.snapfzz/` directory with all launcher config, history, and state. Like `.vscode/`, `.cursor/`, `.git/`.
 
 The user owns their files. The launcher orchestrates around them.

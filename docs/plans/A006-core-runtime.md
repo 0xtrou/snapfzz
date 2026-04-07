@@ -10,48 +10,9 @@ What must exist before any plugin can load. This is the infrastructure. Plugins 
 
 ## Core Runtime vs Plugins
 
-```
-CORE RUNTIME (build first)              PLUGINS (build after core)
-──────────────────────────              ──────────────────────────
-@snapfzz/plugin-host                    plugins/chat/
-  Plugin discovery + resolution         plugins/team/
-  Lazy loading + activation             plugins/knowledge-base/
-  ContributionStore                     plugins/code/
-  ErrorBoundary wrapping                plugins/preview/
-  PluginContext factory                  plugins/deployments/
-                                        plugins/identities/
-@snapfzz/launcher shell                 plugins/compliance/
-  Reads ContributionStore               plugins/agent-network/
-  Renders registered content            plugins/eval/
-  Empty until plugins load              plugins/mini-app-runtime/
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-@snapfzz/project shell
-  Left panel: leftPanelTabs from store
-  Right panel: workspaceTabs from store
-  Bottom panel: bottomPanels from store
-  Status bar: statusItems from store
-  Resizable split pane
-  All empty until plugins load
-
-Rust: main.rs (orchestrator — A014)
-  Tauri IPC (invoke + events)
-  Window management, menus
-  Delegates to crates:
-
-Rust: snapfzz-kernel
-  Boot (preflight phases + hooks)
-  Budget (registry, presets, permits)
-  Process (spawn, health, logs, supervisor)
-  Settings (schema, load/save)
-
-Rust: snapfzz-stream
-  SSE consumer (reqwest-eventsource)
-  Token batching at batch_interval_ms
-  Channel API to frontend
-
-Rust: snapfzz-vault
-  AES-256-GCM secret storage (A011)
-```
+Core runtime provides the plugin host, shells, Rust IPC, and shared infrastructure. Plugins supply user-facing features on top of that base.
 
 ## What Core Runtime Provides to Plugins
 
@@ -110,6 +71,8 @@ PluginContext {
 | `@snapfzz/project` | Thin shell: reads ContributionStore. Left panel tabs + right panel tabs + bottom panel + status bar. Resizable split pane. |
 
 ### Rust Crates
+
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
 | Crate | What It Does |
 |---|---|

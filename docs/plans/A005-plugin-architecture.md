@@ -7,6 +7,8 @@ source: "Oracle consultation + founder refinement"
 
 # Plugin Architecture
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Core is the bones. Everything else is a plugin. JS-only plugins (Worker-hosted). No Rust plugins — simplicity over power.
 
 ## Design Principles

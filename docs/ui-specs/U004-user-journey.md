@@ -1,5 +1,7 @@
 # User Journey — Complete Flow
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Two windows. Tabs are agents. Agent Network shows coordination. Specs are the contracts.
 
 ---

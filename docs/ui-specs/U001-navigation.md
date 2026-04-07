@@ -4,21 +4,9 @@ Complete UI/UX spec for Snapfzz Startup Launcher. Agent-first IDE.
 
 ## Architecture
 
-Two windows. Launcher for project management. Project window for working with agents.
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-```
-LAUNCHER WINDOW                     PROJECT WINDOW
-┌─────────────────────┐             ┌──────────────────────────────────────┐
-│ Project list         │             │ ┌──────────┬──────────────────────┐ │
-│ New project          │   open ►    │ │ LEFT     │ RIGHT                │ │
-│ Settings/Eval/Memory │             │ │ Chat     │ Workspace tabs:      │ │
-└─────────────────────┘             │ │ Team     │ KB│Code│Prev│Dep│ID│C│ │
-                                     │ ├──────────┴──────────────────────┤ │
-                                     │ │ ▲ Agent Network (bottom)       │ │
-                                     │ ├────────────────────────────────┤ │
-                                     │ │ Status Bar                     │ │
-                                     └──────────────────────────────────────┘
-```
+Two windows. Launcher for project management. Project window for working with agents.
 
 **Core model:** Orchestrator is the main agent — PM, engineer, designer, ops, legal, everything. Generic workspace tabs are agent-organized containers + mini app runtimes. Each agent runs in its own BoxLite micro-VM.
 

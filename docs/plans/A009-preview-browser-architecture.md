@@ -562,44 +562,9 @@ Preview updates (~30-90ms total)
 
 ## Crate Structure
 
-```
-src-tauri/crates/
-  snapfzz-cef/                    ← NEW
-    Cargo.toml
-    src/
-      lib.rs                      # CefState, preload_cef(), create_preview_browser()
-      lifecycle.rs                # CefInitialize, CreateBrowser, CloseBrowser, Shutdown
-      window.rs                   # NSView embedding, setFrame, child window management
-      cdp.rs                      # CdpBridge, DevToolsMessageObserver, async execute()
-      budget.rs                   # CefBudget, integrate with BudgetRegistry, enforce
-      handlers.rs                 # BrowserProcessHandler, RenderProcessTerminated
-      commands.rs                 # Tauri IPC commands: create, navigate, resize, cdp, close
-```
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-Dependencies:
-```toml
-[dependencies]
-snapfzz-kernel = { path = "../snapfzz-kernel" }
-cef-rs         = { git = "https://github.com/tauri-apps/cef-rs", features = ["default"] }
-tauri          = { version = "2", features = ["unstable"] }
-tokio          = { version = "1", features = ["full"] }
-serde          = { version = "1", features = ["derive"] }
-serde_json     = "1"
-dashmap        = "6"
-```
-
-Registration in workspace:
-```toml
-# src-tauri/Cargo.toml
-[workspace]
-members = [
-  # ... existing ...
-  "crates/snapfzz-cef",
-]
-
-[dependencies]
-snapfzz-cef = { path = "crates/snapfzz-cef" }
-```
+The preview runtime remains centered on a dedicated `snapfzz-cef` crate and plugin integration as described in this spec; module/file layout should follow the architecture source of truth.
 
 ---
 

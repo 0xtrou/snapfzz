@@ -1,5 +1,7 @@
 # Launcher Window — Project Selector
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 The first thing you see. Pick a project or start a new one. Nothing else.
 
 ---

@@ -14,23 +14,9 @@ This is P1 (right from the beginning) — retrofitting encryption later means mi
 
 ## Architecture
 
-```
-Frontend (Zone 3)                    Rust (Zone 1)
-┌──────────────────┐                ┌──────────────────────────────┐
-│ Settings Plugin   │                │ SecretVault                  │
-│                  │   invoke()     │                              │
-│ vault_store ─────┼───────────────►│ encrypt(AES-256-GCM) ──► vault.enc │
-│ vault_read  ─────┼───────────────►│ decrypt(AES-256-GCM) ──► return   │
-│ vault_delete ────┼───────────────►│ remove entry ──► rewrite vault.enc│
-│ vault_list  ─────┼───────────────►│ return key names only (no values) │
-│                  │                │                              │
-│ Never sees raw   │                │ Master key from:             │
-│ secret values    │                │  1. OS keychain (preferred)  │
-│ Only references  │                │  2. ~/.snapfzz/vault.key     │
-│ like "provider:  │                │     (0o600 permissions)      │
-│  openai:apiKey"  │                └──────────────────────────────┘
-└──────────────────┘
-```
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
+Vault remains Zone 1-only, with frontend invoking commands and never holding master key material.
 
 ### Master Key Lifecycle
 

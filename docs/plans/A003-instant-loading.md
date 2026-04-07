@@ -8,6 +8,8 @@ budget: startup
 
 # A003 — Startup Budget Enforcement
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 The user clicks the icon and is productive within the startup budget. Every millisecond of blank screen says "I'm not ready for you."
 
 ## Registry Contract

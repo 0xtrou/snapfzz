@@ -1,5 +1,7 @@
 # Project Window — Agent-First IDE
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 The workspace is infrastructure. Agents decide how to use it. The orchestrator is your co-creator — PM, engineer, designer, legal advisor, whatever you need. The IDE adapts to agents, not the other way around.
 
 ---

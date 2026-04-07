@@ -1,5 +1,7 @@
 # Eval System — Intelligence Quality Gate
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Eval lives in two places: **Launcher** (cross-project, global scores) and **Project** (per-agent, per-project scores). Both powered by AgentScope's eval framework + OpenJudge LLM-as-judge + a hosted benchmark database that accumulates over time.
 
 ---

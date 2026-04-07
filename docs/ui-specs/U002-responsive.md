@@ -1,5 +1,7 @@
 # Responsive Design Spec
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Fully responsive from day 1. P1 demands it.
 
 ## Breakpoints

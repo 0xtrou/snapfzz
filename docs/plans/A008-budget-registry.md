@@ -274,29 +274,9 @@ app_handle.emit("budget-metrics", BudgetMetrics {
 
 ## Crate Structure
 
-```
-src-tauri/crates/
-  snapfzz-kernel/budget/     ← THE KERNEL
-    src/
-      mod.rs              # BudgetRegistry, Resource, Permit
-      detect.rs           # Hardware detection (sysinfo)
-      controlled.rs       # Semaphore-based in-process budgets
-      supervised.rs       # Cross-process observation + kill
-      metrics.rs          # BudgetMetrics emission to frontend
-      preset.rs           # Performance/Balanced/Battery presets
-```
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-All other modules register with `snapfzz-kernel/budget`:
-
-```
-snapfzz-kernel/budget (BudgetRegistry)
-  ↑ registered by:
-  ├── snapfzz-kernel/process    → process budget (memory, health) — AgentScope + mini apps
-  ├── snapfzz-stream            → network budget (batch rate)
-  ├── main.rs (orchestrator)    → window budget (per-layout)
-  ├── snapfzz-kernel/plugin_host → reliability budget (strikes)
-  └── snapfzz-plugin-bridge     → startup budget (activation timeout)
-```
+BudgetRegistry remains the kernel resource gate; this spec section focuses on budget behavior and enforcement, not file-layout duplication.
 
 ## Zone Communication with Registry
 

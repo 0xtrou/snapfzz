@@ -1,5 +1,7 @@
 # Perfectly From Day 1 — The Manifesto
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 Every app shipped through Snapfzz Startup Launcher meets these standards before it leaves the Build phase. Not after launch. Not in v2. Not "good enough for now." Perfect from day 1.
 
 This is P1 applied to the user's product: if it needs fixing later, it failed.

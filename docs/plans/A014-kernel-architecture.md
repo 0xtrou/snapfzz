@@ -23,27 +23,9 @@ The refactor creates a clean boundary: **main.rs orchestrates, crates execute.**
 
 ## Architecture
 
-```
-main.rs (~300 lines) — THE ORCHESTRATOR
-  ├─ Tauri command handlers (thin wrappers → delegate to crates)
-  ├─ Budget-gated work dispatch (try_acquire before work)
-  ├─ Event emission (app.emit to all windows)
-  ├─ Menu + window management
-  ├─ Async task spawning (tokio::spawn for Zone 1 work)
-  └─ RunEvent shutdown handler
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-snapfzz-kernel — THE CORE
-  ├─ boot/       ← preflight phases + hooks
-  ├─ budget/     ← registry, presets, controlled, supervised
-  ├─ process/    ← spawn, kill, restart, health, logs
-  ├─ settings/   ← Settings struct, load/save, defaults
-  └─ types.rs    ← PluginManifest, HostSurface, BusMessage
-
-snapfzz-stream — SSE PIPELINE
-  ├─ sse.rs      ← SSE consumer (reqwest-eventsource)
-  ├─ batch.rs    ← token batching at batch_interval_ms
-  └─ channel.rs  ← Channel API to frontend
-```
+This spec defines the kernel consolidation work and orchestrator constraints that implement that architecture.
 
 ---
 

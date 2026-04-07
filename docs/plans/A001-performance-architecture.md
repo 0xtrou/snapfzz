@@ -8,6 +8,8 @@ budget: frame
 
 # A001 — Frame Budget Enforcement
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 How the app protects the user's visual fluency. Every rendering decision traces to the frame budget allocated by the Budget Registry (A008).
 
 ## Registry Contract
