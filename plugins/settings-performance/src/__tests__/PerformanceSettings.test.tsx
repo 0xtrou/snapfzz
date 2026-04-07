@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { mockBridgeInvoke } = vi.hoisted(() => ({ mockBridgeInvoke: vi.fn() }));
+const { mockBridgeInvoke, mockBridgeListen } = vi.hoisted(() => ({
+  mockBridgeInvoke: vi.fn(),
+  mockBridgeListen: vi.fn(),
+}));
 
 vi.mock('@snapfzz/shared', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@snapfzz/shared')>();
@@ -11,7 +14,7 @@ vi.mock('@snapfzz/shared', async (importOriginal) => {
     createTauriBridge: () => ({
       isAvailable: true,
       invoke: mockBridgeInvoke,
-      listen: vi.fn().mockResolvedValue(() => {}),
+      listen: mockBridgeListen,
     }),
   };
 });
@@ -55,6 +58,8 @@ function setupMocks(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   mockBridgeInvoke.mockReset();
+  mockBridgeListen.mockReset();
+  mockBridgeListen.mockResolvedValue(() => {});
 });
 
 afterEach(() => {
@@ -730,6 +735,55 @@ describe('A008/settings-performance: stale async cleanup', () => {
     await act(async () => {
       resolveSnapshot?.(makeMetrics());
       await new Promise((r) => setTimeout(r, 50));
+    });
+  });
+
+  it('A008/settings-performance: listen budget-metrics event wiring is registered', async () => {
+    setupMocks();
+    render(<PerformanceSettings />);
+
+    await waitFor(() => {
+      expect(mockBridgeListen).toHaveBeenCalledWith('budget-metrics', expect.any(Function));
+    });
+  });
+
+  it('A008/settings-performance: budget-metrics listener pushes live metrics into state', async () => {
+    let listener: ((payload: ReturnType<typeof makeMetrics>) => void) | undefined;
+    mockBridgeListen.mockImplementation((event: string, handler: (payload: ReturnType<typeof makeMetrics>) => void) => {
+      if (event === 'budget-metrics') listener = handler;
+      return Promise.resolve(() => {});
+    });
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 1, cpuTotal: 4 }) });
+    render(<PerformanceSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('1 in use')).toBeInTheDocument();
+    });
+
+    act(() => {
+      listener?.(makeMetrics({ cpuUsed: 4, cpuTotal: 4 }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('4 in use')).toBeInTheDocument();
+    });
+  });
+
+  it('A008/settings-performance: unmount calls listen cleanup callback', async () => {
+    const unlisten = vi.fn();
+    mockBridgeListen.mockResolvedValue(unlisten);
+    setupMocks();
+
+    const { unmount } = render(<PerformanceSettings />);
+
+    await waitFor(() => {
+      expect(mockBridgeListen).toHaveBeenCalledWith('budget-metrics', expect.any(Function));
+    });
+
+    unmount();
+
+    await waitFor(() => {
+      expect(unlisten).toHaveBeenCalledTimes(1);
     });
   });
 });

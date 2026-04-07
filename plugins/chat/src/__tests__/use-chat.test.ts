@@ -251,6 +251,35 @@ describe('chat/stop: stop generation', () => {
 
     disposeChatRuntime();
   });
+
+  it('chat/stop: stopGeneration is safe when rust stop_generation invoke rejects', async () => {
+    const { configureChatRuntime, stopGeneration, sendMessage, useChat, disposeChatRuntime } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
+
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
+      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-reject' });
+      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
+      if (cmd === 'stop_generation') return Promise.reject(new Error('stop failed'));
+      return Promise.resolve(undefined);
+    });
+
+    const bridge = makeRustBridge({ invoke, listen: vi.fn().mockResolvedValue(vi.fn()) });
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
+    });
+
+    await act(async () => {
+      await sendMessage('hello');
+    });
+
+    await expect(stopGeneration()).rejects.toThrow('stop failed');
+    expect(result.current.isStreaming).toBe(true);
+
+    disposeChatRuntime();
+  });
 });
 
 describe('chat/batch: stream batch processing', () => {
@@ -462,6 +491,87 @@ describe('chat/clear: clear conversation', () => {
 
     expect(result.current.connectionStatus).toBe(previousStatus);
 
+    disposeChatRuntime();
+  });
+});
+
+describe('chat/session: bridge lifecycle edges', () => {
+  it('chat/session: ensureBridgeSession falls back to mock session when create_session fails', async () => {
+    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
+
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
+      if (cmd === 'create_session') return Promise.reject(new Error('cannot create session'));
+      return Promise.resolve(undefined);
+    });
+
+    const bridge = makeRustBridge({ invoke, listen: vi.fn().mockResolvedValue(vi.fn()) });
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
+    });
+
+    expect(result.current.sessionId).toBe('mock-session');
+    disposeChatRuntime();
+  });
+
+  it('chat/session: bridge listener updates connection status from health event', async () => {
+    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
+
+    const listeners = new Map<string, (payload: unknown) => void>();
+    const listen = vi.fn().mockImplementation((event: string, handler: (payload: unknown) => void) => {
+      listeners.set(event, handler);
+      return Promise.resolve(vi.fn());
+    });
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
+      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-listener' });
+      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
+      return Promise.resolve(undefined);
+    });
+
+    const bridge = makeRustBridge({ invoke, listen });
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
+    });
+
+    await act(async () => {
+      listeners.get('agent_health_changed')?.({ status: 'unhealthy' });
+    });
+
+    expect(result.current.connectionStatus).toBe('unhealthy');
+    disposeChatRuntime();
+  });
+
+  it('chat/session: sendMessage forwards trimmed text and sessionId to rust bridge', async () => {
+    const { configureChatRuntime, sendMessage, useChat, disposeChatRuntime } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
+
+    const invoke = vi.fn().mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
+      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
+      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-send' });
+      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
+      if (cmd === 'send_message') return Promise.resolve({ cmd, payload });
+      return Promise.resolve(undefined);
+    });
+
+    const bridge = makeRustBridge({ invoke, listen: vi.fn().mockResolvedValue(vi.fn()) });
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
+    });
+
+    await act(async () => {
+      await sendMessage('  hello bridge  ');
+    });
+
+    expect(invoke).toHaveBeenCalledWith('send_message', { text: 'hello bridge', sessionId: result.current.sessionId });
     disposeChatRuntime();
   });
 });

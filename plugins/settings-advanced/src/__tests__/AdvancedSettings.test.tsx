@@ -58,6 +58,19 @@ describe('A007/settings-advanced: simplified advanced settings', () => {
     });
   });
 
+  it('A007/settings-advanced: falls back to empty string when get_data_dir returns null', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_data_dir') return Promise.resolve(null);
+      return Promise.resolve(undefined);
+    });
+
+    render(<AdvancedSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('')).toBeInTheDocument();
+    });
+  });
+
   it('A007/settings-advanced: clicking Browse calls pick_folder', async () => {
     const user = userEvent.setup();
     render(<AdvancedSettings />);

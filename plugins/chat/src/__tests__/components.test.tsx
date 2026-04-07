@@ -6,7 +6,7 @@
 //           ScrollPill visibility/click, InlineRenderer token types, CodeBlock copy behavior,
 //           TextContent segment dispatch, Composer send/stop/keydown
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 
 describe('chat/ThinkingCallout: collapse toggle', () => {
@@ -327,6 +327,42 @@ describe('chat/CodeBlock: display and copy', () => {
 
     expect(screen.getByText('Copy')).toBeDefined();
   });
+
+  it('chat/CodeBlock: trims language label whitespace', async () => {
+    const { CodeBlock } = await import('../components/CodeBlock');
+    render(<CodeBlock code="const x = 1;" language="  TypeScript  " />);
+
+    expect(screen.getByText('TypeScript')).toBeDefined();
+  });
+
+  it('chat/CodeBlock: copy success flips label to Copied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+
+    const { CodeBlock } = await import('../components/CodeBlock');
+    render(<CodeBlock code="hello code" language="ts" />);
+
+    fireEvent.click(screen.getByText('Copy'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Copied')).toBeDefined();
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('chat/CodeBlock: copy failure keeps Copy label when clipboard unavailable', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined });
+
+    const { CodeBlock } = await import('../components/CodeBlock');
+    render(<CodeBlock code="hello code" language="ts" />);
+
+    fireEvent.click(screen.getByText('Copy'));
+    await Promise.resolve();
+
+    expect(screen.getByText('Copy')).toBeDefined();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('chat/TextContent: segment dispatch', () => {
@@ -425,8 +461,7 @@ describe('chat/Composer: send and stop behavior', () => {
     const { Composer } = await import('../components/Composer');
     render(<Composer disabled={false} isStreaming={true} onSend={vi.fn()} onStop={onStop} />);
 
-    const user = userEvent.setup();
-    await user.click(screen.getByText('Stop'));
+    fireEvent.click(screen.getByText('Stop'));
 
     expect(onStop).toHaveBeenCalled();
   });
@@ -436,10 +471,9 @@ describe('chat/Composer: send and stop behavior', () => {
     const { Composer } = await import('../components/Composer');
     render(<Composer disabled={false} isStreaming={false} onSend={onSend} onStop={vi.fn()} />);
 
-    const user = userEvent.setup();
     const textarea = screen.getByRole('textbox');
-    await user.type(textarea, 'Hello world');
-    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    fireEvent.change(textarea, { target: { value: 'Hello world' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
 
     expect(onSend).toHaveBeenCalledWith('Hello world');
   });
@@ -449,10 +483,8 @@ describe('chat/Composer: send and stop behavior', () => {
     const { Composer } = await import('../components/Composer');
     render(<Composer disabled={false} isStreaming={true} onSend={vi.fn()} onStop={onStop} />);
 
-    const user = userEvent.setup();
     const textarea = screen.getByRole('textbox');
-    await user.click(textarea);
-    await user.keyboard('{Escape}');
+    fireEvent.keyDown(textarea, { key: 'Escape' });
 
     expect(onStop).toHaveBeenCalled();
   });
@@ -462,8 +494,8 @@ describe('chat/Composer: send and stop behavior', () => {
     const { Composer } = await import('../components/Composer');
     render(<Composer disabled={false} isStreaming={false} onSend={onSend} onStop={vi.fn()} />);
 
-    const user = userEvent.setup();
-    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    const textarea = screen.getByRole('textbox');
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true });
 
     expect(onSend).not.toHaveBeenCalled();
   });

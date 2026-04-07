@@ -185,8 +185,12 @@ describe('chat/manifest: contributions', () => {
 });
 
 describe('chat/activate: lifecycle', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
   it('chat/activate: activate returns a PluginHandle with deactivate()', async () => {
-    vi.mock('../hooks/use-chat', () => ({
+    vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue(undefined),
@@ -203,7 +207,13 @@ describe('chat/activate: lifecycle', () => {
   });
 
   it('chat/activate: registers chat.send, chat.stop, chat.clear commands', async () => {
-    const { configureChatRuntime, disposeChatRuntime, sendMessage, stopGeneration, clearConversationSession } = await import('../hooks/use-chat');
+    vi.doMock('../hooks/use-chat', () => ({
+      configureChatRuntime: vi.fn(),
+      disposeChatRuntime: vi.fn(),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      stopGeneration: vi.fn().mockResolvedValue(undefined),
+      clearConversationSession: vi.fn().mockResolvedValue(undefined),
+    }));
 
     const registerFn = vi.fn(() => vi.fn());
     const ctx = makeCtx({ commands: { register: registerFn, execute: vi.fn() } });
@@ -217,8 +227,70 @@ describe('chat/activate: lifecycle', () => {
     expect(registeredIds).toContain('chat.clear');
   });
 
+  it('chat/activate: command handlers pass payload/default text to sendMessage', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('../hooks/use-chat', () => ({
+      configureChatRuntime: vi.fn(),
+      disposeChatRuntime: vi.fn(),
+      sendMessage,
+      stopGeneration: vi.fn().mockResolvedValue(undefined),
+      clearConversationSession: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const registerFn = vi.fn(() => vi.fn());
+    const ctx = makeCtx({ commands: { register: registerFn, execute: vi.fn() } });
+
+    const { default: plugin } = await import('../index');
+    await plugin.activate!(ctx);
+
+    const sendRegistration = registerFn.mock.calls.find(([id]) => id === 'chat.send');
+    expect(sendRegistration).toBeDefined();
+    const sendHandler = sendRegistration?.[1] as (args?: unknown) => Promise<unknown>;
+
+    await sendHandler({ text: 'hello from command' });
+    await sendHandler(undefined);
+
+    expect(sendMessage).toHaveBeenNthCalledWith(1, 'hello from command');
+    expect(sendMessage).toHaveBeenNthCalledWith(2, '');
+  });
+
+  it('chat/activate: stop and clear handlers invoke runtime functions', async () => {
+    const stopGeneration = vi.fn().mockResolvedValue(undefined);
+    const clearConversationSession = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('../hooks/use-chat', () => ({
+      configureChatRuntime: vi.fn(),
+      disposeChatRuntime: vi.fn(),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      stopGeneration,
+      clearConversationSession,
+    }));
+
+    const registerFn = vi.fn(() => vi.fn());
+    const ctx = makeCtx({ commands: { register: registerFn, execute: vi.fn() } });
+
+    const { default: plugin } = await import('../index');
+    await plugin.activate!(ctx);
+
+    const stopHandler = registerFn.mock.calls.find(([id]) => id === 'chat.stop')?.[1] as () => Promise<unknown>;
+    const clearHandler = registerFn.mock.calls.find(([id]) => id === 'chat.clear')?.[1] as () => Promise<unknown>;
+
+    await stopHandler();
+    await clearHandler();
+
+    expect(stopGeneration).toHaveBeenCalledTimes(1);
+    expect(clearConversationSession).toHaveBeenCalledTimes(1);
+  });
+
   it('chat/activate: deactivate disposes bridge listeners and unregisters commands', async () => {
-    const { disposeChatRuntime } = await import('../hooks/use-chat');
+    const disposeChatRuntime = vi.fn();
+    vi.doMock('../hooks/use-chat', () => ({
+      configureChatRuntime: vi.fn(),
+      disposeChatRuntime,
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      stopGeneration: vi.fn().mockResolvedValue(undefined),
+      clearConversationSession: vi.fn().mockResolvedValue(undefined),
+    }));
+
     const unregSend = vi.fn();
     const unregStop = vi.fn();
     const unregClear = vi.fn();

@@ -56,6 +56,18 @@ describe('A007/settings-performance manifest', () => {
     const section = plugin.contributes?.settingsSections?.[0];
     expect(typeof section?.component).toBe('function');
   });
+
+  it('A007/settingsSections: component lazy import resolves PerformanceSettings module', async () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    const mod = await section?.component?.();
+    expect(mod).toBeDefined();
+    expect(typeof mod?.default).toBe('function');
+  });
+
+  it('A007/settingsSections: section order is 2', () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    expect(section?.order).toBe(2);
+  });
 });
 
 describe('A005/settings-performance activation', () => {
@@ -76,5 +88,18 @@ describe('A005/settings-performance activation', () => {
     const ctx = {} as never;
     const handle = await plugin.activate!(ctx);
     await expect(handle.deactivate!()).resolves.toBeUndefined();
+  });
+
+  it('A005/activate: deactivate is callable multiple times', async () => {
+    const ctx = {} as never;
+    const handle = await plugin.activate!(ctx);
+    await expect(handle.deactivate!()).resolves.toBeUndefined();
+    await expect(handle.deactivate!()).resolves.toBeUndefined();
+  });
+
+  it('A005/activate: activate is callable with non-empty context object', async () => {
+    const ctx = { logger: { info: () => {}, warn: () => {}, error: () => {} } } as never;
+    const handle = await plugin.activate!(ctx);
+    expect(handle).toBeDefined();
   });
 });

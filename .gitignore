@@ -42,3 +42,4 @@ coverage/
 **/coverage-summary.json
 src-tauri/*.json
 !src-tauri/tauri.conf.json
+.gitnexus
