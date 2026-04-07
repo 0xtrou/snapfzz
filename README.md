@@ -18,14 +18,14 @@ Built with [Tauri](https://tauri.app/) + [AgentScope Runtime](https://runtime.ag
 
 ## Test Coverage
 
-Coverage ≥90% enforced by CI on every push. Badges update automatically from CI coverage data.
+Coverage ≥90% enforced by CI on every push. Rust coverage via `cargo-llvm-cov`, frontend via Vitest v8. Badges update automatically from CI coverage data.
 
 ### Core Infrastructure
 
 | Layer | Package | Coverage | CI |
 |---|---|---|---|
-| Rust | [`snapfzz-kernel`](src-tauri/crates/snapfzz-kernel/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=kernel)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| Rust | [`snapfzz-stream`](src-tauri/crates/snapfzz-stream/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=stream)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Rust | [`snapfzz-kernel`](src-tauri/crates/snapfzz-kernel/) | ≥90% line | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=kernel)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Rust | [`snapfzz-stream`](src-tauri/crates/snapfzz-stream/) | ≥90% line | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=stream)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Rust | [`main.rs`](src-tauri/src/main.rs) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=orchestrator)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 | Frontend | [`@snapfzz/plugin-host`](frontend/packages/plugin-host/) | — | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugin-host)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
 

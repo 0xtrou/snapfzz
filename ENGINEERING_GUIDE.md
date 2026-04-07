@@ -202,8 +202,9 @@ Every plugin and core package must achieve **≥90% test coverage**. Contract-dr
 # Frontend (vitest)
 pnpm --filter @snapfzz/plugin-host exec npx vitest run --coverage
 
-# Rust
-cargo tarpaulin -p snapfzz-kernel --out Html
+# Rust (cargo-llvm-cov — enforced ≥90% line coverage in CI)
+cd src-tauri && cargo llvm-cov test -p snapfzz-kernel --lib --summary-only
+cd src-tauri && cargo llvm-cov test -p snapfzz-stream --lib --summary-only
 ```
 
 ### Naming Convention

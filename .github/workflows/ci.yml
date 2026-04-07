@@ -20,12 +20,40 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-      - name: Kernel crate tests
-        run: cargo test -p snapfzz-kernel --lib
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Kernel crate tests with coverage
+        run: cargo llvm-cov test -p snapfzz-kernel --lib --json --output-path kernel-cov.json
         working-directory: src-tauri
-      - name: Stream crate tests
-        run: cargo test -p snapfzz-stream --lib
+      - name: Assert kernel coverage ≥90%
         working-directory: src-tauri
+        run: |
+          LINE_PCT=$(python3 -c "
+          import json
+          d = json.load(open('kernel-cov.json'))
+          totals = d['data'][0]['totals']
+          lines = totals['lines']
+          pct = (lines['covered'] / lines['count'] * 100) if lines['count'] > 0 else 0
+          print(f'{pct:.2f}')
+          ")
+          echo "snapfzz-kernel line coverage: ${LINE_PCT}%"
+          python3 -c "import sys; sys.exit(0 if float('${LINE_PCT}') >= 90 else 1)"
+      - name: Stream crate tests with coverage
+        run: cargo llvm-cov test -p snapfzz-stream --lib --json --output-path stream-cov.json
+        working-directory: src-tauri
+      - name: Assert stream coverage ≥90%
+        working-directory: src-tauri
+        run: |
+          LINE_PCT=$(python3 -c "
+          import json
+          d = json.load(open('stream-cov.json'))
+          totals = d['data'][0]['totals']
+          lines = totals['lines']
+          pct = (lines['covered'] / lines['count'] * 100) if lines['count'] > 0 else 0
+          print(f'{pct:.2f}')
+          ")
+          echo "snapfzz-stream line coverage: ${LINE_PCT}%"
+          python3 -c "import sys; sys.exit(0 if float('${LINE_PCT}') >= 90 else 1)"
       - name: Main binary tests
         run: cargo test --bin Snapfzz
         working-directory: src-tauri
