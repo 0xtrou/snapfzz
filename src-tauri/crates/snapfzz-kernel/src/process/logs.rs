@@ -1,11 +1,11 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
-
-use dashmap::DashMap;
+use std::sync::Mutex;
 
 const PROCESS_LOG_MAX_LINES: usize = 1000;
 
 pub struct ProcessLogs {
-    lines: DashMap<String, Vec<String>>,
+    lines: Mutex<HashMap<String, Vec<String>>>,
     data_dir: PathBuf,
     max_lines: usize,
 }
@@ -20,7 +20,7 @@ impl ProcessLogs {
 
     pub fn with_max_lines(data_dir: PathBuf, max_lines: usize) -> Self {
         Self {
-            lines: DashMap::new(),
+            lines: Mutex::new(HashMap::new()),
             data_dir,
             max_lines,
         }
@@ -51,7 +51,8 @@ impl ProcessLogs {
     }
 
     pub fn push(&self, name: &str, line: String) {
-        let mut entry = self.lines.entry(name.to_string()).or_default();
+        let mut lines = self.lines.lock().expect("process log mutex poisoned");
+        let entry = lines.entry(name.to_string()).or_default();
         if entry.len() >= self.max_lines {
             let excess = entry.len() - self.max_lines + 1;
             entry.drain(..excess);
@@ -76,16 +77,22 @@ impl ProcessLogs {
     }
 
     pub fn tail(&self, name: &str, n: usize) -> Vec<String> {
-        let entry = match self.lines.get(name) {
-            Some(entry) => entry,
-            None => return Vec::new(),
+        let lines = self.lines.lock().expect("process log mutex poisoned");
+        let Some(entry) = lines.get(name) else {
+            return Vec::new();
         };
+
         let start = entry.len().saturating_sub(n);
         entry[start..].to_vec()
     }
 
     pub fn clear(&self, name: &str) {
-        if let Some(mut entry) = self.lines.get_mut(name) {
+        if let Some(entry) = self
+            .lines
+            .lock()
+            .expect("process log mutex poisoned")
+            .get_mut(name)
+        {
             entry.clear();
         }
         let _ = std::fs::remove_file(self.log_path(name));

@@ -53,7 +53,7 @@ mod tests {
     };
 
     use super::{apply_memory_limit, wait_for_shutdown};
-    use crate::process::{ProcessError, ProcessManager, SpawnConfig};
+    use crate::process::ProcessManager;
 
     fn make_registry() -> BudgetRegistry {
         BudgetRegistry::with_preset_name(PresetName::Performance)
@@ -121,34 +121,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a014_process_supervisor_kill_runtime_unknown_process_bubbles_error() {
+    async fn a014_process_supervisor_kill_runtime_unknown_process_is_noop() {
         let manager = ProcessManager::new();
-        let error = super::kill_runtime(&manager, "unknown")
+        super::kill_runtime(&manager, "unknown")
             .await
-            .expect_err("kill_runtime should return unknown process error");
-
-        match error {
-            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
-            other => panic!("unexpected error variant: {other:?}"),
-        }
+            .expect("kill_runtime should no-op for missing process");
     }
 
-    #[tokio::test]
-    async fn a014_process_supervisor_restart_runtime_unknown_process_bubbles_error() {
-        let manager = ProcessManager::new();
-        let registry = make_registry();
-        let config = SpawnConfig {
-            host: "127.0.0.1".to_string(),
-            port: 8080,
-            working_dir: std::path::PathBuf::from("."),
-        };
-
-        let error = super::restart_runtime(&manager, "unknown", &config, &registry)
-            .await
-            .expect_err("restart_runtime should reject unknown process");
-        match error {
-            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
-            other => panic!("unexpected error variant: {other:?}"),
-        }
-    }
 }

@@ -87,10 +87,10 @@ export function App() {
   return (
     <PluginHostProvider host={host}>
       <WindowShell title="Settings" statusBarContent={<span className="text-[var(--color-success)]">● Connected</span>}>
-        <div className="flex h-full overflow-hidden" style={{ contain: 'strict' }}>
+        <div className="flex h-full overflow-hidden">
           <aside
             className="flex flex-col border-r border-[var(--border-default)] bg-[var(--bg-default)] overflow-y-auto"
-            style={{ width: 208, contain: 'strict' }}
+            style={{ width: 208, contain: 'layout paint' }}
           >
             {sections.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-4 text-center">
@@ -120,7 +120,7 @@ export function App() {
             )}
           </aside>
 
-          <main className="flex-1 overflow-auto bg-[var(--bg-primary)]" style={{ contain: 'strict' }}>
+          <main className="flex-1 overflow-auto bg-[var(--bg-primary)]" style={{ contain: 'layout paint' }}>
             {activeSection ? (
               <LazySection loader={activeSection.component} sectionId={activeSection.id} onCrash={handleCrash} />
             ) : (

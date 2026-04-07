@@ -5,14 +5,14 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 
+use crate::budget::metrics::ProcessStatus;
 use crate::budget::{
     supervised::{ProcessBudget, ProcessLocation},
     BudgetRegistry,
 };
-use crate::budget::metrics::ProcessStatus;
 use crate::process::health::{apply_health_check, wait_until_healthy};
 use crate::process::logs::ProcessLogs;
-use crate::process::runtime::{piped_stdio, RuntimeState};
+use crate::process::runtime::{piped_stdio, ChildState, RuntimeState};
 use crate::process::supervisor::{apply_memory_limit, restart_runtime, wait_for_shutdown};
 
 pub mod health;
@@ -24,7 +24,6 @@ pub mod supervisor;
 pub enum ProcessError {
     Io(std::io::Error),
     RuntimeNotRunning { name: String },
-    UnknownProcess { name: String },
     HealthTimeout { name: String, timeout_ms: u64 },
     SpawnFailed(String),
 }
@@ -34,7 +33,6 @@ impl std::fmt::Display for ProcessError {
         match self {
             Self::Io(error) => write!(f, "{error}"),
             Self::RuntimeNotRunning { name } => write!(f, "process '{name}' is not running"),
-            Self::UnknownProcess { name } => write!(f, "unknown process '{name}'"),
             Self::HealthTimeout { name, timeout_ms } => {
                 write!(f, "process '{name}' did not become healthy within {timeout_ms}ms")
             }
@@ -81,15 +79,15 @@ impl ProcessManager {
         config: &SpawnConfig,
         registry: &BudgetRegistry,
     ) -> Result<u32, ProcessError> {
-        if name != "agentscope" {
-            return Err(ProcessError::UnknownProcess {
-                name: name.to_string(),
-            });
+        if self.state.lock().await.children.contains_key(name) {
+            return Err(ProcessError::SpawnFailed(format!(
+                "process '{name}' is already running"
+            )));
         }
 
         cleanup_stale_pid(self.logs.data_dir(), name);
 
-        let mut command = tokio::process::Command::new("uv");
+        let mut command = tokio::process::Command::new(runtime_command_binary());
         command
             .args(["run", "python", "app.py"])
             .current_dir(&config.working_dir)
@@ -135,8 +133,9 @@ impl ProcessManager {
 
         {
             let mut guard = self.state.lock().await;
-            guard.child = Some(child);
-            guard.child_pid = Some(child_pid);
+            guard
+                .children
+                .insert(name.to_string(), ChildState { child, pid: child_pid });
         }
 
         let prev = registry.supervised.processes.get(name);
@@ -166,11 +165,7 @@ impl ProcessManager {
                 max_restarts: preset_max_restarts,
                 location: ProcessLocation::Local,
                 consecutive_failures: 0,
-                restart_count: if is_restart {
-                    prev_restart_count + 1
-                } else {
-                    0
-                },
+                restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
                 status: ProcessStatus::Starting,
                 started_at: Some(Instant::now()),
                 owner: "system".to_string(),
@@ -182,47 +177,32 @@ impl ProcessManager {
     }
 
     pub async fn shutdown(&self, name: &str) -> Result<(), ProcessError> {
-        if name != "agentscope" {
-            return Err(ProcessError::UnknownProcess {
-                name: name.to_string(),
-            });
-        }
+        let child_state = {
+            let mut guard = self.state.lock().await;
+            guard.children.remove(name)
+        };
 
-        let mut guard = self.state.lock().await;
-
-        if guard.child.is_none() {
-            guard.child_pid = None;
+        let Some(mut child_state) = child_state else {
+            remove_pid_file(self.logs.data_dir(), name);
             return Ok(());
-        }
+        };
 
-        let pid = guard.child_pid;
-
-        if let Some(mut child) = guard.child.take() {
-            if let Some(pid) = pid {
-                let is_alive = child.try_wait().ok().flatten().is_none();
-                if is_alive {
-                    if pid == 0 {
-                        wait_for_shutdown(&mut child).await;
-                        guard.child_pid = None;
-                        remove_pid_file(self.logs.data_dir(), name);
-                        return Ok(());
-                    }
-                    #[cfg(unix)]
-                    // SAFETY: pid is validated non-zero from ProcessBudget/runtime state before libc::kill.
-                    unsafe {
-                        libc::kill(-(pid as i32), libc::SIGKILL);
-                        libc::kill(pid as i32, libc::SIGKILL);
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        let _ = child.start_kill();
-                    }
+        if child_state.pid != 0 {
+            let is_alive = child_state.child.try_wait().ok().flatten().is_none();
+            if is_alive {
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(-(child_state.pid as i32), libc::SIGKILL);
+                    libc::kill(child_state.pid as i32, libc::SIGKILL);
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = child_state.child.start_kill();
                 }
             }
-            wait_for_shutdown(&mut child).await;
         }
 
-        guard.child_pid = None;
+        wait_for_shutdown(&mut child_state.child).await;
         remove_pid_file(self.logs.data_dir(), name);
         Ok(())
     }
@@ -237,16 +217,12 @@ impl ProcessManager {
     }
 
     pub fn kill(&self, name: &str) -> Result<(), ProcessError> {
-        if name != "agentscope" {
-            return Err(ProcessError::UnknownProcess {
-                name: name.to_string(),
-            });
-        }
-
         let pid = self
             .state
             .blocking_lock()
-            .child_pid
+            .children
+            .get(name)
+            .map(|state| state.pid)
             .ok_or_else(|| ProcessError::RuntimeNotRunning {
                 name: name.to_string(),
             })?;
@@ -258,10 +234,8 @@ impl ProcessManager {
         }
 
         #[cfg(unix)]
-        // SAFETY: pid is validated non-zero from ProcessBudget/runtime state before libc::kill.
         unsafe {
-            libc::kill(-(pid as i32), libc::SIGKILL);
-            libc::kill(pid as i32, libc::SIGKILL);
+            libc::kill(pid as i32, libc::SIGTERM);
         }
 
         #[cfg(not(unix))]
@@ -297,6 +271,10 @@ impl Default for ProcessManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn runtime_command_binary() -> String {
+    std::env::var("SNAPFZZ_RUNTIME_COMMAND").unwrap_or_else(|_| "uv".to_string())
 }
 
 fn pid_file_path(data_dir: &std::path::Path, name: &str) -> PathBuf {
@@ -340,7 +318,6 @@ fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
     );
     if system.process(sysinfo::Pid::from_u32(pid)).is_some() {
         #[cfg(unix)]
-        // SAFETY: pid is parsed from pid file as non-zero u32 before libc::kill.
         unsafe {
             libc::kill(-(pid as i32), libc::SIGKILL);
             libc::kill(pid as i32, libc::SIGKILL);
@@ -355,9 +332,13 @@ fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex as StdMutex, OnceLock};
     use std::time::Instant;
 
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::sync::Mutex;
 
     use crate::budget::{
@@ -398,13 +379,56 @@ mod tests {
         );
     }
 
+    fn env_lock() -> &'static StdMutex<()> {
+        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| StdMutex::new(()))
+    }
+
+    fn create_fake_runtime_command_script(root: &Path) -> PathBuf {
+        let script = root.join("fake-runtime.sh");
+        let mut file = std::fs::File::create(&script).expect("create fake runtime script");
+        writeln!(file, "#!/bin/sh").expect("write shebang");
+        writeln!(file, "sleep 30").expect("write sleep command");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+                .expect("set script executable");
+        }
+
+        script
+    }
+
+    async fn spawn_health_server() -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind health listener");
+        let port = listener.local_addr().expect("listener addr").port();
+
+        tokio::spawn(async move {
+            for _ in 0..8 {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                let mut request_buf = [0_u8; 1024];
+                let _ = socket.read(&mut request_buf).await;
+                let _ = socket
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        port
+    }
+
     #[test]
     fn a014_process_manager_new_initializes_empty_runtime() {
         let manager = ProcessManager::new();
         let state = manager.state.blocking_lock();
 
-        assert!(state.child.is_none());
-        assert!(state.child_pid.is_none());
+        assert!(state.children.is_empty());
         assert!(manager.logs.data_dir().ends_with(".snapfzz"));
     }
 
@@ -412,8 +436,7 @@ mod tests {
     fn a014_process_manager_with_parts_uses_injected_state_and_logs() {
         let temp = tempfile::tempdir().expect("tempdir");
         let state = Arc::new(Mutex::new(RuntimeState {
-            child: None,
-            child_pid: Some(123),
+            children: HashMap::new(),
         }));
         let logs = Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10));
 
@@ -436,26 +459,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a014_process_shutdown_unknown_process_returns_error() {
+    async fn a014_process_shutdown_missing_named_process_returns_ok() {
         let manager = ProcessManager::new();
-        let error = manager
+        manager
             .shutdown("unknown")
             .await
-            .expect_err("shutdown should reject unknown process name");
-
-        match error {
-            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
-            other => panic!("unexpected error variant: {other:?}"),
-        }
+            .expect("shutdown should no-op for missing process");
     }
 
     #[tokio::test]
-    async fn a014_process_shutdown_without_child_clears_pid_and_returns_ok() {
+    async fn a014_process_shutdown_without_child_state_returns_ok() {
         let temp = tempfile::tempdir().expect("tempdir");
         let manager = ProcessManager::with_parts(
             Arc::new(Mutex::new(RuntimeState {
-                child: None,
-                child_pid: Some(999),
+                children: HashMap::new(),
             })),
             Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
         );
@@ -466,8 +483,7 @@ mod tests {
             .expect("shutdown without child should succeed");
 
         let guard = manager.state.lock().await;
-        assert!(guard.child.is_none());
-        assert!(guard.child_pid.is_none());
+        assert!(guard.children.is_empty());
     }
 
     #[test]
@@ -478,7 +494,7 @@ mod tests {
             .expect_err("kill should reject unknown process name");
 
         match error {
-            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
+            ProcessError::RuntimeNotRunning { name } => assert_eq!(name, "unknown"),
             other => panic!("unexpected error variant: {other:?}"),
         }
     }
@@ -549,6 +565,75 @@ mod tests {
 
         let entry = registry.supervised.processes.get("agentscope").unwrap();
         assert!(matches!(entry.status, ProcessStatus::Unhealthy));
+    }
+
+    #[tokio::test]
+    async fn a014_process_spawn_supports_multiple_named_processes() {
+        let _env_guard = env_lock().lock().expect("env lock");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let fake_runtime = create_fake_runtime_command_script(temp.path());
+
+        let previous = std::env::var("SNAPFZZ_RUNTIME_COMMAND").ok();
+        unsafe {
+            std::env::set_var("SNAPFZZ_RUNTIME_COMMAND", &fake_runtime);
+        }
+
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+        let registry = make_registry();
+
+        let alpha_port = spawn_health_server().await;
+        let beta_port = spawn_health_server().await;
+        let alpha = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: alpha_port,
+            working_dir: temp.path().to_path_buf(),
+        };
+        let beta = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: beta_port,
+            working_dir: temp.path().to_path_buf(),
+        };
+
+        let alpha_pid = manager
+            .spawn("agentscope", &alpha, &registry)
+            .await
+            .expect("spawn agentscope process");
+        let beta_pid = manager
+            .spawn("miniapp", &beta, &registry)
+            .await
+            .expect("spawn miniapp process");
+
+        assert!(alpha_pid > 0);
+        assert!(beta_pid > 0);
+
+        {
+            let state = manager.state.lock().await;
+            assert_eq!(state.children.len(), 2);
+            assert!(state.children.contains_key("agentscope"));
+            assert!(state.children.contains_key("miniapp"));
+        }
+
+        manager
+            .shutdown("agentscope")
+            .await
+            .expect("shutdown agentscope process");
+        manager
+            .shutdown("miniapp")
+            .await
+            .expect("shutdown miniapp process");
+
+        if let Some(previous) = previous {
+            unsafe {
+                std::env::set_var("SNAPFZZ_RUNTIME_COMMAND", previous);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("SNAPFZZ_RUNTIME_COMMAND");
+            }
+        }
     }
 
     #[test]

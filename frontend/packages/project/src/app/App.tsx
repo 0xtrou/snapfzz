@@ -65,7 +65,7 @@ function LeftPanel({ tabs, activeTabId, onTabChange, onCrash }: {
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   return (
-    <div className="h-full flex flex-col" style={{ contain: 'strict' }}>
+    <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
       <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
       <div className="flex-1 overflow-hidden">
         {activeTab ? (
@@ -88,7 +88,7 @@ function RightPanel({ tabs, activeTabId, onTabChange, onCrash }: {
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   return (
-    <div className="h-full flex flex-col" style={{ contain: 'strict' }}>
+    <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
       <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
       <div className="flex-1 overflow-hidden">
         {activeTab ? (
@@ -203,7 +203,7 @@ export function App() {
             </Panel>
           </PanelGroup>
 
-          <div className="h-48" style={{ contain: 'strict' }}>
+          <div className="h-48" style={{ contain: 'layout paint' }}>
             <BottomPanel panels={contributions.bottomPanels} onCrash={handleCrash} />
           </div>
         </div>

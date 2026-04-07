@@ -106,7 +106,7 @@ function LauncherShell({ contributions, onCrash }: { contributions: Contribution
   );
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-primary)', contain: 'strict' }}>
+    <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg-primary)' }}>
       <header className="h-12 flex items-center px-4 border-b gap-3" style={{ borderColor: 'var(--border-default)' }}>
         <img src="/logo.svg" alt="Snapfzz" className="w-6 h-6" />
         <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -117,7 +117,7 @@ function LauncherShell({ contributions, onCrash }: { contributions: Contribution
         </div>
       </header>
 
-      <main className="flex-1">
+      <main className="flex-1" style={{ contain: 'layout paint' }}>
         {mainContent.length > 0 ? (
           <RenderComponentContributions items={mainContent} onCrash={onCrash} />
         ) : (

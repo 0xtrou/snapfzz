@@ -1,9 +1,14 @@
+use std::collections::HashMap;
 use std::process::Stdio;
+
+pub struct ChildState {
+    pub child: tokio::process::Child,
+    pub pid: u32,
+}
 
 #[derive(Default)]
 pub struct RuntimeState {
-    pub child: Option<tokio::process::Child>,
-    pub child_pid: Option<u32>,
+    pub children: HashMap<String, ChildState>,
 }
 
 impl RuntimeState {
@@ -21,10 +26,9 @@ mod tests {
     use super::{piped_stdio, RuntimeState};
 
     #[test]
-    fn a014_process_runtime_new_starts_without_child_or_pid() {
+    fn a014_process_runtime_new_starts_without_children() {
         let state = RuntimeState::new();
-        assert!(state.child.is_none());
-        assert!(state.child_pid.is_none());
+        assert!(state.children.is_empty());
     }
 
     #[test]

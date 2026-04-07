@@ -105,7 +105,7 @@ impl SecretVault {
         self.master_key
             .seal_in_place_append_tag(
                 Nonce::assume_unique_for_key(nonce),
-                Aad::empty(),
+                Aad::from(key.as_bytes()),
                 &mut ciphertext,
             )
             .map_err(|_| VaultError::Crypto("encryption failed".to_string()))?;
@@ -130,7 +130,7 @@ impl SecretVault {
             .master_key
             .open_in_place(
                 Nonce::assume_unique_for_key(entry.nonce),
-                Aad::empty(),
+                Aad::from(key.as_bytes()),
                 &mut plaintext,
             )
             .map_err(|_| VaultError::Crypto("decryption failed".to_string()))?;
@@ -546,6 +546,28 @@ mod tests {
 
         let wrong = SecretVault::open(&key_b, path).unwrap();
         let err = wrong.read("provider:anthropic:apiKey").unwrap_err();
+        assert!(matches!(err, VaultError::Crypto(_)));
+    }
+
+    #[test]
+    fn a011_vault_authentication_rejects_ciphertext_swapped_between_entry_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+        let key = test_master_key();
+
+        let mut vault = SecretVault::open(&key, path.clone()).unwrap();
+        vault.store("key-a", b"alpha-secret").unwrap();
+        vault.store("key-b", b"beta-secret").unwrap();
+
+        let mut tampered = SecretVault::open(&key, path.clone()).unwrap();
+        let ciphertext_from_a = tampered.entries.get("key-a").cloned().unwrap();
+        tampered
+            .entries
+            .insert("key-b".to_string(), ciphertext_from_a);
+        persist_entries_atomically(&path, &tampered.entries).unwrap();
+
+        let reopened = SecretVault::open(&key, path).unwrap();
+        let err = reopened.read("key-b").unwrap_err();
         assert!(matches!(err, VaultError::Crypto(_)));
     }
 
