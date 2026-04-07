@@ -94,7 +94,8 @@ jobs:
               }
             "
           else
-            echo "No coverage report — skipping threshold check"
+            echo "ERROR: No coverage report found — test suite may have failed"
+            exit 1
           fi
 
   plugin-chat:
@@ -113,17 +114,23 @@ jobs:
       - run: pnpm --filter @snapfzz/chat-plugin exec npx vitest run --coverage --coverage.reporter=json-summary
       - name: Assert ≥90% overall coverage (lines + branches + functions)
         run: |
-          node -e "
-            const s = require('./plugins/chat/coverage/coverage-summary.json').total;
-            const lines = s.lines.pct;
-            const branches = s.branches.pct;
-            const functions = s.functions.pct;
-            console.log('chat: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
-            if (lines < 90 || branches < 90 || functions < 90) {
-              console.error('FAIL: need ≥90% on lines + branches + functions');
-              process.exit(1);
-            }
-          "
+          SUMMARY="plugins/chat/coverage/coverage-summary.json"
+          if [ -f "$SUMMARY" ]; then
+            node -e "
+              const s = require('./$SUMMARY').total;
+              const lines = s.lines.pct;
+              const branches = s.branches.pct;
+              const functions = s.functions.pct;
+              console.log('chat: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
+              if (lines < 90 || branches < 90 || functions < 90) {
+                console.error('FAIL: need ≥90% on lines + branches + functions');
+                process.exit(1);
+              }
+            "
+          else
+            echo "ERROR: No coverage report found — test suite may have failed"
+            exit 1
+          fi
 
   plugin-settings:
     name: Settings Plugins
@@ -159,5 +166,6 @@ jobs:
               }
             "
           else
-            echo "No coverage report found — tests passed without coverage"
+            echo "ERROR: No coverage report found — test suite may have failed"
+            exit 1
           fi

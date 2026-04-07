@@ -11,7 +11,7 @@ use snapfzz_kernel::process::{self, ProcessManager, SpawnConfig};
 use snapfzz_kernel::settings::{Settings, SettingsManager};
 use snapfzz_stream::{send_and_consume, ContentBlockBatch, MessageResult, StreamError};
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
-use std::{fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
+use std::{fs, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::Duration};
 use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager, RunEvent};
@@ -109,25 +109,39 @@ async fn agent_health(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result
 }
 #[tauri::command]
 async fn get_settings(settings_mgr: tauri::State<'_, Arc<SettingsManager>>) -> Result<Settings, String> { settings_mgr.load().map_err(|e| e.to_string()) }
+
+// Security boundary: plugin-originated calls include plugin_id and are denied until plugin-bridge identity gating lands.
+fn ensure_system_vault_caller(plugin_id: Option<&str>) -> Result<(), String> {
+    if plugin_id.is_some() {
+        return Err("Vault access denied: plugins cannot access the system vault".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
-async fn vault_store(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, value: String) -> Result<(), String> {
+async fn vault_store(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, value: String, plugin_id: Option<String>) -> Result<(), String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
     vault.lock().unwrap().store(&key, value.as_bytes()).map_err(|e| e.to_string())
 }
 #[tauri::command]
-async fn vault_read(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String) -> Result<String, String> {
+async fn vault_read(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<String, String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
     let bytes = vault.lock().unwrap().read(&key).map_err(|e| e.to_string())?;
     String::from_utf8(bytes).map_err(|e| e.to_string())
 }
 #[tauri::command]
-async fn vault_delete(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String) -> Result<(), String> {
+async fn vault_delete(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<(), String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
     vault.lock().unwrap().delete(&key).map_err(|e| e.to_string())
 }
 #[tauri::command]
-async fn vault_list(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>) -> Result<Vec<String>, String> {
+async fn vault_list(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, plugin_id: Option<String>) -> Result<Vec<String>, String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
     Ok(vault.lock().unwrap().list())
 }
 #[tauri::command]
-async fn vault_has(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String) -> Result<bool, String> {
+async fn vault_has(vault: tauri::State<'_, Arc<Mutex<SecretVault>>>, key: String, plugin_id: Option<String>) -> Result<bool, String> {
+    ensure_system_vault_caller(plugin_id.as_deref())?;
     Ok(vault.lock().unwrap().has(&key))
 }
 #[tauri::command]
@@ -180,8 +194,48 @@ async fn pick_folder(default_path: Option<String>) -> Result<Option<String>, Str
     Ok(dialog.pick_folder().map(|p| p.to_string_lossy().to_string()))
 }
 
+fn resolve_open_target(path: &str) -> Result<PathBuf, String> {
+    let expanded = if let Some(rest) = path.strip_prefix("~/") {
+        dirs::home_dir().unwrap_or_default().join(rest)
+    } else {
+        PathBuf::from(path)
+    };
+
+    if let Ok(canonical) = expanded.canonicalize() {
+        return Ok(canonical);
+    }
+
+    if let Some(parent) = expanded.parent() {
+        if let Ok(parent_canonical) = parent.canonicalize() {
+            return Ok(match expanded.file_name() {
+                Some(name) => parent_canonical.join(name),
+                None => parent_canonical,
+            });
+        }
+    }
+
+    Err("Only URLs or paths under ~/.snapfzz are allowed".to_string())
+}
+
+fn validate_open_path_target(path: &str) -> Result<(), String> {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return Ok(());
+    }
+
+    let target = resolve_open_target(path)?;
+    let snapfzz_root = snapfzz_home();
+    let allowed_root = snapfzz_root.canonicalize().unwrap_or(snapfzz_root);
+
+    if target.starts_with(&allowed_root) {
+        return Ok(());
+    }
+
+    Err("Only URLs or paths under ~/.snapfzz are allowed".to_string())
+}
+
 #[tauri::command]
 async fn open_path(path: String) -> Result<(), String> {
+    validate_open_path_target(&path)?;
     #[cfg(target_os = "macos")] std::process::Command::new("open").arg(&path).spawn().map_err(|e| e.to_string())?;
     #[cfg(target_os = "linux")] std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| e.to_string())?;
     #[cfg(target_os = "windows")] std::process::Command::new("explorer").arg(&path).spawn().map_err(|e| e.to_string())?;
@@ -246,6 +300,9 @@ fn fonts_dir() -> PathBuf { resolve_data_dir().join("fonts") }
 
 #[tauri::command]
 async fn install_font_from_url(url: String, name: String) -> Result<String, String> {
+    if !url.starts_with("https://") {
+        return Err("Only https:// font URLs are allowed".to_string());
+    }
     fs::create_dir_all(fonts_dir()).map_err(|e| e.to_string())?;
     let bytes = reqwest::get(&url).await.map_err(|e| e.to_string())?.error_for_status().map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
     let ext = if url.contains(".woff2") { "woff2" } else if url.contains(".woff") { "woff" } else if url.contains(".otf") { "otf" } else { "ttf" };
@@ -379,7 +436,10 @@ fn main() {
         .context
         .get_extension::<Arc<Mutex<SecretVault>>>("vault")
         .cloned()
-        .unwrap_or_else(|| Arc::new(Mutex::new(SecretVault::empty(data_dir.join("vault.enc")))));
+        .unwrap_or_else(|| {
+            eprintln!("[vault] WARNING: vault initialization failed — running with empty vault. Secrets will NOT be encrypted.");
+            Arc::new(Mutex::new(SecretVault::empty(data_dir.join("vault.enc"))))
+        });
 
     let registry = result.registry.clone();
     let process_mgr = Arc::new(ProcessManager::with_parts(

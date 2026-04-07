@@ -201,7 +201,14 @@ impl ProcessManager {
             if let Some(pid) = pid {
                 let is_alive = child.try_wait().ok().flatten().is_none();
                 if is_alive {
+                    if pid == 0 {
+                        wait_for_shutdown(&mut child).await;
+                        guard.child_pid = None;
+                        remove_pid_file(self.logs.data_dir(), name);
+                        return Ok(());
+                    }
                     #[cfg(unix)]
+                    // SAFETY: pid is validated non-zero from ProcessBudget/runtime state before libc::kill.
                     unsafe {
                         libc::kill(-(pid as i32), libc::SIGKILL);
                         libc::kill(pid as i32, libc::SIGKILL);
@@ -244,7 +251,14 @@ impl ProcessManager {
                 name: name.to_string(),
             })?;
 
+        if pid == 0 {
+            return Err(ProcessError::RuntimeNotRunning {
+                name: name.to_string(),
+            });
+        }
+
         #[cfg(unix)]
+        // SAFETY: pid is validated non-zero from ProcessBudget/runtime state before libc::kill.
         unsafe {
             libc::kill(-(pid as i32), libc::SIGKILL);
             libc::kill(pid as i32, libc::SIGKILL);
@@ -308,6 +322,10 @@ fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
         Err(_) => return,
     };
     let pid: u32 = match content.trim().parse() {
+        Ok(0) => {
+            let _ = std::fs::remove_file(&path);
+            return;
+        }
         Ok(pid) => pid,
         Err(_) => {
             let _ = std::fs::remove_file(&path);
@@ -322,6 +340,7 @@ fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
     );
     if system.process(sysinfo::Pid::from_u32(pid)).is_some() {
         #[cfg(unix)]
+        // SAFETY: pid is parsed from pid file as non-zero u32 before libc::kill.
         unsafe {
             libc::kill(-(pid as i32), libc::SIGKILL);
             libc::kill(pid as i32, libc::SIGKILL);
