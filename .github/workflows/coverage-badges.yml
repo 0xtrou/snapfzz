@@ -10,9 +10,17 @@ permissions:
 jobs:
   update-badges:
     name: Update Coverage Badges
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-badges-${{ hashFiles('src-tauri/Cargo.lock') }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -22,10 +30,34 @@ jobs:
           cache: pnpm
       - run: pnpm install
 
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Run Rust coverage
+        working-directory: src-tauri
+        run: |
+          mkdir -p ../.badges
+          for crate in snapfzz-kernel snapfzz-stream; do
+            cargo llvm-cov test -p "$crate" --lib --json --output-path "/tmp/${crate}-cov.json" 2>/dev/null || true
+            if [ -f "/tmp/${crate}-cov.json" ]; then
+              COV=$(python3 -c "
+          import json
+          d = json.load(open('/tmp/${crate}-cov.json'))
+          t = d['data'][0]['totals']['lines']
+          print(f'{t[\"covered\"]/t[\"count\"]*100:.1f}' if t['count'] > 0 else '0')
+          ")
+              COLOR="red"
+              if python3 -c "import sys; sys.exit(0 if float('${COV}') >= 90 else 1)"; then COLOR="brightgreen"; fi
+              if python3 -c "import sys; sys.exit(0 if 80 <= float('${COV}') < 90 else 1)"; then COLOR="yellow"; fi
+              BADGE_NAME=$(echo "$crate" | sed 's/snapfzz-//')
+              echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > "../.badges/${BADGE_NAME}.json"
+            fi
+          done
+
       - name: Run coverage for all plugins
         run: |
           mkdir -p .badges
-          for plugin in chat settings-general settings-runtime settings-performance settings-plugins settings-advanced settings-processes; do
+          for plugin in chat settings-general settings-performance settings-plugins settings-advanced settings-processes; do
             DIR="plugins/$plugin"
             if [ "$plugin" = "chat" ]; then
               FILTER="@snapfzz/chat-plugin"
