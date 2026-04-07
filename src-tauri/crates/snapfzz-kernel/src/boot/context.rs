@@ -1,3 +1,5 @@
+use std::any::Any;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,6 +11,7 @@ pub struct PreflightContext {
     pub data_dir: PathBuf,
     settings: Option<PreflightSettings>,
     registry: Option<Arc<BudgetRegistry>>,
+    extensions: HashMap<&'static str, Arc<dyn Any + Send + Sync>>,
 }
 
 impl PreflightContext {
@@ -17,6 +20,7 @@ impl PreflightContext {
             data_dir,
             settings: None,
             registry: None,
+            extensions: HashMap::new(),
         }
     }
 
@@ -38,5 +42,13 @@ impl PreflightContext {
 
     pub fn set_registry(&mut self, registry: Arc<BudgetRegistry>) {
         self.registry = Some(registry);
+    }
+
+    pub fn set_extension<T: Any + Send + Sync>(&mut self, key: &'static str, value: T) {
+        self.extensions.insert(key, Arc::new(value));
+    }
+
+    pub fn get_extension<T: Any + Send + Sync>(&self, key: &'static str) -> Option<&T> {
+        self.extensions.get(key).and_then(|v| v.downcast_ref::<T>())
     }
 }
