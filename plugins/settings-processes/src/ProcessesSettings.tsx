@@ -305,6 +305,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
               description="The agent runtime will restart with the new connection settings."
               onConfirm={handleSaveAndRestart}
               okText="Save & Restart"
+              okButtonProps={{ type: 'primary', danger: true }}
               cancelText="Cancel"
               disabled={!configDirty || !configValid}
             >
