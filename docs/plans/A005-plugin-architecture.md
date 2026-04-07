@@ -476,6 +476,199 @@ activationEvents: [
 
 ---
 
+## Plugin Sandbox & Security
+
+### Directory Isolation
+
+Every third-party plugin is jailed to its own directory. No escape.
+
+```
+~/.snapfzz/plugins/
+├── community.supabase/          ← plugin's ENTIRE world
+│   ├── manifest.json            ← validated on install (Zod schema)
+│   ├── dist/                    ← JS bundle (read-only after install)
+│   ├── data/                    ← plugin's namespaced storage (ctx.storage)
+│   ├── cache/                   ← temp files, expendable
+│   └── permissions.json         ← granted capabilities (user approved once)
+├── community.stripe/
+│   ├── ...
+```
+
+**Rules:**
+1. **CWD is locked** — plugin code runs with `cwd = ~/.snapfzz/plugins/{id}/`. All file operations resolve relative to this. No `../` escape.
+2. **Read-only bundle** — `dist/` is immutable after install. Plugin cannot modify its own code at runtime.
+3. **Namespaced storage** — `ctx.storage` reads/writes to `data/` only. Plugin A cannot access Plugin B's `data/`.
+4. **No global filesystem** — plugin cannot read `~/.snapfzz/settings.json`, other plugins' dirs, or anything outside its jail. Data access is through `ctx.storage` and `ctx.settings` (namespaced APIs only).
+
+### Manifest Validation
+
+Every manifest is validated against a Zod schema before registration. Malformed manifests are rejected at install time — they never reach the host.
+
+```typescript
+// Validated on install, NOT at runtime (already trusted after install)
+const ManifestSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/),  // e.g. "community.supabase"
+  name: z.string().min(1).max(64),
+  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  description: z.string().max(256),
+  surface: z.array(z.enum(['launcher', 'project', 'preferences'])),
+  activationEvents: z.array(z.string()),
+  dependencies: z.record(z.string()).optional(),
+  requiredCapabilities: z.array(z.string()).optional(),
+  allowedOrigins: z.array(z.string().url()).optional(),  // network policy (V1)
+  contributes: ContributesSchema.optional(),
+});
+```
+
+### Permission Model — Approve Once
+
+On first install, the user sees what the plugin requests:
+
+```
+"Supabase Integration" requests:
+  ✓ identity.write     — connect third-party accounts
+  ✓ filesystem.read    — read project files
+  ✗ vault.read         — BLOCKED (plugins cannot access system vault)
+
+[Approve] [Cancel]
+```
+
+Stored in `~/.snapfzz/plugins/{id}/permissions.json`:
+```json
+{
+  "granted": ["identity.write", "filesystem.read"],
+  "denied": ["vault.read"],
+  "grantedAt": "2026-04-07T12:00:00Z",
+  "grantedBy": "user"
+}
+```
+
+**Rules:**
+- Permissions are **granted once** — user is never asked again for the same capability
+- If a plugin UPDATE requests NEW capabilities → user is prompted for the new ones only
+- Revoked capabilities can be re-granted in Settings → Plugins → plugin detail
+
+### Capability Enforcement at Runtime
+
+The `snapfzz-plugin-bridge` intercepts every `ctx.rust.invoke()` call and checks the caller's granted capabilities:
+
+```
+Plugin calls ctx.rust.invoke('send_message', {...})
+  → plugin-bridge checks: does pluginId have 'agent.invoke' capability?
+  → if yes: forward to kernel
+  → if no: return PluginBridgeError::Unauthorized
+```
+
+**Blocked commands (plugins can NEVER call):**
+- `vault_store`, `vault_read`, `vault_delete`, `vault_list`, `vault_has` — system vault is kernel-only
+- `save_settings` — system settings are kernel-only. Plugins use `ctx.settings` (namespaced)
+- `spawn_runtime`, `kill_process`, `restart_process` — process management is kernel-only
+
+**Capability → Command mapping:**
+
+| Capability | Commands allowed |
+|---|---|
+| `agent.invoke` | `send_message`, `create_session`, `load_session`, `stop_generation` |
+| `filesystem.read` | `read_file`, `list_files` (scoped to project + plugin jail) |
+| `filesystem.write` | `write_file`, `delete_file` (scoped to project + plugin jail) |
+| `identity.read` | `get_provider`, `list_providers` |
+| `identity.write` | `connect_provider`, `disconnect_provider` |
+| `budget.read` | `budget_snapshot` |
+
+### Secret Management for Plugins
+
+Plugins do NOT access the system vault (A011). If a plugin needs to store secrets (e.g., a Supabase service key):
+
+1. Plugin stores it via `ctx.storage.set('serviceKey', encrypted)` — plaintext in plugin's `data/`
+2. If the plugin wants encryption, the plugin author ships their own crypto
+3. We provide NO encryption API for plugins — their storage is their responsibility
+4. The plugin jail ensures no other plugin can read this data
+
+### Network Policy (V1 scope)
+
+Plugins can declare `allowedOrigins` in their manifest:
+
+```json
+{
+  "allowedOrigins": ["https://api.supabase.co", "https://supabase.com"]
+}
+```
+
+Enforcement via CSP headers:
+- Plugin's webview `connect-src` is restricted to declared origins only
+- Undeclared fetch/XHR requests are blocked by the browser
+- System plugins have unrestricted network access (no CSP restriction)
+
+### Resource Limits per Plugin
+
+The budget registry already tracks per-plugin invoke concurrency via `try_acquire_invoke(pluginId)`. Additional per-plugin limits:
+
+| Resource | Limit | Enforcement |
+|---|---|---|
+| Invoke concurrency | 3 concurrent per plugin (default) | `try_acquire_invoke` returns None |
+| CPU permits | Shared pool (not per-plugin) | `try_acquire_cpu` |
+| Storage | 100MB per plugin data/ | Checked on write, reject if exceeded |
+| Memory (Worker) | 256MB heap per Worker | Worker OOM kills the plugin |
+
+### Mini App Sandbox
+
+Mini apps run in iframes with strict sandbox attributes:
+
+```html
+<iframe
+  sandbox="allow-scripts"
+  src="..."
+  style="..."
+></iframe>
+```
+
+**NOT allowed:** `allow-same-origin` (prevents access to parent window), `allow-forms` (prevents form submission to external URLs), `allow-popups`.
+
+Communication: `postMessage` only, with strict origin validation:
+```typescript
+window.addEventListener('message', (e) => {
+  if (e.origin !== expectedPluginOrigin) return;  // reject foreign messages
+  if (!isValidMiniAppMessage(e.data)) return;      // reject malformed messages
+  handleMiniAppMessage(e.data);
+});
+```
+
+### Code Signature Verification (Beta scope)
+
+Third-party plugin packages must include a detached signature:
+
+```
+community.supabase/
+  ├── dist/bundle.js
+  ├── dist/bundle.js.sig    ← Ed25519 signature
+  ├── manifest.json
+  └── manifest.json.sig
+```
+
+On install:
+1. Verify `manifest.json.sig` against Snapfzz registry public key
+2. Verify `bundle.js.sig` against the manifest's declared author public key
+3. Reject if either signature is missing or invalid
+
+System plugins are unsigned — they ship with the app binary and are trusted implicitly.
+
+### Security Summary
+
+| Layer | Threat | Enforcement | Milestone |
+|---|---|---|---|
+| Install | Malformed manifest | Zod validation | Alpha |
+| Runtime | Privilege escalation | Plugin-bridge capability check | Alpha |
+| Runtime | Secret theft | Vault commands blocked for plugins | Alpha |
+| Runtime | Resource hogging | Per-plugin invoke budget | Alpha |
+| Filesystem | Jail escape | CWD locked to plugin dir | Alpha |
+| Storage | Cross-plugin data theft | Namespaced ctx.storage | Alpha |
+| Network | Data exfiltration | CSP allowedOrigins | V1 |
+| Supply chain | Malicious code injection | Ed25519 signature verification | Beta |
+| Mini apps | Parent window access | iframe sandbox="allow-scripts" | Alpha |
+| Crash | Repeated crashes | 3-strike auto-disable | Alpha |
+
+---
+
 ## Isolation
 
 | What | How |

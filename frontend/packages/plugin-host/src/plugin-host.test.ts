@@ -453,6 +453,14 @@ describe('A005/lifecycle/state: plugin state query (5-state model)', () => {
 });
 
 describe('A005/lifecycle: additional branch coverage', () => {
+  it('A005/lifecycle: defaults to launcher surface when none is provided', () => {
+    const host = new PluginHost(new ContributionStore());
+
+    host.register(defineTestPlugin({ id: 'launcher-default', surface: ['launcher'] }));
+
+    expect(host.getPlugins().map((plugin) => plugin.id)).toEqual(['launcher-default']);
+  });
+
   it('A005/lifecycle: activate returns existing handle when already running', async () => {
     const host = new PluginHost(new ContributionStore());
     const deactivate = vi.fn().mockResolvedValue(undefined);
@@ -652,6 +660,25 @@ describe('A005/lifecycle: additional branch coverage', () => {
     expect(host.getPluginState('lazy.preload')).toBe('ready');
   });
 
+  it('A005/lifecycle: preload skips already loaded non-startup plugins', async () => {
+    const host = new PluginHost(new ContributionStore());
+
+    const lazyLoaded = defineTestPlugin({
+      id: 'already.loaded',
+      activationEvents: ['onViewVisible:preview'],
+      activate: async () => ({}),
+    });
+
+    await host.registerWithLoader(lazyLoaded, async () => lazyLoaded);
+    await host.activate('already.loaded');
+    await host.deactivate('already.loaded');
+
+    await host.activateByEvent('onCommand:trigger-idle-preload');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(host.getPluginState('already.loaded')).toBe('registered');
+  });
+
   it('A005/lifecycle: activateAll sets host surface and activates matching plugins', async () => {
     const host = new PluginHost(new ContributionStore(), 'launcher');
     const activate = vi.fn().mockResolvedValue({});
@@ -669,6 +696,26 @@ describe('A005/lifecycle: additional branch coverage', () => {
 
     expect(activate).toHaveBeenCalledTimes(1);
     expect(host.getPlugins().map((plugin) => plugin.id)).toEqual(['project.startup']);
+  });
+
+  it('A005/lifecycle: activateAll honors disabled startup plugins on target surface', async () => {
+    const host = new PluginHost(new ContributionStore(), 'launcher');
+    const activate = vi.fn().mockResolvedValue({});
+
+    host.register(
+      defineTestPlugin({
+        id: 'disabled.project.startup',
+        surface: ['project'],
+        activationEvents: ['onStartupFinished'],
+        activate,
+      }),
+    );
+
+    await host.disable('disabled.project.startup');
+    await host.activateAll('project');
+
+    expect(activate).not.toHaveBeenCalled();
+    expect(host.getPluginState('disabled.project.startup')).toBe('disabled');
   });
 
   it('A005/lifecycle: loadPluginDefinition marks error state when loader throws', async () => {

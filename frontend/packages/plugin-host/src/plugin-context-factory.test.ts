@@ -90,6 +90,18 @@ describe('A005/context: PluginContext factory and isolation boundaries', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('A005/communication: preserves explicitly namespaced bus topics containing colon', () => {
+    const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
+    const handler = vi.fn();
+
+    const dispose = context.bus.on('external:topic', handler);
+    context.bus.emit('external:topic', { ok: true });
+
+    expect(handler).toHaveBeenCalledWith({ ok: true });
+
+    dispose();
+  });
+
   it('A005/communication: CommandBus allows register/execute within same host boundary', async () => {
     const context = createPluginContext('plugin.alpha', 'launcher', new ContributionStore(), undefined, storage);
     const dispose = context.commands.register('demo.command', async (args: unknown) => ({ args }));
