@@ -1,0 +1,19 @@
+[package]
+name = "snapfzz-preflight"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Per A012/Architecture: BudgetRegistry is initialized in Phase 4.
+snapfzz-budget = { path = "../snapfzz-budget" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Per A012/Architecture: async phases (5-6) require tokio runtime.
+tokio = { version = "1", features = ["full"] }
+# Per A004/Workspace: Phase 1 resolves ~/.snapfzz/ via dirs::home_dir().
+dirs = "6"
+
+[dev-dependencies]
+# Per A012/Tests: all filesystem tests use tempdir, never touch ~/.snapfzz/.
+tempfile = "3"

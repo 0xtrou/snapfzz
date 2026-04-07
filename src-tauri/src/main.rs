@@ -16,9 +16,12 @@ use tauri::{Emitter, Manager, RunEvent};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 
-use snapfzz_budget::preset::{build_preset, detect_hardware, select_preset, PresetName};
+use snapfzz_budget::preset::{build_preset, detect_hardware, PresetName};
 use snapfzz_budget::supervised::{ProcessBudget, ProcessLocation};
 use snapfzz_budget::BudgetRegistry;
+// Per A012/Architecture: PreflightService owns all boot-time initialization.
+// main.rs delegates — it never calls get_settings_sync directly in main().
+use snapfzz_preflight::{PhaseTimingDto, PreflightService};
 
 const AGENTSCOPE_PORT: u16 = 8090;
 
@@ -1022,20 +1025,172 @@ async fn update_process_config(
     Ok(())
 }
 
-fn main() {
-    let settings = get_settings_sync();
-    let registry = Arc::new(if settings.preset == "auto" || settings.preset.is_empty() {
-        BudgetRegistry::from_hardware()
-    } else {
-        let hw = detect_hardware();
-        let preset_name = match settings.preset.as_str() {
-            "performance" => PresetName::Performance,
-            "balanced" => PresetName::Balanced,
-            "battery" => PresetName::Battery,
-            _ => select_preset(&hw),
-        };
-        BudgetRegistry::with_preset(build_preset(preset_name, &hw))
+// Per A012/Integration: setup_menus is extracted from .setup() so main() stays thin.
+// Menu is a UI concern — it belongs in .setup(), not in PreflightService.
+fn setup_menus(app: &mut tauri::App) -> Result<(), tauri::Error> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+    let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences…")
+        .accelerator("CmdOrCtrl+,")
+        .build(app)?;
+
+    let about_item = MenuItemBuilder::with_id("about", "About Snapfzz")
+        .build(app)?;
+
+    let app_menu = SubmenuBuilder::new(app, "Snapfzz")
+        .item(&about_item)
+        .separator()
+        .item(&preferences_item)
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .fullscreen()
+        .build()?;
+
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .close_window()
+        .build()?;
+
+    let menu = MenuBuilder::new(app)
+        .item(&app_menu)
+        .item(&edit_menu)
+        .item(&view_menu)
+        .item(&window_menu)
+        .build()?;
+
+    app.set_menu(menu)?;
+
+    let app_handle_for_menu = app.handle().clone();
+    app.on_menu_event(move |_app, event| {
+        let h = app_handle_for_menu.clone();
+        match event.id().as_ref() {
+            "preferences" => {
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_preferences(h).await;
+                });
+            }
+            "about" => {
+                if let Some(w) = h.get_webview_window("about") {
+                    let _ = w.set_focus();
+                    return;
+                }
+                let about_url = if cfg!(debug_assertions) {
+                    WebviewUrl::External("http://localhost:5174/about.html".parse().unwrap())
+                } else {
+                    WebviewUrl::App("about.html".into())
+                };
+                let _ = WebviewWindowBuilder::new(&h, "about", about_url)
+                    .title("About")
+                    .inner_size(420.0, 520.0)
+                    .resizable(false)
+                    .maximizable(false)
+                    .minimizable(false)
+                    .center()
+                    .build();
+            }
+            _ => {}
+        }
     });
+
+    Ok(())
+}
+
+// Per A012/Phase6: background metrics loop — emits budget-metrics every 2s.
+// Per A008/Measurement: runs as background task, never blocks the main thread (Zone 3 safe).
+async fn run_metrics_loop(registry: Arc<BudgetRegistry>, handle: tauri::AppHandle) {
+    loop {
+        tokio::time::sleep(Duration::from_millis(2000)).await;
+
+        let names: Vec<String> = registry.supervised.processes.iter()
+            .map(|e| e.key().clone())
+            .collect();
+
+        for name in &names {
+            let healthy = registry.supervised.check_health(name).await;
+            let mut failures_to_emit: Option<u32> = None;
+            if let Some(mut proc) = registry.supervised.processes.get_mut(name) {
+                if healthy {
+                    proc.status = snapfzz_budget::metrics::ProcessStatus::Online;
+                    proc.consecutive_failures = 0;
+                } else {
+                    proc.consecutive_failures += 1;
+                    proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
+                    failures_to_emit = Some(proc.consecutive_failures);
+                }
+            }
+            if let Some(failures) = failures_to_emit {
+                let _ = handle.emit("supervisor-event", SupervisorEvent {
+                    event_type: "error".into(),
+                    process: name.clone(),
+                    message: format!("Health check failed ({failures} consecutive)"),
+                    timestamp: now_ms(),
+                });
+            }
+
+            let rss = registry.supervised.check_memory(name);
+            let max = registry.supervised.processes.get(name)
+                .map(|p| p.max_memory_mb)
+                .unwrap_or(0);
+            if rss.map(|r| r > max as f64).unwrap_or(false) {
+                if let Some(mut proc) = registry.supervised.processes.get_mut(name) {
+                    proc.status = snapfzz_budget::metrics::ProcessStatus::Errored;
+                }
+                let rss_val = rss.unwrap_or(0.0);
+                let _ = handle.emit("supervisor-event", SupervisorEvent {
+                    event_type: "error".into(),
+                    process: name.clone(),
+                    message: format!("Memory exceeded: {rss_val:.0}MB > {max}MB limit"),
+                    timestamp: now_ms(),
+                });
+            }
+        }
+
+        let snap = registry.snapshot();
+        if let Err(e) = handle.emit("budget-metrics", &snap) {
+            eprintln!("[budget] metrics emit error: {e}");
+        }
+    }
+}
+
+// Per A012/Tauri: exposes preflight phase timings to the frontend.
+// Frontend can query boot diagnostics without needing a separate log parser.
+#[tauri::command]
+async fn preflight_status(
+    timings: tauri::State<'_, Vec<PhaseTimingDto>>,
+) -> Result<Vec<PhaseTimingDto>, String> {
+    Ok(timings.inner().clone())
+}
+
+fn main() {
+    // Per A012/Architecture: phases 1-4 complete synchronously before any window opens.
+    // Total budget <25ms. Phase 1 (filesystem) failure is fatal.
+    // resolve_data_dir() stays in main.rs — it's the A004 anchor, not a preflight concern.
+    let preflight = PreflightService::new(resolve_data_dir());
+
+    let preflight_result = preflight
+        .run_sync()
+        .expect("[preflight] fatal: filesystem initialization failed");
+
+    let registry = preflight_result.registry.clone();
+    let phase_timings: Vec<PhaseTimingDto> = preflight_result.phase_timings_dto();
+
     {
         let preset = registry.preset.read().unwrap();
         eprintln!("[budget] preset: {} (batch_interval={}ms, cpu={}, mem={}MB)",
@@ -1054,6 +1209,7 @@ fn main() {
         .manage(registry.clone())
         .manage(runtime_state.clone())
         .manage(process_logs.clone())
+        .manage(phase_timings)
         .invoke_handler(tauri::generate_handler![
             send_message,
             stop_generation,
@@ -1084,157 +1240,32 @@ fn main() {
             install_font_from_file,
             list_installed_fonts,
             remove_font,
+            preflight_status,
         ])
         .setup(move |app| {
+            // Per A012/Integration: menu setup is a UI concern, not a preflight phase.
+            setup_menus(app)?;
+
             let handle = app.handle().clone();
             let reg = setup_registry.clone();
             let rt = setup_runtime.clone();
             let logs = setup_logs.clone();
 
-            let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences…")
-                .accelerator("CmdOrCtrl+,")
-                .build(app)?;
-
-            let about_item = MenuItemBuilder::with_id("about", "About Snapfzz")
-                .build(app)?;
-
-            let app_menu = SubmenuBuilder::new(app, "Snapfzz")
-                .item(&about_item)
-                .separator()
-                .item(&preferences_item)
-                .separator()
-                .hide()
-                .hide_others()
-                .show_all()
-                .separator()
-                .quit()
-                .build()?;
-
-            let edit_menu = SubmenuBuilder::new(app, "Edit")
-                .undo()
-                .redo()
-                .separator()
-                .cut()
-                .copy()
-                .paste()
-                .select_all()
-                .build()?;
-
-            let view_menu = SubmenuBuilder::new(app, "View")
-                .fullscreen()
-                .build()?;
-
-            let window_menu = SubmenuBuilder::new(app, "Window")
-                .minimize()
-                .close_window()
-                .build()?;
-
-            let menu = MenuBuilder::new(app)
-                .item(&app_menu)
-                .item(&edit_menu)
-                .item(&view_menu)
-                .item(&window_menu)
-                .build()?;
-
-            app.set_menu(menu)?;
-
-            let app_handle_for_menu = app.handle().clone();
-            app.on_menu_event(move |_app, event| {
-                use tauri::{WebviewUrl, WebviewWindowBuilder};
-                let h = app_handle_for_menu.clone();
-                match event.id().as_ref() {
-                    "preferences" => {
-                        tauri::async_runtime::spawn(async move {
-                            let _ = open_preferences(h).await;
-                        });
-                    }
-                    "about" => {
-                        if let Some(w) = h.get_webview_window("about") {
-                            let _ = w.set_focus();
-                            return;
-                        }
-                        let about_url = if cfg!(debug_assertions) {
-                            WebviewUrl::External("http://localhost:5174/about.html".parse().unwrap())
-                        } else {
-                            WebviewUrl::App("about.html".into())
-                        };
-                        let _ = WebviewWindowBuilder::new(&h, "about", about_url)
-                            .title("About")
-                            .inner_size(420.0, 520.0)
-                            .resizable(false)
-                            .maximizable(false)
-                            .minimizable(false)
-                            .center()
-                            .build();
-                    }
-                    _ => {}
-                }
-            });
-
+            // Per A012/Phase5: spawn AgentScope async — window opens immediately.
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = spawn_runtime(&handle, &reg, &rt, &logs).await {
-                    eprintln!("[budget] {e}");
+                    eprintln!("[preflight] Phase 5: processes — {e}");
                 }
                 let _ = handle.emit("agent-status", "online");
+                eprintln!("[preflight] Phase 5: processes — agentscope spawned");
             });
 
-            // A008/Measurement: emit budget-metrics every 2s so Zone 3 can render status bar.
-            // Runs as a background task — never blocks the main thread.
+            // Per A012/Phase6: background metrics loop — never blocks the main thread.
             let metrics_reg = setup_registry.clone();
             let metrics_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                loop {
-                    tokio::time::sleep(Duration::from_millis(2000)).await;
-
-                    let names: Vec<String> = metrics_reg.supervised.processes.iter()
-                        .map(|e| e.key().clone())
-                        .collect();
-
-                    for name in &names {
-                        let healthy = metrics_reg.supervised.check_health(name).await;
-                        let mut failures_to_emit: Option<u32> = None;
-                        if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(name) {
-                            if healthy {
-                                proc.status = snapfzz_budget::metrics::ProcessStatus::Online;
-                                proc.consecutive_failures = 0;
-                            } else {
-                                proc.consecutive_failures += 1;
-                                proc.status = snapfzz_budget::metrics::ProcessStatus::Unhealthy;
-                                failures_to_emit = Some(proc.consecutive_failures);
-                            }
-                        }
-                        if let Some(failures) = failures_to_emit {
-                            let _ = metrics_handle.emit("supervisor-event", SupervisorEvent {
-                                event_type: "error".into(),
-                                process: name.clone(),
-                                message: format!("Health check failed ({failures} consecutive)"),
-                                timestamp: now_ms(),
-                            });
-                        }
-
-                        let rss = metrics_reg.supervised.check_memory(name);
-                        let max = metrics_reg.supervised.processes.get(name)
-                            .map(|p| p.max_memory_mb)
-                            .unwrap_or(0);
-                        if rss.map(|r| r > max as f64).unwrap_or(false) {
-                            if let Some(mut proc) = metrics_reg.supervised.processes.get_mut(name) {
-                                proc.status = snapfzz_budget::metrics::ProcessStatus::Errored;
-                            }
-                            let rss_val = rss.unwrap_or(0.0);
-                            let _ = metrics_handle.emit("supervisor-event", SupervisorEvent {
-                                event_type: "error".into(),
-                                process: name.clone(),
-                                message: format!("Memory exceeded: {rss_val:.0}MB > {max}MB limit"),
-                                timestamp: now_ms(),
-                            });
-                        }
-                    }
-
-                    let snap = metrics_reg.snapshot();
-                    if let Err(e) = metrics_handle.emit("budget-metrics", &snap) {
-                        eprintln!("[budget] metrics emit error: {e}");
-                    }
-                }
+                eprintln!("[preflight] Phase 6: background — metrics loop started (2s interval)");
+                run_metrics_loop(metrics_reg, metrics_handle).await;
             });
 
             Ok(())

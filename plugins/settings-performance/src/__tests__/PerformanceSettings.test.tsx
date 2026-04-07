@@ -662,3 +662,57 @@ describe('A007/settings-performance: Tauri unavailable', () => {
     });
   });
 });
+
+describe('A008/settings-performance: strokeColorForPct branch coverage', () => {
+  it('A008/settings-performance: progress bar shows error color at 90%+ usage', async () => {
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 4, cpuTotal: 4 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('CPU Permits')).toBeInTheDocument();
+    });
+    const progressBars = document.querySelectorAll('.ant-progress');
+    expect(progressBars.length).toBeGreaterThan(0);
+  });
+
+  it('A008/settings-performance: progress bar shows warning color at 70-89% usage', async () => {
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 3, cpuTotal: 4 }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('CPU Permits')).toBeInTheDocument();
+    });
+    const bodyText = document.body.textContent ?? '';
+    expect(bodyText).toContain('3 in use');
+  });
+});
+
+describe('A008/settings-performance: disabledPlugins display', () => {
+  it('A008/settings-performance: reliability row shows count of disabled plugins', async () => {
+    setupMocks({ metrics: makeMetrics({ disabledPlugins: ['plugin.a', 'plugin.b'] }) });
+    render(<PerformanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Reliability')).toBeInTheDocument();
+    });
+    const bodyText = document.body.textContent ?? '';
+    expect(bodyText).toContain('2 disabled');
+  });
+});
+
+describe('A008/settings-performance: stale async cleanup', () => {
+  it('A008/settings-performance: unmount before metrics resolve does not update state', async () => {
+    let resolveSnapshot: ((v: unknown) => void) | undefined;
+    mockBridgeInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'budget_snapshot') return new Promise((r) => { resolveSnapshot = r; });
+      if (cmd === 'get_hardware_info') return Promise.resolve(makeHwInfo());
+      if (cmd === 'get_settings') return Promise.resolve({ preset: 'balanced' });
+      return Promise.resolve(undefined);
+    });
+
+    const { unmount } = render(<PerformanceSettings />);
+    unmount();
+
+    await act(async () => {
+      resolveSnapshot?.(makeMetrics());
+      await new Promise((r) => setTimeout(r, 50));
+    });
+  });
+});

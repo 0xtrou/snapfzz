@@ -8,6 +8,7 @@ members = [
   "crates/snapfzz-budget",
   "crates/snapfzz-agent-supervisor",
   "crates/snapfzz-stream-pipeline",
+  "crates/snapfzz-preflight",
 ]
 resolver = "2"
 
@@ -40,6 +41,7 @@ dirs = "6"
 sysinfo = "0.38"
 rfd = "0.15"
 snapfzz-budget = { path = "crates/snapfzz-budget" }
+snapfzz-preflight = { path = "crates/snapfzz-preflight" }
 dashmap = "6"
 
 [target.'cfg(unix)'.dependencies]
