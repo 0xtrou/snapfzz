@@ -67,9 +67,25 @@ jobs:
             echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > ".badges/plugin-host.json"
           fi
 
-      - name: Run coverage for all plugins
+      - name: Run coverage for core packages and plugins
         run: |
           mkdir -p .badges
+          # Core packages with tests
+          for pkg in shared plugin-sdk launcher project preferences; do
+            pnpm --filter "@snapfzz/$pkg" exec npx vitest run --coverage --coverage.reporter=json-summary 2>/dev/null || true
+            SUMMARY="frontend/packages/$pkg/coverage/coverage-summary.json"
+            if [ -f "$SUMMARY" ]; then
+              COV=$(node -e "console.log(require('./$SUMMARY').total.lines.pct)")
+              COLOR="red"
+              if [ "$(echo "$COV >= 90" | bc)" = "1" ]; then COLOR="brightgreen"; fi
+              if [ "$(echo "$COV >= 80" | bc)" = "1" ] && [ "$(echo "$COV < 90" | bc)" = "1" ]; then COLOR="yellow"; fi
+              echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > ".badges/$pkg.json"
+            else
+              echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"no tests\",\"color\":\"lightgrey\"}" > ".badges/$pkg.json"
+            fi
+          done
+
+          # Plugins
           for plugin in chat settings-general settings-performance settings-plugins settings-advanced settings-processes; do
             DIR="plugins/$plugin"
             if [ "$plugin" = "chat" ]; then
