@@ -38,7 +38,7 @@ pub struct BudgetMetrics {
     pub cpu_total: usize,
     pub invoke_used: usize,
     pub invoke_total: usize,
-    pub frame_target_ms: u64,
+    pub batch_interval_ms: u64,
     pub batch_rate_ms: u64,
     // Backward-compatible agentscope fields (derived from `processes`).
     pub agentscope_rss_mb: Option<f64>,

@@ -43,7 +43,7 @@ mod tests {
     }
 
     #[test]
-    fn a008_preset_performance_frame_target_is_16ms() {
+    fn a008_preset_performance_batch_interval_is_16ms() {
         let hw = HardwareInfo {
             cores: 8,
             ram_gb: 16,
@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[test]
-    fn a008_preset_battery_frame_target_is_33ms() {
+    fn a008_preset_battery_batch_interval_is_33ms() {
         let hw = HardwareInfo {
             cores: 4,
             ram_gb: 8,

@@ -81,12 +81,12 @@ mod tests {
     }
 
     #[test]
-    fn a008_controlled_frame_target_reads_from_preset() {
+    fn a008_controlled_batch_interval_reads_from_preset() {
         let perf = make_controlled(PresetName::Performance);
-        assert_eq!(perf.frame_target(), 16);
+        assert_eq!(perf.batch_interval(), 16);
 
         let batt = make_controlled(PresetName::Battery);
-        assert_eq!(batt.frame_target(), 33);
+        assert_eq!(batt.batch_interval(), 33);
     }
 
     #[test]

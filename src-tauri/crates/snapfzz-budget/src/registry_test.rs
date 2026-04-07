@@ -25,14 +25,14 @@ mod tests {
     #[test]
     fn a008_registry_from_preset_creates_valid_registry() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
-        assert_eq!(reg.frame_target(), 16);
+        assert_eq!(reg.batch_interval(), 16);
         assert_eq!(reg.batch_rate(), 16);
     }
 
     #[test]
-    fn a008_registry_battery_preset_uses_33ms_frame_target() {
+    fn a008_registry_battery_preset_uses_33ms_batch_interval() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Battery);
-        assert_eq!(reg.frame_target(), 33);
+        assert_eq!(reg.batch_interval(), 33);
         assert_eq!(reg.batch_rate(), 33);
     }
 
@@ -82,7 +82,7 @@ mod tests {
         assert_eq!(snap.preset_name, "balanced");
         assert_eq!(snap.cpu_total, 4);
         assert_eq!(snap.invoke_total, 6);
-        assert_eq!(snap.frame_target_ms, 16);
+        assert_eq!(snap.batch_interval_ms, 16);
         assert_eq!(snap.agentscope_max_mb, 1024);
     }
 
@@ -179,9 +179,9 @@ mod tests {
     }
 
     #[test]
-    fn a008_registry_swap_preset_updates_frame_target() {
+    fn a008_registry_swap_preset_updates_batch_interval() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
-        assert_eq!(reg.frame_target(), 16);
+        assert_eq!(reg.batch_interval(), 16);
 
         let hw = HardwareInfo {
             cores: 4,
@@ -191,7 +191,7 @@ mod tests {
         let batt = build_preset(PresetName::Battery, &hw);
         reg.swap_preset(batt);
 
-        assert_eq!(reg.frame_target(), 33);
+        assert_eq!(reg.batch_interval(), 33);
         assert_eq!(reg.snapshot().preset_name, "battery");
     }
 

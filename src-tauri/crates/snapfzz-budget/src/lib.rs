@@ -68,7 +68,7 @@ impl BudgetRegistry {
     // Preset (for snapshot() accuracy) atomically under the write lock.
     pub fn swap_preset(&self, new_preset: Preset) {
         self.controlled
-            .frame_target_ms
+            .batch_interval_ms
             .store(new_preset.frame.target_ms, Ordering::Relaxed);
         self.controlled
             .batch_rate_ms
@@ -105,8 +105,8 @@ impl BudgetRegistry {
         self.supervised.update_pid(name, pid);
     }
 
-    pub fn frame_target(&self) -> u64 {
-        self.controlled.frame_target()
+    pub fn batch_interval(&self) -> u64 {
+        self.controlled.batch_interval()
     }
 
     pub fn batch_rate(&self) -> u64 {
@@ -173,7 +173,7 @@ impl BudgetRegistry {
             cpu_total: self.controlled.cpu_total(),
             invoke_used: self.controlled.invoke_total() - self.controlled.invoke_available(),
             invoke_total: self.controlled.invoke_total(),
-            frame_target_ms: self.controlled.frame_target_ms.load(Ordering::Relaxed),
+            batch_interval_ms: self.controlled.batch_interval_ms.load(Ordering::Relaxed),
             batch_rate_ms: self.controlled.batch_rate_ms.load(Ordering::Relaxed),
             agentscope_rss_mb,
             agentscope_max_mb: preset.memory.agentscope_max_mb,

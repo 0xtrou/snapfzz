@@ -15,7 +15,7 @@ pub struct ControlledBudgets {
     plugin_strikes: DashMap<String, StrikeState>,
     default_max_strikes: u32,
     strike_window_secs: u64,
-    pub frame_target_ms: AtomicU64,
+    pub batch_interval_ms: AtomicU64,
     pub batch_rate_ms: AtomicU64,
     pub startup_visible_ms: u64,
     pub startup_interactive_ms: u64,
@@ -46,7 +46,7 @@ impl ControlledBudgets {
             plugin_strikes: DashMap::new(),
             default_max_strikes: preset.reliability.default_strikes,
             strike_window_secs: preset.reliability.strike_window_secs,
-            frame_target_ms: AtomicU64::new(preset.frame.target_ms),
+            batch_interval_ms: AtomicU64::new(preset.frame.target_ms),
             batch_rate_ms: AtomicU64::new(preset.network.batch_rate_ms),
             startup_visible_ms: preset.startup.visible_ms,
             startup_interactive_ms: preset.startup.interactive_ms,
@@ -125,8 +125,8 @@ impl ControlledBudgets {
         self.invoke_total
     }
 
-    pub fn frame_target(&self) -> u64 {
-        self.frame_target_ms.load(Ordering::Relaxed)
+    pub fn batch_interval(&self) -> u64 {
+        self.batch_interval_ms.load(Ordering::Relaxed)
     }
 
     pub fn batch_rate(&self) -> u64 {

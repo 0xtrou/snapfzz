@@ -13,7 +13,7 @@ interface BudgetMetrics {
   cpuTotal: number;
   invokeUsed: number;
   invokeTotal: number;
-  frameTargetMs: number;
+  batchIntervalMs: number;
   batchRateMs: number;
   agentscopeRssMb: number | null;
   agentscopeMaxMb: number;
@@ -73,7 +73,7 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       name: 'Frame',
       icon: 'ThunderboltOutlined',
       current: '—',
-      limit: `${metrics.frameTargetMs}ms (${metrics.frameTargetMs <= 16 ? '60' : '30'}fps)`,
+      limit: `${metrics.batchIntervalMs}ms (${metrics.batchIntervalMs <= 16 ? '60' : '30'}fps)`,
       percent: -1,
       description: 'Maximum time per render frame. At 16ms the UI renders at 60fps with no jank. Battery mode relaxes to 33ms (30fps) to save power. Example: streaming 100 tokens/sec stays smooth because tokens are batched at this interval.',
     },
@@ -294,7 +294,7 @@ export default function PerformanceSettings() {
             </Radio.Group>
             {metrics && (
               <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.frameTargetMs <= 16 ? '60fps' : '30fps'} · uptime {Math.floor(metrics.uptimeSecs / 60)}m
+                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.batchIntervalMs <= 16 ? '60fps' : '30fps'} · uptime {Math.floor(metrics.uptimeSecs / 60)}m
               </Text>
             )}
           </Space>

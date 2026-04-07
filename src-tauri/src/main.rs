@@ -450,8 +450,8 @@ async fn save_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), 
 }
 
 #[tauri::command]
-async fn get_frame_target(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<u64, String> {
-    Ok(registry.frame_target())
+async fn get_batch_interval(registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<u64, String> {
+    Ok(registry.batch_interval())
 }
 
 #[tauri::command]
@@ -468,7 +468,7 @@ async fn budget_record_strike(plugin_id: String, registry: tauri::State<'_, Arc<
 
 #[tauri::command]
 async fn budget_report_violation(class: String, metric: String, actual_ms: f64, registry: tauri::State<'_, Arc<BudgetRegistry>>) -> Result<(), String> {
-    eprintln!("[budget] violation: class={class} metric={metric} actual={actual_ms:.1}ms target={}ms", registry.frame_target());
+    eprintln!("[budget] violation: class={class} metric={metric} actual={actual_ms:.1}ms target={}ms", registry.batch_interval());
     Ok(())
 }
 
@@ -1038,8 +1038,8 @@ fn main() {
     });
     {
         let preset = registry.preset.read().unwrap();
-        eprintln!("[budget] preset: {} (frame={}ms, cpu={}, mem={}MB)",
-            preset.name, registry.frame_target(),
+        eprintln!("[budget] preset: {} (batch_interval={}ms, cpu={}, mem={}MB)",
+            preset.name, registry.batch_interval(),
             preset.cpu.permits, preset.memory.agentscope_max_mb);
     }
 
@@ -1066,7 +1066,7 @@ fn main() {
             open_path,
             pick_folder,
             set_data_dir,
-            get_frame_target,
+            get_batch_interval,
             get_startup_budget,
             budget_record_strike,
             budget_report_violation,

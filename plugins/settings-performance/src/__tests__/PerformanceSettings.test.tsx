@@ -25,7 +25,7 @@ function makeMetrics(overrides: Record<string, unknown> = {}) {
     cpuTotal: 4,
     invokeUsed: 0,
     invokeTotal: 3,
-    frameTargetMs: 16,
+    batchIntervalMs: 16,
     batchRateMs: 16,
     agentscopeRssMb: 128,
     agentscopeMaxMb: 512,
@@ -332,7 +332,7 @@ describe('A008/settings-performance: budget table structure', () => {
 
 describe('A008/settings-performance: budget table values', () => {
   it('A008/settings-performance: Frame row shows frame target and fps', async () => {
-    setupMocks({ metrics: makeMetrics({ frameTargetMs: 16 }) });
+    setupMocks({ metrics: makeMetrics({ batchIntervalMs: 16 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('16ms (60fps)')).toBeInTheDocument();
@@ -340,7 +340,7 @@ describe('A008/settings-performance: budget table values', () => {
   });
 
   it('A008/settings-performance: Frame row shows 30fps when target > 16ms', async () => {
-    setupMocks({ metrics: makeMetrics({ frameTargetMs: 33 }) });
+    setupMocks({ metrics: makeMetrics({ batchIntervalMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('33ms (30fps)')).toBeInTheDocument();
@@ -609,8 +609,8 @@ describe('A007/settings-performance: GB display', () => {
     });
   });
 
-  it('A007/settings-performance: shows 30fps when frameTargetMs > 16', async () => {
-    setupMocks({ metrics: makeMetrics({ frameTargetMs: 33 }) });
+  it('A007/settings-performance: shows 30fps when batchIntervalMs > 16', async () => {
+    setupMocks({ metrics: makeMetrics({ batchIntervalMs: 33 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('33ms (30fps)')).toBeInTheDocument();
