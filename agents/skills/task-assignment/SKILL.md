@@ -41,7 +41,9 @@ The agent must read existing code before writing new code:
 | `frontend/packages/shared/src/` | Entities, EventBus, TauriBridge, theme, hooks |
 | `frontend/packages/launcher/src/` | Launcher shell |
 | `frontend/packages/project/src/` | Project shell |
-| `src-tauri/crates/snapfzz-core/src/` | Rust types |
+| `src-tauri/crates/snapfzz-kernel/src/` | Kernel: boot, budget, process, settings, types |
+| `src-tauri/crates/snapfzz-stream/src/` | SSE consumer, token batching |
+| `src-tauri/crates/snapfzz-vault/src/` | Secret vault (AES-256-GCM) |
 
 ### 3. Compose the Agent Prompt
 

@@ -276,16 +276,17 @@ app_handle.emit("budget-metrics", BudgetMetrics {
 
 ```
 src-tauri/crates/
-  snapfzz-budget/            ← THE KERNEL
+  snapfzz-kernel/budget/     ← THE KERNEL
     src/
-      lib.rs                 # BudgetRegistry, Preset, Resource, Permit
-      detect.rs              # Hardware detection (sysinfo)
-      controlled.rs          # Semaphore-based in-process budgets
-      supervised.rs          # Cross-process observation + kill
-      metrics.rs             # BudgetMetrics emission to frontend
+      mod.rs              # BudgetRegistry, Resource, Permit
+      detect.rs           # Hardware detection (sysinfo)
+      controlled.rs       # Semaphore-based in-process budgets
+      supervised.rs       # Cross-process observation + kill
+      metrics.rs          # BudgetMetrics emission to frontend
+      preset.rs           # Performance/Balanced/Battery presets
 ```
 
-All other crates register with `snapfzz-budget`:
+All other modules register with `snapfzz-kernel/budget`:
 
 ```
 snapfzz-kernel/budget (BudgetRegistry)

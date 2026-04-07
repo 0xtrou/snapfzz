@@ -579,8 +579,7 @@ src-tauri/crates/
 Dependencies:
 ```toml
 [dependencies]
-snapfzz-budget = { path = "../snapfzz-budget" }
-snapfzz-core   = { path = "../snapfzz-core" }
+snapfzz-kernel = { path = "../snapfzz-kernel" }
 cef-rs         = { git = "https://github.com/tauri-apps/cef-rs", features = ["default"] }
 tauri          = { version = "2", features = ["unstable"] }
 tokio          = { version = "1", features = ["full"] }

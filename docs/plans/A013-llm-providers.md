@@ -339,7 +339,7 @@ A013 adds `LlmSpend` as a new supervised resource class in A008's `Resource` enu
 
 ```rust
 // Per A013/Budget: extends A008 Resource enum (additive, with approval)
-// Registered in snapfzz-budget/src/lib.rs
+// Registered in snapfzz-kernel/budget
 
 pub enum Resource {
     CpuPermit(usize),

@@ -199,10 +199,10 @@ The backend must be production-grade from day 1. Not stubs.
 
 | Component | What It Does | Spec |
 |---|---|---|
-| `snapfzz-agent-supervisor` | Spawn AgentScope Runtime via `uv`, PID file, cleanup on exit. | A005 |
-| `snapfzz-stream-pipeline` | SSE consumer from AgentScope Runtime. 16ms batching. Channel API to frontend. | A001, A002 |
-| `snapfzz-core` | Shared types. | A006 |
-| `main.rs` | Tauri commands registered. Windows created. Supervisor spawned. | A006 |
+| `snapfzz-kernel` | Boot, budget, process management, settings, shared types. | A008, A012, A014 |
+| `snapfzz-stream` | SSE consumer from AgentScope Runtime. Token batching. Channel API to frontend. | A001, A002 |
+| `snapfzz-vault` | AES-256-GCM encrypted secret storage. Master key in OS keychain. | A011 |
+| `main.rs` | Orchestrator: Tauri commands, window management, event emission, process spawning. | A006, A014 |
 | `intelligence/app.py` | AgentScope Runtime AgentApp — ~50 lines configuring agents, tools, memory. | — |
 
 **SSE streaming pipeline (critical path):**
@@ -224,9 +224,9 @@ User sees streaming text at 60fps
 
 | # | Work | Depends On | Spec |
 |---|---|---|---|
-| 1 | `snapfzz-tauri-shell`: window management + IPC commands | — | A006 |
-| 2 | `snapfzz-stream-pipeline`: SSE consumer + 16ms batcher + Channel | — | A001, A002 |
-| 3 | `main.rs`: wire crates, register commands, create windows | 1, 2 | A006 |
+| 1 | `snapfzz-kernel`: boot + budget + process + settings | — | A008, A012, A014 |
+| 2 | `snapfzz-stream`: SSE consumer + token batcher + Channel | — | A001, A002 |
+| 3 | `main.rs`: orchestrator — wire crates, register commands, create windows | 1, 2 | A006, A014 |
 | 4 | Chat plugin: message thread, streaming, markdown, composer | 3 | U006-alpha |
 | 5 | KB plugin: document tree + markdown viewer | 3 | U006-alpha |
 | 6 | Code plugin: file explorer + Monaco editor | 3 | U006-alpha |
@@ -281,7 +281,7 @@ User sees streaming text at 60fps
 |---|---|
 | AgentScope Runtime multi-agent templates | Multiple agents in pipeline, configured via YAML |
 | AgentScope Runtime Sandbox Service | Browser, filesystem, GUI sandboxes for code execution |
-| `snapfzz-plugin-host` (Rust) | Manifest discovery from `.snapfzz/plugins/` |
+| `snapfzz-kernel/plugin_host` | Plugin lifecycle management (activation, crash supervision) |
 | `snapfzz-plugin-bridge` | Schema validation, capability checking |
 | git2-rs integration | Log, diff, blame, branches — structured Rust data to frontend |
 

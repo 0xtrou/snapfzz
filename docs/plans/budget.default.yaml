@@ -1,6 +1,6 @@
 # Snapfzz Budget Registry Configuration
 # Source of truth for all resource allocations.
-# Read by snapfzz-budget crate on boot.
+# Read by snapfzz-kernel/budget on boot.
 # User can override via System Preferences.
 
 # Auto-detected from hardware. User can override.
