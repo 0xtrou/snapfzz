@@ -1,5 +1,7 @@
 use sysinfo::System;
 
+use crate::budget::preset::PresetName;
+
 pub struct HardwareInfo {
     pub cores: usize,
     pub ram_gb: u64,
@@ -35,15 +37,15 @@ fn detect_battery_macos() -> bool {
         .unwrap_or(false)
 }
 
-pub fn select_preset(hw: &HardwareInfo) -> crate::budget::preset::PresetName {
+pub fn select_preset(hw: &HardwareInfo) -> PresetName {
     if hw.on_battery {
-        return crate::budget::preset::PresetName::Battery;
+        return PresetName::Battery;
     }
     if hw.cores >= 8 && hw.ram_gb >= 16 {
-        return crate::budget::preset::PresetName::Performance;
+        return PresetName::Performance;
     }
     if hw.cores >= 4 && hw.ram_gb >= 8 {
-        return crate::budget::preset::PresetName::Balanced;
+        return PresetName::Balanced;
     }
-    crate::budget::preset::PresetName::Battery
+    PresetName::Battery
 }

@@ -200,7 +200,7 @@ pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::budget::detect::{select_preset, HardwareInfo};
+    use crate::budget::detect::select_preset;
 
     #[test]
     fn a008_preset_detect_selects_performance_for_high_end_desktop() {

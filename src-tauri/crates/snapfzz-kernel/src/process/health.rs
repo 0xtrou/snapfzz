@@ -4,7 +4,6 @@ use snapfzz_budget::{metrics::ProcessStatus, BudgetRegistry};
 
 use crate::process::ProcessError;
 
-/// Per A014/process.health: extracted health polling used by spawn and supervisor loops.
 pub async fn wait_until_healthy(
     registry: &BudgetRegistry,
     name: &str,

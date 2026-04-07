@@ -4,6 +4,26 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(transparent)]
+pub struct ContentBlock(pub Value);
+
+impl ContentBlock {
+    pub fn text<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self(serde_json::json!({
+            "type": "text",
+            "text": text.into(),
+        }))
+    }
+
+    pub fn from_value(value: Value) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentBlockBatch {
     pub session_id: String,
@@ -52,41 +72,6 @@ impl StopReason {
             Self::Length => "length",
             Self::Error => "error",
             Self::Unknown => "unknown",
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
-pub struct ContentBlock {
-    #[serde(rename = "type", default)]
-    pub kind: String,
-    #[serde(default)]
-    pub text: Option<String>,
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub input: Option<Value>,
-    #[serde(default)]
-    pub content: Option<Value>,
-    #[serde(default)]
-    pub tool_use_id: Option<String>,
-    #[serde(default)]
-    pub thinking: Option<String>,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ContentBlock {
-    pub fn text<T>(text: T) -> Self
-    where
-        T: Into<String>,
-    {
-        Self {
-            kind: "text".to_string(),
-            text: Some(text.into()),
-            ..Self::default()
         }
     }
 }

@@ -8,6 +8,8 @@ members = [
   "crates/snapfzz-budget",
   "crates/snapfzz-agent-supervisor",
   "crates/snapfzz-stream-pipeline",
+  "crates/snapfzz-stream",
+  "crates/snapfzz-kernel",
   "crates/snapfzz-preflight",
 ]
 resolver = "2"
