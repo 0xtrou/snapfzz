@@ -256,7 +256,7 @@ export default function VaultSettings() {
                     if (valueError) setValueError(null);
                   }}
                 />
-                <Button type="primary" icon={<PlusOutlined />} loading={submitting} onClick={() => void handleAdd()}>
+                <Button icon={<PlusOutlined />} loading={submitting} onClick={() => void handleAdd()}>
                   Add
                 </Button>
               </Space.Compact>

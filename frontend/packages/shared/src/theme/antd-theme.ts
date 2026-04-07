@@ -78,12 +78,9 @@ export const darkTheme: ThemeConfig = {
       headerBg: '#27272a',
     },
     Button: {
-      defaultBg: 'transparent',
+      defaultBg: '#27272a',
       defaultBorderColor: '#3f3f46',
       defaultColor: '#fafafa',
-      primaryBg: 'transparent',
-      primaryColor: '#3b82f6',
-      colorPrimaryBorder: '#3b82f6',
     },
   },
 };
@@ -109,9 +106,6 @@ export const lightTheme: ThemeConfig = {
       defaultBg: 'transparent',
       defaultBorderColor: '#e4e4e7',
       defaultColor: '#09090b',
-      primaryBg: 'transparent',
-      primaryColor: '#2563eb',
-      colorPrimaryBorder: '#2563eb',
     },
   },
 };
