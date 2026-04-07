@@ -598,7 +598,7 @@ export default function ProcessesSettings() {
   ];
 
   return (
-    <div style={{ contain: 'strict' }}>
+    <div style={{ contain: 'layout paint' }}>
       <SettingsHeader title="Processes">
         <span
           data-testid="live-indicator"

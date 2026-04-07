@@ -218,7 +218,7 @@ export default function PerformanceSettings() {
   const budgetRows: BudgetRow[] = metrics ? buildBudgetRows(metrics) : [];
 
   return (
-    <div style={{ contain: 'strict' }}>
+    <div style={{ contain: 'layout paint' }}>
       <SettingsHeader
         title="Performance"
         isDirty={isDirty}
