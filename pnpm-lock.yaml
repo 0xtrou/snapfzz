@@ -100,6 +100,17 @@ importers:
       '@snapfzz/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      '@snapfzz/shared':
+        specifier: workspace:*
+        version: link:../shared
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+    optionalDependencies:
+      '@snapfzz/chat-plugin':
+        specifier: workspace:*
+        version: link:../../../plugins/chat
+    devDependencies:
       '@snapfzz/settings-advanced':
         specifier: workspace:*
         version: link:../../../plugins/settings-advanced
@@ -115,17 +126,6 @@ importers:
       '@snapfzz/settings-processes':
         specifier: workspace:*
         version: link:../../../plugins/settings-processes
-      '@snapfzz/shared':
-        specifier: workspace:*
-        version: link:../shared
-      react:
-        specifier: ^19.0.0
-        version: 19.2.4
-    optionalDependencies:
-      '@snapfzz/chat-plugin':
-        specifier: workspace:*
-        version: link:../../../plugins/chat
-    devDependencies:
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
