@@ -29,7 +29,7 @@ export default definePlugin({
         id: 'general',
         label: 'General',
         icon: 'SettingOutlined',
-        order: 0,
+        order: 10,
         component: () => import('./GeneralSettings'),
       },
     ],

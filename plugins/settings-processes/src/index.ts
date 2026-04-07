@@ -26,7 +26,7 @@ export default definePlugin({
         id: 'processes',
         label: 'Processes',
         icon: 'MonitorOutlined',
-        order: 2,
+        order: 30,
         component: () => import('./ProcessesSettings'),
       },
     ],

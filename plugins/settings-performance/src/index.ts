@@ -26,7 +26,7 @@ export default definePlugin({
         id: 'performance',
         label: 'Performance',
         icon: 'DashboardOutlined',
-        order: 2,
+        order: 20,
         component: () => import('./PerformanceSettings'),
       },
     ],

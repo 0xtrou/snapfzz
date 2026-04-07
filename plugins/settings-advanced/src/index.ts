@@ -29,7 +29,7 @@ export default definePlugin({
         id: 'advanced',
         label: 'Advanced',
         icon: 'ToolOutlined',
-        order: 4,
+        order: 99,
         component: () => import('./AdvancedSettings'),
       },
     ],
