@@ -467,7 +467,28 @@ describe('A007/settings-general: custom font install from URL', () => {
     await waitFor(() => {
       expect(screen.getByText(/enter both a font url and a name/i)).toBeInTheDocument();
     });
-    expect(mockInvoke.mock.calls.some((c) => c[0] === 'install_font_from_url')).toBe(false);
+    expect(mockInvoke.mock.calls.some((c) => c[0] === 'install_font_from_file')).toBe(false);
+  });
+
+  it('A007/settings-general: install font from URL surfaces invoke error', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(fullSettings());
+      if (cmd === 'list_installed_fonts') return Promise.resolve([]);
+      if (cmd === 'install_font_from_url') return Promise.reject(new Error('url install failed'));
+      return Promise.resolve({});
+    });
+
+    render(<GeneralSettings />);
+    await waitForSettingsLoad();
+
+    await user.type(screen.getByRole('textbox', { name: /font name for url install/i }), 'BrokenFont');
+    await user.type(screen.getByRole('textbox', { name: /font url/i }), 'https://example.com/BrokenFont.woff2');
+    await user.click(screen.getByRole('button', { name: /install font from url/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/url install failed/i)).toBeInTheDocument();
+    });
   });
 });
 

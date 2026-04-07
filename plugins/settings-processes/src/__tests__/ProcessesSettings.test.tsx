@@ -1207,6 +1207,29 @@ describe('A007/settings-processes: agentscope config section', () => {
       );
     });
   });
+
+  it('A007/settings-processes: invalid host and port show validation errors', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_processes') return Promise.resolve([makeProcess({ name: 'agentscope' })]);
+      if (cmd === 'get_process_logs') return Promise.resolve([]);
+      if (cmd === 'get_settings') return Promise.resolve({ agentscopeHost: 'bad host!', agentscopePort: '70000' });
+      return Promise.resolve(null);
+    });
+
+    render(<ProcessesSettings />);
+    await waitFor(() => screen.getByText('agentscope'));
+
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await act(async () => { fireEvent.click(expandBtn); });
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid host format')).toBeInTheDocument();
+      expect(screen.getByText('Port must be between 1 and 65535')).toBeInTheDocument();
+      expect(screen.getByTestId('btn-save-restart-agentscope')).toBeDisabled();
+    });
+  });
 });
 
 describe('A008/settings-processes: max memory config', () => {
