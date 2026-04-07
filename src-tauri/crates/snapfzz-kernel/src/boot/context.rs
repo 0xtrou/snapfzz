@@ -52,3 +52,19 @@ impl PreflightContext {
         self.extensions.get(key).and_then(|v| v.downcast_ref::<T>())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PreflightContext;
+
+    #[test]
+    fn a012_context_extension_round_trip_and_type_mismatch() {
+        let mut ctx = PreflightContext::new(std::path::PathBuf::from("/tmp/snapfzz"));
+
+        ctx.set_extension("answer", 42_u32);
+
+        assert_eq!(ctx.get_extension::<u32>("answer"), Some(&42));
+        assert!(ctx.get_extension::<String>("answer").is_none());
+        assert!(ctx.get_extension::<u32>("missing").is_none());
+    }
+}

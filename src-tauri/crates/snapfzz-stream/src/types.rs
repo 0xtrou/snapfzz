@@ -135,3 +135,68 @@ pub struct SsePayload {
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ContentBlock, Delta, MessageMetadata, SsePayload, StopReason};
+
+    #[test]
+    fn a001_stream_types_content_block_helpers_preserve_json() {
+        let text = ContentBlock::text("hello");
+        let raw = ContentBlock::from_value(serde_json::json!({"type":"tool_use","name":"search"}));
+
+        assert_eq!(
+            text,
+            ContentBlock(serde_json::json!({"type":"text","text":"hello"}))
+        );
+        assert_eq!(
+            raw,
+            ContentBlock(serde_json::json!({"type":"tool_use","name":"search"}))
+        );
+    }
+
+    #[test]
+    fn a001_stream_types_stop_reason_as_str_covers_all_variants() {
+        let cases = [
+            (StopReason::Stop, "stop"),
+            (StopReason::EndTurn, "end_turn"),
+            (StopReason::MaxTokens, "max_tokens"),
+            (StopReason::StopSequence, "stop_sequence"),
+            (StopReason::ToolUse, "tool_use"),
+            (StopReason::Length, "length"),
+            (StopReason::Error, "error"),
+            (StopReason::Unknown, "unknown"),
+        ];
+
+        for (reason, expected) in cases {
+            assert_eq!(reason.as_str(), expected);
+        }
+        assert_eq!(StopReason::default(), StopReason::Stop);
+    }
+
+    #[test]
+    fn a001_stream_types_payload_defaults_and_unknown_reason_deserialize() {
+        let payload: SsePayload = serde_json::from_value(serde_json::json!({
+            "finish_reason": "unexpected",
+            "delta": {"content": "hi"},
+            "metadata": {"finish_reason": "stop"}
+        }))
+        .expect("deserialize payload");
+
+        assert_eq!(payload.finish_reason, Some(StopReason::Unknown));
+        assert_eq!(
+            payload.delta,
+            Some(Delta {
+                content: Some("hi".to_string()),
+                ..Delta::default()
+            })
+        );
+        assert_eq!(
+            payload.metadata,
+            Some(MessageMetadata {
+                finish_reason: Some(StopReason::Stop),
+                ..MessageMetadata::default()
+            })
+        );
+    }
+}

@@ -333,3 +333,212 @@ fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
     }
     let _ = std::fs::remove_file(path);
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use tokio::sync::Mutex;
+
+    use crate::budget::{
+        metrics::ProcessStatus,
+        preset::PresetName,
+        supervised::{ProcessBudget, ProcessLocation},
+        BudgetRegistry,
+    };
+    use crate::process::logs::ProcessLogs;
+    use crate::process::runtime::RuntimeState;
+
+    use super::{
+        cleanup_stale_pid, pid_file_path, remove_pid_file, write_pid_file, ProcessError, ProcessManager,
+        SpawnConfig,
+    };
+
+    fn make_registry() -> BudgetRegistry {
+        BudgetRegistry::with_preset_name(PresetName::Performance)
+    }
+
+    fn register_process_for_manager(registry: &BudgetRegistry, name: &str) {
+        registry.register_process(
+            name,
+            ProcessBudget {
+                pid: Some(std::process::id()),
+                max_memory_mb: u64::MAX,
+                health_url: "http://127.0.0.1:1/health".to_string(),
+                health_interval_ms: 100,
+                max_health_failures: 3,
+                max_restarts: 3,
+                location: ProcessLocation::Local,
+                consecutive_failures: 0,
+                restart_count: 0,
+                status: ProcessStatus::Starting,
+                started_at: Some(Instant::now()),
+                owner: "system".to_string(),
+            },
+        );
+    }
+
+    #[test]
+    fn a014_process_manager_new_initializes_empty_runtime() {
+        let manager = ProcessManager::new();
+        let state = manager.state.blocking_lock();
+
+        assert!(state.child.is_none());
+        assert!(state.child_pid.is_none());
+        assert!(manager.logs.data_dir().ends_with(".snapfzz"));
+    }
+
+    #[test]
+    fn a014_process_manager_with_parts_uses_injected_state_and_logs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let state = Arc::new(Mutex::new(RuntimeState {
+            child: None,
+            child_pid: Some(123),
+        }));
+        let logs = Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10));
+
+        let manager = ProcessManager::with_parts(state.clone(), logs.clone());
+        assert!(Arc::ptr_eq(&manager.state, &state));
+        assert!(Arc::ptr_eq(&manager.logs, &logs));
+    }
+
+    #[test]
+    fn a014_process_spawn_config_fields_preserve_values() {
+        let cfg = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            working_dir: std::path::PathBuf::from("/tmp/work"),
+        };
+
+        assert_eq!(cfg.host, "127.0.0.1");
+        assert_eq!(cfg.port, 8080);
+        assert_eq!(cfg.working_dir, std::path::PathBuf::from("/tmp/work"));
+    }
+
+    #[tokio::test]
+    async fn a014_process_shutdown_unknown_process_returns_error() {
+        let manager = ProcessManager::new();
+        let error = manager
+            .shutdown("unknown")
+            .await
+            .expect_err("shutdown should reject unknown process name");
+
+        match error {
+            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a014_process_shutdown_without_child_clears_pid_and_returns_ok() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState {
+                child: None,
+                child_pid: Some(999),
+            })),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+
+        manager
+            .shutdown("agentscope")
+            .await
+            .expect("shutdown without child should succeed");
+
+        let guard = manager.state.lock().await;
+        assert!(guard.child.is_none());
+        assert!(guard.child_pid.is_none());
+    }
+
+    #[test]
+    fn a014_process_kill_unknown_process_returns_error() {
+        let manager = ProcessManager::new();
+        let error = manager
+            .kill("unknown")
+            .expect_err("kill should reject unknown process name");
+
+        match error {
+            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a014_process_kill_without_runtime_returns_not_running() {
+        let manager = ProcessManager::new();
+        let error = manager
+            .kill("agentscope")
+            .expect_err("kill should fail when runtime is not running");
+
+        match error {
+            ProcessError::RuntimeNotRunning { name } => assert_eq!(name, "agentscope"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a014_process_pid_file_helpers_round_trip() {
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        write_pid_file(temp.path(), "agentscope", 4321);
+        let path = pid_file_path(temp.path(), "agentscope");
+        let content = std::fs::read_to_string(&path).expect("pid file should exist");
+        assert_eq!(content, "4321");
+
+        remove_pid_file(temp.path(), "agentscope");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a014_process_cleanup_stale_pid_removes_invalid_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = pid_file_path(temp.path(), "agentscope");
+        std::fs::create_dir_all(path.parent().expect("pid parent")).expect("create runtime dir");
+        std::fs::write(&path, "not-a-number").expect("write invalid pid");
+
+        cleanup_stale_pid(temp.path(), "agentscope");
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a014_process_cleanup_stale_pid_ignores_missing_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        cleanup_stale_pid(temp.path(), "agentscope");
+
+        assert!(!pid_file_path(temp.path(), "agentscope").exists());
+    }
+
+    #[tokio::test]
+    async fn a014_process_helpers_delegate_to_budget_components() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+        let registry = make_registry();
+        register_process_for_manager(&registry, "agentscope");
+
+        let failures = manager
+            .sample_health_failures(&registry, "agentscope")
+            .await
+            .expect("health failure count expected");
+        assert_eq!(failures, 1);
+
+        assert!(!manager.enforce_memory_limit(&registry, "agentscope"));
+
+        let entry = registry.supervised.processes.get("agentscope").unwrap();
+        assert!(matches!(entry.status, ProcessStatus::Unhealthy));
+    }
+
+    #[test]
+    fn a014_process_error_display_and_io_conversion_are_wired() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let wrapped: ProcessError = io_error.into();
+        assert!(matches!(wrapped, ProcessError::Io(_)));
+
+        let render = ProcessError::SpawnFailed("spawn failed".to_string()).to_string();
+        assert_eq!(render, "spawn failed");
+    }
+}

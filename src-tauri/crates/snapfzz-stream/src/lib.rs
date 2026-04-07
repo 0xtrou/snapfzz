@@ -109,3 +109,100 @@ fn uuid_string() -> String {
             .as_nanos()
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{send_and_consume, StreamError};
+    use crate::types::ContentBlockBatch;
+
+    async fn spawn_http_server(response: String) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let addr = listener.local_addr().expect("listener local addr");
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0_u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        format!("http://{addr}/v1/messages")
+    }
+
+    #[tokio::test]
+    async fn a001_stream_send_and_consume_handles_done_event_and_batches() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"id\":\"msg_1\",\"content_blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"finish_reason\":\"stop\"}\n\ndata: [DONE]\n\n".to_string();
+        let url = spawn_http_server(response).await;
+
+        let mut batches: Vec<ContentBlockBatch> = Vec::new();
+        let result = send_and_consume(&url, "hi", "session-1", 1, |batch| {
+            batches.push(batch);
+            Ok(())
+        })
+        .await
+        .expect("send_and_consume should succeed");
+
+        assert_eq!(result.id, "msg_1");
+        assert_eq!(result.finish_reason, "stop");
+        assert_eq!(result.total_tokens, 1);
+
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].token_count, 1);
+        assert_eq!(batches[0].blocks.len(), 1);
+        assert!(!batches[0].done);
+        assert!(batches[1].done);
+    }
+
+    #[tokio::test]
+    async fn a001_stream_send_and_consume_returns_sse_error_when_stream_ends_without_done() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"content_blocks\":[{\"type\":\"text\",\"text\":\"tail\"}]}\n\n".to_string();
+        let url = spawn_http_server(response).await;
+
+        let error = send_and_consume(&url, "hi", "session-2", 5000, |_batch| Ok(()))
+            .await
+            .expect_err("stream ending without done should bubble eventsource error");
+
+        assert!(matches!(error, StreamError::Sse(_)));
+    }
+
+    #[tokio::test]
+    async fn a001_stream_send_and_consume_propagates_channel_send_errors() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: {\"content_blocks\":[{\"type\":\"text\",\"text\":\"hello\"}]}\n\ndata: [DONE]\n\n".to_string();
+        let url = spawn_http_server(response).await;
+
+        let error = send_and_consume(&url, "hi", "session-3", 1, |_batch| {
+            Err(StreamError::ChannelSend("sink closed".to_string()))
+        })
+        .await
+        .expect_err("callback errors should propagate");
+
+        match error {
+            StreamError::ChannelSend(message) => assert_eq!(message, "sink closed"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a001_stream_send_and_consume_maps_eventsource_errors() {
+        let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string();
+        let url = spawn_http_server(response).await;
+
+        let error = send_and_consume(&url, "hi", "session-4", 1, |_batch| Ok(())).await;
+        assert!(matches!(error, Err(StreamError::Sse(_))));
+    }
+
+    #[tokio::test]
+    async fn a001_stream_error_from_reqwest_and_display_surface_message() {
+        let reqwest_error = reqwest::get("http://127.0.0.1:1")
+            .await
+            .expect_err("expected reqwest connection error");
+        let stream_error: StreamError = reqwest_error.into();
+        assert!(matches!(stream_error, StreamError::Http(_)));
+        assert!(!stream_error.to_string().is_empty());
+    }
+}

@@ -126,4 +126,65 @@ mod tests {
         store.clear("agentscope");
         assert!(store.tail("agentscope", 10).is_empty());
     }
+
+    #[test]
+    fn a014_process_logs_push_writes_stdout_and_stderr_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10);
+
+        store.push("agentscope", "stdout-line".into());
+        store.push("agentscope", "[stderr] stderr-line".into());
+
+        let stdout_path = temp
+            .path()
+            .join("runtime")
+            .join("agentscope")
+            .join("agentscope.log");
+        let stderr_path = temp
+            .path()
+            .join("runtime")
+            .join("agentscope")
+            .join("agentscope_error.log");
+
+        let stdout = std::fs::read_to_string(stdout_path).expect("read stdout log");
+        let stderr = std::fs::read_to_string(stderr_path).expect("read stderr log");
+
+        assert!(stdout.contains("stdout-line"));
+        assert!(stderr.contains("[stderr] stderr-line"));
+    }
+
+    #[test]
+    fn a014_process_logs_tail_and_pid_path_cover_edge_cases() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10);
+
+        store.push("agentscope", "line-1".into());
+        store.push("agentscope", "line-2".into());
+
+        assert_eq!(
+            store.tail("agentscope", 1),
+            vec!["line-2"],
+            "tail should return the newest line"
+        );
+        assert_eq!(
+            store.tail("agentscope", 99),
+            vec!["line-1", "line-2"],
+            "tail should saturate when n exceeds length"
+        );
+
+        let expected_pid = temp
+            .path()
+            .join("runtime")
+            .join("agentscope")
+            .join("agentscope.pid");
+        assert_eq!(store.pid_path("agentscope"), expected_pid);
+    }
+
+    #[test]
+    fn a014_process_logs_clear_is_noop_for_unknown_process() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let store = ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10);
+        store.clear("unknown");
+        assert!(store.tail("unknown", 1).is_empty());
+    }
 }

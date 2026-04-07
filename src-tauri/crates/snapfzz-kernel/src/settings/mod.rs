@@ -105,4 +105,29 @@ mod tests {
         let mgr = SettingsManager::new(tmp.path().to_path_buf());
         assert_eq!(mgr.path(), tmp.path().join("settings.json"));
     }
+
+    #[test]
+    fn a014_settings_load_returns_parse_error_for_invalid_json() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("settings.json"), "{not-json").expect("write invalid json");
+        let mgr = SettingsManager::new(tmp.path().to_path_buf());
+
+        let error = mgr.load().expect_err("expected parse error");
+        assert!(matches!(error, SettingsError::Parse(_)));
+        assert!(!error.to_string().is_empty());
+    }
+
+    #[test]
+    fn a014_settings_save_returns_io_error_when_parent_is_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let blocking_file = tmp.path().join("not-a-directory");
+        std::fs::write(&blocking_file, "block").expect("write blocking file");
+        let mgr = SettingsManager::new(blocking_file);
+
+        let error = mgr
+            .save(&Settings::default())
+            .expect_err("expected io error from create_dir_all");
+        assert!(matches!(error, SettingsError::Io(_)));
+        assert!(!error.to_string().is_empty());
+    }
 }

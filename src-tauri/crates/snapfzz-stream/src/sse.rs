@@ -363,4 +363,124 @@ mod tests {
         assert_eq!(result.total_tokens, 1);
         assert_eq!(result.finish_reason, "stop");
     }
+
+    #[test]
+    fn a001_stream_parsing_build_sse_request_has_expected_headers_and_body() {
+        let client = reqwest::Client::new();
+        let request = build_sse_request(
+            "http://localhost:1234/v1/messages",
+            "hello",
+            "session-1",
+            &client,
+        )
+        .build()
+        .expect("build request");
+
+        assert_eq!(request.method(), reqwest::Method::POST);
+        assert_eq!(
+            request.headers().get(reqwest::header::ACCEPT).unwrap(),
+            "text/event-stream"
+        );
+        let body = request.body().expect("request body should exist");
+        let bytes = body.as_bytes().expect("json body should be buffered");
+        let payload: serde_json::Value = serde_json::from_slice(bytes).expect("json payload");
+
+        assert_eq!(payload["session_id"], "session-1");
+        assert_eq!(payload["input"][0]["role"], "user");
+        assert_eq!(payload["input"][0]["content"][0]["text"], "hello");
+    }
+
+    #[test]
+    fn a001_stream_parsing_decode_sse_events_handles_comments_and_multiline_data() {
+        let raw = ": ping\n\ndata: {\"content_blocks\":[{\"type\":\"text\",\"text\":\"line-1\"}]}\ndata: {\"content_blocks\":[{\"type\":\"text\",\"text\":\"line-2\"}]}\n\n";
+        let events = decode_sse_events(raw);
+
+        assert_eq!(events.len(), 1);
+        let parsed = parse_event(events.into_iter().next().unwrap());
+        assert_eq!(parsed.blocks.len(), 1);
+        assert_eq!(
+            parsed.blocks[0],
+            ContentBlock::from_value(
+                serde_json::json!({"type":"text","text":"{\"content_blocks\":[{\"type\":\"text\",\"text\":\"line-1\"}]}\n{\"content_blocks\":[{\"type\":\"text\",\"text\":\"line-2\"}]}"})
+            )
+        );
+    }
+
+    #[test]
+    fn a001_stream_parsing_decode_sse_events_falls_back_for_invalid_json() {
+        let raw = "data: not-json\n\n";
+        let event = decode_sse_events(raw)
+            .into_iter()
+            .next()
+            .expect("payload event");
+        let parsed = parse_event(event);
+
+        assert_eq!(parsed.blocks, vec![ContentBlock::text("not-json")]);
+        assert!(!parsed.done);
+    }
+
+    #[test]
+    fn a001_stream_parsing_extract_content_blocks_prefers_delta_content_over_payload_content() {
+        let payload = serde_json::json!({
+            "content": [{ "type": "text", "text": "from-content" }],
+            "delta": { "content": "from-delta" }
+        });
+        let payload = serde_json::from_value::<SsePayload>(payload).unwrap();
+
+        let blocks = extract_content_blocks(&payload);
+        assert_eq!(blocks, vec![ContentBlock::text("from-delta")]);
+    }
+
+    #[test]
+    fn a001_stream_parsing_parse_event_uses_choice_and_delta_finish_reason_fallbacks() {
+        let payload_with_choice_reason = serde_json::json!({
+            "choices": [{
+                "finish_reason": "length",
+                "delta": { "content": "choice" }
+            }]
+        });
+        let payload = serde_json::from_value::<SsePayload>(payload_with_choice_reason).unwrap();
+        let parsed = parse_event(StreamEvent::Payload(payload));
+        assert_eq!(parsed.finish_reason, Some(StopReason::Length));
+
+        let payload_with_delta_reason = serde_json::json!({
+            "delta": {
+                "content": "delta",
+                "stop_reason": "tool_use"
+            }
+        });
+        let payload = serde_json::from_value::<SsePayload>(payload_with_delta_reason).unwrap();
+        let parsed = parse_event(StreamEvent::Payload(payload));
+        assert_eq!(parsed.finish_reason, Some(StopReason::ToolUse));
+    }
+
+    #[test]
+    fn a001_stream_parsing_stream_state_uses_generated_id_when_missing() {
+        let parsed = ParsedEvent {
+            blocks: vec![ContentBlock::text("token")],
+            message_id: None,
+            finish_reason: Some(StopReason::EndTurn),
+            done: false,
+        };
+
+        let mut state = StreamState::new();
+        state.apply_event(&parsed);
+        let result = state.into_result();
+
+        assert_eq!(result.total_tokens, 1);
+        assert_eq!(result.finish_reason, "end_turn");
+        assert!(!result.id.is_empty());
+        assert!(result.id.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn a001_stream_parsing_open_event_source_accepts_simple_cloneable_request() {
+        let client = reqwest::Client::new();
+        let request = client
+            .post("http://localhost:1234")
+            .json(&serde_json::json!({"ok": true}));
+
+        let result = open_event_source(request);
+        assert!(result.is_ok());
+    }
 }

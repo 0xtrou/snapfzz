@@ -40,3 +40,115 @@ pub fn apply_memory_limit(registry: &BudgetRegistry, name: &str) -> bool {
 pub async fn wait_for_shutdown(child: &mut tokio::process::Child) {
     let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use crate::budget::{
+        metrics::ProcessStatus,
+        preset::PresetName,
+        supervised::{ProcessBudget, ProcessLocation},
+        BudgetRegistry,
+    };
+
+    use super::{apply_memory_limit, wait_for_shutdown};
+    use crate::process::{ProcessError, ProcessManager, SpawnConfig};
+
+    fn make_registry() -> BudgetRegistry {
+        BudgetRegistry::with_preset_name(PresetName::Performance)
+    }
+
+    fn register_local_process(registry: &BudgetRegistry, name: &str, pid: u32, max_memory_mb: u64) {
+        registry.register_process(
+            name,
+            ProcessBudget {
+                pid: Some(pid),
+                max_memory_mb,
+                health_url: "http://127.0.0.1:1/health".to_string(),
+                health_interval_ms: 1000,
+                max_health_failures: 3,
+                max_restarts: 3,
+                location: ProcessLocation::Local,
+                consecutive_failures: 0,
+                restart_count: 0,
+                status: ProcessStatus::Online,
+                started_at: Some(Instant::now()),
+                owner: "system".to_string(),
+            },
+        );
+    }
+
+    #[test]
+    fn a014_process_supervisor_apply_memory_limit_marks_errored_when_exceeded() {
+        let registry = make_registry();
+        register_local_process(&registry, "agentscope", std::process::id(), 0);
+
+        let exceeded = apply_memory_limit(&registry, "agentscope");
+        assert!(exceeded);
+
+        let entry = registry.supervised.processes.get("agentscope").unwrap();
+        assert!(matches!(entry.status, ProcessStatus::Errored));
+    }
+
+    #[test]
+    fn a014_process_supervisor_apply_memory_limit_returns_false_when_not_exceeded() {
+        let registry = make_registry();
+        register_local_process(&registry, "agentscope", std::process::id(), u64::MAX);
+
+        let exceeded = apply_memory_limit(&registry, "agentscope");
+        assert!(!exceeded);
+
+        let entry = registry.supervised.processes.get("agentscope").unwrap();
+        assert!(matches!(entry.status, ProcessStatus::Online));
+    }
+
+    #[test]
+    fn a014_process_supervisor_apply_memory_limit_unknown_process_is_false() {
+        let registry = make_registry();
+        assert!(!apply_memory_limit(&registry, "missing"));
+    }
+
+    #[tokio::test]
+    async fn a014_process_supervisor_wait_for_shutdown_handles_exited_child() {
+        let mut child = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .expect("spawn shell child");
+
+        wait_for_shutdown(&mut child).await;
+    }
+
+    #[tokio::test]
+    async fn a014_process_supervisor_kill_runtime_unknown_process_bubbles_error() {
+        let manager = ProcessManager::new();
+        let error = super::kill_runtime(&manager, "unknown")
+            .await
+            .expect_err("kill_runtime should return unknown process error");
+
+        match error {
+            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a014_process_supervisor_restart_runtime_unknown_process_bubbles_error() {
+        let manager = ProcessManager::new();
+        let registry = make_registry();
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            working_dir: std::path::PathBuf::from("."),
+        };
+
+        let error = super::restart_runtime(&manager, "unknown", &config, &registry)
+            .await
+            .expect_err("restart_runtime should reject unknown process");
+        match error {
+            ProcessError::UnknownProcess { name } => assert_eq!(name, "unknown"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+}
