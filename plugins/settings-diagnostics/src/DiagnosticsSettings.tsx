@@ -171,6 +171,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
               bordered
               locale={{ emptyText: 'No system status data available.' }}
               dataSource={checks}
+              style={{ maxWidth: 500 }}
               renderItem={(check) => {
                 const indicator = checkIndicator(check);
                 return (
@@ -290,6 +291,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
             <List
               size="small"
               bordered
+              style={{ maxWidth: 500 }}
               dataSource={cefRuntime ? [cefRuntime] : []}
               locale={{ emptyText: 'No system packs detected.' }}
               renderItem={(component) => (
