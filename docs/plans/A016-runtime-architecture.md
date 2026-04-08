@@ -236,7 +236,106 @@ pub struct CefRuntime {
 
 ---
 
-## 6. Boot Integration
+## 6. Vault → Process Key Injection
+
+Provider API keys are stored encrypted in the vault (A011). When spawning LiteLLM, the runtime reads keys from vault and injects them as env vars into the child process. Raw keys NEVER appear in config.yaml or on disk unencrypted.
+
+### Vault Key Naming Convention
+
+```
+Vault key                          → Env var injected to process
+provider:openai:key1               → OPENAI_KEY_1
+provider:openai:key2               → OPENAI_KEY_2
+provider:anthropic:key1            → ANTHROPIC_KEY_1
+provider:ollama:key1               → OLLAMA_KEY_1
+litellm:master_key                 → LITELLM_MASTER_KEY
+```
+
+### Injection Flow
+
+```
+1. User enters API key in Settings UI
+   → frontend calls vault_store("provider:openai:key1", "sk-abc...")
+   → vault encrypts with AES-256-GCM, persists to vault.enc
+
+2. Config generation (snapfzz-llm)
+   → writes config.yaml with: api_key: os.environ/OPENAI_KEY_1
+   → raw key NEVER in YAML — only env var references
+
+3. LiteLLM process spawn (snapfzz-runtime)
+   → runtime reads vault: vault.list() → filter "provider:*"
+   → for each key: vault.read(key) → decrypt → map to env var name
+   → inject all as env vars into child process Command
+   → also inject LITELLM_MASTER_KEY from vault
+
+4. LiteLLM reads env vars at startup
+   → os.environ/OPENAI_KEY_1 resolves to "sk-abc..."
+   → authenticates to OpenAI backend
+```
+
+### Key Mapper
+
+```rust
+/// Map vault key names to environment variable names for LiteLLM process
+pub fn vault_key_to_env_var(vault_key: &str) -> Option<String> {
+    if vault_key == "litellm:master_key" {
+        return Some("LITELLM_MASTER_KEY".to_string());
+    }
+    // "provider:openai:key1" → "OPENAI_KEY_1"
+    let parts: Vec<&str> = vault_key.split(':').collect();
+    if parts.len() == 3 && parts[0] == "provider" {
+        let provider = parts[1].to_uppercase();
+        let key_name = parts[2].to_uppercase();
+        return Some(format!("{}_{}", provider, key_name));
+    }
+    None
+}
+
+/// Read all provider keys from vault, return as env var map
+pub fn resolve_provider_env_vars(
+    vault: &mut SecretVault,
+) -> HashMap<String, String> {
+    let mut env_vars = HashMap::new();
+    if let Ok(keys) = vault.list() {
+        for key in keys {
+            if key.starts_with("provider:") || key == "litellm:master_key" {
+                if let Some(env_name) = vault_key_to_env_var(&key) {
+                    if let Ok(value) = vault.read(&key) {
+                        if let Ok(s) = String::from_utf8(value) {
+                            env_vars.insert(env_name, s);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    env_vars
+}
+```
+
+### Security Guarantees
+
+- Raw keys encrypted at rest in vault.enc (AES-256-GCM)
+- Master key in OS keychain (macOS Keychain, Linux Secret Service, Windows Credential Manager)
+- config.yaml contains ONLY `os.environ/` references — never raw keys
+- Env vars injected per-process — not global `std::env::set_var`
+- Vault rate-limited (10 reads/sec) to prevent extraction attacks
+- vault.enc file permissions 0o600 (owner only)
+
+### Tests
+
+```rust
+// A016/VaultEnv: vault_key_to_env_var maps provider keys correctly
+// A016/VaultEnv: vault_key_to_env_var maps litellm master key
+// A016/VaultEnv: vault_key_to_env_var returns None for unknown keys
+// A016/VaultEnv: resolve_provider_env_vars reads all provider keys from vault
+// A016/VaultEnv: resolve_provider_env_vars skips non-provider keys
+// A016/VaultEnv: injected env vars appear in child process environment
+```
+
+---
+
+## 7. Boot Integration
 
 In main.rs, after preflight:
 
