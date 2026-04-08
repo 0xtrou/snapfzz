@@ -248,7 +248,10 @@ mod tests {
         let install_dir = temp.path().join("runtime").join("cef");
         std::fs::create_dir_all(&install_dir).expect("create install dir");
         if installed {
-            std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create marker");
+            std::fs::create_dir_all(
+                install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"),
+            )
+            .expect("create marker");
         }
 
         let state = CefState {
@@ -321,7 +324,7 @@ mod tests {
         std::fs::create_dir_all(&install_dir).expect("create install dir");
         create_test_tar_bz2(
             &install_dir.join("cef_binary_test.tar.bz2"),
-            &[("cef_binary_test/marker.txt", b"ready")],
+            &[("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64/marker.txt", b"ready")],
         );
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
         downloader.extract_cef().await.expect("real extraction");

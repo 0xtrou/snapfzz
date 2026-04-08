@@ -80,7 +80,7 @@ afterEach(() => {
 describe('A007/settings-components: renders header', () => {
   it('A007/settings-components: renders System Components title', async () => {
     render(<ComponentsSettings />);
-    expect(screen.getByText('System Components')).toBeInTheDocument();
+    expect(screen.getByText('System Packs')).toBeInTheDocument();
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('component_list');
     });
@@ -96,7 +96,7 @@ describe('A007/settings-components: search filters components by name', () => {
       expect(screen.getByText('llama-server')).toBeInTheDocument();
     });
 
-    await user.type(screen.getByPlaceholderText('Search components...'), 'chromium');
+    await user.type(screen.getByPlaceholderText('Search packs...'), 'chromium');
 
     await waitFor(() => {
       expect(screen.getByText('Chromium Embedded Framework')).toBeInTheDocument();
@@ -173,8 +173,8 @@ describe('A007/settings-components: error and fallback paths', () => {
     render(<ComponentsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('Unable to load system components right now.')).toBeInTheDocument();
-      expect(screen.getByText('No system components match your search.')).toBeInTheDocument();
+      expect(screen.getByText('Unable to load system packs right now.')).toBeInTheDocument();
+      expect(screen.getByText('No system packs match your search.')).toBeInTheDocument();
     });
   });
 
@@ -197,6 +197,28 @@ describe('A007/settings-components: error and fallback paths', () => {
       const card = screen.getByTestId('system-component-card-broken');
       expect(within(card).getByText('Not Installed')).toBeInTheDocument();
       expect(within(card).getByRole('button', { name: /download/i })).toBeInTheDocument();
+    });
+  });
+
+  it('A007/settings-components: installed component stays installed when status lookup fails', async () => {
+    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
+      if (cmd === 'component_list') {
+        return Promise.resolve([component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true })]);
+      }
+      if (cmd === 'component_status') {
+        const id = payload?.id as string;
+        if (id === 'cef') return Promise.reject(new Error('status failed'));
+        return Promise.resolve(status({ componentId: id, status: 'pending' }));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    render(<ComponentsSettings />);
+
+    await waitFor(() => {
+      const card = screen.getByTestId('system-component-card-cef');
+      expect(within(card).getByText('Installed')).toBeInTheDocument();
+      expect(within(card).getByRole('button', { name: /open folder/i })).toBeInTheDocument();
     });
   });
 
@@ -343,7 +365,7 @@ describe('A007/settings-components: error and fallback paths', () => {
       expect(screen.getByTestId('system-component-card-llama-server')).toBeInTheDocument();
     });
 
-    await user.type(screen.getByPlaceholderText('Search components...'), '  LLAMA-SERVER  ');
+    await user.type(screen.getByPlaceholderText('Search packs...'), '  LLAMA-SERVER  ');
 
     await waitFor(() => {
       expect(screen.getByText('llama-server')).toBeInTheDocument();

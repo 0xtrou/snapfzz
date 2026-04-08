@@ -8,7 +8,11 @@ mod metrics;
 
 use snapfzz_cef::download::CefDownloader;
 use snapfzz_cef::runtime::CefRuntime;
-use snapfzz_kernel::boot::{OnPreflightInit, Phase, PreflightContext, PreflightError, PreflightService};
+use snapfzz_kernel::boot::PreflightService;
+use snapfzz_packs::{
+    detect_platform, AgentScopeComponent, CefPackComponent, LiteLLMComponent, PythonComponent,
+    UvComponent,
+};
 use snapfzz_kernel::components::ComponentRegistry;
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
@@ -36,15 +40,40 @@ fn main() {
         Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
     ));
     let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
+    let platform = detect_platform().expect("unsupported platform");
+    let runtime_dir = data_dir.join("runtime");
+    let bin_dir = runtime_dir.join("bin");
+    let processes_dir = runtime_dir.join("processes");
+    let packages_dir = runtime_dir.join("packages");
+    let uv_bin = bin_dir.join(format!("uv{}", platform.exe_suffix));
+    let cef_runtime_downloader = Arc::new(
+        CefDownloader::from_current_platform(processes_dir.join("cef")).unwrap_or_else(|_| {
+            CefDownloader::new(processes_dir.join("cef"), "macos-arm64".to_string())
+        }),
+    );
     let cef_state = commands::cef::CefState {
         runtime: Arc::new(tauri::async_runtime::Mutex::new(CefRuntime::new(&data_dir))),
-        downloader: Arc::new(
-            CefDownloader::from_current_platform(data_dir.join("runtime").join("cef"))
-                .unwrap_or_else(|_| CefDownloader::new(data_dir.join("runtime").join("cef"), "macos-arm64".to_string())),
-        ),
+        downloader: cef_runtime_downloader,
     };
     let mut component_registry = ComponentRegistry::new();
-    component_registry.register(cef_state.downloader.clone());
+    component_registry.register(Arc::new(UvComponent::new(bin_dir.clone(), platform.clone())));
+    component_registry.register(Arc::new(PythonComponent::new(
+        uv_bin.clone(),
+        bin_dir.join("python"),
+        "3.12".to_string(),
+    )));
+    component_registry.register(Arc::new(AgentScopeComponent::new(
+        uv_bin.clone(),
+        packages_dir.join("agentscope"),
+    )));
+    component_registry.register(Arc::new(LiteLLMComponent::new(
+        uv_bin.clone(),
+        packages_dir.join("litellm"),
+    )));
+    component_registry.register(Arc::new(CefPackComponent::new(
+        processes_dir.join("cef"),
+        platform,
+    )));
     let component_registry = Arc::new(component_registry);
 
     let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) =

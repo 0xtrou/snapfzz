@@ -50,6 +50,24 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(screen.getByText('Not Installed')).toBeInTheDocument();
   });
 
+  it('A007/settings-components: resolves undefined status as pending', () => {
+    render(
+      <SystemComponentCard
+        component={makeComponent({ isInstalled: false })}
+        status={undefined}
+        busyDownload={false}
+        busyUninstall={false}
+        onDownload={vi.fn()}
+        onCancelDownload={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Not Installed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
+  });
+
   it('A007/settings-components: renders downloading state and cancel action from status', async () => {
     const onCancelDownload = vi.fn();
     const user = userEvent.setup();
@@ -89,6 +107,23 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(screen.getAllByText('Unavailable')).toHaveLength(2);
   });
 
+  it('A007/settings-components: hides license label when license is empty', () => {
+    render(
+      <SystemComponentCard
+        component={makeComponent({ license: '' })}
+        status={makeStatus({ status: 'pending' })}
+        busyDownload={false}
+        busyUninstall={false}
+        onDownload={vi.fn()}
+        onCancelDownload={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/License:/i)).not.toBeInTheDocument();
+  });
+
   it('A007/settings-components: treats ready-like status text as installed', () => {
     render(
       <SystemComponentCard
@@ -126,5 +161,24 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
 
     await user.click(screen.getByRole('button', { name: /open folder/i }));
     expect(onOpenFolder).toHaveBeenCalledWith('/tmp/component');
+  });
+
+  it('A007/settings-components: busy download shows progress tag and percentage', () => {
+    render(
+      <SystemComponentCard
+        component={makeComponent({ isInstalled: false })}
+        status={makeStatus({ status: 'pending', percent: 63 })}
+        busyDownload={true}
+        busyUninstall={false}
+        onDownload={vi.fn()}
+        onCancelDownload={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Downloading')).toBeInTheDocument();
+    expect(screen.getByText('63%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel download/i })).toBeInTheDocument();
   });
 });

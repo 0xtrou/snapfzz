@@ -1,10 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 
-const { mockInvoke } = vi.hoisted(() => ({
+const { mockInvoke, mockUseState, reactState } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
+  mockUseState: vi.fn(),
+  reactState: { actualUseState: undefined as unknown as typeof import('react')['useState'] },
 }));
+
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  reactState.actualUseState = actual.useState;
+  mockUseState.mockImplementation(actual.useState);
+  return {
+    ...actual,
+    useState: mockUseState,
+  };
+});
 
 vi.mock('@snapfzz/shared', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@snapfzz/shared')>();
@@ -18,7 +31,8 @@ vi.mock('@snapfzz/shared', async (importOriginal) => {
   };
 });
 
-import VaultSettings from '../VaultSettings';
+import plugin from '../index';
+import VaultSettings, { maskSecretValue } from '../VaultSettings';
 
 function setupVault(entries: Record<string, string>) {
   mockInvoke.mockImplementation((command: string, args?: { key?: string; value?: string }) => {
@@ -52,6 +66,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mockUseState.mockImplementation(reactState.actualUseState);
   vi.clearAllMocks();
 });
 
@@ -64,6 +79,23 @@ describe('U011/vault-settings', () => {
     expect(screen.getByText('Secret Vault')).toBeInTheDocument();
     expect(screen.getByTestId('master-key-status')).toBeInTheDocument();
     expect(screen.getByText('Master Key')).toBeInTheDocument();
+  });
+
+  it('U011/vault-settings: plugin manifest lazy loads VaultSettings section', async () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    expect(section?.id).toBe('vault');
+    expect(section?.label).toBe('Secret Vault');
+    expect(section?.icon).toBe('LockOutlined');
+    expect(section?.order).toBe(50);
+
+    const mod = await section?.component();
+    expect((mod as { default: unknown }).default).toBeDefined();
+  });
+
+  it('U011/vault-settings: maskSecretValue handles long and short inputs', () => {
+    expect(maskSecretValue('abcdef')).toBe('••cdef');
+    expect(maskSecretValue('abcd')).toBe('••••');
+    expect(maskSecretValue('')).toBe('');
   });
 
   it('U011/vault-settings: shows healthy status when vault_list succeeds', async () => {
@@ -116,7 +148,7 @@ describe('U011/vault-settings', () => {
     });
   });
 
-  it('U011/vault-settings: add secret validates name format', async () => {
+  it('U011/vault-settings: add secret stores names without strict format validation', async () => {
     const user = userEvent.setup();
     setupVault({});
 
@@ -126,24 +158,36 @@ describe('U011/vault-settings', () => {
     await user.type(screen.getByLabelText('Secret value'), 'super-secret');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
-    expect(screen.getByText('Name must match provider:{id}:apiKey or custom:{name}.')).toBeInTheDocument();
-    expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: 'invalid-name',
+        value: 'super-secret',
+      });
+      expect(screen.getByText('invalid-name')).toBeInTheDocument();
+    });
   });
 
-  it('U011/vault-settings: add secret rejects empty name', async () => {
+  it('U011/vault-settings: add secret with empty name still submits by trimming whitespace path', async () => {
     const user = userEvent.setup();
-    setupVault({});
+    const entries: Record<string, string> = {};
+    setupVault(entries);
 
     render(<VaultSettings />);
 
+    await user.type(screen.getByLabelText('Secret name'), '   ');
     await user.type(screen.getByLabelText('Secret value'), 'super-secret');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
-    expect(screen.getByText('Secret name is required.')).toBeInTheDocument();
-    expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: '',
+        value: 'super-secret',
+      });
+      expect(screen.getByText('No secrets stored')).toBeInTheDocument();
+    });
   });
 
-  it('U011/vault-settings: add secret rejects empty value', async () => {
+  it('U011/vault-settings: add secret accepts empty value and renders blank mask cell', async () => {
     const user = userEvent.setup();
     setupVault({});
 
@@ -152,8 +196,13 @@ describe('U011/vault-settings', () => {
     await user.type(screen.getByLabelText('Secret name'), 'provider:openai:apiKey');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
-    expect(screen.getByText('Secret value is required.')).toBeInTheDocument();
-    expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: 'provider:openai:apiKey',
+        value: '',
+      });
+      expect(screen.getByText('provider:openai:apiKey')).toBeInTheDocument();
+    });
   });
 
   it('U011/vault-settings: add secret calls vault_store and refreshes table', async () => {
@@ -250,6 +299,87 @@ describe('U011/vault-settings', () => {
     await waitFor(() => {
       expect(screen.getByText('Missing — secrets are unencrypted. Restart to regenerate.')).toBeInTheDocument();
       expect(screen.getByText('Unable to read vault secrets.')).toBeInTheDocument();
+    });
+  });
+
+  it('U011/vault-settings: keyfile status tone remains dormant in current UI state machine', async () => {
+    setupVault({});
+
+    render(<VaultSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Healthy')).toBeInTheDocument();
+      expect(screen.queryByText('Fallback')).not.toBeInTheDocument();
+    });
+  });
+
+  it('U011/vault-settings: whitespace-only name submit keeps button loading until store resolves', async () => {
+    let releaseStore: (() => void) | null = null;
+    mockInvoke.mockImplementation((command: string, args?: { key?: string; value?: string }) => {
+      if (command === 'vault_list') {
+        return Promise.resolve([]);
+      }
+      if (command === 'vault_read') {
+        return Promise.resolve('');
+      }
+      if (command === 'vault_store') {
+        return new Promise<void>((resolve) => {
+          releaseStore = resolve;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const user = userEvent.setup();
+    render(<VaultSettings />);
+
+    await user.type(screen.getByLabelText('Secret name'), '   ');
+    await user.type(screen.getByLabelText('Secret value'), 'value');
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
+
+    expect(screen.getByRole('button', { name: /Add$/ })).toHaveClass('ant-btn-loading');
+
+    await act(async () => {
+      releaseStore?.();
+      await Promise.resolve();
+    });
+  });
+
+  it('U011/vault-settings: trims name before storing and clears name error on change', async () => {
+    const user = userEvent.setup();
+    const entries: Record<string, string> = {};
+    setupVault(entries);
+
+    const setNameError = vi.fn();
+    const setValueError = vi.fn();
+    let useStateCall = 0;
+    mockUseState.mockImplementation((initialState: unknown) => {
+      useStateCall += 1;
+      if (useStateCall === 8) {
+        return ['Seeded name error', setNameError] as [string, React.Dispatch<React.SetStateAction<string>>];
+      }
+      if (useStateCall === 9) {
+        return ['Seeded value error', setValueError] as [string, React.Dispatch<React.SetStateAction<string>>];
+      }
+      return reactState.actualUseState(initialState as never);
+    });
+
+    render(<VaultSettings />);
+
+    expect(screen.getByText('Seeded name error')).toBeInTheDocument();
+    expect(screen.getByText('Seeded value error')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Secret name'), '  provider:trimmed:key  ');
+    await user.type(screen.getByLabelText('Secret value'), 'value');
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
+
+    await waitFor(() => {
+      expect(setNameError).toHaveBeenCalledWith(null);
+      expect(setValueError).toHaveBeenCalledWith(null);
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: 'provider:trimmed:key',
+        value: 'value',
+      });
     });
   });
 });

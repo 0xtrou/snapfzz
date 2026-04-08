@@ -35,7 +35,7 @@ describe('A007/settings-components manifest', () => {
   it('A007/settingsSections: section metadata is correct', () => {
     const section = plugin.contributes?.settingsSections?.[0];
     expect(section?.id).toBe('components');
-    expect(section?.label).toBe('System Components');
+    expect(section?.label).toBe('System Packs');
     expect(section?.icon).toBe('AppstoreOutlined');
     expect(section?.order).toBe(55);
   });

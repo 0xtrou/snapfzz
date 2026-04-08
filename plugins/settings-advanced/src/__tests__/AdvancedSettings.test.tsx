@@ -100,6 +100,35 @@ describe('A007/settings-advanced: advanced settings sections', () => {
     modalInfoSpy.mockRestore();
   });
 
+  it('A007/settings-advanced: browse no-op when picker returns null', async () => {
+    const user = userEvent.setup();
+    const modalInfoSpy = vi.spyOn(Modal, 'info').mockImplementation(() => {
+      const destroy = vi.fn();
+      const update = vi.fn();
+      const then = vi.fn();
+      return { destroy, update, then } as never;
+    });
+
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_data_dir') return Promise.resolve('/Users/test/.snapfzz');
+      if (cmd === 'pick_folder') return Promise.resolve(null);
+      if (cmd === 'set_data_dir') return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    render(<AdvancedSettings />);
+
+    await user.click(await screen.findByRole('button', { name: /browse/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('pick_folder', { defaultPath: '/Users/test/.snapfzz' });
+    });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('set_data_dir', expect.anything());
+    expect(modalInfoSpy).not.toHaveBeenCalled();
+    modalInfoSpy.mockRestore();
+  });
+
   it('A007/settings-advanced: reset confirmation saves defaults and emits settings-changed', async () => {
     const user = userEvent.setup();
     const dispatchSpy = vi.spyOn(window, 'dispatchEvent');

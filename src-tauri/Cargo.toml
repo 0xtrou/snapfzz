@@ -6,6 +6,7 @@ members = [
   "crates/snapfzz-kernel",
   "crates/snapfzz-vault",
   "crates/snapfzz-cef",
+  "crates/snapfzz-packs",
 ]
 resolver = "2"
 
@@ -39,6 +40,7 @@ snapfzz-kernel = { path = "crates/snapfzz-kernel" }
 snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
 snapfzz-cef = { path = "crates/snapfzz-cef" }
+snapfzz-packs = { path = "crates/snapfzz-packs" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
