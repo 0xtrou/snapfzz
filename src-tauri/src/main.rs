@@ -144,7 +144,7 @@ fn main() {
         .manage(result.phase_timings_dto())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings, commands::settings::save_settings, commands::settings::get_data_dir, commands::settings::set_data_dir,
-            commands::vault::vault_store, commands::vault::vault_read, commands::vault::vault_delete, commands::vault::vault_list, commands::vault::vault_has,
+            commands::vault::vault_store, commands::vault::vault_read, commands::vault::vault_delete, commands::vault::vault_list, commands::vault::vault_have,
             commands::process::restart_process, commands::process::kill_process, commands::process::list_processes, commands::process::get_process_logs,
             commands::process::clear_process_logs, commands::process::update_process_config,
             commands::budget::budget_snapshot, commands::budget::set_preset, commands::budget::get_batch_interval, commands::budget::get_startup_budget,
@@ -158,6 +158,7 @@ fn main() {
             commands::components::component_list, commands::components::component_info, commands::components::component_download,
             commands::components::component_download_cancel, commands::components::component_status, commands::components::component_verify,
             commands::components::component_uninstall,
+            commands::pip::python_pip_install_packages,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])
         .setup(move |app| {
