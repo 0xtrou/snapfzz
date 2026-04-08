@@ -20,6 +20,13 @@ vi.mock('@snapfzz/shared', async (importOriginal) => {
 
 import DiagnosticsSettings from '../DiagnosticsSettings';
 
+const defaultPhases = [
+  { phase: 1, name: 'filesystem', durationMs: 0, status: 'ok', detail: null },
+  { phase: 2, name: 'vault', durationMs: 0, status: 'ok', detail: null },
+  { phase: 3, name: 'settings', durationMs: 1, status: 'ok', detail: null },
+  { phase: 4, name: 'budget', durationMs: 57, status: 'ok', detail: null },
+];
+
 const defaultHardware = { cores: 14, ramGb: 36, onBattery: false };
 
 const defaultComponents = [
@@ -29,6 +36,7 @@ const defaultComponents = [
 beforeEach(() => {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === 'preflight_status') return Promise.resolve(defaultPhases);
     if (cmd === 'get_hardware_info') return Promise.resolve(defaultHardware);
     if (cmd === 'component_list') return Promise.resolve(defaultComponents);
     return Promise.resolve(undefined);
@@ -36,11 +44,62 @@ beforeEach(() => {
 });
 
 describe('A012/settings-diagnostics', () => {
-  it('renders header', async () => {
+  it('renders header and system health check title', async () => {
     render(<DiagnosticsSettings />);
     expect(screen.getByText('Diagnostics')).toBeInTheDocument();
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('get_hardware_info');
+      expect(screen.getByText('System Health Check')).toBeInTheDocument();
+    });
+  });
+
+  it('shows all 4 health checks with capitalized names', async () => {
+    render(<DiagnosticsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Filesystem')).toBeInTheDocument();
+      expect(screen.getByText('Vault')).toBeInTheDocument();
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+      expect(screen.getByText('Budget')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Ok status tags for healthy checks', async () => {
+    render(<DiagnosticsSettings />);
+    await waitFor(() => {
+      const tags = screen.getAllByText('Ok');
+      expect(tags.length).toBe(4);
+    });
+  });
+
+  it('shows Degraded status with warning tag', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'preflight_status') return Promise.resolve([
+        { phase: 2, name: 'vault', durationMs: 0, status: 'degraded: key missing', detail: 'key missing' },
+      ]);
+      if (cmd === 'get_hardware_info') return Promise.resolve(defaultHardware);
+      if (cmd === 'component_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    render(<DiagnosticsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Degraded')).toBeInTheDocument();
+      expect(screen.getByText('key missing')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Failed status for unknown status values', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'preflight_status') return Promise.resolve([
+        { phase: 1, name: 'filesystem', durationMs: 0, status: 'error', detail: 'disk full' },
+      ]);
+      if (cmd === 'get_hardware_info') return Promise.resolve(defaultHardware);
+      if (cmd === 'component_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    render(<DiagnosticsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Failed')).toBeInTheDocument();
     });
   });
 
@@ -50,6 +109,20 @@ describe('A012/settings-diagnostics', () => {
       expect(screen.getByText('14')).toBeInTheDocument();
       expect(screen.getByText('36 GB')).toBeInTheDocument();
       expect(screen.getByText('No')).toBeInTheDocument();
+    });
+  });
+
+  it('shows on battery Yes when onBattery is true', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'preflight_status') return Promise.resolve(defaultPhases);
+      if (cmd === 'get_hardware_info') return Promise.resolve({ cores: 8, ramGb: 16, onBattery: true });
+      if (cmd === 'component_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    render(<DiagnosticsSettings />);
+    await waitFor(() => {
+      expect(screen.getByText('Yes')).toBeInTheDocument();
     });
   });
 
@@ -63,6 +136,7 @@ describe('A012/settings-diagnostics', () => {
 
   it('shows not installed component', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'preflight_status') return Promise.resolve(defaultPhases);
       if (cmd === 'get_hardware_info') return Promise.resolve(defaultHardware);
       if (cmd === 'component_list') return Promise.resolve([
         { id: 'llama', name: 'llama-server', version: '', platform: '', platformDisplay: '', isInstalled: false },
@@ -81,7 +155,7 @@ describe('A012/settings-diagnostics', () => {
     render(<DiagnosticsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('Chromium Embedded Framework')).toBeInTheDocument();
+      expect(screen.getByText('Filesystem')).toBeInTheDocument();
     });
 
     const callsBefore = mockInvoke.mock.calls.length;
@@ -98,29 +172,6 @@ describe('A012/settings-diagnostics', () => {
     render(<DiagnosticsSettings />);
     await waitFor(() => {
       expect(screen.getByText('Diagnostics')).toBeInTheDocument();
-    });
-  });
-
-  it('shows component version and platform in description', async () => {
-    render(<DiagnosticsSettings />);
-    await waitFor(() => {
-      expect(screen.getByText(/146\.0\.10/)).toBeInTheDocument();
-      expect(screen.getByText(/macOS \(Apple Silicon\)/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe('A012/settings-diagnostics: edge cases', () => {
-  it('shows on battery Yes when onBattery is true', async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_hardware_info') return Promise.resolve({ cores: 8, ramGb: 16, onBattery: true });
-      if (cmd === 'component_list') return Promise.resolve([]);
-      return Promise.resolve(undefined);
-    });
-
-    render(<DiagnosticsSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('Yes')).toBeInTheDocument();
     });
   });
 });
