@@ -301,9 +301,7 @@ export default function ComponentsSettings(): React.ReactElement {
       await bridge.invoke<DownloadProgress[]>('component_download', { id: 'python' }).catch(() => {});
       
       try {
-        await bridge.invoke<void>('python_pip_install_packages', { 
-          packages: ['agentscope', 'agentscope-runtime', 'agentscope-runtime[ext]', 'litellm'] 
-        });
+        await bridge.invoke<void>('python_pip_install_packages');
       } catch {
       }
       
