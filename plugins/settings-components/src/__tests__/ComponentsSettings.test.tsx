@@ -54,6 +54,18 @@ function status(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   mockInvoke.mockReset();
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === 'component_list') {
+      return Promise.resolve([
+        component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true }),
+        component({ id: 'python-runtime', name: 'Python Runtime', isInstalled: false }),
+      ]);
+    }
+    if (cmd === 'component_status') {
+      return Promise.resolve(status({ status: 'ready' }));
+    }
+    return Promise.resolve(undefined);
+  });
 });
 
 afterEach(() => {
