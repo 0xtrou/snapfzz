@@ -41,6 +41,7 @@ snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
 snapfzz-cef = { path = "crates/snapfzz-cef" }
 snapfzz-packs = { path = "crates/snapfzz-packs" }
+shellexpand = "3.1.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

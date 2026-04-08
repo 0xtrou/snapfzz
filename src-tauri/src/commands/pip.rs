@@ -1,20 +1,24 @@
-use snapfzz_kernel::settings::SettingsManager;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use tauri::State;
+use snapfzz_kernel::settings::SettingsManager;
+
+fn get_runtime_dir(settings: &State<'_, Arc<SettingsManager>>) -> String {
+    let settings_mgr = settings.inner();
+    // Data dir is stored in the SettingsManager, construct runtime path from it
+    // Default: ~/.snapfzz/runtime
+    dirs::home_dir()
+        .map(|h| h.join(".snapfzz").join("runtime").to_string_lossy().to_string())
+        .unwrap_or_else(|| "~/.snapfzz/runtime".to_string())
+}
 
 #[tauri::command]
 pub async fn python_pip_install_packages(
     packages: Vec<String>,
-    settings: State<'_, SettingsManager>,
+    settings: State<'_, Arc<SettingsManager>>,
 ) -> Result<String, String> {
-    let settings_guard = settings.read().await;
-    let runtime_dir = settings_guard
-        .get("runtime_dir")
-        .and_then(|v| v.as_str())
-        .unwrap_or("~/.snapfzz/runtime");
-    
-    let runtime_path = shellexpand::tilde(runtime_dir).to_string();
+    let runtime_path = get_runtime_dir(&settings);
     let python_bin = PathBuf::from(&runtime_path)
         .join("bin")
         .join("python");
@@ -23,7 +27,6 @@ pub async fn python_pip_install_packages(
         return Err("Python not installed. Please install Python first.".to_string());
     }
     
-    // Use uv pip to install packages
     let uv_bin = PathBuf::from(&runtime_path)
         .join("bin")
         .join("uv");
@@ -44,4 +47,83 @@ pub async fn python_pip_install_packages(
             String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+#[derive(serde::Serialize)]
+pub struct PythonRuntimeStatus {
+    pub python_installed: bool,
+    pub python_version: Option<String>,
+    pub python_path: Option<String>,
+    pub uv_installed: bool,
+    pub uv_version: Option<String>,
+    pub installed_packages: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn python_runtime_status(
+    settings: State<'_, Arc<SettingsManager>>,
+) -> Result<PythonRuntimeStatus, String> {
+    let runtime_path = get_runtime_dir(&settings);
+    let python_bin = PathBuf::from(&runtime_path).join("bin").join("python");
+    let uv_bin = PathBuf::from(&runtime_path).join("bin").join("uv");
+    
+    let (python_installed, python_version, python_path) = if python_bin.exists() {
+        let output = Command::new(&python_bin)
+            .arg("--version")
+            .output()
+            .ok();
+        let version = output
+            .as_ref()
+            .and_then(|o| String::from_utf8(o.stdout.clone()).ok())
+            .or_else(|| output.as_ref().and_then(|o| String::from_utf8(o.stderr.clone()).ok()))
+            .map(|s| s.trim().replace("Python ", ""));
+        (true, version, Some(python_bin.to_string_lossy().to_string()))
+    } else {
+        (false, None, None)
+    };
+    
+    let (uv_installed, uv_version) = if uv_bin.exists() {
+        let output = Command::new(&uv_bin)
+            .arg("--version")
+            .output()
+            .ok();
+        let version = output
+            .as_ref()
+            .and_then(|o| String::from_utf8(o.stdout.clone()).ok())
+            .map(|s| s.trim().replace("uv ", ""));
+        (true, version)
+    } else {
+        (false, None)
+    };
+    
+    let installed_packages = if uv_installed && python_installed {
+        let output = Command::new(&uv_bin)
+            .arg("pip")
+            .arg("list")
+            .arg("--format")
+            .arg("freeze")
+            .output()
+            .ok();
+        output
+            .as_ref()
+            .and_then(|o| String::from_utf8(o.stdout.clone()).ok())
+            .map(|s| {
+                s.lines()
+                    .filter(|line| !line.is_empty())
+                    .map(|line| line.split('=').next().unwrap_or(line).to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+    
+    Ok(PythonRuntimeStatus {
+        python_installed,
+        python_version,
+        python_path,
+        uv_installed,
+        uv_version,
+        installed_packages,
+    })
 }
