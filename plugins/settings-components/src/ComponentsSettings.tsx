@@ -49,9 +49,18 @@ function createPlaceholder(id: string, name: string, description: string): Compo
 }
 
 function isPipPackageInstalled(packageName: string, installedPackages: string[]): boolean {
+  const normalizedPackage = packageName.toLowerCase().replace('[ext]', '');
   return installedPackages.some(pkg => {
     const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-    return name === packageName.toLowerCase() || name.startsWith(packageName.toLowerCase() + '-');
+    return name === normalizedPackage || name.startsWith(normalizedPackage + '-');
+  });
+}
+
+function checkAgentscopeInstalled(installedPackages: string[]): boolean {
+  // Check for agentscope OR agentscope-runtime (covers both base and [ext])
+  return installedPackages.some(pkg => {
+    const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+    return name === 'agentscope' || name === 'agentscope-runtime' || name.startsWith('agentscope');
   });
 }
 
@@ -293,7 +302,7 @@ export default function ComponentsSettings(): React.ReactElement {
       const installedPipPackages = pythonRuntime?.installed_packages || [];
       
       // Mark pip packages as installed based on pip list
-      agentscope.isInstalled = isPipPackageInstalled('agentscope', installedPipPackages);
+      agentscope.isInstalled = checkAgentscopeInstalled(installedPipPackages);
       litellm.isInstalled = isPipPackageInstalled('litellm', installedPipPackages);
 
       const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
