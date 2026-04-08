@@ -26,6 +26,7 @@ export default function ComponentsSettings(): React.ReactElement {
       const list = await bridge.invoke<ComponentInfo[]>('component_list');
       const ordered = [...list].sort((a, b) => a.name.localeCompare(b.name));
       setComponents(ordered);
+      setLoading(false);
 
       const statuses = await Promise.all(
         ordered.map(async (component) => {
@@ -46,10 +47,9 @@ export default function ComponentsSettings(): React.ReactElement {
 
       setStatusById(Object.fromEntries(statuses));
     } catch {
-      setError('Unable to load system components right now.');
+      setError('Unable to load system packs right now.');
       setComponents([]);
       setStatusById({});
-    } finally {
       setLoading(false);
     }
   }, []);

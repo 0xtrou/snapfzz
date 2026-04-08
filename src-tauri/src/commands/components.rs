@@ -7,11 +7,21 @@ use std::sync::Arc;
 pub async fn component_list(
     registry: tauri::State<'_, Arc<ComponentRegistry>>,
 ) -> Result<Vec<ComponentInfo>, String> {
-    let mut infos = Vec::new();
-    for component in registry.list() {
-        match component.resolve().await {
-            Ok(info) => infos.push(info),
-            Err(e) => {
+    let components = registry.list();
+    let mut handles = Vec::with_capacity(components.len());
+
+    for component in components {
+        handles.push(tokio::spawn(async move { component.resolve().await }));
+    }
+
+    let mut infos = Vec::with_capacity(handles.len());
+    let fallback_components = registry.list();
+
+    for (i, handle) in handles.into_iter().enumerate() {
+        match handle.await {
+            Ok(Ok(info)) => infos.push(info),
+            _ => {
+                let component = &fallback_components[i];
                 infos.push(ComponentInfo {
                     id: component.id().into(),
                     name: component.name().into(),
@@ -27,7 +37,6 @@ pub async fn component_list(
                     checksum_algorithm: String::new(),
                     is_installed: component.is_installed(),
                 });
-                eprintln!("[components] Failed to resolve {}: {e}", component.id());
             }
         }
     }

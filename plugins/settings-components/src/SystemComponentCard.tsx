@@ -1,5 +1,5 @@
 import React from 'react';
-import { Space, Tag, Typography } from 'antd';
+import { Progress, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -104,6 +104,15 @@ export default function SystemComponentCard({
             <Tag icon={<CloseCircleOutlined />}>Not Installed</Tag>
           )}
         </div>
+
+        {downloading && status && (
+          <Progress
+            percent={Math.round(status.percent)}
+            status="active"
+            size="small"
+            format={(pct) => `${pct}%`}
+          />
+        )}
 
         <div>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>
