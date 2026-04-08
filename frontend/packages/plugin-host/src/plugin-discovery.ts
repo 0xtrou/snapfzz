@@ -33,6 +33,7 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
             () => import('@snapfzz/settings-vault'),
             () => import('@snapfzz/settings-plugins'),
             () => import('@snapfzz/settings-components'),
+            () => import('@snapfzz/settings-diagnostics'),
             () => import('@snapfzz/settings-advanced'),
           ]
         : [];
