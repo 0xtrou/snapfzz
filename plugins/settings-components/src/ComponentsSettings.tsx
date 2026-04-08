@@ -80,6 +80,8 @@ export default function ComponentsSettings(): React.ReactElement {
   const [statusById, setStatusById] = useState<Record<string, DownloadProgress>>({});
   const [downloadBusyId, setDownloadBusyId] = useState<string | null>(null);
   const [uninstallBusyId, setUninstallBusyId] = useState<string | null>(null);
+  const [installingPythonPack, setInstallingPythonPack] = useState(false);
+  const [uninstallingPythonPack, setUninstallingPythonPack] = useState(false);
 
   const refreshComponents = useCallback(async () => {
     setLoading(true);
@@ -214,6 +216,40 @@ export default function ComponentsSettings(): React.ReactElement {
     void bridge.invoke<void>('open_path', { path });
   }, []);
 
+  const handleInstallPythonPack = useCallback(async () => {
+    setInstallingPythonPack(true);
+    try {
+      const packIds = ['uv', 'python', 'agentscope', 'litellm'];
+      for (const packId of packIds) {
+        try {
+          await bridge.invoke<DownloadProgress[]>('component_download', { id: packId });
+        } catch {
+          // Skip failed packs, continue with next
+        }
+      }
+      await refreshComponents();
+    } finally {
+      setInstallingPythonPack(false);
+    }
+  }, [refreshComponents]);
+
+  const handleUninstallPythonPack = useCallback(async () => {
+    setUninstallingPythonPack(true);
+    try {
+      const packIds = ['litellm', 'agentscope', 'python', 'uv'];
+      for (const packId of packIds) {
+        try {
+          await bridge.invoke<void>('component_uninstall', { id: packId });
+        } catch {
+          // Skip failed packs, continue with next
+        }
+      }
+      await refreshComponents();
+    } finally {
+      setUninstallingPythonPack(false);
+    }
+  }, [refreshComponents]);
+
   const renderComponentList = useCallback((items: ComponentInfo[], isPythonGroup?: boolean) => {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
@@ -221,17 +257,22 @@ export default function ComponentsSettings(): React.ReactElement {
       const agentscope = items.find((c) => c.id === 'agentscope');
       const litellm = items.find((c) => c.id === 'litellm');
 
+      const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
+      const allInstalled = allPacks.every((p) => p.isInstalled);
+      const anyInstalled = allPacks.some((p) => p.isInstalled);
+
       return (
         <PythonPackCard
           uv={mapComponentToSubPack(uv, 'uv')}
           python={mapComponentToSubPack(python, 'python')}
           agentscope={agentscope ? mapComponentToSubPack(agentscope, 'agentscope') : undefined}
           litellm={litellm ? mapComponentToSubPack(litellm, 'litellm') : undefined}
-          busyDownload={downloadBusyId}
-          busyUninstall={uninstallBusyId}
-          onDownload={handleDownload}
-          onCancelDownload={handleCancelDownload}
-          onUninstall={handleUninstall}
+          isInstalling={installingPythonPack}
+          isUninstalling={uninstallingPythonPack}
+          allInstalled={allInstalled}
+          anyInstalled={anyInstalled}
+          onInstallAll={handleInstallPythonPack}
+          onUninstallAll={handleUninstallPythonPack}
           onOpenFolder={handleOpenFolder}
         />
       );
@@ -266,6 +307,10 @@ export default function ComponentsSettings(): React.ReactElement {
     handleDownload,
     handleOpenFolder,
     handleUninstall,
+    handleInstallPythonPack,
+    handleUninstallPythonPack,
+    installingPythonPack,
+    uninstallingPythonPack,
     loading,
     statusById,
     uninstallBusyId,

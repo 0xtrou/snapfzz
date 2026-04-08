@@ -30,11 +30,12 @@ interface PythonPackCardProps {
   python: PythonSubPack;
   agentscope?: PythonSubPack;
   litellm?: PythonSubPack;
-  busyDownload: string | null;
-  busyUninstall: string | null;
-  onDownload: (id: string) => void;
-  onCancelDownload: (id: string) => void;
-  onUninstall: (id: string) => void;
+  isInstalling: boolean;
+  isUninstalling: boolean;
+  allInstalled: boolean;
+  anyInstalled: boolean;
+  onInstallAll: () => void;
+  onUninstallAll: () => void;
   onOpenFolder: (path: string) => void;
 }
 
@@ -44,22 +45,10 @@ const CARD_PADDING = 16;
 function SubPackCard({
   pack,
   index,
-  busyDownload,
-  busyUninstall,
-  onDownload,
-  onUninstall,
-  onOpenFolder,
 }: {
   pack: PythonSubPack;
   index: number;
-  busyDownload: string | null;
-  busyUninstall: string | null;
-  onDownload: (id: string) => void;
-  onUninstall: (id: string) => void;
-  onOpenFolder: (path: string) => void;
 }) {
-  const isDownloading = busyDownload === pack.id;
-  const isUninstalling = busyUninstall === pack.id;
   const isInstalled = pack.isInstalled;
 
   return (
@@ -73,16 +62,14 @@ function SubPackCard({
       }}
     >
       <Space direction="vertical" size={8} style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space direction="vertical" size={4}>
             <Text strong style={{ fontSize: 14 }}>{pack.name}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>{pack.description}</Text>
           </Space>
-          <Tag color={isInstalled ? 'success' : isDownloading ? 'processing' : 'default'}>
+          <Tag color={isInstalled ? 'success' : 'default'}>
             {isInstalled ? (
               <><CheckCircleOutlined /> Installed</>
-            ) : isDownloading ? (
-              <><DownloadOutlined /> Downloading</>
             ) : (
               <><CloseCircleOutlined /> Not Installed</>
             )}
@@ -95,37 +82,9 @@ function SubPackCard({
           {pack.version && (
             <Text type="secondary" style={{ fontSize: 12 }}>v{pack.version}</Text>
           )}
-        </Space>
-
-        <Space size={16} wrap>
-          <AppButton
-            size="small"
-            icon={<DownloadOutlined />}
-            loading={isDownloading}
-            disabled={isInstalled || isDownloading}
-            onClick={() => onDownload(pack.id)}
-          >
-            {isDownloading ? 'Downloading...' : 'Download'}
-          </AppButton>
-
-          <AppButton
-            size="small"
-            icon={<FolderOpenOutlined />}
-            disabled={!isInstalled}
-            onClick={() => onOpenFolder(pack.installPath)}
-          >
-            Open folder
-          </AppButton>
-
-          <AppButton
-            size="small"
-            danger
-            disabled={!isInstalled || isDownloading}
-            loading={isUninstalling}
-            onClick={() => onUninstall(pack.id)}
-          >
-            Uninstall
-          </AppButton>
+          {pack.isInstalled && (
+            <Text type="secondary" style={{ fontSize: 12 }}>{pack.installPath}</Text>
+          )}
         </Space>
       </Space>
     </div>
@@ -137,19 +96,19 @@ export default function PythonPackCard({
   python,
   agentscope,
   litellm,
-  busyDownload,
-  busyUninstall,
-  onDownload,
-  onCancelDownload,
-  onUninstall,
+  isInstalling,
+  isUninstalling,
+  allInstalled,
+  anyInstalled,
+  onInstallAll,
+  onUninstallAll,
   onOpenFolder,
 }: PythonPackCardProps): React.ReactElement {
-  const allInstalled = [uv, python, agentscope, litellm].filter(Boolean).every((p) => p?.isInstalled);
-  const anyDownloading = [uv, python, agentscope, litellm].filter(Boolean).some((p) => busyDownload === p?.id);
-
   const packs: PythonSubPack[] = [uv, python].filter(Boolean);
   if (agentscope) packs.push(agentscope);
   if (litellm) packs.push(litellm);
+
+  const installPath = python.installPath.replace('/bin/python', '') || '~/.snapfzz/runtime';
 
   return (
     <div
@@ -162,7 +121,6 @@ export default function PythonPackCard({
       }}
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Space direction="vertical" size={4}>
             <Space size={8} align="center">
@@ -173,20 +131,23 @@ export default function PythonPackCard({
               Install Python and dependencies for AI agent development
             </Text>
           </Space>
-          <Tag color={allInstalled ? 'success' : anyDownloading ? 'processing' : 'default'}>
-            {allInstalled ? (
-              <><CheckCircleOutlined /> All Installed</>
-            ) : anyDownloading ? (
-              <><DownloadOutlined /> Installing...</>
-            ) : (
-              <><CloseCircleOutlined /> Not Installed</>
-            )}
-          </Tag>
+          <Space size={8}>
+            <Tag color={allInstalled ? 'success' : isInstalling ? 'processing' : anyInstalled ? 'warning' : 'default'}>
+              {allInstalled ? (
+                <><CheckCircleOutlined /> All Installed</>
+              ) : isInstalling ? (
+                <><DownloadOutlined /> Installing...</>
+              ) : anyInstalled ? (
+                <><CheckCircleOutlined /> Partially Installed</>
+              ) : (
+                <><CloseCircleOutlined /> Not Installed</>
+              )}
+            </Tag>
+          </Space>
         </div>
 
         <Divider style={{ margin: '4px 0 12px 0' }} />
 
-        {/* Sub-packs */}
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Text type="secondary" style={{ fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Runtime Components
@@ -196,13 +157,37 @@ export default function PythonPackCard({
               key={pack.id}
               pack={pack}
               index={index}
-              busyDownload={busyDownload}
-              busyUninstall={busyUninstall}
-              onDownload={onDownload}
-              onUninstall={onUninstall}
-              onOpenFolder={onOpenFolder}
             />
           ))}
+        </Space>
+
+        <Space size={8} wrap>
+          <AppButton
+            icon={<DownloadOutlined />}
+            loading={isInstalling}
+            disabled={allInstalled || isInstalling}
+            onClick={onInstallAll}
+          >
+            {isInstalling ? 'Installing...' : allInstalled ? 'Installed' : 'Install All'}
+          </AppButton>
+
+          <AppButton
+            icon={<FolderOpenOutlined />}
+            disabled={!anyInstalled}
+            onClick={() => onOpenFolder(installPath)}
+          >
+            Open folder
+          </AppButton>
+
+          <AppButton
+            danger
+            icon={<DeleteOutlined />}
+            disabled={!anyInstalled || isInstalling || isUninstalling}
+            loading={isUninstalling}
+            onClick={onUninstallAll}
+          >
+            {isUninstalling ? 'Uninstalling...' : 'Uninstall All'}
+          </AppButton>
         </Space>
       </Space>
     </div>
