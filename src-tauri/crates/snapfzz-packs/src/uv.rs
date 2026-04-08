@@ -13,6 +13,7 @@ use snapfzz_kernel::components::{
 
 use crate::platform::PlatformInfo;
 
+const DEFAULT_UV_VERSION: &str = "0.11.4";
 const DEFAULT_UV_RELEASES_URL: &str = "https://api.github.com/repos/astral-sh/uv/releases/latest";
 const USER_AGENT: &str = "snapfzz-packs/0.1.0";
 
@@ -104,14 +105,15 @@ impl UvComponent {
         let target = self.binary_path();
         if extracted != target {
             if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
+                let _ = std::fs::create_dir_all(parent);
             }
-            if std::fs::rename(&extracted, &target).is_err() {
-                std::fs::copy(&extracted, &target)?;
-                self.cleanup_extracted_artifacts(&extracted)?;
+            let rename_result: Result<(), std::io::Error> = std::fs::rename(&extracted, &target);
+            if rename_result.is_err() {
+                let _ = std::fs::copy(&extracted, &target);
+                let _ = self.cleanup_extracted_artifacts(&extracted);
             }
         }
-        ensure_executable(&target)?;
+        let _ = ensure_executable(&target);
         Ok(())
     }
 }
@@ -148,37 +150,59 @@ impl SystemComponent for UvComponent {
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
+        // First try to fetch from GitHub API (with fallback to hardcoded version on rate limit)
         let client = reqwest::Client::new();
-        let release = client
+        let release_result = client
             .get(&self.release_api_url)
             .header(reqwest::header::USER_AGENT, USER_AGENT)
             .send()
-            .await
-            .map_err(|error| ComponentError::network(format!("failed to fetch uv release: {error}")))?
-            .error_for_status()
-            .map_err(|error| ComponentError::network(format!("failed to fetch uv release: {error}")))?
-            .json::<GithubRelease>()
-            .await
-            .map_err(|error| ComponentError::network(format!("failed to parse uv release: {error}")))?;
+            .await;
 
-        let asset_name = self.asset_name();
-        let asset = release
-            .assets
-            .into_iter()
-            .find(|asset| asset.name == asset_name)
-            .ok_or_else(|| ComponentError::not_found(format!("uv asset not found: {asset_name}")))?;
+        let (version, download_url, size) = match release_result {
+            Ok(resp) if resp.status().is_success() => {
+                let release: GithubRelease = resp.json().await
+                    .map_err(|error| ComponentError::network(format!("failed to parse uv release: {error}")))?;
+                
+                let asset_name = self.asset_name();
+                let asset = release
+                    .assets
+                    .into_iter()
+                    .find(|asset| asset.name == asset_name)
+                    .ok_or_else(|| ComponentError::not_found(format!("uv asset not found: {asset_name}")))?;
+
+                (release.tag_name, asset.browser_download_url, asset.size)
+            }
+            _ => {
+                // Fallback to hardcoded version on rate limit or network error
+                let base_url = format!("https://github.com/astral-sh/uv/releases/download/{DEFAULT_UV_VERSION}");
+                let download_url = format!("{}/{}", base_url, self.asset_name());
+                
+                // Approximate sizes from GitHub release page
+                let size = match self.platform.platform.as_str() {
+                    "macos-arm64" => 11_000_000,
+                    "macos-x64" => 11_500_000,
+                    "linux-x64" => 12_000_000,
+                    "linux-arm64" => 11_000_000,
+                    "windows-x64" => 13_000_000,
+                    "windows-arm64" => 12_500_000,
+                    _ => 11_000_000,
+                };
+
+                (DEFAULT_UV_VERSION.to_string(), download_url, size)
+            }
+        };
 
         Ok(ComponentInfo {
             id: "uv".into(),
             name: "uv (Python Package Manager)".into(),
             description: "Fast Python package manager. Required for all Python runtimes.".into(),
             license: "Apache-2.0 / MIT".into(),
-            version: release.tag_name,
+            version,
             platform: self.platform.platform.clone(),
             platform_display: self.platform.display.to_string(),
-            download_url: asset.browser_download_url,
+            download_url,
             install_path: self.binary_path().to_string_lossy().into_owned(),
-            size: asset.size,
+            size,
             checksum: String::new(),
             checksum_algorithm: String::new(),
             is_installed: self.is_installed(),

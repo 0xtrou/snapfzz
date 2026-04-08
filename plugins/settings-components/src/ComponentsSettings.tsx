@@ -111,8 +111,8 @@ export default function ComponentsSettings(): React.ReactElement {
       );
 
       setStatusById(Object.fromEntries(statuses));
-    } catch {
-      setError('Unable to load system packs right now.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load system packs right now.');
       setComponents([]);
       setStatusById({});
       setLoading(false);
