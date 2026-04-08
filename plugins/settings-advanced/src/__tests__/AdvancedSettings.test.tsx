@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Modal } from 'antd';
 
@@ -232,5 +232,58 @@ describe('A007/settings-advanced: simplified advanced settings', () => {
 
     expect(dispatchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'snapfzz:settings-changed' }));
     dispatchSpy.mockRestore();
+  });
+
+  it('A015/settings-advanced: mini apps onboarding shows download progress and ready state', async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_data_dir') return Promise.resolve('/Users/test/.snapfzz');
+      if (cmd === 'cef_download_start') {
+        return Promise.resolve([
+          { bytesDownloaded: 512, bytesTotal: 1024, percent: 50, status: 'downloading' },
+          { bytesDownloaded: 1024, bytesTotal: 1024, percent: 100, status: 'ready' },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    render(<AdvancedSettings />);
+
+    await user.click(screen.getByRole('button', { name: /download cef runtime/i }));
+
+    const section = await screen.findByTestId('miniapps-onboarding');
+    await waitFor(() => {
+      expect(within(section).getByText('CEF runtime ready')).toBeInTheDocument();
+    });
+
+    expect(within(section).getByText('100%')).toBeInTheDocument();
+    expect(mockInvoke).toHaveBeenCalledWith('cef_download_start');
+  });
+
+  it('A015/settings-advanced: cancel download returns onboarding to not-started state', async () => {
+    const user = userEvent.setup();
+    let resolveDownload: ((value: unknown) => void) | undefined;
+    const downloadPromise = new Promise((resolve) => {
+      resolveDownload = resolve;
+    });
+
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_data_dir') return Promise.resolve('/Users/test/.snapfzz');
+      if (cmd === 'cef_download_start') return downloadPromise;
+      return Promise.resolve(undefined);
+    });
+
+    render(<AdvancedSettings />);
+
+    await user.click(screen.getByRole('button', { name: /download cef runtime/i }));
+    await user.click(screen.getByRole('button', { name: /cancel download/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /download cef runtime/i })).toBeInTheDocument();
+    });
+
+    resolveDownload?.([
+      { bytesDownloaded: 1024, bytesTotal: 1024, percent: 100, status: 'ready' },
+    ]);
   });
 });

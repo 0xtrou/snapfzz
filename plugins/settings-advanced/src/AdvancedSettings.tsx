@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Input, Modal, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
+import MiniAppsOnboarding from './MiniAppsOnboarding';
 
 const { Text } = Typography;
 
@@ -80,6 +81,8 @@ export default function AdvancedSettings(): React.ReactElement {
               Projects, logs, and workspace metadata are stored here. Changing this requires a restart.
             </Text>
           </section>
+
+          <MiniAppsOnboarding />
 
           <section>
             <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>

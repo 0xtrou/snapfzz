@@ -28,7 +28,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["unstable"] }
+tauri = { version = "2", features = ["unstable", "test"] }
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -39,7 +39,6 @@ snapfzz-kernel = { path = "crates/snapfzz-kernel" }
 snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
 snapfzz-cef = { path = "crates/snapfzz-cef" }
-cef-rs = { package = "cef", git = "https://github.com/tauri-apps/cef-rs", branch = "dev" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

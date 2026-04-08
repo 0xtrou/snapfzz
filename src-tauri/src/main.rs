@@ -6,6 +6,8 @@ mod helpers;
 mod menus;
 mod metrics;
 
+use snapfzz_cef::download::CefDownloader;
+use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_kernel::boot::{OnPreflightInit, Phase, PreflightContext, PreflightError, PreflightService};
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
@@ -40,7 +42,14 @@ fn main() {
         Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
         Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
     ));
-    let settings_mgr = Arc::new(SettingsManager::new(data_dir));
+    let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
+    let cef_state = commands::cef::CefState {
+        runtime: Arc::new(tauri::async_runtime::Mutex::new(CefRuntime::new(&data_dir))),
+        downloader: Arc::new(
+            CefDownloader::from_current_platform(data_dir.join("runtime").join("cef"))
+                .unwrap_or_else(|_| CefDownloader::new(data_dir.join("runtime").join("cef"), "macos-arm64".to_string())),
+        ),
+    };
     let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) =
         (registry.clone(), process_mgr.clone(), process_mgr.clone(), settings_mgr.clone());
 
@@ -49,6 +58,7 @@ fn main() {
         .manage(process_mgr)
         .manage(settings_mgr)
         .manage(vault)
+        .manage(cef_state)
         .manage(result.phase_timings_dto())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings, commands::settings::save_settings, commands::settings::get_data_dir, commands::settings::set_data_dir,
@@ -59,6 +69,10 @@ fn main() {
             commands::budget::budget_record_strike, commands::budget::budget_report_violation, commands::budget::get_hardware_info,
             commands::stream::send_message, commands::stream::stop_generation, commands::stream::create_session, commands::stream::load_session,
             commands::system::agent_health, commands::system::open_preferences, commands::system::open_path, commands::system::pick_folder, commands::system::preflight_status,
+            commands::cef::cef_download_start, commands::cef::cef_download_status, commands::cef::cef_is_ready,
+            commands::cef::cef_open_window, commands::cef::cef_close_window,
+            commands::cef::cef_navigate, commands::cef::cef_go_back, commands::cef::cef_reload,
+            commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])
         .setup(move |app| {
