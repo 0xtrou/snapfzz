@@ -179,9 +179,14 @@ export default function ComponentsSettings(): React.ReactElement {
       
       // Fetch installed pip packages to detect AgentScope/LiteLLM
       try {
-        const pythonStatus = await bridge.invoke<{ installed_packages: string[] }>('python_runtime_status').catch(() => null);
+        const pythonStatus = await bridge.invoke<{ 
+          installed_packages: string[];
+          agentscope: { is_installed: boolean; version: string };
+          litellm: { is_installed: boolean; version: string };
+        }>('python_runtime_status');
         setPythonRuntime(pythonStatus);
-      } catch {
+      } catch (e) {
+        console.error('Failed to fetch python_runtime_status:', e);
         setPythonRuntime(null);
       }
     } catch (err) {
