@@ -105,6 +105,56 @@ describe('A007/settings-components: search filters components by name', () => {
   });
 });
 
+describe('A007/settings-components: grouped system packs', () => {
+  it('A007/settings-components: groups standalone and python ecosystem packs in dependency order', async () => {
+    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
+      if (cmd === 'component_list') {
+        return Promise.resolve([
+          component({ id: 'litellm', name: 'LiteLLM', isInstalled: false }),
+          component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true }),
+          component({ id: 'uv', name: 'uv', isInstalled: true, installPath: '/Users/test/.snapfzz/runtime/uv', downloadUrl: 'https://example.com/uv.tar.gz' }),
+          component({ id: 'agentscope', name: 'AgentScope', isInstalled: false }),
+          component({ id: 'python', name: 'Python', isInstalled: false }),
+        ]);
+      }
+      if (cmd === 'component_status') {
+        const id = payload?.id as string;
+        return Promise.resolve(status({ componentId: id, status: id === 'cef' || id === 'uv' ? 'ready' : 'pending' }));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    render(<ComponentsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Standalone')).toBeInTheDocument();
+      expect(screen.getAllByText('Python Ecosystem').length).toBeGreaterThan(0);
+      expect(screen.getByText('1. Python')).toBeInTheDocument();
+      expect(screen.getByText('2. AgentScope')).toBeInTheDocument();
+      expect(screen.getByText('3. LiteLLM')).toBeInTheDocument();
+    });
+
+    const cefCard = screen.getByTestId('system-component-card-cef');
+    const uvCard = screen.getByTestId('system-component-card-uv');
+    const pythonCard = screen.getByTestId('system-component-card-python');
+    const agentScopeCard = screen.getByTestId('system-component-card-agentscope');
+    const liteLlmCard = screen.getByTestId('system-component-card-litellm');
+
+    expect(within(cefCard).getByText('Chromium Embedded Framework')).toBeInTheDocument();
+    expect(screen.getByText('Foundation Runtime')).toBeInTheDocument();
+    expect(screen.getByText('Agent Integrations')).toBeInTheDocument();
+    expect(within(pythonCard).getByText('1st')).toBeInTheDocument();
+    expect(within(agentScopeCard).getByText('2nd')).toBeInTheDocument();
+    expect(within(liteLlmCard).getByText('3rd')).toBeInTheDocument();
+    expect(within(uvCard).getByText('Required by Python')).toBeInTheDocument();
+    expect(within(pythonCard).getByText('Requires uv')).toBeInTheDocument();
+    expect(within(agentScopeCard).getByText('Requires Python')).toBeInTheDocument();
+    expect(within(liteLlmCard).getByText('Requires Python')).toBeInTheDocument();
+    expect(within(agentScopeCard).getByRole('button', { name: /download/i })).toBeDisabled();
+    expect(within(liteLlmCard).getByRole('button', { name: /download/i })).toBeDisabled();
+  });
+});
+
 describe('A007/settings-components: shows installed badge for installed components', () => {
   it('A007/settings-components: displays Installed tag for ready component', async () => {
     render(<ComponentsSettings />);

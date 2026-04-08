@@ -36,11 +36,21 @@ export interface DownloadProgress {
   status: string;
 }
 
+type DependencyBadgeTone = 'default' | 'ready' | 'required';
+
+export interface DependencyBadge {
+  label: string;
+  tone?: DependencyBadgeTone;
+}
+
 interface SystemComponentCardProps {
   component: ComponentInfo;
   status?: DownloadProgress;
   busyDownload: boolean;
   busyUninstall: boolean;
+  downloadDisabled?: boolean;
+  dependencyBadges?: DependencyBadge[];
+  installOrderLabel?: string;
   onDownload: (id: string) => void;
   onCancelDownload: (id: string) => void;
   onUninstall: (id: string) => void;
@@ -59,6 +69,9 @@ export default function SystemComponentCard({
   status,
   busyDownload,
   busyUninstall,
+  downloadDisabled = false,
+  dependencyBadges,
+  installOrderLabel,
   onDownload,
   onCancelDownload,
   onUninstall,
@@ -79,18 +92,35 @@ export default function SystemComponentCard({
         background: 'var(--bg-primary)',
       }}
     >
-      <Space direction="vertical" size={10} style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <Text strong>{component.name}</Text>
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+          <Space direction="vertical" size={4} style={{ flex: 1 }}>
+            <Space size={8} wrap>
+              <Text strong>{component.name}</Text>
+              {installOrderLabel && <Tag color="blue">{installOrderLabel}</Tag>}
+              {dependencyBadges?.map((badge) => {
+                const color = badge.tone === 'ready'
+                  ? 'success'
+                  : badge.tone === 'required'
+                    ? 'warning'
+                    : undefined;
+
+                return (
+                  <Tag key={`${component.id}-${badge.label}`} color={color}>
+                    {badge.label}
+                  </Tag>
+                );
+              })}
+            </Space>
+            {component.description && (
+              <Text type="secondary" style={{ fontSize: 13 }}>{component.description}</Text>
+            )}
+          </Space>
           <Text type="secondary">{component.version || '—'}</Text>
         </div>
 
-        {component.description && (
-          <Text type="secondary" style={{ fontSize: 13 }}>{component.description}</Text>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-          <Space size={12}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Space size={12} wrap>
             <Text type="secondary">{component.platformDisplay || component.platform || 'Unknown platform'}</Text>
             {component.license && (
               <Text type="secondary" style={{ fontSize: 12 }}>License: {component.license}</Text>
@@ -132,7 +162,7 @@ export default function SystemComponentCard({
           </Text>
         </div>
 
-        <Space size={8}>
+        <Space size={8} wrap>
           {installed ? (
             <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
               Open folder
@@ -141,6 +171,7 @@ export default function SystemComponentCard({
             <AppButton
               icon={<DownloadOutlined />}
               loading={busyDownload}
+              disabled={downloadDisabled}
               onClick={() => onDownload(component.id)}
             >
               Download

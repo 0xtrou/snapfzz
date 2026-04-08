@@ -10,7 +10,7 @@ import { createTauriBridge, SettingsHeader, AppButton } from '@snapfzz/shared';
 const { Text } = Typography;
 const bridge = createTauriBridge();
 
-type PhaseTimingDto = {
+type CheckTimingDto = {
   phase: number;
   name: string;
   durationMs: number;
@@ -37,20 +37,20 @@ type BudgetSnapshot = {
   presetName?: string;
 };
 
-type PhaseIndicator = {
+type CheckIndicator = {
   icon: React.ReactElement;
   color: 'success' | 'warning' | 'error';
   label: string;
   message?: string;
 };
 
-function phaseLabel(name: string): string {
+function checkLabel(name: string): string {
   if (name.length === 0) return name;
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-function phaseIndicator(phase: PhaseTimingDto): PhaseIndicator {
-  const normalizedStatus = phase.status.toLowerCase();
+function checkIndicator(check: CheckTimingDto): CheckIndicator {
+  const normalizedStatus = check.status.toLowerCase();
   if (normalizedStatus === 'ok') {
     return {
       icon: <CheckCircleOutlined />,
@@ -64,7 +64,7 @@ function phaseIndicator(phase: PhaseTimingDto): PhaseIndicator {
       icon: <WarningOutlined />,
       color: 'warning',
       label: 'Degraded',
-      message: phase.detail ?? 'Some checks need attention.',
+      message: check.detail ?? 'Some checks need attention.',
     };
   }
 
@@ -72,13 +72,14 @@ function phaseIndicator(phase: PhaseTimingDto): PhaseIndicator {
     icon: <CloseCircleOutlined />,
     color: 'error',
     label: 'Failed',
-    message: phase.detail ?? 'Unable to complete this check.',
+      message: check.detail ?? 'Unable to complete this check.',
+
   };
 }
 
 export default function DiagnosticsSettings(): React.ReactElement {
-  const [phases, setPhases] = useState<PhaseTimingDto[]>([]);
-  const [preflightError, setPreflightError] = useState<string | null>(null);
+  const [checks, setChecks] = useState<CheckTimingDto[]>([]);
+  const [systemStatusError, setSystemStatusError] = useState<string | null>(null);
   const [hardware, setHardware] = useState<HardwareInfo | null>(null);
   const [preset, setPreset] = useState<string>('Performance');
   const [platform, setPlatform] = useState<string>('macOS (Apple Silicon)');
@@ -88,19 +89,19 @@ export default function DiagnosticsSettings(): React.ReactElement {
   const refresh = useCallback(async () => {
     setRefreshing(true);
 
-    const [preflightResult, hardwareResult, snapshotResult, componentsResult] = await Promise.allSettled([
-      bridge.invoke<PhaseTimingDto[]>('preflight_status'),
+    const [systemStatusResult, hardwareResult, snapshotResult, componentsResult] = await Promise.allSettled([
+      bridge.invoke<CheckTimingDto[]>('preflight_status'),
       bridge.invoke<HardwareInfo>('get_hardware_info'),
       bridge.invoke<BudgetSnapshot>('budget_snapshot'),
       bridge.invoke<ComponentInfo[]>('component_list'),
     ]);
 
-    if (preflightResult.status === 'fulfilled') {
-      setPhases(preflightResult.value);
-      setPreflightError(null);
+    if (systemStatusResult.status === 'fulfilled') {
+      setChecks(systemStatusResult.value);
+      setSystemStatusError(null);
     } else {
-      setPhases([]);
-      setPreflightError('Unable to load preflight status.');
+      setChecks([]);
+      setSystemStatusError('Unable to load system status.');
     }
 
     if (hardwareResult.status === 'fulfilled') {
@@ -113,7 +114,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
     }
 
     if (snapshotResult.status === 'fulfilled' && snapshotResult.value.presetName) {
-      setPreset(phaseLabel(snapshotResult.value.presetName));
+      setPreset(checkLabel(snapshotResult.value.presetName));
     }
 
     if (componentsResult.status === 'fulfilled') {
@@ -145,25 +146,25 @@ export default function DiagnosticsSettings(): React.ReactElement {
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <section>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text strong>Preflight Status</Text>
+              <Text strong>System Status</Text>
               <AppButton onClick={refresh} loading={refreshing}>
-                Re-run checks
+                Re-run
               </AppButton>
             </div>
             <List
               size="small"
               bordered
-              locale={{ emptyText: 'No preflight data available.' }}
-              dataSource={phases}
-              renderItem={(phase) => {
-                const indicator = phaseIndicator(phase);
+              locale={{ emptyText: 'No system status data available.' }}
+              dataSource={checks}
+              renderItem={(check) => {
+                const indicator = checkIndicator(check);
                 return (
-                  <List.Item key={phase.phase}>
+                  <List.Item key={check.phase}>
                     <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                      <Text>{`Phase ${phase.phase}: ${phaseLabel(phase.name)}`}</Text>
+                      <Text>{checkLabel(check.name)}</Text>
                       <Space size={12} align="center">
                         <Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {`${phase.durationMs}ms`}
+                          {`${check.durationMs}ms`}
                         </Text>
                         <Tag color={indicator.color} icon={indicator.icon}>
                           {indicator.label}
@@ -179,9 +180,9 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 );
               }}
             />
-            {preflightError && (
+            {systemStatusError && (
               <Text type="danger" style={{ marginTop: 8, display: 'block' }}>
-                {preflightError}
+                {systemStatusError}
               </Text>
             )}
           </section>

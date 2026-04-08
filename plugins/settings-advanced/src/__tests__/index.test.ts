@@ -53,6 +53,11 @@ describe('A007/settings-advanced manifest', () => {
     const section = plugin.contributes?.settingsSections?.[0];
     expect(typeof section?.component).toBe('function');
   });
+
+  it('A007/settingsSections: section order is 6 so advanced appears near bottom', () => {
+    const section = plugin.contributes?.settingsSections?.[0];
+    expect(section?.order).toBe(6);
+  });
 });
 
 describe('A005/settings-advanced activation', () => {

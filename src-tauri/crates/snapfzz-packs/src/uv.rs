@@ -34,6 +34,11 @@ impl UvComponent {
         }
     }
 
+    fn archive_path(&self) -> PathBuf {
+        self.install_dir
+            .join(format!("uv-archive{}", self.platform.archive_ext))
+    }
+
     #[cfg(test)]
     fn with_release_url(install_dir: PathBuf, platform: PlatformInfo, release_api_url: String) -> Self {
         Self {
@@ -46,6 +51,32 @@ impl UvComponent {
 
     pub fn binary_path(&self) -> PathBuf {
         self.install_dir.join(format!("uv{}", self.platform.exe_suffix))
+    }
+
+    fn cleanup_extracted_artifacts(&self, extracted: &Path) -> Result<(), ComponentError> {
+        if extracted == self.binary_path() {
+            return Ok(());
+        }
+
+        if extracted.exists() {
+            std::fs::remove_file(extracted)?;
+        }
+
+        let mut current = extracted.parent();
+        while let Some(dir) = current {
+            if dir == self.install_dir {
+                break;
+            }
+
+            match std::fs::remove_dir(dir) {
+                Ok(()) => current = dir.parent(),
+                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => break,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(error) => return Err(ComponentError::from(error)),
+            }
+        }
+
+        Ok(())
     }
 
     fn asset_name(&self) -> &'static str {
@@ -75,7 +106,10 @@ impl UvComponent {
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::copy(&extracted, &target)?;
+            if std::fs::rename(&extracted, &target).is_err() {
+                std::fs::copy(&extracted, &target)?;
+                self.cleanup_extracted_artifacts(&extracted)?;
+            }
         }
         ensure_executable(&target)?;
         Ok(())
@@ -164,9 +198,7 @@ impl SystemComponent for UvComponent {
         }
 
         let info = self.resolve().await?;
-        let archive_path = self
-            .install_dir
-            .join(format!("uv-archive{}", self.platform.archive_ext));
+        let archive_path = self.archive_path();
 
         let mut progress = download_file(
             &info.download_url,
@@ -228,10 +260,12 @@ impl SystemComponent for UvComponent {
     }
 
     async fn extract(&self) -> Result<(), ComponentError> {
-        let archive_path = self
-            .install_dir
-            .join(format!("uv-archive{}", self.platform.archive_ext));
+        let archive_path = self.archive_path();
         self.extract_archive(&archive_path)
+    }
+
+    fn status_path(&self) -> PathBuf {
+        self.binary_path()
     }
 }
 

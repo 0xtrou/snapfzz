@@ -5,7 +5,7 @@ export default definePlugin({
   id: 'snapfzz.settings.diagnostics',
   name: 'Diagnostics',
   version: '0.1.0',
-  description: 'System health and preflight diagnostics',
+  description: 'System health and startup diagnostics',
   surface: ['preferences'],
   activationEvents: ['onStartupFinished'],
 
@@ -26,7 +26,7 @@ export default definePlugin({
         id: 'diagnostics',
         label: 'Diagnostics',
         icon: 'MedicineBoxOutlined',
-        order: 60,
+        order: 8,
         component: () => import('./DiagnosticsSettings'),
       },
     ],

@@ -27,7 +27,7 @@ export default definePlugin({
         id: 'components',
         label: 'System Packs',
         icon: 'AppstoreOutlined',
-        order: 55,
+        order: 7,
         component: () => import('./ComponentsSettings'),
       },
     ],

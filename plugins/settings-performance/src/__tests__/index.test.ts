@@ -64,9 +64,9 @@ describe('A007/settings-performance manifest', () => {
     expect(typeof mod?.default).toBe('function');
   });
 
-  it('A007/settingsSections: section order is 20', () => {
+  it('A007/settingsSections: section order is 3', () => {
     const section = plugin.contributes?.settingsSections?.[0];
-    expect(section?.order).toBe(20);
+    expect(section?.order).toBe(3);
   });
 });
 

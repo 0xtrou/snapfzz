@@ -76,6 +76,15 @@ pub trait SystemComponent: Send + Sync {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
     fn install_dir(&self) -> &Path;
+
+    fn status_path(&self) -> std::path::PathBuf {
+        self.install_dir().to_path_buf()
+    }
+
+    fn visible_in_components_list(&self) -> bool {
+        true
+    }
+
     fn is_installed(&self) -> bool;
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError>;
     async fn download(&self) -> Result<Vec<DownloadProgress>, ComponentError>;
@@ -83,6 +92,14 @@ pub trait SystemComponent: Send + Sync {
     fn clear_cancel(&self);
     async fn verify(&self) -> Result<String, ComponentError>;
     async fn extract(&self) -> Result<(), ComponentError>;
+
+    async fn uninstall(&self) -> Result<(), ComponentError> {
+        let install_dir = self.install_dir();
+        if install_dir.exists() {
+            std::fs::remove_dir_all(install_dir)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

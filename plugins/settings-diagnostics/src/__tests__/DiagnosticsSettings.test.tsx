@@ -56,18 +56,18 @@ describe('A012/settings-diagnostics', () => {
 
     expect(screen.getByText('Diagnostics')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText('Preflight Status')).toBeInTheDocument();
+      expect(screen.getByText('System Status')).toBeInTheDocument();
     });
   });
 
-  it('A012/settings-diagnostics: shows all 4 preflight phases', async () => {
+  it('A012/settings-diagnostics: shows all 4 system checks', async () => {
     render(<DiagnosticsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('Phase 1: Filesystem')).toBeInTheDocument();
-      expect(screen.getByText('Phase 2: Vault')).toBeInTheDocument();
-      expect(screen.getByText('Phase 3: Settings')).toBeInTheDocument();
-      expect(screen.getByText('Phase 4: Budget')).toBeInTheDocument();
+      expect(screen.getByText('Filesystem')).toBeInTheDocument();
+      expect(screen.getByText('Vault')).toBeInTheDocument();
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+      expect(screen.getByText('Budget')).toBeInTheDocument();
     });
   });
 
@@ -175,12 +175,11 @@ describe('A012/settings-diagnostics', () => {
     render(<DiagnosticsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('Phase 1: Filesystem')).toBeInTheDocument();
+      expect(screen.getByText('Filesystem')).toBeInTheDocument();
     });
 
     const preflightCallsBefore = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'preflight_status').length;
-    const rerunButton = screen.getByRole('button', { name: /re-run checks/i });
-
+    const rerunButton = await screen.findByRole('button', { name: /re-run/i });
     await waitFor(() => {
       expect(rerunButton).toBeEnabled();
     });
@@ -246,9 +245,9 @@ describe('A012/settings-diagnostics', () => {
     });
   });
 
-  it('A012/settings-diagnostics: handles preflight_status failure gracefully', async () => {
+  it('A012/settings-diagnostics: handles system status failure gracefully', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'preflight_status') return Promise.reject(new Error('preflight unavailable'));
+      if (cmd === 'preflight_status') return Promise.reject(new Error('system status unavailable'));
       if (cmd === 'get_hardware_info') return Promise.resolve(hardware);
       if (cmd === 'budget_snapshot') return Promise.resolve({ presetName: 'balanced' });
       if (cmd === 'component_list') return Promise.resolve(components);
@@ -258,8 +257,8 @@ describe('A012/settings-diagnostics', () => {
     render(<DiagnosticsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('Unable to load preflight status.')).toBeInTheDocument();
-      expect(screen.getByText('No preflight data available.')).toBeInTheDocument();
+      expect(screen.getByText('Unable to load system status.')).toBeInTheDocument();
+      expect(screen.getByText('No system status data available.')).toBeInTheDocument();
     });
   });
 
@@ -358,8 +357,8 @@ describe('A012/settings-diagnostics', () => {
     render(<DiagnosticsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Phase 1:/)).toBeInTheDocument();
       expect(screen.getByText('Ok')).toBeInTheDocument();
+      expect(screen.queryByText('1. ')).not.toBeInTheDocument();
     });
   });
 });

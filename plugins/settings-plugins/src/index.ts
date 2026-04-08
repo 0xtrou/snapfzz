@@ -29,7 +29,7 @@ export default definePlugin({
         id: 'plugins',
         label: 'Plugins',
         icon: 'AppstoreOutlined',
-        order: 40,
+        order: 4,
         component: () => import('./PluginsSettings'),
       },
     ],

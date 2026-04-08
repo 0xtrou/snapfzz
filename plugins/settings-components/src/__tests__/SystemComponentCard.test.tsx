@@ -181,4 +181,26 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(screen.getByText('63%')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel download/i })).toBeInTheDocument();
   });
+
+  it('A007/settings-components: renders dependency badge and order label with disabled download', () => {
+    render(
+      <SystemComponentCard
+        component={makeComponent({ id: 'agentscope', name: 'AgentScope', isInstalled: false })}
+        status={makeStatus({ componentId: 'agentscope', status: 'pending' })}
+        busyDownload={false}
+        busyUninstall={false}
+        downloadDisabled={true}
+        dependencyBadges={[{ label: 'Requires Python', tone: 'required' }]}
+        installOrderLabel="2nd"
+        onDownload={vi.fn()}
+        onCancelDownload={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Requires Python')).toBeInTheDocument();
+    expect(screen.getByText('2nd')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /download/i })).toBeDisabled();
+  });
 });

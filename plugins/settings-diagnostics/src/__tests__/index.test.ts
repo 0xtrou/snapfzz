@@ -37,7 +37,7 @@ describe('A012/settings-diagnostics manifest', () => {
     expect(section?.id).toBe('diagnostics');
     expect(section?.label).toBe('Diagnostics');
     expect(section?.icon).toBe('MedicineBoxOutlined');
-    expect(section?.order).toBe(60);
+    expect(section?.order).toBe(8);
   });
 
   it('A012/settingsSections: icon is Ant Design icon name (not emoji)', () => {

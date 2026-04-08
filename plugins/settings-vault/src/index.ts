@@ -14,7 +14,7 @@ export default definePlugin({
         label: 'Secret Vault',
         icon: 'LockOutlined',
         component: () => import('./VaultSettings'),
-        order: 50,
+        order: 5,
       },
     ],
   },
