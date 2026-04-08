@@ -3,9 +3,9 @@ import { Input, List, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 import SystemComponentCard, {
   type ComponentInfo,
-  type DependencyBadge,
   type DownloadProgress,
 } from './SystemComponentCard';
+import PythonPackCard from './PythonPackCard';
 
 const { Text } = Typography;
 const bridge = createTauriBridge();
@@ -18,9 +18,8 @@ type ComponentGroup = {
   title: string;
   description: string;
   items: ComponentInfo[];
+  isPythonGroup?: boolean;
 };
-
-const ROW_MARGIN_STYLE = { marginBottom: ROW_GAP_PX };
 
 function normalize(text: string): string {
   return text.trim().toLowerCase();
@@ -31,16 +30,46 @@ function indexByOrder(id: string, order: string[]): number {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
-function dependencyBadgesFor(componentId: string): DependencyBadge[] | undefined {
-  if (componentId === 'python-runtime') {
-    return [
-      { label: 'Includes uv', tone: 'ready' },
-      { label: 'Python 3.12', tone: 'ready' },
-      { label: 'AgentScope', tone: 'ready' },
-      { label: 'LiteLLM', tone: 'ready' },
-    ];
+function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
+  const fallback = {
+    id: subPackId,
+    version: subPackId === 'python' ? '3.12' : 'latest',
+    license: subPackId === 'python' ? 'PSF-2.0' : 'MIT',
+    platformDisplay: 'Unknown',
+    downloadUrl: 'Unavailable',
+    installPath: `~/.snapfzz/runtime/${subPackId}`,
+    isInstalled: false,
+  };
+
+  if (!component) {
+    return {
+      ...fallback,
+      name: subPackId === 'uv' ? 'uv (Python Package Manager)' :
+            subPackId === 'python' ? 'Python 3.12' :
+            subPackId === 'agentscope' ? 'AgentScope' : 'LiteLLM',
+      description: subPackId === 'uv' ? 'Fast Python package manager.' :
+                   subPackId === 'python' ? 'Python runtime managed by uv.' :
+                   subPackId === 'agentscope' ? 'AI agent framework.' :
+                   'LLM proxy and model router.',
+    };
   }
-  return undefined;
+
+  return {
+    id: subPackId,
+    name: subPackId === 'uv' ? 'uv (Python Package Manager)' :
+          subPackId === 'python' ? 'Python 3.12' :
+          subPackId === 'agentscope' ? 'AgentScope' : 'LiteLLM',
+    version: component.version || fallback.version,
+    description: subPackId === 'uv' ? 'Fast Python package manager. Required for all Python runtimes.' :
+                 subPackId === 'python' ? 'Python runtime managed by uv. Required for AgentScope and Python-based packs.' :
+                 subPackId === 'agentscope' ? 'AI agent framework. Requires Python runtime.' :
+                 'LLM proxy and model router. Requires Python runtime.',
+    license: component.license || fallback.license,
+    platformDisplay: component.platformDisplay || fallback.platformDisplay,
+    downloadUrl: component.downloadUrl || fallback.downloadUrl,
+    installPath: component.installPath || fallback.installPath,
+    isInstalled: component.isInstalled,
+  };
 }
 
 export default function ComponentsSettings(): React.ReactElement {
@@ -111,18 +140,41 @@ export default function ComponentsSettings(): React.ReactElement {
   }, [components, query]);
 
   const groupedComponents = useMemo<ComponentGroup[]>(() => {
-    const sorted = [...filteredComponents].sort((a, b) =>
+    const pythonComponents = filteredComponents.filter((c) =>
+      c.id === 'uv' || c.id === 'python' || c.id === 'agentscope' || c.id === 'litellm'
+    ).sort((a, b) => {
+      const order = ['uv', 'python', 'agentscope', 'litellm'];
+      return order.indexOf(a.id) - order.indexOf(b.id);
+    });
+
+    const otherComponents = filteredComponents.filter((c) =>
+      !['uv', 'python', 'agentscope', 'litellm'].includes(c.id)
+    ).sort((a, b) =>
       indexByOrder(a.id, COMPONENT_ORDER) - indexByOrder(b.id, COMPONENT_ORDER)
     );
 
-    return [
-      {
-        key: 'all',
-        title: 'System Packs',
-        description: 'Install runtime components for your AI agent environment.',
-        items: sorted,
-      },
-    ];
+    const groups: ComponentGroup[] = [];
+
+    if (pythonComponents.length > 0) {
+      groups.push({
+        key: 'python-ecosystem',
+        title: 'Python Runtime',
+        description: 'Python runtime and dependencies for AI agent development.',
+        items: pythonComponents,
+        isPythonGroup: true,
+      });
+    }
+
+    if (otherComponents.length > 0) {
+      groups.push({
+        key: 'standalone',
+        title: 'Standalone Packs',
+        description: 'Independent runtime components.',
+        items: otherComponents,
+      });
+    }
+
+    return groups;
   }, [filteredComponents]);
 
   const handleDownload = useCallback(async (id: string) => {
@@ -162,30 +214,53 @@ export default function ComponentsSettings(): React.ReactElement {
     void bridge.invoke<void>('open_path', { path });
   }, []);
 
-  const renderComponentList = useCallback((items: ComponentInfo[]) => (
-    <List
-      loading={loading}
-      dataSource={items}
-      split={false}
-      locale={{ emptyText: 'No packs available.' }}
-      style={{ display: 'flex', flexDirection: 'column', rowGap: ROW_GAP_PX }}
-      renderItem={(component) => (
-        <List.Item key={component.id} style={ROW_MARGIN_STYLE}>
-          <SystemComponentCard
-            component={component}
-            status={statusById[component.id]}
-            busyDownload={downloadBusyId === component.id}
-            busyUninstall={uninstallBusyId === component.id}
-            dependencyBadges={dependencyBadgesFor(component.id)}
-            onDownload={handleDownload}
-            onCancelDownload={handleCancelDownload}
-            onUninstall={handleUninstall}
-            onOpenFolder={handleOpenFolder}
-          />
-        </List.Item>
-      )}
-    />
-  ), [
+  const renderComponentList = useCallback((items: ComponentInfo[], isPythonGroup?: boolean) => {
+    if (isPythonGroup) {
+      const uv = items.find((c) => c.id === 'uv');
+      const python = items.find((c) => c.id === 'python');
+      const agentscope = items.find((c) => c.id === 'agentscope');
+      const litellm = items.find((c) => c.id === 'litellm');
+
+      return (
+        <PythonPackCard
+          uv={mapComponentToSubPack(uv, 'uv')}
+          python={mapComponentToSubPack(python, 'python')}
+          agentscope={agentscope ? mapComponentToSubPack(agentscope, 'agentscope') : undefined}
+          litellm={litellm ? mapComponentToSubPack(litellm, 'litellm') : undefined}
+          busyDownload={downloadBusyId}
+          busyUninstall={uninstallBusyId}
+          onDownload={handleDownload}
+          onCancelDownload={handleCancelDownload}
+          onUninstall={handleUninstall}
+          onOpenFolder={handleOpenFolder}
+        />
+      );
+    }
+
+    return (
+      <List
+        loading={loading}
+        dataSource={items}
+        split={false}
+        locale={{ emptyText: 'No packs available.' }}
+        style={{ display: 'flex', flexDirection: 'column', rowGap: ROW_GAP_PX }}
+        renderItem={(component) => (
+          <List.Item key={component.id} style={{ marginBottom: ROW_GAP_PX }}>
+            <SystemComponentCard
+              component={component}
+              status={statusById[component.id]}
+              busyDownload={downloadBusyId === component.id}
+              busyUninstall={uninstallBusyId === component.id}
+              onDownload={handleDownload}
+              onCancelDownload={handleCancelDownload}
+              onUninstall={handleUninstall}
+              onOpenFolder={handleOpenFolder}
+            />
+          </List.Item>
+        )}
+      />
+    );
+  }, [
     downloadBusyId,
     handleCancelDownload,
     handleDownload,
@@ -224,7 +299,7 @@ export default function ComponentsSettings(): React.ReactElement {
                     <Text strong>{group.title}</Text>
                     <Text type="secondary" style={{ fontSize: 12 }}>{group.description}</Text>
                   </Space>
-                  {renderComponentList(group.items)}
+                  {renderComponentList(group.items, group.isPythonGroup)}
                 </section>
               ))}
             </Space>

@@ -37,7 +37,6 @@ function component(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function setTestId(id: string): string {
   return id.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 }
 
