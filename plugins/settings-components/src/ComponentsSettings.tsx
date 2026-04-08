@@ -64,19 +64,29 @@ function checkAgentscopeInstalled(installedPackages: string[]): boolean {
 }
 
 function getAgentscopeVersion(pythonRuntime: typeof pythonRuntime): string {
-  if (!pythonRuntime) return 'latest';
+  if (!pythonRuntime) return '0.4.0';
   if (pythonRuntime.agentscope.is_installed && pythonRuntime.agentscope.version) {
     return pythonRuntime.agentscope.version;
   }
   if (pythonRuntime.agentscope_runtime.is_installed && pythonRuntime.agentscope_runtime.version) {
     return pythonRuntime.agentscope_runtime.version;
   }
-  return 'latest';
+  return '0.4.0';
+}
+
+function getLitellmVersion(pythonRuntime: typeof pythonRuntime): string {
+  return pythonRuntime?.litellm.is_installed && pythonRuntime.litellm.version
+    ? pythonRuntime.litellm.version
+    : '1.61.0';
 }
 
 function isAgentscopeInstalled(pythonRuntime: typeof pythonRuntime): boolean {
   if (!pythonRuntime) return false;
   return pythonRuntime.agentscope.is_installed || pythonRuntime.agentscope_runtime.is_installed;
+}
+
+function isLitellmInstalled(pythonRuntime: typeof pythonRuntime): boolean {
+  return pythonRuntime?.litellm.is_installed || false;
 }
 
 function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
@@ -320,8 +330,8 @@ export default function ComponentsSettings(): React.ReactElement {
 
       agentscope.isInstalled = isAgentscopeInstalled(pythonRuntime);
       agentscope.version = getAgentscopeVersion(pythonRuntime);
-      litellm.isInstalled = pythonRuntime?.litellm.is_installed || false;
-      litellm.version = pythonRuntime?.litellm.version || 'latest';
+      litellm.isInstalled = isLitellmInstalled(pythonRuntime);
+      litellm.version = getLitellmVersion(pythonRuntime);
 
       const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
