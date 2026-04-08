@@ -59,25 +59,25 @@ function isPipPackageInstalled(packageName: string, installedPackages: string[])
 function checkAgentscopeInstalled(installedPackages: string[]): boolean {
   return installedPackages.some(pkg => {
     const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-    return name === 'agentscope' || name === 'agentscope-runtime' || name.startsWith('agentscope');
+    return name === 'agentscope' || name === 'agentscope-runtime';
   });
 }
 
 function getAgentscopeVersion(pythonRuntime: typeof pythonRuntime): string {
-  if (!pythonRuntime) return '0.4.0';
-  if (pythonRuntime.agentscope.is_installed && pythonRuntime.agentscope.version) {
-    return pythonRuntime.agentscope.version;
-  }
+  if (!pythonRuntime) return '1.0.18';
   if (pythonRuntime.agentscope_runtime.is_installed && pythonRuntime.agentscope_runtime.version) {
     return pythonRuntime.agentscope_runtime.version;
   }
-  return '0.4.0';
+  if (pythonRuntime.agentscope.is_installed && pythonRuntime.agentscope.version) {
+    return pythonRuntime.agentscope.version;
+  }
+  return '1.0.18';
 }
 
 function getLitellmVersion(pythonRuntime: typeof pythonRuntime): string {
   return pythonRuntime?.litellm.is_installed && pythonRuntime.litellm.version
     ? pythonRuntime.litellm.version
-    : '1.61.0';
+    : '1.83.4';
 }
 
 function isAgentscopeInstalled(pythonRuntime: typeof pythonRuntime): boolean {
