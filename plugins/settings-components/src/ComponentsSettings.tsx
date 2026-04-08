@@ -221,11 +221,7 @@ export default function ComponentsSettings(): React.ReactElement {
     try {
       const packIds = ['uv', 'python', 'agentscope', 'litellm'];
       for (const packId of packIds) {
-        try {
-          await bridge.invoke<DownloadProgress[]>('component_download', { id: packId });
-        } catch {
-          // Skip failed packs
-        }
+        await bridge.invoke<DownloadProgress[]>('component_download', { id: packId }).catch(() => {});
       }
       await refreshComponents();
     } finally {
@@ -238,11 +234,7 @@ export default function ComponentsSettings(): React.ReactElement {
     try {
       const packIds = ['litellm', 'agentscope', 'python', 'uv'];
       for (const packId of packIds) {
-        try {
-          await bridge.invoke<void>('component_uninstall', { id: packId });
-        } catch {
-          // Skip failed packs
-        }
+        await bridge.invoke<void>('component_uninstall', { id: packId }).catch(() => {});
       }
       await refreshComponents();
     } finally {
