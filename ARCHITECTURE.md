@@ -42,9 +42,9 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 
 | Crate | Owns | Does NOT own |
 |---|---|---|
-| **snapfzz-kernel** | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save), components trait (SystemComponent), shared types | Tauri commands, runtime lifecycle, window management |
-| **snapfzz-runtime** | Runtime lifecycle for AgentScope, LiteLLM, CEF. Runtime trait with `is_runtime_ready()`. RuntimeManager orchestration. Health checks. | Component downloads, budget gating, Tauri commands |
-| **snapfzz-packs** | System component downloads (uv, Python, CEF, AgentScope, LiteLLM). Implements SystemComponent trait. | Runtime lifecycle, process spawning |
+| **snapfzz-kernel** | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save), components trait (SystemComponent), sandbox trait (SandboxBackend), shared types | Tauri commands, runtime lifecycle, window management |
+| **snapfzz-runtime** | Runtime lifecycle for AgentScope, LiteLLM, CEF. Runtime trait with `is_runtime_ready()`. RuntimeManager orchestration. Health checks. Sandbox (MicrovmRuntime, SandboxManager). | Component downloads, budget gating, Tauri commands |
+| **snapfzz-packs** | System component downloads (uv, Python, CEF, AgentScope, LiteLLM, Firecracker). Implements SystemComponent trait. | Runtime lifecycle, process spawning |
 | **snapfzz-stream** | SSE consumer, token batching at `batch_interval_ms`, Channel callback | Tauri Channel type, HTTP client config |
 | **snapfzz-vault** | AES-256-GCM encryption, master key (keychain/keyfile), vault file I/O, rate limiting | Tauri commands, plugin access policy |
 | **snapfzz-llm** | LiteLLM config.yaml generation, virtual key management (/key/* proxy), spend tracking (/spend/* proxy) | LiteLLM process lifecycle (snapfzz-runtime owns that) |
@@ -333,5 +333,6 @@ All specs live in `docs/plans/` and `docs/ui-specs/`. They reference this file f
 | A014 | Kernel Architecture | Crate separation, main.rs orchestrator |
 | A015 | Mini App Runtime | CEF, full-stack plugin apps, bookmarks |
 | A016 | Runtime Architecture | Runtime trait, RuntimeManager, is_runtime_ready |
+| A017 | MicroVM Sandbox | SandboxBackend trait, FirecrackerPack, MicrovmRuntime lifecycle |
 | U001-U010 | UI Specs | Navigation, responsive, design system, etc. |
 | U011 | Vault Settings | Vault management UI |
