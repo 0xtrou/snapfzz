@@ -10,20 +10,28 @@ fn get_runtime_dir(settings: &State<'_, Arc<SettingsManager>>) -> String {
         .unwrap_or_else(|| "~/.snapfzz/runtime".to_string())
 }
 
+fn get_python_packages_dir(settings: &State<'_, Arc<SettingsManager>>) -> PathBuf {
+    let runtime_path = get_runtime_dir(settings);
+    PathBuf::from(&runtime_path).join("python").join("packages")
+}
+
 #[tauri::command]
 pub async fn python_pip_install_packages(
     settings: State<'_, Arc<SettingsManager>>,
 ) -> Result<String, String> {
     let runtime_path = get_runtime_dir(&settings);
+    let packages_dir = get_python_packages_dir(&settings);
     let python_bin = PathBuf::from(&runtime_path).join("bin").join("python");
     
     if !python_bin.exists() {
         return Err("Python not installed. Please install Python first.".to_string());
     }
     
+    std::fs::create_dir_all(&packages_dir)
+        .map_err(|e| format!("Failed to create packages directory: {}", e))?;
+    
     let uv_bin = PathBuf::from(&runtime_path).join("bin").join("uv");
     
-    // Install specific versions
     let packages = vec![
         "agentscope==1.0.18",
         "agentscope-runtime==1.1.3",
@@ -33,6 +41,8 @@ pub async fn python_pip_install_packages(
     let output = Command::new(&uv_bin)
         .arg("pip")
         .arg("install")
+        .arg("--target")
+        .arg(&packages_dir)
         .args(&packages)
         .env("PATH", format!("{}/bin:{}", runtime_path, std::env::var("PATH").unwrap_or_default()))
         .output()
@@ -82,6 +92,7 @@ pub async fn python_runtime_status(
     settings: State<'_, Arc<SettingsManager>>,
 ) -> Result<PythonRuntimeStatus, String> {
     let runtime_path = get_runtime_dir(&settings);
+    let packages_dir = get_python_packages_dir(&settings);
     let python_bin = PathBuf::from(&runtime_path).join("bin").join("python");
     let uv_bin = PathBuf::from(&runtime_path).join("bin").join("uv");
     
@@ -114,12 +125,15 @@ pub async fn python_runtime_status(
         (false, None)
     };
     
-    let installed_packages: Vec<String> = if uv_installed && python_installed {
+    // List installed packages from ~/.snapfzz/runtime/python/packages/
+    let installed_packages: Vec<String> = if packages_dir.exists() {
         let output = Command::new(&uv_bin)
             .arg("pip")
             .arg("list")
             .arg("--format")
             .arg("freeze")
+            .arg("--path")
+            .arg(&packages_dir)
             .output()
             .ok();
         output
@@ -136,7 +150,6 @@ pub async fn python_runtime_status(
         vec![]
     };
     
-    // Check for specific packages
     let agentscope_version = find_package_in_list("agentscope", &installed_packages);
     let agentscope_is_installed = agentscope_version.is_some();
     let agentscope_runtime_version = find_package_in_list("agentscope-runtime", &installed_packages);
