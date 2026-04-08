@@ -3,6 +3,7 @@ import { Divider, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  DeleteOutlined,
   DownloadOutlined,
   FolderOpenOutlined,
   PythonOutlined,
