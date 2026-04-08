@@ -4,9 +4,9 @@ Settings plugin that manages AI provider configuration, model discovery, usage m
 
 ## Decision
 
-Provider configuration with SQLite-backed usage metering and budget enforcement. User enters **Base URL** + **API Key**, we fetch **Model List** from `/v1/models`.
+Provider configuration with multi-account support and SQLite-backed usage metering. Each provider (OpenAI, Anthropic, etc.) can have **multiple API accounts** — each account is one API key with its own name, budget, and usage tracking.
 
-API keys stored in A011 Secret Vault (key IDs only, never raw keys in config). Usage stored in SQLite with pre-optimized indexes for 20k+ requests/day. Budget enforcement blocks calls when limits exceeded.
+API keys stored in A011 Secret Vault (key IDs only, never raw keys in DB). Usage stored in SQLite with pre-optimized indexes for 20k+ requests/day. Budget enforcement blocks calls per-account when limits exceeded.
 
 ---
 
@@ -65,11 +65,22 @@ CREATE TABLE IF NOT EXISTS providers (
     name        TEXT NOT NULL,
     kind        TEXT NOT NULL CHECK(kind IN ('openai-compat', 'anthropic-compat')),
     base_url    TEXT NOT NULL,
-    api_key_ref TEXT,               -- A011 vault key ID, never raw key
     enabled     INTEGER NOT NULL DEFAULT 1,
     builtin     INTEGER NOT NULL DEFAULT 0,
     created_at  INTEGER NOT NULL,   -- Unix ms
     updated_at  INTEGER NOT NULL    -- Unix ms
+);
+
+-- Each provider can have multiple API accounts (keys)
+CREATE TABLE IF NOT EXISTS accounts (
+    id              TEXT PRIMARY KEY,           -- UUIDv4
+    provider_id     TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,              -- "Personal", "Work", "Team Budget"
+    api_key_ref     TEXT NOT NULL,              -- A011 vault key ID, never raw key
+    is_default      INTEGER NOT NULL DEFAULT 0, -- one default per provider
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (
@@ -91,8 +102,10 @@ CREATE TABLE IF NOT EXISTS usage (
     id                    TEXT PRIMARY KEY,  -- UUIDv7 (time-sortable)
     timestamp             INTEGER NOT NULL,  -- Unix ms
     provider_id           TEXT NOT NULL,
+    account_id            TEXT NOT NULL,     -- which API key was used
     model                 TEXT NOT NULL,
     session_id            TEXT,
+    combo_id              TEXT,              -- NULL if direct call, combo ID if routed
     input_tokens          INTEGER NOT NULL DEFAULT 0,
     output_tokens         INTEGER NOT NULL DEFAULT 0,
     cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
@@ -104,8 +117,9 @@ CREATE TABLE IF NOT EXISTS usage (
     error_code            TEXT
 );
 
+-- Budgets are per-account, not per-provider
 CREATE TABLE IF NOT EXISTS budgets (
-    provider_id         TEXT PRIMARY KEY REFERENCES providers(id) ON DELETE CASCADE,
+    account_id          TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     daily_limit_usd     REAL,           -- NULL = no limit
     monthly_limit_usd   REAL,           -- NULL = no limit
     warn_at_percent     TEXT NOT NULL DEFAULT '[80,90]',  -- JSON array
@@ -116,15 +130,19 @@ CREATE TABLE IF NOT EXISTS budgets (
 ### Indexes — Pre-Optimized for 20k req/day
 
 ```sql
--- Budget check: SUM cost for today/month per provider (called before EVERY API call)
+-- Budget check: SUM cost for today/month per account (called before EVERY API call)
 -- At 20k req/day = ~600k rows/month. This index makes budget check O(log n).
 CREATE INDEX IF NOT EXISTS idx_usage_budget_check
-    ON usage(provider_id, timestamp)
+    ON usage(account_id, timestamp)
     WHERE status = 'success';
 
 -- Usage summary: aggregate cost by provider + date range (dashboard queries)
 CREATE INDEX IF NOT EXISTS idx_usage_summary
     ON usage(provider_id, timestamp, cost_usd);
+
+-- Usage by account: per-account spend breakdown
+CREATE INDEX IF NOT EXISTS idx_usage_by_account
+    ON usage(account_id, timestamp, cost_usd);
 
 -- Usage by model: breakdown per model (analytics)
 CREATE INDEX IF NOT EXISTS idx_usage_by_model
@@ -138,23 +156,27 @@ CREATE INDEX IF NOT EXISTS idx_usage_by_session
 -- Model lookup: fast model list per provider
 CREATE INDEX IF NOT EXISTS idx_models_provider
     ON models(provider_id, pinned DESC, id);
+
+-- Account lookup: fast account list per provider
+CREATE INDEX IF NOT EXISTS idx_accounts_provider
+    ON accounts(provider_id, is_default DESC, name);
 ```
 
 ### Query Patterns (Pre-Optimized)
 
 ```sql
--- Budget check: daily spend (called before every API call, must be < 1ms)
+-- Budget check: daily spend per account (called before every API call, must be < 1ms)
 -- Uses idx_usage_budget_check covering index
 SELECT COALESCE(SUM(cost_usd), 0.0) AS daily_spend
 FROM usage
-WHERE provider_id = ?1
+WHERE account_id = ?1
   AND timestamp >= ?2    -- start of today UTC
   AND status = 'success';
 
--- Budget check: monthly spend
+-- Budget check: monthly spend per account
 SELECT COALESCE(SUM(cost_usd), 0.0) AS monthly_spend
 FROM usage
-WHERE provider_id = ?1
+WHERE account_id = ?1
   AND timestamp >= ?2    -- start of month UTC
   AND status = 'success';
 
@@ -169,11 +191,25 @@ FROM usage
 WHERE timestamp BETWEEN ?1 AND ?2
 GROUP BY provider_id;
 
+-- Usage summary: per-account breakdown within a provider
+SELECT u.account_id, a.name AS account_name,
+       COUNT(*) AS request_count,
+       SUM(u.cost_usd) AS total_cost,
+       SUM(u.input_tokens + u.output_tokens) AS total_tokens
+FROM usage u
+JOIN accounts a ON a.id = u.account_id
+WHERE u.provider_id = ?1
+  AND u.timestamp BETWEEN ?2 AND ?3
+GROUP BY u.account_id
+ORDER BY total_cost DESC;
+
 -- Usage detail: paginated list (scrollable table)
-SELECT * FROM usage
-WHERE provider_id = COALESCE(?1, provider_id)
-  AND timestamp BETWEEN ?2 AND ?3
-ORDER BY timestamp DESC
+SELECT u.*, a.name AS account_name
+FROM usage u
+LEFT JOIN accounts a ON a.id = u.account_id
+WHERE u.provider_id = COALESCE(?1, u.provider_id)
+  AND u.timestamp BETWEEN ?2 AND ?3
+ORDER BY u.timestamp DESC
 LIMIT ?4 OFFSET ?5;
 
 -- Usage by model: model breakdown for a provider (pie chart data)
@@ -194,6 +230,17 @@ SELECT DATE(timestamp / 1000, 'unixepoch') AS day,
 FROM usage
 WHERE provider_id = ?1
   AND timestamp >= ?2   -- 30 days ago
+  AND status = 'success'
+GROUP BY day
+ORDER BY day;
+
+-- Account spend trend: per-account daily spend
+SELECT DATE(timestamp / 1000, 'unixepoch') AS day,
+       account_id,
+       SUM(cost_usd) AS daily_cost
+FROM usage
+WHERE account_id = ?1
+  AND timestamp >= ?2
   AND status = 'success'
 GROUP BY day
 ORDER BY day;
@@ -232,9 +279,22 @@ pub struct Provider {
     pub name: String,
     pub kind: ProviderKind,
     pub base_url: String,
-    pub api_key_ref: Option<String>,  // A011 vault key ID
     pub enabled: bool,
     pub builtin: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub accounts: Vec<Account>,  // loaded via JOIN, not stored inline
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Account {
+    pub id: String,              // UUIDv4
+    pub provider_id: String,
+    pub name: String,            // "Personal", "Work", "Team Budget"
+    pub api_key_ref: String,     // A011 vault key ID
+    pub is_default: bool,
+    pub enabled: bool,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -268,13 +328,12 @@ pub fn seed(conn: &Connection) -> Result<(), LlmError> {
 
         INSERT OR IGNORE INTO providers (id, name, kind, base_url, enabled, builtin, created_at, updated_at)
         VALUES ('anthropic', 'Anthropic', 'anthropic-compat', 'https://api.anthropic.com/v1', 1, 1, 0, 0);
-
-        INSERT OR IGNORE INTO budgets (provider_id) VALUES ('openai');
-        INSERT OR IGNORE INTO budgets (provider_id) VALUES ('anthropic');
     ")?;
     Ok(())
 }
 ```
+
+Accounts are added by the user — no seed accounts. Built-in providers start with 0 accounts until user adds an API key.
 
 ---
 
@@ -313,7 +372,437 @@ OpenAI `/v1/models` returns `{ data: [{ id, ... }] }`. Anthropic returns `{ data
 
 ---
 
-## 4. Usage Metering
+## 4. Model Combos (Routing)
+
+A combo groups multiple models (potentially across different providers/accounts) behind a single virtual endpoint. When the agent calls a combo, the router picks which real model to use based on the selected strategy.
+
+### Combo Schema
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCombo {
+    pub id: String,                  // UUIDv4
+    pub name: String,               // "Fast Coding", "Budget Mix"
+    pub strategy: RoutingStrategy,
+    pub models: Vec<ComboModel>,
+    pub enabled: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComboModel {
+    pub provider_id: String,
+    pub account_id: String,
+    pub model_id: String,            // "gpt-4o", "claude-sonnet-4-20250514"
+    pub weight: u32,                 // for Weighted strategy (0-100)
+    pub priority: u32,               // for Priority/Fallback (lower = higher priority)
+    pub max_daily_requests: Option<u64>,  // per-model cap within combo
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RoutingStrategy {
+    Priority,       // sequential fallback: try model 1, if fails try model 2, etc.
+    Weighted,       // distribute by weight percentage (e.g. 70% gpt-4o, 30% claude)
+    RoundRobin,     // rotate evenly across models
+    Random,         // random selection
+    LeastUsed,      // route to model with least requests today
+    CostOptimized,  // pick cheapest model that fits the request
+    Fallback,       // use primary until budget/rate exceeded, then fallback
+}
+```
+
+### SQL Tables
+
+```sql
+CREATE TABLE IF NOT EXISTS combos (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    strategy    TEXT NOT NULL CHECK(strategy IN (
+        'priority', 'weighted', 'round-robin', 'random',
+        'least-used', 'cost-optimized', 'fallback'
+    )),
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS combo_models (
+    combo_id            TEXT NOT NULL REFERENCES combos(id) ON DELETE CASCADE,
+    provider_id         TEXT NOT NULL REFERENCES providers(id),
+    account_id          TEXT NOT NULL REFERENCES accounts(id),
+    model_id            TEXT NOT NULL,
+    weight              INTEGER NOT NULL DEFAULT 0,
+    priority            INTEGER NOT NULL DEFAULT 0,
+    max_daily_requests  INTEGER,
+    PRIMARY KEY (combo_id, provider_id, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_combo_models_combo
+    ON combo_models(combo_id, priority, weight DESC);
+```
+
+### Routing Logic
+
+```rust
+pub fn route(conn: &Connection, combo: &ModelCombo) -> Result<ResolvedModel, LlmError> {
+    let candidates: Vec<ComboModel> = combo.models.iter()
+        .filter(|m| is_within_daily_cap(conn, m))
+        .filter(|m| check_budget(conn, &m.account_id)?.is_allowed())
+        .collect();
+
+    if candidates.is_empty() {
+        return Err(LlmError::AllModelsExhausted(combo.id.clone()));
+    }
+
+    match combo.strategy {
+        RoutingStrategy::Priority => {
+            // sorted by priority, return first available
+            Ok(candidates.into_iter().min_by_key(|m| m.priority).unwrap().into())
+        }
+        RoutingStrategy::Weighted => {
+            // weighted random selection
+            let total: u32 = candidates.iter().map(|m| m.weight).sum();
+            let roll = rand(0..total);
+            // ... pick based on cumulative weights
+        }
+        RoutingStrategy::RoundRobin => {
+            // track last-used index in memory, rotate
+        }
+        RoutingStrategy::Random => {
+            // uniform random from candidates
+        }
+        RoutingStrategy::LeastUsed => {
+            // query usage count today per model, pick lowest
+        }
+        RoutingStrategy::CostOptimized => {
+            // sort by input_cost_per_token ASC, pick cheapest
+        }
+        RoutingStrategy::Fallback => {
+            // use priority[0] until budget exceeded, then next
+        }
+    }
+}
+```
+
+### ResolvedModel
+
+The output of routing — tells the caller exactly which provider/account/model to use:
+
+```rust
+pub struct ResolvedModel {
+    pub provider_id: String,
+    pub account_id: String,
+    pub model_id: String,
+    pub base_url: String,       // from provider
+    pub api_key_ref: String,    // from account, for vault lookup
+    pub kind: ProviderKind,     // for auth header construction
+    pub combo_id: Option<String>, // if routed through a combo
+}
+```
+
+### Tauri Commands (Combos)
+
+```rust
+#[tauri::command] async fn get_combos() -> Result<Vec<ModelCombo>, String>
+#[tauri::command] async fn save_combo(combo: ModelCombo) -> Result<(), String>
+#[tauri::command] async fn delete_combo(combo_id: String) -> Result<(), String>
+#[tauri::command] async fn test_combo(combo_id: String) -> Result<ResolvedModel, String>
+```
+
+### UI Layout (Combo Section)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Model Combos                               [Add Combo]   │
+├──────────────────────────────────────────────────────────┤
+│ ▼ Fast Coding                              Priority      │
+│   1. gpt-4o (OpenAI/Personal)                            │
+│   2. claude-sonnet-4-20250514 (Anthropic/Work)                  │
+│   3. gpt-4o-mini (OpenAI/Personal)          [fallback]   │
+├──────────────────────────────────────────────────────────┤
+│ ▶ Budget Mix                               Weighted      │
+│   gpt-4o-mini 70% / claude-haiku 30%                     │
+├──────────────────────────────────────────────────────────┤
+│ ▶ Round Robin Pool                         Round Robin   │
+│   3 models across 2 providers                            │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Tests (Combos)
+
+```rust
+// A013/Combo: save_combo persists with strategy
+// A013/Combo: delete_combo cascades to combo_models
+// A013/Combo: route Priority returns first available model
+// A013/Combo: route Priority skips budget-exceeded models
+// A013/Combo: route Weighted distributes within 5% of target weights
+// A013/Combo: route RoundRobin cycles through models evenly
+// A013/Combo: route CostOptimized picks cheapest available
+// A013/Combo: route Fallback switches on budget exhaustion
+// A013/Combo: route returns error when all models exhausted
+// A013/Combo: route respects max_daily_requests per model
+```
+
+---
+
+## 5. Audit Log Dashboard
+
+A real-time request log — every LLM API call recorded and browsable. Inspired by LiteLLM's audit log UI, adapted to Snapfzz's Ant Design system.
+
+### UI Layout
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ LLM Providers › Request Logs                              [Export CSV]  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ [● Recording]  [Search model, provider, account, combo...]              │
+│                                                                          │
+│ [All Accounts ▾]  [All Providers ▾]  [All Models ▾]  [Newest ▾]         │
+│                                                                          │
+│  300 total   285 OK   12 combo   3 errors   300 shown       [↻]        │
+│                                                                          │
+│ [All] [Errors] [Success] [Combo]    [CLAUDE] [OPENAI] [OLLAMA]          │
+│                                                                          │
+│ COLUMNS: Status Model Requested Provider Account API Key Combo          │
+│          Tokens Duration Time                                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│ STATUS  MODEL         REQUESTED          PROVIDER  ACCOUNT  API KEY     │
+│         COMBO         TOKENS             DURATION  TIME                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│ [200]   gpt-4o        codex/gpt-4o       OPENAI    Personal  ●●●sk-12  │
+│         —             I: 1,204  O: 342   2.1s      14:23:05            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ [200]   claude-sonnet claude/claude-son.  CLAUDE    Work      ●●●sk-ab  │
+│         fast-coding   I: 52,891 O: 1,204 8.3s      14:22:58            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ [429]   gpt-4o-mini   codex/gpt-4o-mini  OPENAI    Personal  ●●●sk-12  │
+│         budget-mix    I: 0      O: 0     0.1s      14:22:51            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ [500]   claude-haiku  claude/claude-hai.  CLAUDE    Work      ●●●sk-ab  │
+│         —             I: 892    O: 0     12.4s     14:22:44            │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Features
+
+**Filters (top bar):**
+- Full-text search across model, provider, account, combo, error code
+- Dropdown filters: Account, Provider, Model (multi-select)
+- Sort: Newest, Oldest, Slowest, Most Tokens, Highest Cost
+- Status filter tabs: All / Errors / Success / Combo-routed
+
+**Provider badges:** Colored tags per provider (CLAUDE = purple, OPENAI = green, OLLAMA = gray). Colors from provider config.
+
+**Stats bar:** Live counters — total requests, OK count, combo-routed count, error count, shown count. Updates as filters change.
+
+**Column toggles:** User can show/hide columns. Persisted in settings.
+
+**Row detail:** Click a row to expand inline detail view:
+```
+┌─────────────────────────────────────────────────────────┐
+│ Request Detail                                           │
+│                                                          │
+│ ID:          01926f3a-7b2c-7def-8123-456789abcdef        │
+│ Session:     chat-session-abc123                          │
+│ Timestamp:   2026-04-08 14:23:05.123 UTC                 │
+│                                                          │
+│ Tokens:                                                  │
+│   Input: 1,204   Output: 342   Cache Read: 800           │
+│   Cache Create: 0   Reasoning: 0                         │
+│                                                          │
+│ Cost:        $0.0043                                     │
+│ Latency:     2,134ms                                     │
+│ Status:      200                                         │
+│ Error:       —                                           │
+│                                                          │
+│ Combo:       fast-coding (Priority strategy)              │
+│ Resolved:    gpt-4o via OpenAI/Personal                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Export:** CSV download of filtered results (all columns).
+
+**Recording indicator:** Green dot = actively recording new requests. Can be paused.
+
+### SQL Support
+
+The audit log reads from the `usage` table with JOINs:
+
+```sql
+-- Audit log: filtered, paginated, with provider/account names
+SELECT
+    u.id,
+    u.timestamp,
+    u.status,
+    u.model,
+    u.provider_id,
+    p.name AS provider_name,
+    p.kind AS provider_kind,
+    u.account_id,
+    a.name AS account_name,
+    SUBSTR(a.api_key_ref, -4) AS api_key_hint,
+    u.input_tokens,
+    u.output_tokens,
+    u.cache_read_tokens,
+    u.reasoning_tokens,
+    u.cost_usd,
+    u.latency_ms,
+    u.error_code,
+    u.session_id,
+    u.combo_id
+FROM usage u
+LEFT JOIN providers p ON p.id = u.provider_id
+LEFT JOIN accounts a ON a.id = u.account_id
+WHERE (?1 IS NULL OR u.provider_id = ?1)
+  AND (?2 IS NULL OR u.account_id = ?2)
+  AND (?3 IS NULL OR u.model = ?3)
+  AND (?4 IS NULL OR u.status = ?4)
+  AND u.timestamp BETWEEN ?5 AND ?6
+ORDER BY u.timestamp DESC
+LIMIT ?7 OFFSET ?8;
+
+-- Stats counters for current filter
+SELECT
+    COUNT(*) AS total,
+    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS ok_count,
+    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
+    SUM(CASE WHEN combo_id IS NOT NULL THEN 1 ELSE 0 END) AS combo_count
+FROM usage
+WHERE (?1 IS NULL OR provider_id = ?1)
+  AND (?2 IS NULL OR account_id = ?2)
+  AND timestamp BETWEEN ?3 AND ?4;
+
+-- Full-text search (requires idx_usage_search)
+SELECT u.* FROM usage u
+WHERE u.model LIKE '%' || ?1 || '%'
+   OR u.provider_id LIKE '%' || ?1 || '%'
+   OR u.error_code LIKE '%' || ?1 || '%'
+ORDER BY u.timestamp DESC
+LIMIT 100;
+```
+
+### Additional Index for Audit Log
+
+```sql
+-- Full-text search support
+CREATE INDEX IF NOT EXISTS idx_usage_search
+    ON usage(model, provider_id, status);
+
+-- Combo filter
+CREATE INDEX IF NOT EXISTS idx_usage_combo
+    ON usage(combo_id, timestamp)
+    WHERE combo_id IS NOT NULL;
+```
+
+### Tauri Commands (Audit Log)
+
+```rust
+#[tauri::command] async fn get_audit_log(
+    provider_id: Option<String>,
+    account_id: Option<String>,
+    model: Option<String>,
+    status: Option<String>,
+    search: Option<String>,
+    sort: AuditSort,
+    period: UsagePeriod,
+    page: u32,
+    page_size: u32,
+) -> Result<AuditLogPage, String>
+
+#[tauri::command] async fn get_audit_stats(
+    provider_id: Option<String>,
+    account_id: Option<String>,
+    period: UsagePeriod,
+) -> Result<AuditStats, String>
+
+#[tauri::command] async fn get_audit_detail(id: String) -> Result<AuditDetail, String>
+
+#[tauri::command] async fn export_audit_csv(
+    provider_id: Option<String>,
+    account_id: Option<String>,
+    period: UsagePeriod,
+) -> Result<String, String>  // returns file path
+```
+
+### Response Types
+
+```rust
+#[derive(Serialize)]
+pub struct AuditLogPage {
+    pub rows: Vec<AuditRow>,
+    pub total: u64,
+    pub page: u32,
+    pub page_size: u32,
+}
+
+#[derive(Serialize)]
+pub struct AuditRow {
+    pub id: String,
+    pub timestamp: u64,
+    pub status: String,
+    pub model: String,
+    pub requested: String,           // "provider/model" display format
+    pub provider_name: String,
+    pub provider_kind: String,
+    pub account_name: String,
+    pub api_key_hint: String,        // last 4 chars only
+    pub combo_name: Option<String>,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cost_usd: f64,
+    pub latency_ms: u64,
+    pub error_code: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct AuditStats {
+    pub total: u64,
+    pub ok_count: u64,
+    pub error_count: u64,
+    pub combo_count: u64,
+}
+
+pub enum AuditSort {
+    Newest, Oldest, Slowest, MostTokens, HighestCost,
+}
+```
+
+### Tests (Audit Log)
+
+```rust
+// A013/AuditLog: get_audit_log returns paginated rows with JOINed names
+// A013/AuditLog: get_audit_log filters by provider_id
+// A013/AuditLog: get_audit_log filters by account_id
+// A013/AuditLog: get_audit_log filters by status
+// A013/AuditLog: get_audit_log search matches model name
+// A013/AuditLog: get_audit_log sort Slowest orders by latency DESC
+// A013/AuditLog: get_audit_stats returns correct counters
+// A013/AuditLog: get_audit_detail returns full record with token breakdown
+// A013/AuditLog: export_audit_csv writes valid CSV file
+// A013/AuditLog: api_key_hint shows only last 4 chars
+```
+
+### Frontend Component
+
+```
+plugins/settings-llm-providers/src/
+├── AuditLogTab.tsx          (main audit log view)
+├── AuditFilters.tsx         (filter bar + search + dropdowns)
+├── AuditTable.tsx           (virtualized table rows)
+├── AuditDetailDrawer.tsx    (expandable row detail)
+└── AuditStatsBar.tsx        (live counter badges)
+```
+
+Uses Ant Design `Table` with virtual scroll for large datasets, `Tag` for provider badges, `Input.Search` for full-text search, `Select` for filter dropdowns, `Segmented` for status tabs.
+
+---
+
+## 6. Usage Metering
 
 ### Insert (hot path — called on every API response)
 
@@ -355,9 +844,11 @@ pub fn compute_cost(usage: &TokenUsage, pricing: &ModelPricing) -> f64 {
 
 ---
 
-## 5. Budget Enforcement
+## 7. Budget Enforcement
 
 ### Budget Check (called before every API call)
+
+Budgets are per-account, not per-provider. Each API key has its own spend limits.
 
 ```rust
 pub enum BudgetDecision {
@@ -366,11 +857,11 @@ pub enum BudgetDecision {
     Block { period: String, spent: f64, limit: f64 },
 }
 
-pub fn check_budget(conn: &Connection, provider_id: &str) -> Result<BudgetDecision, LlmError> {
-    let budget = get_budget(conn, provider_id)?;
+pub fn check_budget(conn: &Connection, account_id: &str) -> Result<BudgetDecision, LlmError> {
+    let budget = get_budget(conn, account_id)?;
 
     if let Some(daily_limit) = budget.daily_limit_usd {
-        let daily_spend = daily_spend(conn, provider_id)?;
+        let daily_spend = daily_spend(conn, account_id)?;
         if daily_spend >= daily_limit && budget.block_when_exceeded {
             return Ok(BudgetDecision::Block { ... });
         }
@@ -378,7 +869,7 @@ pub fn check_budget(conn: &Connection, provider_id: &str) -> Result<BudgetDecisi
     }
 
     if let Some(monthly_limit) = budget.monthly_limit_usd {
-        let monthly_spend = monthly_spend(conn, provider_id)?;
+        let monthly_spend = monthly_spend(conn, account_id)?;
         if monthly_spend >= monthly_limit && budget.block_when_exceeded {
             return Ok(BudgetDecision::Block { ... });
         }
@@ -391,7 +882,7 @@ pub fn check_budget(conn: &Connection, provider_id: &str) -> Result<BudgetDecisi
 
 ### Performance Target
 
-`check_budget()` must complete in **< 1ms** at 600k rows/month. The `idx_usage_budget_check` covering index ensures this — SQLite reads only the index, never touches the table.
+`check_budget()` must complete in **< 1ms** at 600k rows/month. The `idx_usage_budget_check` covering index on `(account_id, timestamp)` ensures this — SQLite reads only the index, never touches the table.
 
 ### Budget Events
 
@@ -416,34 +907,41 @@ struct LlmBudgetExceeded {
 
 ---
 
-## 6. Tauri Commands
+## 8. Tauri Commands
 
 ```rust
 // Provider management
 #[tauri::command] async fn get_providers() -> Result<Vec<Provider>, String>
 #[tauri::command] async fn save_provider(provider: Provider) -> Result<(), String>
 #[tauri::command] async fn delete_provider(provider_id: String) -> Result<(), String>
-#[tauri::command] async fn set_provider_api_key(provider_id: String, key_id: String) -> Result<(), String>
-#[tauri::command] async fn test_provider_connection(provider_id: String) -> Result<ConnectionTestResult, String>
+#[tauri::command] async fn test_provider_connection(provider_id: String, account_id: String) -> Result<ConnectionTestResult, String>
 
-// Model discovery
+// Account management (multi-key per provider)
+#[tauri::command] async fn add_account(provider_id: String, name: String, api_key: String) -> Result<Account, String>
+#[tauri::command] async fn update_account(account_id: String, name: String) -> Result<(), String>
+#[tauri::command] async fn delete_account(account_id: String) -> Result<(), String>
+#[tauri::command] async fn set_default_account(provider_id: String, account_id: String) -> Result<(), String>
+#[tauri::command] async fn rotate_account_key(account_id: String, new_api_key: String) -> Result<(), String>
+
+// Model discovery (uses default account's key)
 #[tauri::command] async fn discover_models(provider_id: String) -> Result<Vec<CachedModel>, String>
 #[tauri::command] async fn get_provider_models(provider_id: String) -> Result<Vec<CachedModel>, String>
 #[tauri::command] async fn toggle_model_pin(provider_id: String, model_id: String, pinned: bool) -> Result<(), String>
 
-// Usage
-#[tauri::command] async fn get_usage_summary(provider_id: Option<String>, period: UsagePeriod) -> Result<UsageSummary, String>
-#[tauri::command] async fn get_usage_detail(provider_id: Option<String>, period: UsagePeriod, page: u32, page_size: u32) -> Result<UsageDetailPage, String>
+// Usage (filterable by provider or account)
+#[tauri::command] async fn get_usage_summary(provider_id: Option<String>, account_id: Option<String>, period: UsagePeriod) -> Result<UsageSummary, String>
+#[tauri::command] async fn get_usage_detail(provider_id: Option<String>, account_id: Option<String>, period: UsagePeriod, page: u32, page_size: u32) -> Result<UsageDetailPage, String>
 #[tauri::command] async fn get_usage_by_model(provider_id: String, period: UsagePeriod) -> Result<Vec<ModelUsage>, String>
 #[tauri::command] async fn get_daily_trend(provider_id: String, days: u32) -> Result<Vec<DailyTrend>, String>
+#[tauri::command] async fn get_account_usage(account_id: String, period: UsagePeriod) -> Result<AccountUsage, String>
 
-// Budget
-#[tauri::command] async fn save_provider_budget(provider_id: String, budget: ProviderBudget) -> Result<(), String>
+// Budget (per-account)
+#[tauri::command] async fn save_account_budget(account_id: String, budget: ProviderBudget) -> Result<(), String>
 ```
 
 ---
 
-## 7. Settings Plugin UI
+## 9. Settings Plugin UI
 
 ### Manifest
 
@@ -471,13 +969,23 @@ definePlugin({
 ┌──────────────────────────────────────────────────────────┐
 │ LLM Providers                              [Add Provider] │
 ├──────────────────────────────────────────────────────────┤
-│ ◉ OpenAI       ● Connected    [Test] [↻]                │
-│ ○ Anthropic    ○ No API key   [Test] [↻]                │
-│ ○ Custom-1     ○ Disabled     [Test] [↻]                │
+│ ◉ OpenAI       2 accounts     [↻]                        │
+│ ○ Anthropic    0 accounts     [↻]                        │
+│ ○ Ollama       1 account      [↻]                        │
 ├──────────────────────────────────────────────────────────┤
 │ ▼ OpenAI                                                 │
-│ API Key    [●●●●●●●●]  [Change]                          │
 │ Base URL   https://api.openai.com/v1                     │
+│                                                          │
+│ API Accounts                              [Add Account]  │
+│ ┌────────────────────────────────────────────────────┐   │
+│ │ ★ Personal     ●●●●sk-1234   ● Connected  [Test]  │   │
+│ │   Daily: $5/$10   Monthly: $42/$100                │   │
+│ │                              [Rotate Key] [Delete] │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │   Work          ●●●●sk-5678   ● Connected  [Test]  │   │
+│ │   Daily: $12/$50  Monthly: $89/$500                │   │
+│ │                   [Set Default] [Rotate Key] [Delete]│   │
+│ └────────────────────────────────────────────────────┘   │
 │                                                          │
 │ Models (47)                            [★ Pinned] [↻]   │
 │ ┌────────────┬─────────┬──────────┬──────────┐          │
@@ -486,19 +994,15 @@ definePlugin({
 │ │ ★ gpt-4o   │ 128K    │ $2.50/M  │ $10.00/M │          │
 │ │   gpt-4o-mini│128K  │ $0.15/M  │ $0.60/M  │          │
 │ └────────────┴─────────┴──────────┴──────────┘          │
-│                                                          │
-│ Spend Limits                                             │
-│ Daily: [$____]  Monthly: [$____]                        │
-│ Warn at: [80]% [90]%   Block when exceeded: [✓]          │
 ├──────────────────────────────────────────────────────────┤
 │ Usage This Month                       [View Report]     │
-│ OpenAI: $4.32   Anthropic: $1.07                         │
+│ Personal: $4.32   Work: $12.07                           │
 └──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 8. Zone Boundaries
+## 10. Zone Boundaries
 
 | Concern | Zone | Why |
 |---|---|---|
@@ -512,7 +1016,7 @@ definePlugin({
 
 ---
 
-## 9. Dependencies
+## 11. Dependencies
 
 - `rusqlite` with `bundled` feature (ships SQLite with binary)
 - `uuid` with `v7` feature (time-sortable IDs)
@@ -524,7 +1028,7 @@ definePlugin({
 
 ---
 
-## 10. Tests
+## 12. Tests
 
 ### Rust (snapfzz-llm)
 
@@ -536,25 +1040,34 @@ definePlugin({
 // A013/Provider: save_provider() inserts new row
 // A013/Provider: save_provider() updates existing row
 // A013/Provider: delete_provider() errors for builtin
-// A013/Provider: delete_provider() cascades to models and budgets
-// A013/Provider: api_key_ref stored, raw key never in db
+// A013/Provider: delete_provider() cascades to accounts, models, and budgets
+
+// A013/Account: add_account creates account with vault key ref
+// A013/Account: add_account first account becomes default
+// A013/Account: set_default_account clears previous default
+// A013/Account: delete_account cascades to usage and budgets
+// A013/Account: delete_account errors for last remaining account
+// A013/Account: rotate_account_key updates vault ref atomically
+// A013/Account: api_key_ref stored, raw key never in db
 
 // A013/Discovery: Bearer token for openai-compat
 // A013/Discovery: x-api-key header for anthropic-compat
 // A013/Discovery: discover_models replaces old models for provider
+// A013/Discovery: uses default account's key for discovery
 
-// A013/Usage: record_usage inserts with UUIDv7
-// A013/Usage: daily_spend aggregates only today's success records
-// A013/Usage: monthly_spend aggregates current month
+// A013/Usage: record_usage inserts with UUIDv7 and account_id
+// A013/Usage: daily_spend aggregates per-account, not per-provider
+// A013/Usage: monthly_spend aggregates per-account
 // A013/Usage: get_usage_summary groups by provider
+// A013/Usage: get_account_usage returns per-account breakdown
 // A013/Usage: get_usage_detail paginates correctly
 // A013/Usage: get_usage_by_model groups and sorts by cost
 // A013/Usage: get_daily_trend returns 30 days
 // A013/Usage: 10k inserts complete in < 2s (batch performance)
 
-// A013/Budget: check_budget returns Allow when no limit
-// A013/Budget: check_budget returns Warn at threshold
-// A013/Budget: check_budget returns Block when exceeded
+// A013/Budget: check_budget per-account returns Allow when no limit
+// A013/Budget: check_budget per-account returns Warn at threshold
+// A013/Budget: check_budget per-account returns Block when exceeded
 // A013/Budget: check_budget < 1ms with 600k rows (index scan)
 
 // A013/Cost: compute_cost applies formula correctly
@@ -579,7 +1092,7 @@ definePlugin({
 
 ---
 
-## 11. Performance Targets
+## 13. Performance Targets
 
 | Operation | Target | How |
 |---|---|---|
@@ -592,7 +1105,7 @@ definePlugin({
 
 ---
 
-## 12. Security
+## 14. Security
 
 - Raw API keys never in SQLite — only vault key IDs
 - SQLite file permissions: 0o600 (owner read/write only)
@@ -603,7 +1116,7 @@ definePlugin({
 
 ---
 
-## 13. Retention & Maintenance
+## 15. Retention & Maintenance
 
 - Default retention: 90 days
 - Cleanup runs on app boot (delete + VACUUM if > 30 days since last vacuum)
