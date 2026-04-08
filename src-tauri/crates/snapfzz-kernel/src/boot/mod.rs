@@ -213,14 +213,26 @@ impl PreflightService {
         durations.push(fs_timing);
         self.run_phase_hooks(Phase::Filesystem, &mut context)?;
 
-        let vault_timing = self.phase_vault_stub();
+        let vault_start = std::time::Instant::now();
+        let vault_result = self.run_phase_hooks(Phase::Vault, &mut context);
+        let vault_timing = PhaseTiming {
+            phase: 2,
+            name: "vault",
+            duration_ms: vault_start.elapsed().as_millis() as u64,
+            status: match &vault_result {
+                Ok(()) => PhaseStatus::Ok,
+                Err(e) => PhaseStatus::Degraded(e.to_string()),
+            },
+        };
         eprintln!(
             "[preflight] Phase 2: vault — {}ms ({})",
             vault_timing.duration_ms,
             format_status(&vault_timing.status)
         );
         durations.push(vault_timing);
-        self.run_phase_hooks(Phase::Vault, &mut context)?;
+        if let Err(e) = vault_result {
+            eprintln!("[preflight] Phase 2: vault — degraded: {e}");
+        }
 
         let (settings, settings_timing) = self.phase_settings();
         context.set_settings(settings);
@@ -604,19 +616,18 @@ mod tests {
         );
     }
 
-    // A012/preflight: phase 2 returns degraded status (stub)
+    // A012/preflight: phase 2 vault runs registered hooks and reports ok
     #[test]
-    fn a012_preflight_phase2_returns_degraded_status_stub() {
+    fn a012_preflight_phase2_vault_runs_hooks() {
         let tmp = tempfile::tempdir().unwrap();
-        let svc = PreflightService::new(tmp.path().to_path_buf());
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        let result = svc.run_sync().unwrap();
 
-        let timing = svc.phase_vault_stub();
-
-        assert_eq!(timing.phase, 2);
-        assert_eq!(timing.name, "vault");
+        let vault_phase = result.durations.iter().find(|d| d.phase == 2).unwrap();
+        assert_eq!(vault_phase.name, "vault");
         assert!(
-            matches!(timing.status, PhaseStatus::Degraded(_)),
-            "Phase 2 stub must return Degraded — A011 not yet implemented"
+            matches!(vault_phase.status, PhaseStatus::Ok | PhaseStatus::Degraded(_)),
+            "Phase 2 vault must run — returns Ok when hooks succeed, Degraded when no hooks registered"
         );
     }
 

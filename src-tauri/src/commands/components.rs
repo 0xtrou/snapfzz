@@ -85,7 +85,7 @@ pub async fn component_status(
     let status = if is_installed {
         DownloadStatus::Ready
     } else if archive_size > 0 {
-        DownloadStatus::Downloading
+        DownloadStatus::Verifying
     } else {
         DownloadStatus::Pending
     };
