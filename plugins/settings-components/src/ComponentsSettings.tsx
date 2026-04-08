@@ -115,13 +115,13 @@ export default function ComponentsSettings(): React.ReactElement {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      <SettingsHeader title="System Components" />
+      <SettingsHeader title="System Packs" />
       <div style={{ padding: '16px 32px', maxWidth: 920 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Input.Search
             allowClear
             value={query}
-            placeholder="Search components..."
+            placeholder="Search packs..."
             onChange={(event) => setQuery(event.target.value)}
           />
 
@@ -134,10 +134,11 @@ export default function ComponentsSettings(): React.ReactElement {
           <List
             loading={loading}
             dataSource={filteredComponents}
-            locale={{ emptyText: 'No system components match your search.' }}
+            locale={{ emptyText: 'No system packs match your search.' }}
+            split={false}
             pagination={{ pageSize: 8, hideOnSinglePage: true, showSizeChanger: false }}
             renderItem={(component) => (
-              <List.Item key={component.id}>
+              <List.Item key={component.id} style={{ padding: 0, border: 'none' }}>
                 <SystemComponentCard
                   component={component}
                   status={statusById[component.id]}

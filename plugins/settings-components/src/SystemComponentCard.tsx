@@ -15,6 +15,8 @@ const { Text } = Typography;
 export interface ComponentInfo {
   id: string;
   name: string;
+  description: string;
+  license: string;
   version: string;
   platform: string;
   platformDisplay: string;
@@ -83,8 +85,17 @@ export default function SystemComponentCard({
           <Text type="secondary">{component.version || '—'}</Text>
         </div>
 
+        {component.description && (
+          <Text type="secondary" style={{ fontSize: 13 }}>{component.description}</Text>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-          <Text type="secondary">{component.platformDisplay || component.platform || 'Unknown platform'}</Text>
+          <Space size={12}>
+            <Text type="secondary">{component.platformDisplay || component.platform || 'Unknown platform'}</Text>
+            {component.license && (
+              <Text type="secondary" style={{ fontSize: 12 }}>License: {component.license}</Text>
+            )}
+          </Space>
           {installed ? (
             <Tag color="success" icon={<CheckCircleOutlined />}>Installed</Tag>
           ) : downloading ? (

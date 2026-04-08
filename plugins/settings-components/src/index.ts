@@ -3,9 +3,9 @@ import type { PluginContext, PluginHandle } from '@snapfzz/plugin-sdk';
 
 export default definePlugin({
   id: 'snapfzz.settings.components',
-  name: 'System Components',
+  name: 'System Packs',
   version: '0.1.0',
-  description: 'Manage system runtime components',
+  description: 'Manage system runtime packs',
   surface: ['preferences'],
   activationEvents: ['onStartupFinished'],
 
@@ -25,7 +25,7 @@ export default definePlugin({
     settingsSections: [
       {
         id: 'components',
-        label: 'System Components',
+        label: 'System Packs',
         icon: 'AppstoreOutlined',
         order: 55,
         component: () => import('./ComponentsSettings'),

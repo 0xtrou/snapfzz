@@ -6,6 +6,8 @@ use std::path::Path;
 pub struct ComponentInfo {
     pub id: String,
     pub name: String,
+    pub description: String,
+    pub license: String,
     pub version: String,
     pub platform: String,
     pub platform_display: String,
@@ -92,6 +94,8 @@ mod tests {
         let info = ComponentInfo {
             id: "cef".into(),
             name: "Chromium Embedded Framework".into(),
+            description: "Full Chromium browser engine for mini apps".into(),
+            license: "BSD-3-Clause".into(),
             version: "146.0.10".into(),
             platform: "macos-arm64".into(),
             platform_display: "macOS (Apple Silicon)".into(),

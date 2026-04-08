@@ -86,6 +86,8 @@ mod tests {
             Ok(ComponentInfo {
                 id: self.component_id.clone(),
                 name: "Mock Component".into(),
+                description: "A mock component for testing".into(),
+                license: "MIT".into(),
                 version: "1.0.0".into(),
                 platform: "test".into(),
                 platform_display: "Test Platform".into(),

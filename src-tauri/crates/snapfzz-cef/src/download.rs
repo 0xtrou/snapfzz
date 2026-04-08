@@ -359,6 +359,8 @@ impl SystemComponent for CefDownloader {
         Ok(ComponentInfo {
             id: "cef".into(),
             name: "Chromium Embedded Framework".into(),
+            description: "Full Chromium browser engine for running mini apps with WebRTC, WebGL, service workers, and DevTools support.".into(),
+            license: "BSD-3-Clause".into(),
             version: build.cef_version,
             platform: self.platform.clone(),
             platform_display: platform_display_name(&self.platform).to_string(),

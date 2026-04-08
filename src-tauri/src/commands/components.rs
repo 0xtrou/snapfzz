@@ -15,6 +15,8 @@ pub async fn component_list(
                 infos.push(ComponentInfo {
                     id: component.id().into(),
                     name: component.name().into(),
+                    description: String::new(),
+                    license: String::new(),
                     version: String::new(),
                     platform: String::new(),
                     platform_display: String::new(),
@@ -186,6 +188,8 @@ mod tests {
             Ok(ComponentInfo {
                 id: "test-component".into(),
                 name: "Test Component".into(),
+                description: "A test component for testing".into(),
+                license: "MIT".into(),
                 version: "1.0.0".into(),
                 platform: "test-platform".into(),
                 platform_display: "Test".into(),
