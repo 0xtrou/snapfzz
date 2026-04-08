@@ -69,7 +69,7 @@ fn main() {
             commands::budget::budget_record_strike, commands::budget::budget_report_violation, commands::budget::get_hardware_info,
             commands::stream::send_message, commands::stream::stop_generation, commands::stream::create_session, commands::stream::load_session,
             commands::system::agent_health, commands::system::open_preferences, commands::system::open_path, commands::system::pick_folder, commands::system::preflight_status,
-            commands::cef::cef_download_start, commands::cef::cef_download_status, commands::cef::cef_is_ready,
+            commands::cef::cef_download_start, commands::cef::cef_download_status, commands::cef::cef_download_cancel, commands::cef::cef_resolve_build, commands::cef::cef_is_ready,
             commands::cef::cef_open_window, commands::cef::cef_close_window,
             commands::cef::cef_navigate, commands::cef::cef_go_back, commands::cef::cef_reload,
             commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages, commands::cef::cef_platform_info,

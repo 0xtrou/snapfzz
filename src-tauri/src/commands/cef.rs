@@ -1,4 +1,4 @@
-use snapfzz_cef::download::CefDownloader;
+use snapfzz_cef::download::{CefBuildInfo, CefDownloader};
 use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_cef::types::{CefError, ConsoleMessage, DownloadProgress, WindowConfig};
 use std::sync::Arc;
@@ -26,6 +26,25 @@ pub async fn cef_download_status(
     state: tauri::State<'_, CefState>,
 ) -> Result<DownloadProgress, String> {
     Ok(download_status_from_downloader(&state.downloader).await)
+}
+
+#[tauri::command]
+pub async fn cef_download_cancel(
+    state: tauri::State<'_, CefState>,
+) -> Result<(), String> {
+    state.downloader.cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cef_resolve_build(
+    state: tauri::State<'_, CefState>,
+) -> Result<CefBuildInfo, String> {
+    state
+        .downloader
+        .resolve_latest_build()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -110,9 +129,21 @@ pub async fn cef_console_messages(
     Ok(messages)
 }
 
+fn find_archive_size(install_dir: &std::path::Path) -> u64 {
+    std::fs::read_dir(install_dir)
+        .ok()
+        .and_then(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .find(|e| e.file_name().to_string_lossy().ends_with(".tar.bz2"))
+                .and_then(|e| e.metadata().ok())
+                .map(|m| m.len())
+        })
+        .unwrap_or(0)
+}
+
 async fn download_status_from_downloader(downloader: &CefDownloader) -> DownloadProgress {
-    let archive = downloader.archive_path();
-    let bytes_downloaded = std::fs::metadata(&archive).map(|meta| meta.len()).unwrap_or(0);
+    let bytes_downloaded = find_archive_size(downloader.install_dir());
     let installed = downloader.is_installed();
     let status = if installed {
         snapfzz_cef::types::DownloadStatus::Ready
@@ -249,7 +280,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
         std::fs::create_dir_all(&install_dir).expect("create install dir");
-        std::fs::write(install_dir.join("cef_binary.tar"), vec![7_u8; 256]).expect("write archive");
+        std::fs::write(install_dir.join("cef_binary.tar.bz2"), vec![7_u8; 256]).expect("write archive");
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
 
         let progress = super::download_status_from_downloader(&downloader).await;
@@ -265,7 +296,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
         std::fs::create_dir_all(&install_dir).expect("create install dir");
-        std::fs::write(install_dir.join("cef_binary.tar"), b"archive").expect("archive bytes");
+        std::fs::write(install_dir.join("cef_binary.tar.bz2"), b"archive").expect("archive bytes");
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
         downloader.extract().await.expect("extract marker");
 

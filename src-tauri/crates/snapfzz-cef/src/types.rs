@@ -89,6 +89,10 @@ impl CefError {
     pub fn invalid_state(msg: impl Into<String>) -> Self {
         Self::InvalidState(msg.into())
     }
+
+    pub fn network(msg: String) -> Self {
+        Self::Network(msg)
+    }
 }
 
 impl From<std::io::Error> for CefError {
