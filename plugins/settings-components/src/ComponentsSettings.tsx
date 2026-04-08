@@ -63,6 +63,22 @@ function checkAgentscopeInstalled(installedPackages: string[]): boolean {
   });
 }
 
+function getAgentscopeVersion(pythonRuntime: typeof pythonRuntime): string {
+  if (!pythonRuntime) return 'latest';
+  if (pythonRuntime.agentscope.is_installed && pythonRuntime.agentscope.version) {
+    return pythonRuntime.agentscope.version;
+  }
+  if (pythonRuntime.agentscope_runtime.is_installed && pythonRuntime.agentscope_runtime.version) {
+    return pythonRuntime.agentscope_runtime.version;
+  }
+  return 'latest';
+}
+
+function isAgentscopeInstalled(pythonRuntime: typeof pythonRuntime): boolean {
+  if (!pythonRuntime) return false;
+  return pythonRuntime.agentscope.is_installed || pythonRuntime.agentscope_runtime.is_installed;
+}
+
 function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
   const fallback = {
     id: subPackId,
@@ -115,7 +131,12 @@ export default function ComponentsSettings(): React.ReactElement {
   const [uninstallBusyId, setUninstallBusyId] = useState<string | null>(null);
   const [installingPythonPack, setInstallingPythonPack] = useState(false);
   const [uninstallingPythonPack, setUninstallingPythonPack] = useState(false);
-  const [pythonRuntime, setPythonRuntime] = useState<{ installed_packages: string[] } | null>(null);
+  const [pythonRuntime, setPythonRuntime] = useState<{ 
+    installed_packages: string[];
+    agentscope: { name: string; version: string; is_installed: boolean };
+    agentscope_runtime: { name: string; version: string; is_installed: boolean };
+    litellm: { name: string; version: string; is_installed: boolean };
+  } | null>(null);
 
   const refreshComponents = useCallback(async () => {
     setLoading(true);
@@ -297,10 +318,11 @@ export default function ComponentsSettings(): React.ReactElement {
       const agentscope = createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
       const litellm = createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
 
-      // Check if pip packages are installed via python_runtime_status
-      const installedPipPackages = pythonRuntime?.installed_packages || [];
-      agentscope.isInstalled = checkAgentscopeInstalled(installedPipPackages);
-      litellm.isInstalled = isPipPackageInstalled('litellm', installedPipPackages);
+      // Mark pip packages as installed based on backend response
+      agentscope.isInstalled = isAgentscopeInstalled(pythonRuntime);
+      agentscope.version = getAgentscopeVersion(pythonRuntime);
+      litellm.isInstalled = pythonRuntime?.litellm.is_installed || false;
+      litellm.version = pythonRuntime?.litellm.version || 'latest';
 
       const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
