@@ -100,6 +100,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const [uninstallBusyId, setUninstallBusyId] = useState<string | null>(null);
   const [installingPythonPack, setInstallingPythonPack] = useState(false);
   const [uninstallingPythonPack, setUninstallingPythonPack] = useState(false);
+  const [pythonRuntime, setPythonRuntime] = useState<{ installed_packages: string[] } | null>(null);
 
   const refreshComponents = useCallback(async () => {
     setLoading(true);
@@ -129,6 +130,14 @@ export default function ComponentsSettings(): React.ReactElement {
       );
 
       setStatusById(Object.fromEntries(statuses));
+      
+      // Fetch installed pip packages to detect AgentScope/LiteLLM
+      try {
+        const pythonStatus = await bridge.invoke<{ installed_packages: string[] }>('python_runtime_status').catch(() => null);
+        setPythonRuntime(pythonStatus);
+      } catch {
+        setPythonRuntime(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load system packs right now.');
       setComponents([]);
@@ -273,6 +282,21 @@ export default function ComponentsSettings(): React.ReactElement {
       const agentscope = items.find((c) => c.id === 'agentscope') || createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
       const litellm = items.find((c) => c.id === 'litellm') || createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
 
+      // Check if pip packages are installed (they show up in python_runtime_status.installed_packages)
+      const installedPipPackages = pythonRuntime?.installed_packages || [];
+      const isAgentscopeInstalled = installedPipPackages.some(pkg => {
+        const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+        return name.startsWith('agentscope');
+      });
+      const isLitellmInstalled = installedPipPackages.some(pkg => {
+        const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+        return name.startsWith('litellm');
+      });
+
+      // Mark pip packages as installed based on pip list
+      agentscope.isInstalled = isAgentscopeInstalled;
+      litellm.isInstalled = isLitellmInstalled;
+
       const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
       const anyInstalled = allPacks.some((p) => p.isInstalled);
@@ -321,15 +345,16 @@ export default function ComponentsSettings(): React.ReactElement {
     downloadBusyId,
     handleCancelDownload,
     handleDownload,
+    handleInstallPythonPack,
     handleOpenFolder,
     handleUninstall,
-    handleInstallPythonPack,
     handleUninstallPythonPack,
     installingPythonPack,
-    uninstallingPythonPack,
     loading,
+    pythonRuntime,
     statusById,
     uninstallBusyId,
+    uninstallingPythonPack,
   ]);
 
   return (

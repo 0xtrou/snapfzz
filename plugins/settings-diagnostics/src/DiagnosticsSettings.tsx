@@ -224,6 +224,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 size="small"
                 bordered
                 column={1}
+                style={{ maxWidth: 500 }}
                 items={[
                   {
                     key: 'python',
@@ -254,18 +255,24 @@ export default function DiagnosticsSettings(): React.ReactElement {
                   } : null,
                   {
                     key: 'packages',
-                    label: `Installed Packages (${pythonRuntime.installed_packages.length})`,
-                    children: pythonRuntime.installed_packages.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {pythonRuntime.installed_packages.slice(0, 10).map((pkg) => (
-                          <Tag key={pkg} color="blue">{pkg}</Tag>
+                    label: 'Installed Packages',
+                    children: (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 400 }}>
+                        {pythonRuntime.installed_packages
+                          .filter(pkg => {
+                            const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+                            return name.startsWith('agentscope') || name.startsWith('litellm');
+                          })
+                          .map((pkg) => (
+                          <Tag key={pkg} color="blue">{pkg.split('=')[0]}</Tag>
                         ))}
-                        {pythonRuntime.installed_packages.length > 10 && (
-                          <Tag>+{pythonRuntime.installed_packages.length - 10} more</Tag>
+                        {pythonRuntime.installed_packages.filter(pkg => {
+                          const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+                          return name.startsWith('agentscope') || name.startsWith('litellm');
+                        }).length === 0 && (
+                          <Text type="secondary">No agent packages installed</Text>
                         )}
                       </div>
-                    ) : (
-                      <Text type="secondary">No packages installed</Text>
                     ),
                   },
                 ].filter(Boolean)}
