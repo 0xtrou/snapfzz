@@ -6,3 +6,4 @@ pub mod settings;
 pub mod stream;
 pub mod system;
 pub mod vault;
+mod pip;

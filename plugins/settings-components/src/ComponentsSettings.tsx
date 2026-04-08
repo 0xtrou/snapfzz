@@ -242,7 +242,7 @@ export default function ComponentsSettings(): React.ReactElement {
       
       try {
         await bridge.invoke<void>('python_pip_install_packages', { 
-          packages: ['agentscope-runtime', 'agentscope-runtime[ext]', 'litellm'] 
+          packages: ['agentscope', 'agentscope-runtime', 'agentscope-runtime[ext]', 'litellm'] 
         });
       } catch {
       }
