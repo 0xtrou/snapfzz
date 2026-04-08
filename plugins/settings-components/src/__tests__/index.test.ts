@@ -37,7 +37,7 @@ describe('A007/settings-components manifest', () => {
     expect(section?.id).toBe('components');
     expect(section?.label).toBe('System Packs');
     expect(section?.icon).toBe('AppstoreOutlined');
-    expect(section?.order).toBe(7);
+    expect(section?.order).toBe(6);
   });
 
   it('A007/settingsSections: component lazy import resolves to a module with default export', async () => {

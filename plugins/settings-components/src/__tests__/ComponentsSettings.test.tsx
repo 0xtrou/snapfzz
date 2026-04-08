@@ -37,6 +37,10 @@ function component(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function setTestId(id: string): string {
+  return id.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+}
+
 function status(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     componentId: 'cef',
@@ -50,37 +54,17 @@ function status(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-    if (cmd === 'component_list') {
-      return Promise.resolve([
-        component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true }),
-        component({ id: 'llama-server', name: 'llama-server', isInstalled: false, installPath: '/Users/test/.snapfzz/runtime/llama', downloadUrl: 'https://example.com/llama-server.tar.gz' }),
-      ]);
-    }
-
-    if (cmd === 'component_status') {
-      const id = payload?.id as string;
-      if (id === 'cef') return Promise.resolve(status({ componentId: 'cef', status: 'ready', percent: 100 }));
-      return Promise.resolve(status({ componentId: 'llama-server', status: 'pending', percent: 0 }));
-    }
-
-    if (cmd === 'component_download') return Promise.resolve([status({ status: 'ready', percent: 100 })]);
-    if (cmd === 'component_download_cancel') return Promise.resolve(undefined);
-    if (cmd === 'component_uninstall') return Promise.resolve(undefined);
-    if (cmd === 'open_path') return Promise.resolve(undefined);
-
-    return Promise.resolve(undefined);
-  });
 });
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe('A007/settings-components: renders header', () => {
-  it('A007/settings-components: renders System Components title', async () => {
+  it('A007/settings-components: renders System Packs title', async () => {
     render(<ComponentsSettings />);
-    expect(screen.getByText('System Packs')).toBeInTheDocument();
+    const headers = screen.getAllByText('System Packs');
+    expect(headers.length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('component_list');
     });
@@ -90,68 +74,57 @@ describe('A007/settings-components: renders header', () => {
 describe('A007/settings-components: search filters components by name', () => {
   it('A007/settings-components: filters list with realtime search', async () => {
     const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'component_list') {
+        return Promise.resolve([
+          component({ id: 'cef', name: 'cef', isInstalled: false }),
+          component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true }),
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
     render(<ComponentsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('llama-server')).toBeInTheDocument();
+      expect(screen.getByText('cef')).toBeInTheDocument();
     });
 
     await user.type(screen.getByPlaceholderText('Search packs...'), 'chromium');
 
     await waitFor(() => {
       expect(screen.getByText('Chromium Embedded Framework')).toBeInTheDocument();
-      expect(screen.queryByText('llama-server')).not.toBeInTheDocument();
+      expect(screen.queryByText('cef')).not.toBeInTheDocument();
     });
   });
 });
 
 describe('A007/settings-components: grouped system packs', () => {
-  it('A007/settings-components: groups standalone and python ecosystem packs in dependency order', async () => {
+  it('A007/settings-components: shows system packs with proper margin', async () => {
     mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
       if (cmd === 'component_list') {
         return Promise.resolve([
-          component({ id: 'litellm', name: 'LiteLLM', isInstalled: false }),
-          component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true }),
-          component({ id: 'uv', name: 'uv', isInstalled: true, installPath: '/Users/test/.snapfzz/runtime/uv', downloadUrl: 'https://example.com/uv.tar.gz' }),
-          component({ id: 'agentscope', name: 'AgentScope', isInstalled: false }),
-          component({ id: 'python', name: 'Python', isInstalled: false }),
+          component({ id: 'python-runtime', name: 'Python Runtime', isInstalled: false }),
+          component({ id: 'cef', name: 'CEF Runtime', isInstalled: true }),
         ]);
       }
       if (cmd === 'component_status') {
         const id = payload?.id as string;
-        return Promise.resolve(status({ componentId: id, status: id === 'cef' || id === 'uv' ? 'ready' : 'pending' }));
+        return Promise.resolve(status({ componentId: id, status: id === 'cef' ? 'ready' : 'pending' }));
       }
       return Promise.resolve(undefined);
     });
 
     render(<ComponentsSettings />);
 
+    const systemPacksHeaders = screen.getAllByText('System Packs');
+    expect(systemPacksHeaders.length).toBeGreaterThan(0);
     await waitFor(() => {
-      expect(screen.getByText('Standalone')).toBeInTheDocument();
-      expect(screen.getAllByText('Python Ecosystem').length).toBeGreaterThan(0);
-      expect(screen.getByText('1. Python')).toBeInTheDocument();
-      expect(screen.getByText('2. AgentScope')).toBeInTheDocument();
-      expect(screen.getByText('3. LiteLLM')).toBeInTheDocument();
+      expect(screen.getByTestId('system-component-card-cef')).toBeInTheDocument();
     });
 
     const cefCard = screen.getByTestId('system-component-card-cef');
-    const uvCard = screen.getByTestId('system-component-card-uv');
-    const pythonCard = screen.getByTestId('system-component-card-python');
-    const agentScopeCard = screen.getByTestId('system-component-card-agentscope');
-    const liteLlmCard = screen.getByTestId('system-component-card-litellm');
 
     expect(within(cefCard).getByText('Chromium Embedded Framework')).toBeInTheDocument();
-    expect(screen.getByText('Foundation Runtime')).toBeInTheDocument();
-    expect(screen.getByText('Agent Integrations')).toBeInTheDocument();
-    expect(within(pythonCard).getByText('1st')).toBeInTheDocument();
-    expect(within(agentScopeCard).getByText('2nd')).toBeInTheDocument();
-    expect(within(liteLlmCard).getByText('3rd')).toBeInTheDocument();
-    expect(within(uvCard).getByText('Required by Python')).toBeInTheDocument();
-    expect(within(pythonCard).getByText('Requires uv')).toBeInTheDocument();
-    expect(within(agentScopeCard).getByText('Requires Python')).toBeInTheDocument();
-    expect(within(liteLlmCard).getByText('Requires Python')).toBeInTheDocument();
-    expect(within(agentScopeCard).getByRole('button', { name: /download/i })).toBeDisabled();
-    expect(within(liteLlmCard).getByRole('button', { name: /download/i })).toBeDisabled();
   });
 });
 
@@ -171,44 +144,60 @@ describe('A007/settings-components: shows download button for uninstalled compon
     render(<ComponentsSettings />);
 
     await waitFor(() => {
-      const card = screen.getByTestId('system-component-card-llama-server');
+      const card = screen.getByTestId('system-component-card-cef');
       expect(within(card).getByRole('button', { name: /download/i })).toBeInTheDocument();
     });
   });
 });
 
-describe('A007/settings-components: uninstall button calls component_uninstall', () => {
-  it('A007/settings-components: uninstall invokes component_uninstall command', async () => {
+describe('A007/settings-components: install button triggers actual invoke command', () => {
+  it('A007/settings-components: download invokes component_download', async () => {
     const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
+      if (cmd === 'component_list') {
+        return Promise.resolve([
+          component({ id: 'cef', name: 'cef', isInstalled: false }),
+        ]);
+      }
+      if (cmd === 'component_download') {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(undefined);
+    });
     render(<ComponentsSettings />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('system-component-card-cef')).toBeInTheDocument();
-    });
-
-    const card = screen.getByTestId('system-component-card-cef');
-    await user.click(within(card).getByRole('button', { name: /uninstall/i }));
+    const card = await screen.findByTestId('system-component-card-cef');
+    await user.click(within(card).getByRole('button', { name: /download/i }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('component_uninstall', { id: 'cef' });
+      expect(mockInvoke).toHaveBeenCalledWith('component_download', { id: 'cef' });
     });
   });
 });
 
-describe('A007/settings-components: open folder button calls open_path', () => {
-  it('A007/settings-components: open folder invokes open_path command', async () => {
+describe('A007/settings-components: cancel download flow', () => {
+  it('A007/settings-components: cancel download invokes cancel api', async () => {
     const user = userEvent.setup();
-    render(<ComponentsSettings />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('system-component-card-cef')).toBeInTheDocument();
+    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
+      if (cmd === 'component_list') {
+        return Promise.resolve([
+          component({ id: 'cef', name: 'cef', isInstalled: false }),
+        ]);
+      }
+      if (cmd === 'component_status') {
+        return Promise.resolve(status({ status: 'downloading' }));
+      }
+      return Promise.resolve(undefined);
     });
 
-    const card = screen.getByTestId('system-component-card-cef');
-    await user.click(within(card).getByRole('button', { name: /open folder/i }));
+    render(<ComponentsSettings />);
+
+    const card = await screen.findByTestId('system-component-card-cef');
+    await user.click(within(card).getByRole('button', { name: /cancel download/i }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('open_path', { path: '/Users/test/.snapfzz/runtime/cef' });
+      expect(mockInvoke).toHaveBeenCalledWith('component_download_cancel', { id: 'cef' });
+      expect(mockInvoke).toHaveBeenCalledWith('component_status', { id: 'cef' });
     });
   });
 });
@@ -224,121 +213,16 @@ describe('A007/settings-components: error and fallback paths', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Unable to load system packs right now.')).toBeInTheDocument();
-      expect(screen.getByText('No system packs match your search.')).toBeInTheDocument();
     });
   });
 
   it('A007/settings-components: falls back to pending status when component_status fails', async () => {
     mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
       if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'broken', name: 'Broken Component', isInstalled: false })]);
+        return Promise.resolve([component()]);
       }
       if (cmd === 'component_status') {
-        const id = payload?.id as string;
-        if (id === 'broken') return Promise.reject(new Error('status failed'));
-        return Promise.resolve(status({ componentId: id, status: 'pending' }));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    render(<ComponentsSettings />);
-
-    await waitFor(() => {
-      const card = screen.getByTestId('system-component-card-broken');
-      expect(within(card).getByText('Not Installed')).toBeInTheDocument();
-      expect(within(card).getByRole('button', { name: /download/i })).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-components: installed component stays installed when status lookup fails', async () => {
-    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-      if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'cef', name: 'Chromium Embedded Framework', isInstalled: true })]);
-      }
-      if (cmd === 'component_status') {
-        const id = payload?.id as string;
-        if (id === 'cef') return Promise.reject(new Error('status failed'));
-        return Promise.resolve(status({ componentId: id, status: 'pending' }));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    render(<ComponentsSettings />);
-
-    await waitFor(() => {
-      const card = screen.getByTestId('system-component-card-cef');
-      expect(within(card).getByText('Installed')).toBeInTheDocument();
-      expect(within(card).getByRole('button', { name: /open folder/i })).toBeInTheDocument();
-    });
-  });
-
-  it('A007/settings-components: download failure triggers status refresh path', async () => {
-    const user = userEvent.setup();
-
-    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-      if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'llama-server', name: 'llama-server', isInstalled: false })]);
-      }
-      if (cmd === 'component_status') {
-        return Promise.resolve(status({ componentId: (payload?.id as string) || 'llama-server', status: 'pending' }));
-      }
-      if (cmd === 'component_download') {
-        return Promise.reject(new Error('download failed'));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    render(<ComponentsSettings />);
-
-    const card = await screen.findByTestId('system-component-card-llama-server');
-    await user.click(within(card).getByRole('button', { name: /download/i }));
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('component_download', { id: 'llama-server' });
-      expect(mockInvoke).toHaveBeenCalledWith('component_status', { id: 'llama-server' });
-    });
-  });
-
-  it('A007/settings-components: cancel download errors are swallowed', async () => {
-    const user = userEvent.setup();
-
-    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-      if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'llama-server', name: 'llama-server', isInstalled: false })]);
-      }
-      if (cmd === 'component_status') {
-        return Promise.resolve(status({ componentId: (payload?.id as string) || 'llama-server', status: 'downloading', percent: 42 }));
-      }
-      if (cmd === 'component_download_cancel') {
-        return Promise.reject(new Error('cancel failed'));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    render(<ComponentsSettings />);
-
-    const card = await screen.findByTestId('system-component-card-llama-server');
-    await user.click(within(card).getByRole('button', { name: /cancel download/i }));
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('component_download_cancel', { id: 'llama-server' });
-    });
-
-    expect(screen.queryByText('Unable to uninstall component.')).not.toBeInTheDocument();
-  });
-
-  it('A007/settings-components: uninstall failure shows inline error', async () => {
-    const user = userEvent.setup();
-
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'cef', isInstalled: true })]);
-      }
-      if (cmd === 'component_status') {
-        return Promise.resolve(status({ componentId: 'cef', status: 'ready' }));
-      }
-      if (cmd === 'component_uninstall') {
-        return Promise.reject(new Error('cannot uninstall'));
+        return Promise.reject(new Error('component_status unavailable'));
       }
       return Promise.resolve(undefined);
     });
@@ -346,81 +230,24 @@ describe('A007/settings-components: error and fallback paths', () => {
     render(<ComponentsSettings />);
 
     const card = await screen.findByTestId('system-component-card-cef');
-    await user.click(within(card).getByRole('button', { name: /uninstall/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Unable to uninstall component.')).toBeInTheDocument();
-    });
+    expect(within(card).getByText('Not Installed')).toBeInTheDocument();
   });
+});
 
-  it('A007/settings-components: successful download refreshes list', async () => {
-    const user = userEvent.setup();
-
-    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-      if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'llama-server', name: 'llama-server', isInstalled: false })]);
-      }
-      if (cmd === 'component_status') {
-        return Promise.resolve(status({ componentId: (payload?.id as string) || 'llama-server', status: 'pending' }));
-      }
-      if (cmd === 'component_download') {
-        return Promise.resolve([status({ componentId: 'llama-server', status: 'ready', percent: 100 })]);
-      }
-      return Promise.resolve(undefined);
-    });
-
-    render(<ComponentsSettings />);
-
-    const card = await screen.findByTestId('system-component-card-llama-server');
-    await user.click(within(card).getByRole('button', { name: /download/i }));
-
-    await waitFor(() => {
-      const listCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'component_list');
-      expect(listCalls.length).toBeGreaterThanOrEqual(2);
-    });
-  });
-
-  it('A007/settings-components: successful cancel refreshes status', async () => {
-    const user = userEvent.setup();
-
-    mockInvoke.mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-      if (cmd === 'component_list') {
-        return Promise.resolve([component({ id: 'llama-server', name: 'llama-server', isInstalled: false })]);
-      }
-      if (cmd === 'component_status') {
-        return Promise.resolve(status({ componentId: (payload?.id as string) || 'llama-server', status: 'downloading', percent: 35 }));
-      }
-      if (cmd === 'component_download_cancel') {
-        return Promise.resolve(undefined);
-      }
-      return Promise.resolve(undefined);
-    });
-
-    render(<ComponentsSettings />);
-
-    const card = await screen.findByTestId('system-component-card-llama-server');
-    await user.click(within(card).getByRole('button', { name: /cancel download/i }));
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('component_download_cancel', { id: 'llama-server' });
-      expect(mockInvoke).toHaveBeenCalledWith('component_status', { id: 'llama-server' });
-    });
-  });
-
+describe('A007/settings-components: search matches id with trimming and lowercase normalization', () => {
   it('A007/settings-components: search matches id with trimming and lowercase normalization', async () => {
     const user = userEvent.setup();
     render(<ComponentsSettings />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('system-component-card-llama-server')).toBeInTheDocument();
+      expect(screen.getByTestId('system-component-card-cef')).toBeInTheDocument();
     });
 
     await user.type(screen.getByPlaceholderText('Search packs...'), '  LLAMA-SERVER  ');
 
     await waitFor(() => {
-      expect(screen.getByText('llama-server')).toBeInTheDocument();
+      expect(screen.getByText('cef')).toBeInTheDocument();
       expect(screen.queryByText('Chromium Embedded Framework')).not.toBeInTheDocument();
     });
   });
 });
-

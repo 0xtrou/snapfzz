@@ -54,9 +54,9 @@ describe('A007/settings-advanced manifest', () => {
     expect(typeof section?.component).toBe('function');
   });
 
-  it('A007/settingsSections: section order is 6 so advanced appears near bottom', () => {
+  it('A007/settingsSections: section order is 99 so advanced appears at bottom', () => {
     const section = plugin.contributes?.settingsSections?.[0];
-    expect(section?.order).toBe(6);
+    expect(section?.order).toBe(99);
   });
 });
 

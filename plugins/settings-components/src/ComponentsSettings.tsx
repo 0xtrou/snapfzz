@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Divider, Input, List, Space, Tag, Typography } from 'antd';
+import { Input, List, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 import SystemComponentCard, {
   type ComponentInfo,
@@ -10,27 +10,17 @@ import SystemComponentCard, {
 const { Text } = Typography;
 const bridge = createTauriBridge();
 
-const PYTHON_COMPONENT_ORDER: string[] = ['uv', 'python', 'agentscope', 'litellm'];
-const PYTHON_FOUNDATION_COMPONENT_IDS: string[] = ['uv', 'python'];
-const PYTHON_INTEGRATION_COMPONENT_IDS: string[] = ['agentscope', 'litellm'];
-const STANDALONE_COMPONENT_ORDER: string[] = ['cef'];
-
-const ROW_GAP_PX = 14;
-
-type ComponentSubgroup = {
-  key: 'foundation' | 'integrations';
-  title: string;
-  description: string;
-  items: ComponentInfo[];
-};
+const COMPONENT_ORDER: string[] = ['python-runtime', 'cef'];
+const ROW_GAP_PX = 16;
 
 type ComponentGroup = {
-  key: 'standalone' | 'python';
+  key: string;
   title: string;
   description: string;
   items: ComponentInfo[];
-  subgroups?: ComponentSubgroup[];
 };
+
+const ROW_MARGIN_STYLE = { marginBottom: ROW_GAP_PX };
 
 function normalize(text: string): string {
   return text.trim().toLowerCase();
@@ -41,50 +31,15 @@ function indexByOrder(id: string, order: string[]): number {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
-function isPythonEcosystemComponent(id: string): boolean {
-  return PYTHON_COMPONENT_ORDER.includes(id);
-}
-
-function isStandaloneComponent(id: string): boolean {
-  return STANDALONE_COMPONENT_ORDER.includes(id);
-}
-
-function installOrderLabel(id: string): string | undefined {
-  if (id === 'python') return '1st';
-  if (id === 'agentscope') return '2nd';
-  if (id === 'litellm') return '3rd';
-  return undefined;
-}
-
 function dependencyBadgesFor(componentId: string): DependencyBadge[] | undefined {
-  if (componentId === 'uv') {
+  if (componentId === 'python-runtime') {
     return [
-      { label: 'Base tool', tone: 'ready' },
-      { label: 'Required by Python', tone: 'required' },
+      { label: 'Includes uv', tone: 'ready' },
+      { label: 'Python 3.12', tone: 'ready' },
+      { label: 'AgentScope', tone: 'ready' },
+      { label: 'LiteLLM', tone: 'ready' },
     ];
   }
-
-  if (componentId === 'python') {
-    return [
-      { label: 'Requires uv', tone: 'required' },
-      { label: 'Runtime base', tone: 'ready' },
-    ];
-  }
-
-  if (componentId === 'agentscope') {
-    return [
-      { label: 'Requires Python', tone: 'required' },
-      { label: 'Python Ecosystem', tone: 'ready' },
-    ];
-  }
-
-  if (componentId === 'litellm') {
-    return [
-      { label: 'Requires Python', tone: 'required' },
-      { label: 'Python Ecosystem', tone: 'ready' },
-    ];
-  }
-
   return undefined;
 }
 
@@ -155,69 +110,19 @@ export default function ComponentsSettings(): React.ReactElement {
     });
   }, [components, query]);
 
-  const pythonInstalled = useMemo(
-    () => Boolean(components.find((component) => component.id === 'python')?.isInstalled),
-    [components],
-  );
-
   const groupedComponents = useMemo<ComponentGroup[]>(() => {
-    const standalone = filteredComponents
-      .filter((component) => isStandaloneComponent(component.id))
-      .sort((a, b) => indexByOrder(a.id, STANDALONE_COMPONENT_ORDER) - indexByOrder(b.id, STANDALONE_COMPONENT_ORDER));
+    const sorted = [...filteredComponents].sort((a, b) =>
+      indexByOrder(a.id, COMPONENT_ORDER) - indexByOrder(b.id, COMPONENT_ORDER)
+    );
 
-    const python = filteredComponents
-      .filter((component) => isPythonEcosystemComponent(component.id))
-      .sort((a, b) => indexByOrder(a.id, PYTHON_COMPONENT_ORDER) - indexByOrder(b.id, PYTHON_COMPONENT_ORDER));
-
-    const pythonFoundation = python.filter((component) => PYTHON_FOUNDATION_COMPONENT_IDS.includes(component.id));
-    const pythonIntegrations = python.filter((component) => PYTHON_INTEGRATION_COMPONENT_IDS.includes(component.id));
-
-    const uncategorized = filteredComponents
-      .filter((component) => !isStandaloneComponent(component.id) && !isPythonEcosystemComponent(component.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    const groups: ComponentGroup[] = [];
-
-    if (standalone.length > 0 || uncategorized.length > 0) {
-      groups.push({
-        key: 'standalone',
-        title: 'Standalone',
-        description: 'Independent packs that do not depend on the Python runtime.',
-        items: [...standalone, ...uncategorized],
-      });
-    }
-
-    if (python.length > 0) {
-      const subgroups: ComponentSubgroup[] = [];
-
-      if (pythonFoundation.length > 0) {
-        subgroups.push({
-          key: 'foundation',
-          title: 'Foundation Runtime',
-          description: 'Install uv and Python first. They provide the runtime base for Python tools.',
-          items: pythonFoundation,
-        });
-      }
-
-      if (pythonIntegrations.length > 0) {
-        subgroups.push({
-          key: 'integrations',
-          title: 'Agent Integrations',
-          description: 'AgentScope and LiteLLM run on top of the installed Python runtime.',
-          items: pythonIntegrations,
-        });
-      }
-
-      groups.push({
-        key: 'python',
-        title: 'Python Ecosystem',
-        description: 'Install order: Python → AgentScope → LiteLLM. uv is a required foundation dependency for Python.',
-        items: python,
-        subgroups,
-      });
-    }
-
-    return groups;
+    return [
+      {
+        key: 'all',
+        title: 'System Packs',
+        description: 'Install runtime components for your AI agent environment.',
+        items: sorted,
+      },
+    ];
   }, [filteredComponents]);
 
   const handleDownload = useCallback(async (id: string) => {
@@ -262,30 +167,23 @@ export default function ComponentsSettings(): React.ReactElement {
       loading={loading}
       dataSource={items}
       split={false}
-      locale={{ emptyText: 'No packs in this section.' }}
+      locale={{ emptyText: 'No packs available.' }}
       style={{ display: 'flex', flexDirection: 'column', rowGap: ROW_GAP_PX }}
-      renderItem={(component) => {
-        const requiresPython = component.id === 'agentscope' || component.id === 'litellm';
-        const downloadDisabled = requiresPython && !pythonInstalled && !component.isInstalled;
-
-        return (
-          <List.Item key={component.id} style={{ padding: 0, border: 'none', margin: 0 }}>
-            <SystemComponentCard
-              component={component}
-              status={statusById[component.id]}
-              busyDownload={downloadBusyId === component.id}
-              busyUninstall={uninstallBusyId === component.id}
-              downloadDisabled={downloadDisabled}
-              dependencyBadges={dependencyBadgesFor(component.id)}
-              installOrderLabel={installOrderLabel(component.id)}
-              onDownload={handleDownload}
-              onCancelDownload={handleCancelDownload}
-              onUninstall={handleUninstall}
-              onOpenFolder={handleOpenFolder}
-            />
-          </List.Item>
-        );
-      }}
+      renderItem={(component) => (
+        <List.Item key={component.id} style={ROW_MARGIN_STYLE}>
+          <SystemComponentCard
+            component={component}
+            status={statusById[component.id]}
+            busyDownload={downloadBusyId === component.id}
+            busyUninstall={uninstallBusyId === component.id}
+            dependencyBadges={dependencyBadgesFor(component.id)}
+            onDownload={handleDownload}
+            onCancelDownload={handleCancelDownload}
+            onUninstall={handleUninstall}
+            onOpenFolder={handleOpenFolder}
+          />
+        </List.Item>
+      )}
     />
   ), [
     downloadBusyId,
@@ -294,7 +192,6 @@ export default function ComponentsSettings(): React.ReactElement {
     handleOpenFolder,
     handleUninstall,
     loading,
-    pythonInstalled,
     statusById,
     uninstallBusyId,
   ]);
@@ -326,34 +223,8 @@ export default function ComponentsSettings(): React.ReactElement {
                   <Space direction="vertical" size={4} style={{ width: '100%', marginBottom: 10 }}>
                     <Text strong>{group.title}</Text>
                     <Text type="secondary" style={{ fontSize: 12 }}>{group.description}</Text>
-                    {group.key === 'python' ? (
-                      <Space size={8} wrap>
-                        <Tag color="blue">1. Python</Tag>
-                        <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
-                        <Tag color="geekblue">2. AgentScope</Tag>
-                        <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
-                        <Tag color="purple">3. LiteLLM</Tag>
-                      </Space>
-                    ) : null}
                   </Space>
-
-                  {group.key === 'python' && group.subgroups && group.subgroups.length > 0 ? (
-                    <Space direction="vertical" size={18} style={{ width: '100%' }}>
-                      {group.subgroups.map((subgroup) => (
-                        <div key={subgroup.key}>
-                          <Space direction="vertical" size={2} style={{ width: '100%', marginBottom: 8 }}>
-                            <Text type="secondary" style={{ fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                              {subgroup.title}
-                            </Text>
-                            <Text type="secondary" style={{ fontSize: 12 }}>{subgroup.description}</Text>
-                          </Space>
-                          {renderComponentList(subgroup.items)}
-                        </div>
-                      ))}
-                    </Space>
-                  ) : renderComponentList(group.items)}
-
-                  {group.key === 'standalone' ? <Divider style={{ margin: '12px 0 0 0' }} /> : null}
+                  {renderComponentList(group.items)}
                 </section>
               ))}
             </Space>
