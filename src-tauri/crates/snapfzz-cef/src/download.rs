@@ -43,11 +43,11 @@ impl CefDownloader {
         self.install_dir.join(EXTRACTED_MARKER).exists()
     }
 
-    pub fn cancel(&self) {
+    pub fn cancel_download(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
     }
 
-    pub fn clear_cancel(&self) {
+    pub fn clear_cancel_download(&self) {
         self.cancelled.store(false, Ordering::SeqCst);
     }
 
@@ -146,7 +146,7 @@ impl CefDownloader {
         })
     }
 
-    pub async fn download(&self) -> Result<Vec<DownloadProgress>, CefError> {
+    pub async fn download_cef(&self) -> Result<Vec<crate::types::DownloadProgress>, CefError> {
         std::fs::create_dir_all(&self.install_dir)?;
 
         if self.cancelled.load(Ordering::SeqCst) {
@@ -267,10 +267,10 @@ impl CefDownloader {
     }
 
     pub async fn download_events(&self) -> Result<Vec<DownloadProgress>, CefError> {
-        self.download().await
+        self.download_cef().await
     }
 
-    pub async fn verify_checksum(&self) -> Result<String, CefError> {
+    pub async fn verify_checksum_cef(&self) -> Result<String, CefError> {
         let archive = self.find_archive()?;
         let bytes = std::fs::read(&archive)?;
         let digest = sha1_hex(&bytes);
@@ -294,7 +294,7 @@ impl CefDownloader {
         Ok(())
     }
 
-    pub async fn extract(&self) -> Result<(), CefError> {
+    pub async fn extract_cef(&self) -> Result<(), CefError> {
         let _ = self.find_archive()?;
         std::fs::create_dir_all(self.install_dir.join(EXTRACTED_MARKER))?;
         Ok(())
@@ -312,6 +312,109 @@ impl CefDownloader {
             }
         }
         Err(CefError::not_found("CEF archive not found in install directory".to_string()))
+    }
+}
+
+fn platform_display_name(platform: &str) -> &'static str {
+    match platform {
+        "macos-arm64" => "macOS (Apple Silicon)",
+        "macos-x64" => "macOS (Intel)",
+        "linux-x64" => "Linux (x86_64)",
+        "linux-arm64" => "Linux (ARM64)",
+        "windows-x64" => "Windows (x64)",
+        "windows-arm64" => "Windows (ARM64)",
+        _ => "Unknown platform",
+    }
+}
+
+use snapfzz_kernel::components::{
+    ComponentError, ComponentInfo, DownloadProgress as KernelProgress, DownloadStatus as KernelStatus,
+    SystemComponent,
+};
+
+#[async_trait::async_trait]
+impl SystemComponent for CefDownloader {
+    fn id(&self) -> &str {
+        "cef"
+    }
+
+    fn name(&self) -> &str {
+        "Chromium Embedded Framework"
+    }
+
+    fn install_dir(&self) -> &std::path::Path {
+        &self.install_dir
+    }
+
+    fn is_installed(&self) -> bool {
+        self.install_dir.join(EXTRACTED_MARKER).exists()
+    }
+
+    async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
+        let build = self
+            .resolve_latest_build()
+            .await
+            .map_err(|e| ComponentError::network(e.to_string()))?;
+
+        Ok(ComponentInfo {
+            id: "cef".into(),
+            name: "Chromium Embedded Framework".into(),
+            version: build.cef_version,
+            platform: self.platform.clone(),
+            platform_display: platform_display_name(&self.platform).to_string(),
+            download_url: build.download_url,
+            install_path: self.install_dir.to_string_lossy().into(),
+            size: build.size,
+            checksum: build.sha1,
+            checksum_algorithm: "sha1".into(),
+            is_installed: self.is_installed(),
+        })
+    }
+
+    async fn download(&self) -> Result<Vec<KernelProgress>, ComponentError> {
+        let cef_events = self
+            .download_cef()
+            .await
+            .map_err(|e| ComponentError::internal(e.to_string()))?;
+
+        Ok(cef_events
+            .into_iter()
+            .map(|e| KernelProgress {
+                component_id: "cef".into(),
+                bytes_downloaded: e.bytes_downloaded,
+                bytes_total: e.bytes_total,
+                percent: e.percent,
+                status: match e.status {
+                    DownloadStatus::Downloading => KernelStatus::Downloading,
+                    DownloadStatus::Verifying => KernelStatus::Verifying,
+                    DownloadStatus::Extracting => KernelStatus::Extracting,
+                    DownloadStatus::Ready => KernelStatus::Ready,
+                    DownloadStatus::Cancelled => KernelStatus::Cancelled,
+                    DownloadStatus::Failed(msg) => KernelStatus::Failed(msg),
+                    _ => KernelStatus::Pending,
+                },
+            })
+            .collect())
+    }
+
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    fn clear_cancel(&self) {
+        self.cancelled.store(false, Ordering::SeqCst);
+    }
+
+    async fn verify(&self) -> Result<String, ComponentError> {
+        self.verify_checksum_cef()
+            .await
+            .map_err(|e| ComponentError::internal(e.to_string()))
+    }
+
+    async fn extract(&self) -> Result<(), ComponentError> {
+        self.extract_cef()
+            .await
+            .map_err(|e| ComponentError::internal(e.to_string()))
     }
 }
 
@@ -423,9 +526,9 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let downloader = CefDownloader::new(temp.path().join("cef"), "macos-arm64".to_string());
         assert!(!downloader.cancelled.load(Ordering::SeqCst));
-        downloader.cancel();
+        downloader.cancel_download();
         assert!(downloader.cancelled.load(Ordering::SeqCst));
-        downloader.clear_cancel();
+        downloader.clear_cancel_download();
         assert!(!downloader.cancelled.load(Ordering::SeqCst));
     }
 
@@ -433,7 +536,7 @@ mod tests {
     async fn a015_downloader_verify_checksum_requires_archive() {
         let temp = tempfile::tempdir().expect("tempdir");
         let downloader = CefDownloader::new(temp.path().join("cef"), "linux-x64".to_string());
-        let error = downloader.verify_checksum().await.expect_err("should fail");
+        let error = downloader.verify_checksum_cef().await.expect_err("should fail");
         assert!(matches!(error, CefError::NotFound(_)));
     }
 
@@ -444,7 +547,7 @@ mod tests {
         std::fs::create_dir_all(&install_dir).expect("create dir");
         std::fs::write(install_dir.join("cef_binary_test_macosarm64_minimal.tar.bz2"), b"test-archive").expect("write");
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        let hash = downloader.verify_checksum().await.expect("checksum");
+        let hash = downloader.verify_checksum_cef().await.expect("checksum");
         assert!(!hash.is_empty());
         assert_eq!(hash.len(), 40);
     }
@@ -481,7 +584,7 @@ mod tests {
         std::fs::create_dir_all(&install_dir).expect("create dir");
         std::fs::write(install_dir.join("cef_test.tar.bz2"), b"archive").expect("write");
         let downloader = CefDownloader::new(install_dir, "linux-x64".to_string());
-        downloader.extract().await.expect("extract");
+        downloader.extract_cef().await.expect("extract");
         assert!(downloader.is_installed());
     }
 
@@ -489,7 +592,7 @@ mod tests {
     async fn a015_downloader_extract_requires_archive() {
         let temp = tempfile::tempdir().expect("tempdir");
         let downloader = CefDownloader::new(temp.path().join("cef"), "linux-x64".to_string());
-        let err = downloader.extract().await.expect_err("should fail");
+        let err = downloader.extract_cef().await.expect_err("should fail");
         assert!(matches!(err, CefError::NotFound(_)));
     }
 

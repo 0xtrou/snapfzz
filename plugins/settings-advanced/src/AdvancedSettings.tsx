@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Input, Modal, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
-import MiniAppsOnboarding from './MiniAppsOnboarding';
+import SystemComponentCard from './SystemComponentCard';
 
 const { Text } = Typography;
 
@@ -82,7 +82,7 @@ export default function AdvancedSettings(): React.ReactElement {
             </Text>
           </section>
 
-          <MiniAppsOnboarding />
+          <SystemComponentCard componentId="cef" />
 
           <section>
             <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>

@@ -32,7 +32,7 @@ pub async fn cef_download_status(
 pub async fn cef_download_cancel(
     state: tauri::State<'_, CefState>,
 ) -> Result<(), String> {
-    state.downloader.cancel();
+    state.downloader.cancel_download();
     Ok(())
 }
 
@@ -298,7 +298,7 @@ mod tests {
         std::fs::create_dir_all(&install_dir).expect("create install dir");
         std::fs::write(install_dir.join("cef_binary.tar.bz2"), b"archive").expect("archive bytes");
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        downloader.extract().await.expect("extract marker");
+        downloader.extract_cef().await.expect("extract marker");
 
         let progress = super::download_status_from_downloader(&downloader).await;
 
