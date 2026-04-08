@@ -48,6 +48,13 @@ function createPlaceholder(id: string, name: string, description: string): Compo
   };
 }
 
+function isPipPackageInstalled(packageName: string, installedPackages: string[]): boolean {
+  return installedPackages.some(pkg => {
+    const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+    return name === packageName.toLowerCase() || name.startsWith(packageName.toLowerCase() + '-');
+  });
+}
+
 function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
   const fallback = {
     id: subPackId,
@@ -279,23 +286,15 @@ export default function ComponentsSettings(): React.ReactElement {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
-      const agentscope = items.find((c) => c.id === 'agentscope') || createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
-      const litellm = items.find((c) => c.id === 'litellm') || createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
+      const agentscope = createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
+      const litellm = createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
 
-      // Check if pip packages are installed (they show up in python_runtime_status.installed_packages)
+      // Check if pip packages are installed via python_runtime_status
       const installedPipPackages = pythonRuntime?.installed_packages || [];
-      const isAgentscopeInstalled = installedPipPackages.some(pkg => {
-        const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-        return name.startsWith('agentscope');
-      });
-      const isLitellmInstalled = installedPipPackages.some(pkg => {
-        const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-        return name.startsWith('litellm');
-      });
-
+      
       // Mark pip packages as installed based on pip list
-      agentscope.isInstalled = isAgentscopeInstalled;
-      litellm.isInstalled = isLitellmInstalled;
+      agentscope.isInstalled = isPipPackageInstalled('agentscope', installedPipPackages);
+      litellm.isInstalled = isPipPackageInstalled('litellm', installedPipPackages);
 
       const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
