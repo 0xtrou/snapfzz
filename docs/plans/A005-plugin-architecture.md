@@ -1,57 +1,76 @@
 ---
-title: "Plugin Architecture — Core + System Plugins + Third-Party"
+title: "Plugin Architecture — System Plugins + User Plugins (Webhook)"
 type: feat
 date: 2026-04-02
 source: "Oracle consultation + founder refinement"
+updated: 2026-04-08
 ---
 
 # Plugin Architecture
 
 > See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-Core is the bones. Everything else is a plugin. JS-only plugins (Worker-hosted). No Rust plugins — simplicity over power.
+Core is the bones. Everything else is a plugin.
 
 ## Design Principles
 
 1. **Core is tiny.** Window management, plugin loader, event bus, bridge. No features.
-2. **System plugins = third-party plugins.** Same API. No shortcuts. If we can't build a feature as a plugin, the plugin API is wrong.
-3. **JS-only plugins.** All plugins are TypeScript/React, hosted in Web Workers. No Rust plugin runtime. Rust is core-only.
-4. **Plugins provide everything.** Not just UI tabs — also mini apps, generic components, intelligence assets (agent skills, tools, eval benchmarks).
-5. **Bus-only communication.** Plugins never import from each other. EventBus + CommandBus + ApiBroker.
-6. **Crash isolation.** Plugin crashes show fallback UI. Core never goes down.
+2. **Two tiers.** System plugins (in-process, TypeScript) + User plugins (process-isolated, any language).
+3. **System plugins = our features.** Chat, KB, Code, Preview, Settings — all system plugins using the same SDK.
+4. **User plugins = webhooks.** Third-party plugins communicate via loopback HTTP. Process isolation. Language agnostic.
+5. **Plugins provide everything.** Not just UI tabs — also mini apps, intelligence assets (agent skills, tools, eval benchmarks).
+6. **Crash isolation.** System plugin crash → ErrorBoundary fallback. User plugin crash → process dies alone, core unaffected.
 7. **Lazy everything.** < 500ms startup. Plugins load on demand.
+
+---
+
+## Two Plugin Tiers
+
+| | System Plugins | User Plugins |
+|---|---|---|
+| **Who** | Snapfzz team | Third-party developers, marketplace |
+| **Language** | TypeScript/React only | Any (Python, Go, Rust, Node, etc.) |
+| **Isolation** | In-process, ErrorBoundary | Process-isolated, loopback webhook |
+| **Communication** | EventBus + CommandBus (in-memory) | Incoming/outgoing webhooks (HTTP on 127.0.0.1) |
+| **Latency** | ~0ms | <1ms (loopback) |
+| **Trust** | Trusted (ships with app) | Untrusted (sandboxed, capability-gated) |
+| **Crash impact** | ErrorBoundary catches, 3-strike disable | Process dies alone, core unaffected |
+| **UI** | Direct React rendering | Mini app iframe OR webhook-only (headless) |
+| **Install** | Built into app | Downloaded to ~/.snapfzz/plugins/{id}/ |
+| **Security** | No capability checks (trusted) | HMAC signed webhooks, capability enforcement |
 
 ---
 
 ## What A Plugin Can Provide
 
-| Contribution Type | Category | Example |
-|---|---|---|
-| **Workspace Tab** | UI | Knowledge Base tab, Code tab, Deployments tab |
-| **Left Panel Tab** | UI | Chat tab, Team tab |
-| **Bottom Panel Section** | UI | Agent Network panel |
-| **Status Bar Item** | UI | Token counter, connection indicator |
-| **Command** | UI | "Send message", "Deploy to Vercel", "Run eval" |
-| **Keyboard Shortcut** | UI | ⌘+Enter to send, ⌘+1-6 for tabs |
-| **Settings Section** | UI | LLM config, model routing |
-| **Mini App** | UI + Logic | Revenue dashboard, tax calculator, architecture diagram |
-| **Generic Component** | UI | Custom card type, custom list renderer, chart widget |
-| **Agent Skill** | Intelligence | ClarifyAgent interview protocol, BuildAgent code patterns |
-| **Agent Tool** | Intelligence | GitHub search tool, Stripe API tool, file writer tool |
-| **Eval Benchmark** | Intelligence | Code quality benchmark, requirements completeness benchmark |
-| **Eval Grader** | Intelligence | Custom OpenJudge grader for domain-specific quality |
-| **Deploy Target** | Intelligence | Vercel adapter, Fly.io adapter, Railway adapter |
-| **Identity Provider** | Intelligence | Stripe connector, GitHub connector, Cloudflare connector |
-| **Compliance Template** | Intelligence | SG Pte. Ltd. checklist, GDPR checklist, SOC 2 checklist |
+| Contribution Type | Category | System | User |
+|---|---|---|---|
+| **Workspace Tab** | UI | Yes | Via mini app iframe |
+| **Left Panel Tab** | UI | Yes | Via mini app iframe |
+| **Bottom Panel Section** | UI | Yes | Via mini app iframe |
+| **Status Bar Item** | UI | Yes | No |
+| **Command** | UI | Yes | Via incoming webhook |
+| **Keyboard Shortcut** | UI | Yes | No |
+| **Settings Section** | UI | Yes | Via mini app iframe |
+| **Mini App** | UI + Logic | Yes | Yes (primary UI for user plugins) |
+| **Generic Component** | UI | Yes | No |
+| **Agent Skill** | Intelligence | Yes | Yes (webhook handler) |
+| **Agent Tool** | Intelligence | Yes | Yes (webhook handler) |
+| **Eval Benchmark** | Intelligence | Yes | Yes (webhook handler) |
+| **Eval Grader** | Intelligence | Yes | Yes (webhook handler) |
+| **Deploy Target** | Intelligence | Yes | Yes (webhook handler) |
+| **Identity Provider** | Intelligence | Yes | Yes (webhook handler) |
+| **Compliance Template** | Intelligence | Yes | Yes (manifest-only) |
+| **Incoming Webhook** | Communication | No (uses EventBus) | Yes |
+| **Outgoing Webhook** | Communication | No (uses EventBus) | Yes |
 
 ---
 
-## Plugin Manifest
+## System Plugin Manifest
 
-Every plugin declares what it provides via a manifest:
+System plugins use the TypeScript SDK — same as today:
 
 ```typescript
-// plugin.manifest.ts
 import { definePlugin } from '@snapfzz/plugin-sdk';
 
 export default definePlugin({
@@ -59,628 +78,576 @@ export default definePlugin({
   name: 'Code Editor',
   version: '1.0.0',
   description: 'Monaco editor, file explorer, git inspector',
-  
-  // Which window(s) this plugin lives in
   surface: ['project'],
-  
-  // When to activate (lazy by default)
-  activationEvents: [
-    'onViewVisible:code',        // activate when Code tab is first opened
-  ],
-  
-  // What this plugin depends on
-  dependencies: {
-    'snapfzz.mini-app-runtime': '^1.0',  // needs mini app host for quality report
-  },
-  
-  // What this plugin provides
+  activationEvents: ['onViewVisible:code'],
+
   contributes: {
-    // UI contributions
     workspaceTabs: [{
       id: 'code',
       label: 'Code',
-      icon: '📁',
-      component: () => import('./CodePanel'),  // lazy React component
+      icon: 'FileOutlined',
+      component: () => import('./CodePanel'),
     }],
     commands: [
       { id: 'code.openFile', title: 'Open File' },
       { id: 'code.diff', title: 'Show Diff' },
-      { id: 'code.blame', title: 'Show Blame' },
-      { id: 'code.commit', title: 'Commit Changes' },
     ],
-    shortcuts: [
-      { command: 'code.openFile', key: '⌘+P' },
-      { command: 'code.diff', key: '⌘+Shift+D' },
-    ],
-    settings: [{
-      id: 'code.editor',
-      label: 'Editor',
-      schema: {
-        fontSize: { type: 'number', default: 14 },
-        tabSize: { type: 'number', default: 2 },
-        wordWrap: { type: 'boolean', default: false },
-      },
-    }],
-    statusItems: [{
-      id: 'code.fileCount',
-      position: 'right',
-      component: () => import('./FileCountStatus'),
-    }],
-    
-    // Intelligence contributions
     agentTools: [{
       id: 'code.writeFile',
       name: 'Write File',
-      description: 'Write content to a file in the project',
       schema: { path: 'string', content: 'string' },
       handler: () => import('./tools/writeFile'),
-    }, {
-      id: 'code.readFile',
-      name: 'Read File',
-      description: 'Read a file from the project',
-      schema: { path: 'string' },
-      handler: () => import('./tools/readFile'),
     }],
   },
 });
 ```
 
-### Full Manifest Interface
+### System Plugin Communication (In-Process)
 
 ```typescript
-export interface PluginManifest {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  
-  surface: ('launcher' | 'project')[];
-  activationEvents: ActivationEvent[];
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-  requiredCapabilities?: string[];
-  
-  contributes?: {
-    // UI
-    workspaceTabs?: TabContribution[];
-    leftPanelTabs?: TabContribution[];
-    bottomPanels?: PanelContribution[];
-    statusItems?: StatusItemContribution[];
-    commands?: CommandContribution[];
-    shortcuts?: ShortcutContribution[];
-    settings?: SettingsContribution[];
-    genericComponents?: ComponentContribution[];
-    
-    // Intelligence
-    agentSkills?: SkillContribution[];
-    agentTools?: ToolContribution[];
-    evalBenchmarks?: BenchmarkContribution[];
-    evalGraders?: GraderContribution[];
-    deployTargets?: DeployTargetContribution[];
-    identityProviders?: IdentityProviderContribution[];
-    complianceTemplates?: ComplianceTemplateContribution[];
-    
-    // Mini Apps
-    miniApps?: MiniAppContribution[];
-  };
+// EventBus — fire and forget
+ctx.bus.emit('build.complete', { url: 'https://...' });
+ctx.bus.on('build.complete', (payload) => { ... });
+
+// CommandBus — request/response
+ctx.commands.register('code.openFile', async (args) => { ... });
+const result = await ctx.commands.execute('code.openFile', { path: 'src/main.rs' });
+
+// ApiBroker — structured API sharing (Backstage-style)
+ctx.apis.provide('identities', { getProvider, listProviders });
+const identities = ctx.apis.get<IdentitiesAPI>('identities');
+```
+
+---
+
+## User Plugin Manifest
+
+User plugins use a JSON manifest. No TypeScript SDK required — any language.
+
+```json
+{
+  "id": "community.supabase",
+  "name": "Supabase Integration",
+  "version": "0.1.0",
+  "description": "Supabase database tools and schema expert",
+  "author": "community",
+  "license": "MIT",
+
+  "runtime": {
+    "command": "python server.py",
+    "port": 0,
+    "healthCheck": "/health",
+    "language": "python",
+    "requirements": ["supabase>=2.0"]
+  },
+
+  "capabilities": [
+    "identity.write",
+    "filesystem.read",
+    "agent.invoke"
+  ],
+
+  "webhooks": {
+    "incoming": [
+      {
+        "event": "agent.tool.call",
+        "path": "/tools/query",
+        "description": "Execute a Supabase query"
+      },
+      {
+        "event": "agent.tool.call",
+        "path": "/tools/schema",
+        "description": "Get database schema"
+      }
+    ],
+    "outgoing": [
+      {
+        "event": "supabase.migration.complete",
+        "description": "Fired when a migration runs"
+      }
+    ]
+  },
+
+  "contributes": {
+    "agentTools": [
+      {
+        "id": "supabase.query",
+        "name": "Query Supabase",
+        "description": "Execute a query against the database",
+        "inputSchema": {
+          "table": "string",
+          "filter": "object",
+          "select": "string"
+        },
+        "webhookPath": "/tools/query"
+      }
+    ],
+    "agentSkills": [
+      {
+        "id": "supabase.schema-design",
+        "name": "Supabase Schema Expert",
+        "systemPrompt": "You are an expert in Supabase database design..."
+      }
+    ],
+    "miniApps": [
+      {
+        "id": "supabase.dashboard",
+        "name": "Supabase Dashboard",
+        "source": "miniapps/dashboard.html"
+      }
+    ]
+  }
 }
 ```
+
+---
+
+## User Plugin Webhook Communication
+
+### How It Works
+
+```
+Snapfzz Core                              User Plugin Process
+(Rust + React)                             (any language, 127.0.0.1)
+┌──────────────────────┐                   ┌──────────────────────┐
+│                      │                   │                      │
+│ 1. Agent needs tool  │                   │ HTTP server          │
+│    "supabase.query"  │                   │ Listening on :PORT   │
+│                      │   OUTGOING        │                      │
+│ 2. POST /tools/query │──HTTP POST───────→│ 3. Receive request   │
+│    127.0.0.1:{port}  │  HMAC signed      │    Verify HMAC       │
+│    JSON payload      │                   │    Execute query      │
+│                      │                   │                      │
+│ 5. Parse response    │←─HTTP 200────────│ 4. Return result     │
+│    Return to agent   │  JSON payload     │    JSON response     │
+│                      │                   │                      │
+│                      │   INCOMING        │                      │
+│ 7. Route to EventBus │←─HTTP POST───────│ 6. Plugin fires event│
+│    POST /hooks/{id}  │  127.0.0.1:CORE  │    "migration done"  │
+│    Verify plugin key │                   │                      │
+└──────────────────────┘                   └──────────────────────┘
+```
+
+### Webhook Security
+
+```
+Every outgoing webhook from Snapfzz includes:
+
+Headers:
+  X-Snapfzz-Signature: sha256=HMAC(secret, body)
+  X-Snapfzz-Plugin-Id: community.supabase
+  X-Snapfzz-Timestamp: 1712567890
+  Content-Type: application/json
+
+Plugin verifies:
+  1. Compute HMAC(shared_secret, raw_body) with SHA-256
+  2. Compare with X-Snapfzz-Signature
+  3. Check timestamp within 5 minute window (replay protection)
+  4. Reject if any check fails
+```
+
+```
+Every incoming webhook TO Snapfzz includes:
+
+Headers:
+  X-Plugin-Key: {plugin_api_key}
+  Content-Type: application/json
+
+Snapfzz verifies:
+  1. Plugin key matches registered plugin
+  2. Event type is in plugin's declared outgoing webhooks
+  3. Rate limit: max 100 requests/minute per plugin
+  4. Payload size: max 1MB
+```
+
+### Webhook Payload Format
+
+```json
+{
+  "event": "agent.tool.call",
+  "timestamp": 1712567890,
+  "requestId": "req_abc123",
+  "data": {
+    "toolId": "supabase.query",
+    "input": {
+      "table": "users",
+      "filter": {"id": 123},
+      "select": "id, name, email"
+    }
+  }
+}
+```
+
+Response:
+```json
+{
+  "requestId": "req_abc123",
+  "status": "success",
+  "data": {
+    "rows": [{"id": 123, "name": "Alice", "email": "alice@example.com"}]
+  }
+}
+```
+
+Error:
+```json
+{
+  "requestId": "req_abc123",
+  "status": "error",
+  "error": {
+    "code": "QUERY_FAILED",
+    "message": "Table 'users' not found"
+  }
+}
+```
+
+---
+
+## User Plugin Lifecycle
+
+### Process Management
+
+User plugins are managed as child processes by snapfzz-runtime:
+
+```
+INSTALL → REGISTERED → STARTING → HEALTHY → RUNNING → STOPPING → STOPPED
+                                     ↕
+                                  UNHEALTHY → auto-restart (3 max)
+                                                    ↓
+                                                 DISABLED
+```
+
+```
+Install:
+  1. Validate manifest.json (Zod schema)
+  2. Create ~/.snapfzz/plugins/{id}/
+  3. Copy plugin files to dist/
+  4. User approves capabilities
+  5. Register with PluginHost
+
+Start:
+  1. Allocate random port (port 0 → OS assigns)
+  2. Run: {runtime.command} with CWD = plugin dir
+  3. Inject env: SNAPFZZ_PORT={allocated}, SNAPFZZ_PLUGIN_ID={id}, SNAPFZZ_WEBHOOK_SECRET={hmac_secret}
+  4. Health check: GET {runtime.healthCheck} until 200
+  5. Register webhook routes
+  6. Status → RUNNING
+
+Stop:
+  1. SIGTERM to process group
+  2. Wait 5s for graceful shutdown
+  3. SIGKILL if still alive
+  4. Deregister webhook routes
+  5. Status → STOPPED
+```
+
+### Port Allocation
+
+```rust
+// Each user plugin gets a random port on loopback
+fn allocate_plugin_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.local_addr().unwrap().port()
+}
+```
+
+All plugin ports bound to `127.0.0.1` only — never exposed to network.
+
+---
+
+## Plugin Directory Structure
+
+### System Plugins (in-app)
+
+```
+plugins/
+├── chat/                   system plugin (TypeScript)
+├── settings-general/       system plugin
+├── settings-vault/         system plugin
+└── ...
+```
+
+### User Plugins (installed)
+
+```
+~/.snapfzz/plugins/
+├── community.supabase/
+│   ├── manifest.json        validated on install (Zod)
+│   ├── dist/                plugin code (read-only after install)
+│   │   ├── server.py        HTTP server entrypoint
+│   │   ├── tools/           tool handlers
+│   │   └── miniapps/        mini app HTML files
+│   ├── data/                plugin's namespaced storage
+│   ├── cache/               temp files, expendable
+│   └── permissions.json     granted capabilities
+├── community.stripe/
+│   ├── manifest.json
+│   ├── dist/
+│   │   ├── main.go          Go plugin
+│   │   └── ...
+│   └── ...
+```
+
+### Sandbox Rules
+
+1. **CWD locked** to `~/.snapfzz/plugins/{id}/` — no escape
+2. **Read-only bundle** — `dist/` immutable after install
+3. **Namespaced storage** — `data/` scoped per plugin
+4. **Network** — plugin can only reach 127.0.0.1 (Snapfzz core + own port)
+5. **No vault access** — plugins manage their own secrets
+6. **No system settings** — plugins get namespaced config only
+
+---
+
+## System Plugin Context API
+
+System plugins receive `PluginContext` on activation:
+
+```typescript
+export interface PluginContext {
+  bus: EventBus;
+  commands: CommandRegistry;
+  registry: ContributionRegistry;
+  settings: SettingsRegistry;
+  storage: PluginStorage;
+  apis: ApiBroker;
+  rust: RustBridge;
+  surface: HostSurface;
+  projectPath?: string;
+  logger: Logger;
+}
+```
+
+User plugins DON'T get PluginContext — they communicate via webhooks only.
 
 ---
 
 ## Intelligence Asset Contributions
 
+Both system and user plugins can provide intelligence assets:
+
 ### Agent Skills
 
-```typescript
-// plugins/compliance/skills/sg-incorporation.ts
-export const sgIncorporationSkill: SkillContribution = {
-  id: 'compliance.skill.sg-incorporation',
-  name: 'Singapore Incorporation Expert',
-  description: 'Guides through SG Pte. Ltd. registration process',
-  
-  // System prompt fragment injected into agent
-  systemPrompt: `You are an expert in Singapore company incorporation. 
-    You know ACRA BizFile+ process, nominee director requirements,
-    corporate secretary obligations, and GST registration thresholds.`,
-  
-  // Which agents can use this skill
-  targetAgents: ['orchestrator', 'compliance-agent'],
-  
-  // Knowledge base docs this skill references
-  knowledgeRefs: ['compliance/sg-incorporation-guide.md'],
-};
+```json
+{
+  "agentSkills": [{
+    "id": "supabase.schema-design",
+    "name": "Supabase Schema Expert",
+    "systemPrompt": "You are an expert in Supabase database design...",
+    "targetAgents": ["orchestrator", "build-agent"]
+  }]
+}
 ```
 
-### Agent Tools
+### Agent Tools (User Plugin — webhook-backed)
 
-```typescript
-// plugins/deployments/tools/vercel-deploy.ts
-export const vercelDeployTool: ToolContribution = {
-  id: 'deployments.tool.vercel-deploy',
-  name: 'Deploy to Vercel',
-  description: 'Deploy the current project to Vercel',
-  
-  // JSON schema for tool parameters
-  inputSchema: {
-    projectName: { type: 'string', required: true },
-    framework: { type: 'string', enum: ['nextjs', 'vite', 'remix'] },
-    envVars: { type: 'object', additionalProperties: { type: 'string' } },
-  },
-  
-  // The actual tool implementation (runs in Worker)
-  handler: async (params, ctx) => {
-    const identity = await ctx.apis.get('identities').getProvider('vercel');
-    const result = await ctx.rust.invoke('deploy_vercel', {
-      token: identity.token,
-      ...params,
-    });
-    return { url: result.url, deployId: result.id };
-  },
-  
-  // Required capabilities
-  capabilities: ['identity.vercel.read', 'box.filesystem.read'],
-};
+```json
+{
+  "agentTools": [{
+    "id": "supabase.query",
+    "name": "Query Supabase",
+    "inputSchema": { "table": "string", "filter": "object" },
+    "webhookPath": "/tools/query"
+  }]
+}
 ```
 
-### Eval Benchmarks
+When an agent calls this tool:
+1. Snapfzz sends webhook POST to plugin's `/tools/query`
+2. Plugin processes and returns result
+3. Snapfzz returns result to agent
 
-```typescript
-// plugins/eval/benchmarks/code-quality.ts
-export const codeQualityBenchmark: BenchmarkContribution = {
-  id: 'eval.benchmark.code-quality',
-  name: 'Code Quality Benchmark',
-  description: '35 code samples rated for idiomatic patterns',
-  
-  type: 'judge',  // 'hard' | 'judge' | 'both'
-  targetAgent: 'build-agent',
-  grader: 'code-quality-grader',
-  
-  // Dataset (inline or URL to hosted DB)
-  dataset: {
-    source: 'built-in',
-    cases: [
-      { input: 'samples/next-api-route.ts', expectedScore: 0.85 },
-      { input: 'samples/flask-handler.py', expectedScore: 0.42 },
-      // ...
-    ],
-  },
-};
-```
+### Eval Benchmarks + Graders
 
-### Eval Graders
-
-```typescript
-// plugins/eval/graders/requirements-completeness.ts
-export const requirementsCompletenessGrader: GraderContribution = {
-  id: 'eval.grader.requirements-completeness',
-  name: 'Requirements Completeness Grader',
-  description: 'Evaluates if a requirements doc covers all necessary sections',
-  
-  type: 'judge',
-  model: 'cheap',  // uses the cheap model from settings
-  
-  // The LLM-as-judge prompt
-  judgePrompt: `Evaluate the following requirements document for completeness.
-    Check for: Problem statement, Target users, Core features, Constraints,
-    Differentiator, Revenue model, Success criteria.
-    Score 0-1 where 1 = all sections present and substantive.`,
-  
-  // Structured output schema
-  outputSchema: {
-    score: { type: 'number', min: 0, max: 1 },
-    missingSections: { type: 'array', items: { type: 'string' } },
-    reasoning: { type: 'string' },
-  },
-};
+```json
+{
+  "evalBenchmarks": [{
+    "id": "supabase.rls-coverage",
+    "name": "RLS Coverage Benchmark",
+    "webhookPath": "/eval/rls-coverage"
+  }]
+}
 ```
 
 ### Deploy Targets
 
-```typescript
-// plugins/deployments/targets/vercel.ts
-export const vercelTarget: DeployTargetContribution = {
-  id: 'deployments.target.vercel',
-  name: 'Vercel',
-  icon: '▲',
-  description: 'Deploy to Vercel (Next.js, Vite, Remix)',
-  
-  supportedFrameworks: ['nextjs', 'vite', 'remix', 'static'],
-  
-  requiredIdentity: 'vercel',  // must have Vercel identity connected
-  
-  // Config schema shown in Deployments tab
-  configSchema: {
-    projectName: { type: 'string', required: true },
-    framework: { type: 'string', enum: ['nextjs', 'vite', 'remix'] },
-    buildCommand: { type: 'string', default: 'npm run build' },
-    outputDir: { type: 'string', default: '.next' },
-    envVars: { type: 'object' },
-  },
-  
-  // Deploy, rollback, health check handlers
-  handlers: {
-    deploy: () => import('./handlers/deploy'),
-    rollback: () => import('./handlers/rollback'),
-    healthCheck: () => import('./handlers/healthCheck'),
-    logs: () => import('./handlers/logs'),
-  },
-};
-```
-
-### Identity Providers
-
-```typescript
-// plugins/identities/providers/stripe.ts
-export const stripeProvider: IdentityProviderContribution = {
-  id: 'identities.provider.stripe',
-  name: 'Stripe',
-  icon: '💳',
-  description: 'Payment processing',
-  
-  authType: 'api-key',  // 'oauth' | 'api-key' | 'token'
-  
-  configSchema: {
-    apiKey: { type: 'string', secret: true, label: 'API Key' },
-    mode: { type: 'string', enum: ['test', 'live'], default: 'test' },
-  },
-  
-  // Validate connection
-  testConnection: () => import('./handlers/testConnection'),
-  
-  // What this identity unlocks
-  provides: ['payments.stripe', 'deployments.stripe-billing'],
-};
-```
-
-### Compliance Templates
-
-```typescript
-// plugins/compliance/templates/sg-pte-ltd.ts
-export const sgPteLtdTemplate: ComplianceTemplateContribution = {
-  id: 'compliance.template.sg-pte-ltd',
-  name: 'Singapore Pte. Ltd.',
-  jurisdiction: 'SG',
-  description: 'Company incorporation checklist for Singapore',
-  
-  areas: [{
-    name: 'Corporate Entity',
-    items: [
-      { label: 'Register company name with ACRA', link: 'https://acra.gov.sg' },
-      { label: 'Appoint local resident director' },
-      { label: 'Open corporate bank account (DBS, OCBC, UOB)' },
-      { label: 'Register for GST (if revenue > S$1M)' },
-      { label: 'Appoint corporate secretary' },
-    ],
-  }, {
-    name: 'Privacy & Data (PDPA)',
-    items: [
-      { label: 'Generate Privacy Policy' },
-      { label: 'Appoint Data Protection Officer' },
-      { label: 'Implement data breach notification process' },
-    ],
-  }],
-};
-```
-
-### Mini Apps
-
-```typescript
-// plugins/deployments/miniapps/traffic-dashboard.ts
-export const trafficDashboard: MiniAppContribution = {
-  id: 'deployments.miniapp.traffic-dashboard',
-  name: 'Traffic Dashboard',
-  description: 'Real-time traffic visualization',
-  
-  targetTab: 'deployments',  // which workspace tab hosts this
-  
-  // Self-contained HTML (agent can also generate these on the fly)
-  source: () => import('./miniapps/traffic-dashboard.html?raw'),
-  
-  // What data the mini app can query
-  dataAccess: ['deployments.analytics', 'identities.plausible'],
-};
-```
-
----
-
-## Plugin Context API
-
-Every plugin receives a `PluginContext` on activation — the only way to interact with the system:
-
-```typescript
-export interface PluginContext {
-  // Communication
-  bus: EventBus;                   // Typed pub/sub
-  commands: CommandRegistry;       // Execute and register commands
-  
-  // Registration
-  registry: ContributionRegistry;  // Register UI + intelligence contributions at runtime
-  
-  // Data
-  settings: SettingsRegistry;      // Read/write settings (namespaced to plugin)
-  storage: PluginStorage;          // Persistent key-value store (namespaced)
-  
-  // Cross-plugin API
-  apis: ApiBroker;                 // Request another plugin's API by token
-  
-  // Rust bridge
-  rust: RustBridge;                // Call Rust core capabilities
-  
-  // Runtime info
-  surface: 'launcher' | 'project';
-  projectPath?: string;            // .snapfzz/ path for project plugins
-  logger: Logger;
-}
-
-// EventBus — typed, namespaced
-interface EventBus {
-  emit<T>(topic: string, payload: T): void;
-  on<T>(topic: string, handler: (payload: T) => void): Disposable;
-}
-
-// CommandBus — execute commands from any plugin
-interface CommandRegistry {
-  execute<T>(commandId: string, args?: unknown): Promise<T>;
-  register(commandId: string, handler: CommandHandler): Disposable;
-}
-
-// ApiBroker — Backstage-style API tokens
-interface ApiBroker {
-  get<T>(token: string): T;        // e.g. apis.get('identities') → IdentitiesAPI
-  provide<T>(token: string, impl: T): void;
-}
-
-// RustBridge — call core Rust capabilities
-interface RustBridge {
-  invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
-  listen<T>(event: string, handler: (payload: T) => void): Disposable;
-  channel<T>(): Channel<T>;        // High-frequency streaming
+```json
+{
+  "deployTargets": [{
+    "id": "supabase.deploy",
+    "name": "Deploy to Supabase",
+    "configSchema": { "projectRef": "string" },
+    "handlers": {
+      "deploy": "/deploy/push",
+      "rollback": "/deploy/rollback",
+      "healthCheck": "/deploy/health"
+    }
+  }]
 }
 ```
 
 ---
 
-## Plugin Lifecycle
+## Capability Model
 
-```
-DISCOVERED  → manifest read from registry
-RESOLVED    → dependencies validated, topological sort
-LOADED      → JS chunk imported (not activated yet)
-ACTIVATED   → activate() called, contributions registered
-RUNNING     → plugin operational, handling events
-DEACTIVATED → deactivate() called, contributions removed
-UNLOADED    → JS chunk garbage collected
-```
+### System Plugins — No enforcement (trusted)
 
-### Activation Events (Lazy Loading)
+System plugins ship with the app. No capability checks needed.
 
-```typescript
-activationEvents: [
-  'onStartupFinished',         // after core is ready
-  'onViewVisible:code',        // when Code tab is first opened
-  'onCommand:code.openFile',   // when someone executes this command
-  'onEvent:build.complete',    // when another plugin emits this event
-  'onWorkspaceOpened',         // when a project window opens
-]
-```
+### User Plugins — Approve once, enforce always
 
-### Startup Budget
-
-```
-0ms     Core shell + theme + manifest index
-~100ms  First paint (skeleton)
-~200ms  Activate: chat + agent-network (critical plugins)
-~300ms  User sees Chat, can type
-~500ms  Background preload via requestIdleCallback
-        Other plugins load on first tab open
-```
-
----
-
-## Plugin Sandbox & Security
-
-### Directory Isolation
-
-Every third-party plugin is jailed to its own directory. No escape.
-
-```
-~/.snapfzz/plugins/
-├── community.supabase/          ← plugin's ENTIRE world
-│   ├── manifest.json            ← validated on install (Zod schema)
-│   ├── dist/                    ← JS bundle (read-only after install)
-│   ├── data/                    ← plugin's namespaced storage (ctx.storage)
-│   ├── cache/                   ← temp files, expendable
-│   └── permissions.json         ← granted capabilities (user approved once)
-├── community.stripe/
-│   ├── ...
-```
-
-**Rules:**
-1. **CWD is locked** — plugin code runs with `cwd = ~/.snapfzz/plugins/{id}/`. All file operations resolve relative to this. No `../` escape.
-2. **Read-only bundle** — `dist/` is immutable after install. Plugin cannot modify its own code at runtime.
-3. **Namespaced storage** — `ctx.storage` reads/writes to `data/` only. Plugin A cannot access Plugin B's `data/`.
-4. **No global filesystem** — plugin cannot read `~/.snapfzz/settings.json`, other plugins' dirs, or anything outside its jail. Data access is through `ctx.storage` and `ctx.settings` (namespaced APIs only).
-
-### Manifest Validation
-
-Every manifest is validated against a Zod schema before registration. Malformed manifests are rejected at install time — they never reach the host.
-
-```typescript
-// Validated on install, NOT at runtime (already trusted after install)
-const ManifestSchema = z.object({
-  id: z.string().regex(/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/),  // e.g. "community.supabase"
-  name: z.string().min(1).max(64),
-  version: z.string().regex(/^\d+\.\d+\.\d+$/),
-  description: z.string().max(256),
-  surface: z.array(z.enum(['launcher', 'project', 'preferences'])),
-  activationEvents: z.array(z.string()),
-  dependencies: z.record(z.string()).optional(),
-  requiredCapabilities: z.array(z.string()).optional(),
-  allowedOrigins: z.array(z.string().url()).optional(),  // network policy (V1)
-  contributes: ContributesSchema.optional(),
-});
-```
-
-### Permission Model — Approve Once
-
-On first install, the user sees what the plugin requests:
-
+On install, user sees:
 ```
 "Supabase Integration" requests:
   ✓ identity.write     — connect third-party accounts
   ✓ filesystem.read    — read project files
-  ✗ vault.read         — BLOCKED (plugins cannot access system vault)
+  ✗ vault.read         — BLOCKED (plugins cannot access vault)
 
 [Approve] [Cancel]
 ```
 
-Stored in `~/.snapfzz/plugins/{id}/permissions.json`:
-```json
-{
-  "granted": ["identity.write", "filesystem.read"],
-  "denied": ["vault.read"],
-  "grantedAt": "2026-04-07T12:00:00Z",
-  "grantedBy": "user"
-}
-```
+Stored in `~/.snapfzz/plugins/{id}/permissions.json`.
 
-**Rules:**
-- Permissions are **granted once** — user is never asked again for the same capability
-- If a plugin UPDATE requests NEW capabilities → user is prompted for the new ones only
-- Revoked capabilities can be re-granted in Settings → Plugins → plugin detail
+### Capability → Webhook Mapping
 
-### Capability Enforcement at Runtime
-
-The `snapfzz-plugin-bridge` intercepts every `ctx.rust.invoke()` call and checks the caller's granted capabilities:
-
-```
-Plugin calls ctx.rust.invoke('send_message', {...})
-  → plugin-bridge checks: does pluginId have 'agent.invoke' capability?
-  → if yes: forward to kernel
-  → if no: return PluginBridgeError::Unauthorized
-```
-
-**Blocked commands (plugins can NEVER call):**
-- `vault_store`, `vault_read`, `vault_delete`, `vault_list`, `vault_has` — system vault is kernel-only
-- `save_settings` — system settings are kernel-only. Plugins use `ctx.settings` (namespaced)
-- `spawn_runtime`, `kill_process`, `restart_process` — process management is kernel-only
-
-**Capability → Command mapping:**
-
-| Capability | Commands allowed |
-|---|---|
-| `agent.invoke` | `send_message`, `create_session`, `load_session`, `stop_generation` |
-| `filesystem.read` | `read_file`, `list_files` (scoped to project + plugin jail) |
-| `filesystem.write` | `write_file`, `delete_file` (scoped to project + plugin jail) |
-| `identity.read` | `get_provider`, `list_providers` |
-| `identity.write` | `connect_provider`, `disconnect_provider` |
-| `budget.read` | `budget_snapshot` |
-
-### Secret Management for Plugins
-
-Plugins do NOT access the system vault (A011). If a plugin needs to store secrets (e.g., a Supabase service key):
-
-1. Plugin stores it via `ctx.storage.set('serviceKey', encrypted)` — plaintext in plugin's `data/`
-2. If the plugin wants encryption, the plugin author ships their own crypto
-3. We provide NO encryption API for plugins — their storage is their responsibility
-4. The plugin jail ensures no other plugin can read this data
-
-### Network Policy (V1 scope)
-
-Plugins can declare `allowedOrigins` in their manifest:
-
-```json
-{
-  "allowedOrigins": ["https://api.supabase.co", "https://supabase.com"]
-}
-```
-
-Enforcement via CSP headers:
-- Plugin's webview `connect-src` is restricted to declared origins only
-- Undeclared fetch/XHR requests are blocked by the browser
-- System plugins have unrestricted network access (no CSP restriction)
-
-### Resource Limits per Plugin
-
-The budget registry already tracks per-plugin invoke concurrency via `try_acquire_invoke(pluginId)`. Additional per-plugin limits:
-
-| Resource | Limit | Enforcement |
+| Capability | What Plugin Can Do | Enforcement |
 |---|---|---|
-| Invoke concurrency | 3 concurrent per plugin (default) | `try_acquire_invoke` returns None |
-| CPU permits | Shared pool (not per-plugin) | `try_acquire_cpu` |
-| Storage | 100MB per plugin data/ | Checked on write, reject if exceeded |
-| Memory (Worker) | 256MB heap per Worker | Worker OOM kills the plugin |
+| `agent.invoke` | Receive tool call webhooks | Core only sends if capability granted |
+| `filesystem.read` | Request file contents via webhook | Core validates path scope |
+| `filesystem.write` | Write files via webhook | Core validates path scope |
+| `identity.read` | Request identity info via webhook | Core strips secrets |
+| `identity.write` | Connect/disconnect providers | Requires user confirmation |
+| `budget.read` | Request budget info | Read-only |
 
-### Mini App Sandbox
+### Blocked (no plugin can ever do)
 
-Mini apps run in iframes with strict sandbox attributes:
+- Vault access (vault_store, vault_read, etc.)
+- System settings (save_settings)
+- Process management (spawn, kill, restart)
+- Other plugin storage access
+
+---
+
+## Crash Supervision
+
+### System Plugins
+
+```
+ErrorBoundary catches React error
+  → increment crash count
+  → if 3 crashes in 5 minutes → auto-disable, show notification
+  → else → show fallback UI with [Retry] button
+```
+
+### User Plugins
+
+```
+Process health check fails
+  → mark UNHEALTHY
+  → attempt restart (max 3)
+  → if 3 restarts fail → auto-disable
+  → webhook routes deregistered
+  → user notified
+```
+
+---
+
+## Plugin Settings UI
+
+The `settings-plugins` plugin shows all plugins:
+
+```
+PLUGINS                                    [Reload All]
+
+SYSTEM PLUGINS
+┌─────────────────────────────────────────────────────┐
+│ Chat                                 ● Running      │
+│ snapfzz.chat v1.0.0                                │
+│ [Reload]                                            │
+├─────────────────────────────────────────────────────┤
+│ Knowledge Base                       ◌ Lazy         │
+│ snapfzz.knowledge-base v1.0.0                      │
+│ Activates: onViewVisible:kb                        │
+│ [Reload]                                            │
+└─────────────────────────────────────────────────────┘
+
+USER PLUGINS
+┌─────────────────────────────────────────────────────┐
+│ Supabase Integration                 ● Running      │
+│ community.supabase v0.1.0           port: 54321    │
+│ Language: Python  Health: OK                        │
+│ [Disable] [Restart] [Uninstall]                     │
+├─────────────────────────────────────────────────────┤
+│ SOC2 Compliance                      ○ Disabled     │
+│ community.soc2 v0.2.0                               │
+│ [Enable] [Uninstall]                                │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## Activation Events (System Plugins Only)
+
+```typescript
+activationEvents: [
+  'onStartupFinished',         // after core ready
+  'onViewVisible:code',        // when tab first opened
+  'onCommand:code.openFile',   // when command executed
+  'onEvent:build.complete',    // when EventBus topic fires
+  'onWorkspaceOpened',         // when project window opens
+]
+```
+
+User plugins don't have activation events — they're either running or stopped.
+
+---
+
+## Mini App Sandbox
+
+Both system and user plugins can provide mini apps. Mini apps run in iframes:
 
 ```html
 <iframe
   sandbox="allow-scripts"
   src="..."
-  style="..."
 ></iframe>
 ```
 
-**NOT allowed:** `allow-same-origin` (prevents access to parent window), `allow-forms` (prevents form submission to external URLs), `allow-popups`.
+Communication: `postMessage` only with strict origin validation.
 
-Communication: `postMessage` only, with strict origin validation:
-```typescript
-window.addEventListener('message', (e) => {
-  if (e.origin !== expectedPluginOrigin) return;  // reject foreign messages
-  if (!isValidMiniAppMessage(e.data)) return;      // reject malformed messages
-  handleMiniAppMessage(e.data);
-});
-```
-
-### Code Signature Verification (Beta scope)
-
-Third-party plugin packages must include a detached signature:
-
-```
-community.supabase/
-  ├── dist/bundle.js
-  ├── dist/bundle.js.sig    ← Ed25519 signature
-  ├── manifest.json
-  └── manifest.json.sig
-```
-
-On install:
-1. Verify `manifest.json.sig` against Snapfzz registry public key
-2. Verify `bundle.js.sig` against the manifest's declared author public key
-3. Reject if either signature is missing or invalid
-
-System plugins are unsigned — they ship with the app binary and are trusted implicitly.
-
-### Security Summary
-
-| Layer | Threat | Enforcement | Milestone |
-|---|---|---|---|
-| Install | Malformed manifest | Zod validation | Alpha |
-| Runtime | Privilege escalation | Plugin-bridge capability check | Alpha |
-| Runtime | Secret theft | Vault commands blocked for plugins | Alpha |
-| Runtime | Resource hogging | Per-plugin invoke budget | Alpha |
-| Filesystem | Jail escape | CWD locked to plugin dir | Alpha |
-| Storage | Cross-plugin data theft | Namespaced ctx.storage | Alpha |
-| Network | Data exfiltration | CSP allowedOrigins | V1 |
-| Supply chain | Malicious code injection | Ed25519 signature verification | Beta |
-| Mini apps | Parent window access | iframe sandbox="allow-scripts" | Alpha |
-| Crash | Repeated crashes | 3-strike auto-disable | Alpha |
+NOT allowed: `allow-same-origin`, `allow-forms`, `allow-popups`.
 
 ---
 
-## Isolation
+## Code Signature Verification (Beta)
 
-| What | How |
-|---|---|
-| Plugin logic | Runs in Web Worker via plugin host. Main thread never executes plugin code. |
-| Plugin UI | Rendered in main thread BUT wrapped in React ErrorBoundary. Crash → fallback UI. |
-| Plugin state | Namespaced storage. Plugin A cannot read Plugin B's storage. |
-| Plugin communication | Bus only. No direct imports. No shared mutable state. |
-| Plugin capabilities | Must declare `requiredCapabilities`. Core checks before granting access. |
-| Crash recovery | 3 strikes → plugin auto-disabled. User notified. Manual re-enable in settings. |
+Third-party plugin packages include detached Ed25519 signatures:
+
+```
+community.supabase/
+  ├── dist/bundle.js.sig     Ed25519 signature
+  ├── manifest.json.sig
+```
+
+On install: verify against Snapfzz registry public key + author public key.
+
+---
+
+## Security Summary
+
+| Layer | Threat | System Plugins | User Plugins |
+|---|---|---|---|
+| Install | Malformed manifest | Zod validation | Zod validation |
+| Runtime | Privilege escalation | Trusted (no checks) | Capability enforcement |
+| Runtime | Secret theft | Vault blocked (by convention) | Vault commands blocked |
+| Communication | Tampering | In-process (trusted) | HMAC signed webhooks |
+| Communication | Replay attack | N/A | Timestamp window (5min) |
+| Communication | Rate abuse | N/A | 100 req/min per plugin |
+| Filesystem | Jail escape | Ships with app | CWD locked to plugin dir |
+| Storage | Cross-plugin theft | Namespaced | Namespaced |
+| Network | Data exfiltration | Unrestricted | 127.0.0.1 only (V1: CSP) |
+| Process | Resource hogging | ErrorBoundary + 3-strike | Health check + 3-restart |
+| Supply chain | Malicious code | Ships with app | Ed25519 signatures (Beta) |
 
 ---
 
@@ -689,430 +656,65 @@ System plugins are unsigned — they ship with the app binary and are trusted im
 ### Core (Rust crates)
 
 ```
-snapfzz-kernel/               # Boot, budget, process management, settings, shared types
-  ├── boot/                    # Preflight phases + hooks (A012)
-  ├── budget/                  # Resource registry, presets, permits (A008)
-  ├── process/                 # ProcessManager, health, logs, supervisor
-  ├── settings/                # Settings schema, load/save
-  ├── plugin_host/             # Plugin lifecycle types (Beta scope)
-  └── types.rs                 # PluginManifest, HostSurface, BusMessage
-
-snapfzz-stream/                # SSE consumer, token batching, Channel API
-snapfzz-vault/                 # AES-256-GCM secret vault (A011)
-snapfzz-plugin-bridge/         # Plugin→kernel validation, capability checking (Beta scope)
+snapfzz-kernel/        Boot, budget, process, settings, components trait
+snapfzz-runtime/       Runtime lifecycle (AgentScope, LiteLLM, CEF)
+snapfzz-packs/         System component downloads
+snapfzz-stream/        SSE consumer, token batching
+snapfzz-vault/         AES-256-GCM secret vault
+snapfzz-llm/           LiteLLM config + key/spend proxy
+snapfzz-plugin-bridge/ Plugin→kernel validation, capability checking
 ```
 
-main.rs is the orchestrator — routes, gates, emits. Manages windows, menus, process spawning, event emission. Delegates work to crates. See A014.
-
-### Core (Frontend packages)
+### Core (Frontend)
 
 ```
-@snapfzz/plugin-sdk/        # TS manifest types, definePlugin(), contribution types
-@snapfzz/plugin-host/       # Plugin loader, bus client, ContributionStore, ErrorBoundary
-@snapfzz/shared/            # Entities, components/ui, lib, hooks, workers, theme
-@snapfzz/launcher/          # Thin shell: plugin host + launcher layout
-@snapfzz/project/           # Thin shell: plugin host + project layout
+@snapfzz/plugin-sdk/    TS manifest types, definePlugin()
+@snapfzz/plugin-host/   Plugin loader, bus, ContributionStore
+@snapfzz/shared/        Theme, hooks, components, TauriBridge
+@snapfzz/launcher/      Thin shell: launcher layout
+@snapfzz/project/       Thin shell: project layout
+@snapfzz/preferences/   Thin shell: settings layout
 ```
 
-### System Plugins (JS packages)
+### System Plugins (TypeScript, in-process)
 
 ```
 plugins/
-├── chat/                    # Orchestrator conversation
-├── team/                    # Agent dashboard + 1:1 drill-in
-├── knowledge-base/          # Notion-like docs, versioning
-│   ├── contributes:
-│   │   ├── workspaceTab: "Knowledge Base"
-│   │   ├── agentSkills: [document-writer, spec-manager]
-│   │   ├── agentTools: [create-doc, update-doc, version-doc]
-│   │   ├── genericComponents: [doc-tree, doc-editor, diff-viewer]
-│   │   └── evalBenchmarks: [spec-completeness, spec-consistency]
-├── code/                    # Monaco + file explorer + git
-│   ├── contributes:
-│   │   ├── workspaceTab: "Code"
-│   │   ├── agentTools: [read-file, write-file, search-files]
-│   │   └── genericComponents: [file-tree, monaco-editor, diff-editor]
-├── preview/                 # Live dev server + triple viewport
-│   ├── contributes:
-│   │   ├── workspaceTab: "Preview"
-│   │   ├── agentTools: [start-dev-server, check-responsive, capture-screenshot]
-│   │   └── evalBenchmarks: [viewport-overflow, touch-targets, lighthouse]
-├── deployments/             # Deploy targets + monitoring
-│   ├── contributes:
-│   │   ├── workspaceTab: "Deployments"
-│   │   ├── deployTargets: [vercel, fly-io, railway]
-│   │   ├── agentTools: [deploy, rollback, health-check]
-│   │   ├── miniApps: [traffic-dashboard, cost-calculator]
-│   │   └── evalBenchmarks: [deploy-success, health-response-time]
-├── identities/              # Third-party connections
-│   ├── contributes:
-│   │   ├── workspaceTab: "Identities"
-│   │   ├── identityProviders: [stripe, github, vercel, cloudflare, plausible]
-│   │   ├── agentTools: [connect-provider, get-credentials]
-│   │   └── genericComponents: [identity-card, connect-flow]
-├── compliance/              # Legal, tax, regulatory
-│   ├── contributes:
-│   │   ├── workspaceTab: "Compliance"
-│   │   ├── complianceTemplates: [sg-pte-ltd, us-llc, gdpr, pdpa]
-│   │   ├── agentSkills: [sg-incorporation-expert, tax-advisor]
-│   │   ├── agentTools: [create-checklist, update-status, generate-policy]
-│   │   ├── miniApps: [tax-calculator, gdpr-audit]
-│   │   └── evalBenchmarks: [checklist-completeness]
-├── agent-network/           # Bottom panel MsgHub log
-│   ├── contributes:
-│   │   ├── bottomPanel: "Agent Network"
-│   │   └── genericComponents: [message-log, filter-bar, intervention-input]
-├── eval/                    # Eval dashboard + benchmark runner
-│   ├── contributes:
-│   │   ├── settings: [eval-config, benchmark-sources]
-│   │   ├── evalGraders: [relevance, correctness, hallucination, code-quality, safety]
-│   │   ├── genericComponents: [score-chart, benchmark-browser, grader-reasoning]
-│   │   └── commands: [run-eval-suite, run-failed-only]
-└── mini-app-runtime/        # Sandboxed iframe host for mini apps
-    ├── contributes:
-    │   ├── genericComponents: [miniapp-host, miniapp-sandbox]
-    │   └── agentTools: [create-miniapp, update-miniapp]
+├── chat/               Orchestrator conversation
+├── knowledge-base/     Docs, versioning
+├── code/               Monaco + file explorer + git
+├── preview/            Live dev server + viewport
+├── deployments/        Deploy targets + monitoring
+├── identities/         Third-party connections
+├── compliance/         Legal, tax, regulatory
+├── agent-network/      Bottom panel message log
+├── eval/               Eval dashboard + benchmarks
+├── mini-app-runtime/   Iframe host for mini apps
+├── settings-*/         9 settings plugins
+└── test-plugin/        Test fixture
 ```
 
----
-
-## Third-Party Plugin Example
-
-A community member creates a "Supabase" plugin:
-
-```typescript
-// @community/snapfzz-plugin-supabase
-export default definePlugin({
-  id: 'community.supabase',
-  name: 'Supabase Integration',
-  version: '0.1.0',
-  surface: ['project'],
-  activationEvents: ['onViewVisible:identities'],
-  
-  dependencies: {
-    'snapfzz.identities': '^1.0',
-    'snapfzz.deployments': '^1.0',
-  },
-  
-  requiredCapabilities: ['identity.write', 'box.filesystem.read'],
-  
-  contributes: {
-    identityProviders: [{
-      id: 'supabase',
-      name: 'Supabase',
-      icon: '⚡',
-      authType: 'api-key',
-      configSchema: {
-        url: { type: 'string', label: 'Project URL' },
-        anonKey: { type: 'string', label: 'Anon Key' },
-        serviceKey: { type: 'string', secret: true, label: 'Service Key' },
-      },
-      testConnection: () => import('./testConnection'),
-    }],
-    
-    agentTools: [{
-      id: 'supabase.query',
-      name: 'Query Supabase',
-      description: 'Execute a query against the Supabase database',
-      schema: { table: 'string', filter: 'object', select: 'string' },
-      handler: () => import('./tools/query'),
-    }],
-    
-    agentSkills: [{
-      id: 'supabase.schema-design',
-      name: 'Supabase Schema Expert',
-      systemPrompt: 'You are an expert in Supabase database design...',
-      targetAgents: ['orchestrator', 'build-agent'],
-    }],
-    
-    complianceTemplates: [{
-      id: 'supabase.rls-audit',
-      name: 'Supabase RLS Audit',
-      jurisdiction: 'global',
-      areas: [{
-        name: 'Row Level Security',
-        items: [
-          { label: 'RLS enabled on all tables' },
-          { label: 'Policies defined for each role' },
-          { label: 'No unrestricted SELECT/INSERT/UPDATE/DELETE' },
-        ],
-      }],
-    }],
-    
-    miniApps: [{
-      id: 'supabase.dashboard',
-      name: 'Supabase Dashboard',
-      targetTab: 'identities',
-      source: () => import('./miniapps/dashboard.html?raw'),
-      dataAccess: ['identities.supabase'],
-    }],
-  },
-});
-```
-
-One plugin. Provides: identity connector + agent tools + agent skills + compliance checklist + mini app dashboard. All through the standard API. No Rust code needed.
-
----
-
-## Plugin Lifecycle — Complete Specification
-
-### Lifecycle States
+### User Plugins (any language, process-isolated)
 
 ```
-REGISTERED → RESOLVED → LOADING → ACTIVATED → RUNNING → DEACTIVATING → DEACTIVATED
-                                                 ↕
-                                             DISABLED
+~/.snapfzz/plugins/
+├── community.supabase/     Python webhook server
+├── community.stripe/       Go webhook server
+├── community.custom-eval/  Node.js webhook server
+└── ...
 ```
-
-| State | Description |
-|---|---|
-| `registered` | Manifest read, plugin known to host. Not loaded. |
-| `resolved` | Dependencies validated, activation order determined. |
-| `loading` | JS chunk being dynamically imported. |
-| `activated` | `activate(ctx)` called, contributions registered. |
-| `running` | Plugin operational, handling events. |
-| `deactivating` | `deactivate()` called, cleaning up contributions. |
-| `deactivated` | All contributions removed, resources released. |
-| `disabled` | Explicitly disabled by user. Skipped during activation. Persisted across restarts. |
-
-### Activation Events — Lazy Loading
-
-The host MUST respect `activationEvents` from the manifest. A plugin is NOT activated until one of its events fires.
-
-| Event | When It Fires | Use Case |
-|---|---|---|
-| `onStartupFinished` | After core shell renders | Critical plugins: Chat, Agent Network |
-| `onViewVisible:{tabId}` | When user first opens a tab | Most plugins: Code, KB, Preview, Deployments |
-| `onCommand:{commandId}` | When a command is executed | Plugins triggered by other plugins or user actions |
-| `onEvent:{topic}` | When an EventBus topic fires | Reactive plugins that respond to system events |
-| `onWorkspaceOpened` | When a project window opens | Project-scoped plugins |
-
-```
-Boot sequence with activation events:
-
-0ms     Shell renders skeleton
-50ms    Plugin host reads all manifests, resolves dependencies
-100ms   Activate plugins with "onStartupFinished" ONLY
-        (e.g., Chat + Agent Network — the minimum viable UI)
-200ms   User sees Chat tab, can type. App feels ready.
-
-500ms+  requestIdleCallback: preload JS chunks for "onViewVisible" plugins
-        (import the code but don't activate yet)
-
-User clicks "Code" tab:
-        → fires onViewVisible:code
-        → Code plugin activates
-        → registers workspace tab
-        → tab renders
-```
-
-### Startup Budget Enforcement
-
-The host enforces a budget for startup activation:
-
-```
-CRITICAL_BUDGET = 200ms   (plugins with onStartupFinished)
-BACKGROUND_PRELOAD = true (use requestIdleCallback for non-critical)
-ACTIVATION_TIMEOUT = 5000ms (per plugin — if activate() takes longer, kill it)
-```
-
-If a critical plugin exceeds the budget:
-- Log a warning with timing
-- Continue activation (don't block other plugins)
-- Report in status bar: "Plugin X took Nms to activate"
-
-### Enable / Disable
-
-Users can disable plugins. Disabled plugins:
-- Are NOT activated during boot or on events
-- Have their contributions removed from the store
-- Keep their persistent storage intact (not deleted)
-- Can be re-enabled without reinstalling
-
-```typescript
-interface PluginHost {
-  enable(pluginId: string): void;
-  disable(pluginId: string): Promise<void>;
-  isEnabled(pluginId: string): boolean;
-  getDisabledPlugins(): string[];
-}
-```
-
-Persistence:
-
-```
-// Stored in localStorage (launcher) or .snapfzz/config.json (project)
-{
-  "disabledPlugins": ["snapfzz.compliance", "community.supabase"]
-}
-```
-
-Disable flow:
-```
-User clicks "Disable" on plugin in settings
-  → host.disable(pluginId)
-  → if running: deactivate (remove all contributions)
-  → add to disabledPlugins in storage
-  → shell re-renders: plugin's tabs/panels disappear
-```
-
-Re-enable flow:
-```
-User clicks "Enable" on plugin in settings
-  → host.enable(pluginId)
-  → remove from disabledPlugins in storage
-  → activate plugin (respecting its activationEvents)
-  → shell re-renders: plugin's tabs/panels appear
-```
-
-### Reload
-
-For development and crash recovery. Reload = deactivate → re-import → re-activate.
-
-```typescript
-interface PluginHost {
-  reload(pluginId: string): Promise<void>;
-}
-```
-
-Reload flow:
-```
-host.reload(pluginId)
-  → deactivate plugin (remove contributions, call handle.deactivate)
-  → invalidate the JS module cache for the plugin's chunk
-  → re-import the plugin module (fresh code)
-  → re-activate with new PluginContext
-  → contributions re-registered, shell re-renders
-```
-
-Use cases:
-- **Development**: plugin code changed, hot-reload it without restarting the app
-- **Crash recovery**: plugin crashed (ErrorBoundary caught it), user clicks "Retry" → reload
-- **Update**: new version of plugin downloaded, reload to apply
-
-### Delete / Uninstall
-
-For third-party plugins. System plugins cannot be deleted.
-
-```typescript
-interface PluginHost {
-  uninstall(pluginId: string): Promise<void>;
-  isSystemPlugin(pluginId: string): boolean;
-}
-```
-
-Uninstall flow:
-```
-host.uninstall(pluginId)
-  → verify not a system plugin (throw if it is)
-  → deactivate if running
-  → remove plugin's persistent storage
-  → remove plugin's manifest from registry
-  → remove plugin's JS chunks from disk/cache
-  → shell re-renders: all traces of plugin gone
-```
-
-### Update
-
-For third-party plugins. Replace a plugin with a new version.
-
-```typescript
-interface PluginHost {
-  update(pluginId: string, newDefinition: PluginDefinition): Promise<void>;
-}
-```
-
-Update flow:
-```
-host.update(pluginId, newDefinition)
-  → verify new version satisfies all dependents' version constraints
-  → deactivate old version
-  → replace manifest in registry
-  → activate new version
-  → verify contributions are compatible (no missing tabs that others depend on)
-```
-
-### Plugin Settings UI
-
-The launcher's settings panel shows all plugins with their state:
-
-```
-PLUGINS                                    [Reload All]
-
-SYSTEM PLUGINS
-┌─────────────────────────────────────────────────────┐
-│ 💬 Chat                              ● Running      │
-│ snapfzz.chat v1.0.0                                │
-│ [Reload]                                            │
-├─────────────────────────────────────────────────────┤
-│ 👥 Team                              ● Running      │
-│ snapfzz.team v1.0.0                                │
-│ [Reload]                                            │
-├─────────────────────────────────────────────────────┤
-│ 📚 Knowledge Base                    ◌ Lazy         │
-│ snapfzz.knowledge-base v1.0.0                      │
-│ Activates: onViewVisible:kb                        │
-│ [Reload]                                            │
-└─────────────────────────────────────────────────────┘
-
-THIRD-PARTY PLUGINS
-┌─────────────────────────────────────────────────────┐
-│ ⚡ Supabase                           ● Running      │
-│ community.supabase v0.1.0                           │
-│ [Disable] [Reload] [Uninstall]                      │
-├─────────────────────────────────────────────────────┤
-│ 🔒 SOC2 Compliance                   ○ Disabled     │
-│ community.soc2 v0.2.0                               │
-│ [Enable] [Uninstall]                                │
-└─────────────────────────────────────────────────────┘
-```
-
-### Crash Supervision
-
-Per A005/Isolation, the host supervises plugin health:
-
-```
-MAX_CRASH_COUNT = 3
-CRASH_WINDOW = 300000ms (5 minutes)
-
-On plugin crash (ErrorBoundary catches):
-  → increment crash count for this plugin
-  → if crash count >= MAX_CRASH_COUNT within CRASH_WINDOW:
-    → auto-disable the plugin
-    → show notification: "Plugin X disabled after repeated crashes"
-    → user can manually re-enable in settings
-  → else:
-    → show fallback UI with [Retry] button
-    → Retry calls host.reload(pluginId)
-```
-
-### Theme
-
-Theme is NOT a plugin. Theme is core infrastructure in `@snapfzz/shared/src/theme/`.
-
-Plugins receive theme tokens via CSS variables (`:root[data-theme="dark"]`). Plugins do NOT control the theme — they consume it.
-
-The `useAppSettings()` hook manages theme state and persists to `settings.json` via Rust. This is core behavior, not pluggable.
-
-Why not a plugin:
-- Every plugin depends on theme tokens at render time
-- Theme must be available BEFORE any plugin loads (it's in the blocking `<script>` tag)
-- Making theme a plugin creates a circular dependency: plugins need theme, but theme would be a plugin
 
 ---
 
 ## Key Design Decisions
 
-1. **JS-only plugins.** No Rust plugins. Simplicity. Worker-hosted for isolation. If a plugin needs native performance, it calls core Rust capabilities via the bridge.
-2. **Intelligence is a contribution type.** Skills, tools, benchmarks, graders are first-class — same as UI tabs and commands.
-3. **System plugins use the exact same API.** No privileged system plugins. If we can't build Chat as a plugin, the API is wrong.
-4. **Manifest-driven, declarative.** Plugins declare what they provide. Core reads manifests at startup and builds the dependency graph.
-5. **Lazy everything.** Plugins load on first use. Only chat + agent-network activate at startup.
-6. **Capabilities gate access.** Third-party plugins must declare what they need. Users approve.
-7. **Mini apps are a contribution type.** Any plugin can provide mini apps. The mini-app-runtime plugin hosts them.
-8. **Generic components are shareable.** A plugin can provide reusable components other plugins consume via the registry.
-9. **Activation events are enforced.** Plugins only activate when their declared events fire. Startup budget is 200ms for critical plugins.
-10. **Enable/disable persists across restarts.** Disabled plugins are skipped. Storage is preserved.
-11. **Reload for dev and crash recovery.** Deactivate → re-import → re-activate without restarting the app.
-12. **Crash supervision auto-disables.** 3 crashes in 5 minutes → plugin disabled automatically.
-13. **Theme is core, not a plugin.** Available before plugins load. Plugins consume tokens via CSS variables.
+1. **Two tiers, not one.** System plugins are trusted (in-process). User plugins are untrusted (webhook-isolated). Different trust = different communication model.
+2. **Webhooks over loopback.** User plugins communicate via HTTP on 127.0.0.1. Process isolation, language agnostic, auditable, HMAC signed.
+3. **System plugins keep EventBus.** In-process communication for system plugins — fast, type-safe, zero overhead.
+4. **Intelligence is a contribution type.** Skills, tools, benchmarks are first-class in both tiers.
+5. **User plugins are processes.** Managed by snapfzz-runtime like AgentScope and LiteLLM. Health checks, restart, auto-disable.
+6. **Manifest-driven.** Both tiers declare what they provide. Core reads manifests and builds the routing table.
+7. **Mini apps for user plugin UI.** User plugins render via sandboxed iframes, not direct React.
+8. **Capabilities gate access.** User plugins must declare what they need. Users approve once.
+9. **HMAC signatures.** Every webhook is signed. Replay protection via timestamp window.
+10. **Theme is core, not a plugin.** Available before plugins load. Plugins consume tokens via CSS variables.
