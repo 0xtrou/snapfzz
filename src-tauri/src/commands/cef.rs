@@ -142,6 +142,39 @@ async fn download_status_from_downloader(downloader: &CefDownloader) -> Download
     }
 }
 
+fn platform_display_name(platform: &str) -> &'static str {
+    match platform {
+        "macos-arm64" => "macOS (Apple Silicon)",
+        "macos-x64" => "macOS (Intel)",
+        "linux-x64" => "Linux (x86_64)",
+        "windows-x64" => "Windows (x64)",
+        _ => "Unknown platform",
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CefPlatformInfo {
+    pub platform: String,
+    pub platform_display: String,
+    pub download_url: String,
+    pub install_path: String,
+    pub is_installed: bool,
+}
+
+#[tauri::command]
+pub async fn cef_platform_info(
+    state: tauri::State<'_, CefState>,
+) -> Result<CefPlatformInfo, String> {
+    Ok(CefPlatformInfo {
+        platform: state.downloader.platform().to_string(),
+        platform_display: platform_display_name(state.downloader.platform()).to_string(),
+        download_url: state.downloader.download_url(),
+        install_path: state.downloader.install_dir().to_string_lossy().to_string(),
+        is_installed: state.downloader.is_installed(),
+    })
+}
+
 pub fn map_cef_error(error: CefError) -> String {
     error.to_string()
 }

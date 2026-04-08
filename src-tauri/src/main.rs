@@ -72,7 +72,7 @@ fn main() {
             commands::cef::cef_download_start, commands::cef::cef_download_status, commands::cef::cef_is_ready,
             commands::cef::cef_open_window, commands::cef::cef_close_window,
             commands::cef::cef_navigate, commands::cef::cef_go_back, commands::cef::cef_reload,
-            commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages,
+            commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages, commands::cef::cef_platform_info,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])
         .setup(move |app| {
