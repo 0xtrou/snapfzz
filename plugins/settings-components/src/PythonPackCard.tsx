@@ -29,6 +29,8 @@ interface PythonSubPack {
 interface PythonPackCardProps {
   uv: PythonSubPack;
   python: PythonSubPack;
+  agentscope: PythonSubPack;
+  litellm: PythonSubPack;
   isInstalling: boolean;
   isUninstalling: boolean;
   allInstalled: boolean;
@@ -106,6 +108,8 @@ function SubPackCard({
 export default function PythonPackCard({
   uv,
   python,
+  agentscope,
+  litellm,
   isInstalling,
   isUninstalling,
   allInstalled,
@@ -114,7 +118,7 @@ export default function PythonPackCard({
   onUninstallAll,
   onOpenFolder,
 }: PythonPackCardProps): React.ReactElement {
-  const packs: PythonSubPack[] = [uv, python];
+  const packs: PythonSubPack[] = [uv, python, agentscope, litellm];
 
   const installPath = python.installPath.replace('/bin/python', '') || '~/.snapfzz/runtime';
 

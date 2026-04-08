@@ -30,6 +30,24 @@ function indexByOrder(id: string, order: string[]): number {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
+function createPlaceholder(id: string, name: string, description: string): ComponentInfo {
+  return {
+    id,
+    name,
+    description,
+    version: 'latest',
+    platform: 'any',
+    platformDisplay: 'Cross-platform',
+    downloadUrl: 'pip',
+    installPath: `~/.snapfzz/runtime/packages/${id}`,
+    size: 0,
+    checksum: '',
+    checksumAlgorithm: '',
+    isInstalled: false,
+    license: 'MIT',
+  };
+}
+
 function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
   const fallback = {
     id: subPackId,
@@ -219,10 +237,16 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleInstallPythonPack = useCallback(async () => {
     setInstallingPythonPack(true);
     try {
-      const packIds = ['uv', 'python'];
-      for (const packId of packIds) {
-        await bridge.invoke<DownloadProgress[]>('component_download', { id: packId }).catch(() => {});
+      await bridge.invoke<DownloadProgress[]>('component_download', { id: 'uv' }).catch(() => {});
+      await bridge.invoke<DownloadProgress[]>('component_download', { id: 'python' }).catch(() => {});
+      
+      try {
+        await bridge.invoke<void>('python_pip_install_packages', { 
+          packages: ['agentscope-runtime', 'agentscope-runtime[ext]', 'litellm'] 
+        });
+      } catch {
       }
+      
       await refreshComponents();
     } finally {
       setInstallingPythonPack(false);
@@ -246,8 +270,10 @@ export default function ComponentsSettings(): React.ReactElement {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
+      const agentscope = items.find((c) => c.id === 'agentscope') || createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
+      const litellm = items.find((c) => c.id === 'litellm') || createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
 
-      const allPacks = [uv, python].filter(Boolean) as ComponentInfo[];
+      const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
       const anyInstalled = allPacks.some((p) => p.isInstalled);
 
@@ -255,6 +281,8 @@ export default function ComponentsSettings(): React.ReactElement {
         <PythonPackCard
           uv={mapComponentToSubPack(uv, 'uv')}
           python={mapComponentToSubPack(python, 'python')}
+          agentscope={mapComponentToSubPack(agentscope, 'agentscope')}
+          litellm={mapComponentToSubPack(litellm, 'litellm')}
           isInstalling={installingPythonPack}
           isUninstalling={uninstallingPythonPack}
           allInstalled={allInstalled}
