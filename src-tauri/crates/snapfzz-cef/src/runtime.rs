@@ -253,7 +253,8 @@ mod tests {
     async fn a015_runtime_ensure_ready_with_cached_cef_starts_cdp_server_once() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -270,7 +271,8 @@ mod tests {
     async fn a015_runtime_create_window_attaches_cdp_session() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -291,7 +293,8 @@ mod tests {
     async fn a015_runtime_create_window_rejects_duplicate_ids() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -311,7 +314,8 @@ mod tests {
     async fn a015_runtime_shutdown_closes_windows_and_clears_state() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -331,7 +335,8 @@ mod tests {
     async fn a015_runtime_navigate_back_and_reload_update_window_state() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -355,7 +360,8 @@ mod tests {
     async fn a015_runtime_devtools_and_screenshot_route_through_cdp() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -383,7 +389,8 @@ mod tests {
     async fn a015_runtime_console_messages_are_exposed_per_window() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
@@ -423,7 +430,8 @@ mod tests {
     async fn a015_runtime_stop_window_clears_loading_state() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary")).expect("create install marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create install marker");
 
         let mut runtime = CefRuntime::new(temp.path());
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Descriptions, Progress, Space, Typography } from 'antd';
-import { CheckCircleFilled, FolderOpenOutlined, CloseCircleFilled, LoadingOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, DownloadOutlined, FolderOpenOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 import { createTauriBridge, AppButton } from '@snapfzz/shared';
 
 type DownloadPhase = 'not-started' | 'downloading' | 'verifying' | 'extracting' | 'ready' | 'failed';
@@ -40,11 +40,11 @@ type CheckItemProps = {
 function CheckItem({ done, active, label }: CheckItemProps): React.ReactElement {
   let icon: React.ReactNode;
   if (done) {
-    icon = <CheckCircleFilled style={{ color: 'var(--ant-color-success, #52c41a)' }} />;
+    icon = <CheckCircleOutlined style={{ color: 'var(--success-color, var(--ant-color-success))' }} />;
   } else if (active) {
-    icon = <LoadingOutlined style={{ color: 'var(--ant-color-primary, #1677ff)' }} />;
+    icon = <LoadingOutlined style={{ color: 'var(--accent-primary, var(--ant-color-primary))' }} />;
   } else {
-    icon = <CheckCircleFilled style={{ color: 'var(--ant-color-text-quaternary, #d9d9d9)' }} />;
+    icon = <CheckCircleOutlined style={{ color: 'var(--text-tertiary, var(--ant-color-text-tertiary))' }} />;
   }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -67,13 +67,18 @@ export default function MiniAppsOnboarding(): React.ReactElement {
       if (status.status === 'ready') {
         setPhase('ready');
         setProgress(100);
-        setBytesDownloaded(status.bytesDownloaded);
-        setBytesTotal(status.bytesTotal);
-      } else if (status.bytesDownloaded > 0) {
+      } else if (status.status === 'extracting') {
+        setPhase('extracting');
         setProgress(Math.round(status.percent));
-        setBytesDownloaded(status.bytesDownloaded);
-        setBytesTotal(status.bytesTotal);
+      } else if (status.status === 'verifying') {
+        setPhase('verifying');
+        setProgress(Math.round(status.percent));
+      } else if (status.bytesDownloaded > 0 || status.status === 'downloading') {
+        setPhase('downloading');
+        setProgress(Math.round(status.percent));
       }
+      setBytesDownloaded(status.bytesDownloaded);
+      setBytesTotal(status.bytesTotal);
     }).catch(() => {});
 
     bridge.invoke<PlatformInfo>('cef_platform_info').then(setInfo).catch(() => {});
@@ -82,6 +87,8 @@ export default function MiniAppsOnboarding(): React.ReactElement {
   const runDownload = async (): Promise<void> => {
     setPhase('downloading');
     setProgress(0);
+    setBytesDownloaded(0);
+    setBytesTotal(0);
     setError(null);
 
     try {
@@ -99,16 +106,32 @@ export default function MiniAppsOnboarding(): React.ReactElement {
 
       if (latest.status === 'ready') {
         setPhase('verifying');
-        setProgress(100);
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((resolve) => setTimeout(resolve, 400));
         setPhase('extracting');
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((resolve) => setTimeout(resolve, 400));
         setPhase('ready');
-        if (info) setInfo({ ...info, isInstalled: true });
-      } else if (latest.status === 'failed') {
+        setProgress(100);
+        setInfo((current) => (current ? { ...current, isInstalled: true } : current));
+        return;
+      }
+
+      if (latest.status === 'failed') {
         setPhase('failed');
         setError('Download failed. Try again.');
+        return;
       }
+
+      if (latest.status === 'extracting') {
+        setPhase('extracting');
+        return;
+      }
+
+      if (latest.status === 'verifying') {
+        setPhase('verifying');
+        return;
+      }
+
+      setPhase('downloading');
     } catch (err) {
       setPhase('failed');
       setError(err instanceof Error ? err.message : 'Download failed. Try again.');
@@ -132,7 +155,11 @@ export default function MiniAppsOnboarding(): React.ReactElement {
   const isActive = phase === 'downloading' || phase === 'verifying' || phase === 'extracting';
   const isDone = phase === 'ready';
   const isFailed = phase === 'failed';
-  const phaseIndex = ['downloading', 'verifying', 'extracting', 'ready'].indexOf(phase);
+  const statusText = phase === 'verifying'
+    ? 'Verifying CEF archive...'
+    : phase === 'extracting'
+      ? 'Extracting CEF runtime...'
+      : 'Downloading CEF runtime...';
 
   return (
     <section data-testid="miniapps-onboarding">
@@ -142,13 +169,13 @@ export default function MiniAppsOnboarding(): React.ReactElement {
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {isFailed && error ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CloseCircleFilled style={{ color: 'var(--ant-color-error, #ff4d4f)' }} />
+            <CloseCircleOutlined style={{ color: 'var(--error-color, var(--ant-color-error))' }} />
             <Text type="danger">{error}</Text>
           </div>
         ) : isDone ? (
           <Text type="success">CEF runtime installed and ready.</Text>
         ) : isActive ? (
-          <Text type="secondary">Downloading CEF runtime...</Text>
+          <Text type="secondary">{statusText}</Text>
         ) : (
           <Text type="secondary">CEF runtime not installed. Download is required for mini apps.</Text>
         )}
@@ -166,11 +193,11 @@ export default function MiniAppsOnboarding(): React.ReactElement {
           </>
         )}
 
-        {(isDone || phaseIndex >= 0) && phase !== 'not-started' && !isFailed && (
+        {(isDone || phase === 'verifying' || phase === 'extracting') && !isFailed && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-            <CheckItem done={phaseIndex >= 1 || isDone} active={phase === 'downloading'} label={`Download complete${isDone && bytesTotal > 0 ? ` (${formatBytes(bytesTotal)})` : ''}`} />
-            <CheckItem done={phaseIndex >= 2 || isDone} active={phase === 'verifying'} label="Checksum verified (SHA-256)" />
-            <CheckItem done={phaseIndex >= 3 || isDone} active={phase === 'extracting'} label="Archive extracted" />
+            <CheckItem done={isDone || phase === 'verifying' || phase === 'extracting'} active={false} label={`Download complete${bytesTotal > 0 ? ` (${formatBytes(bytesTotal)})` : ''}`} />
+            <CheckItem done={isDone || phase === 'extracting'} active={phase === 'verifying'} label="Checksum verified (SHA-256)" />
+            <CheckItem done={isDone} active={phase === 'extracting'} label="Archive extracted" />
             <CheckItem done={isDone} active={false} label="CEF runtime ready" />
           </div>
         )}
@@ -190,7 +217,7 @@ export default function MiniAppsOnboarding(): React.ReactElement {
 
         <Space size={8}>
           {(phase === 'not-started' || isFailed) && (
-            <AppButton onClick={runDownload}>Download CEF runtime</AppButton>
+            <AppButton icon={<DownloadOutlined />} onClick={runDownload}>Download CEF runtime</AppButton>
           )}
           {isActive && (
             <AppButton onClick={cancelDownload}>Cancel</AppButton>

@@ -13,7 +13,6 @@ use crate::types::{CefError, DownloadProgress, DownloadStatus};
 const CEF_INDEX_URL: &str = "https://cef-builds.spotifycdn.com/index.json";
 const CEF_CDN_BASE: &str = "https://cef-builds.spotifycdn.com";
 const ARCHIVE_SUFFIX: &str = ".tar.bz2";
-const EXTRACTED_MARKER: &str = "cef_binary";
 const CEF_BUILD_TYPE: &str = "minimal";
 
 pub struct CefDownloader {
@@ -40,7 +39,15 @@ impl CefDownloader {
     }
 
     pub fn is_installed(&self) -> bool {
-        self.install_dir.join(EXTRACTED_MARKER).exists()
+        std::fs::read_dir(&self.install_dir)
+            .ok()
+            .map(|entries| {
+                entries.filter_map(|entry| entry.ok()).any(|entry| {
+                    entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
+                        && entry.file_name().to_string_lossy().starts_with("cef_binary")
+                })
+            })
+            .unwrap_or(false)
     }
 
     pub fn cancel_download(&self) {
@@ -254,7 +261,11 @@ impl CefDownloader {
             status: DownloadStatus::Extracting,
         });
 
-        std::fs::create_dir_all(self.install_dir.join(EXTRACTED_MARKER))?;
+        snapfzz_kernel::components::download::extract_tar_bz2(
+            &self.install_dir.join(&build.filename),
+            &self.install_dir,
+        )
+        .map_err(|e| CefError::Io(e.to_string()))?;
 
         progress_events.push(DownloadProgress {
             bytes_downloaded,
@@ -295,8 +306,9 @@ impl CefDownloader {
     }
 
     pub async fn extract_cef(&self) -> Result<(), CefError> {
-        let _ = self.find_archive()?;
-        std::fs::create_dir_all(self.install_dir.join(EXTRACTED_MARKER))?;
+        let archive = self.find_archive()?;
+        snapfzz_kernel::components::download::extract_tar_bz2(&archive, &self.install_dir)
+            .map_err(|e| CefError::Io(e.to_string()))?;
         Ok(())
     }
 
@@ -347,7 +359,15 @@ impl SystemComponent for CefDownloader {
     }
 
     fn is_installed(&self) -> bool {
-        self.install_dir.join(EXTRACTED_MARKER).exists()
+        std::fs::read_dir(&self.install_dir)
+            .ok()
+            .map(|entries| {
+                entries.filter_map(|entry| entry.ok()).any(|entry| {
+                    entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
+                        && entry.file_name().to_string_lossy().starts_with("cef_binary")
+                })
+            })
+            .unwrap_or(false)
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
@@ -473,6 +493,7 @@ fn sha1_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn a015_downloader_detect_platform_matches_known_targets() {
@@ -508,17 +529,18 @@ mod tests {
     }
 
     #[test]
-    fn a015_downloader_is_installed_returns_false_when_no_marker() {
+    fn a015_downloader_is_installed_returns_false_when_no_extracted_cef_directory_exists() {
         let temp = tempfile::tempdir().expect("tempdir");
         let downloader = CefDownloader::new(temp.path().join("cef"), "macos-arm64".to_string());
         assert!(!downloader.is_installed());
     }
 
     #[test]
-    fn a015_downloader_is_installed_returns_true_when_marker_exists() {
+    fn a015_downloader_is_installed_returns_true_when_versioned_cef_directory_exists() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join(EXTRACTED_MARKER)).expect("create marker");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
+            .expect("create extracted dir");
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
         assert!(downloader.is_installed());
     }
@@ -580,13 +602,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a015_downloader_extract_creates_marker() {
+    async fn a015_downloader_extract_cef_decompresses_tar_bz2_archive() {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
         std::fs::create_dir_all(&install_dir).expect("create dir");
-        std::fs::write(install_dir.join("cef_test.tar.bz2"), b"archive").expect("write");
-        let downloader = CefDownloader::new(install_dir, "linux-x64".to_string());
+        let archive_path = install_dir.join("cef_binary_test.tar.bz2");
+        create_test_tar_bz2(
+            &archive_path,
+            &[
+                ("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64/test.txt", b"hello world"),
+                ("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64/resources/app.json", br#"{"ready":true}"#),
+            ],
+        );
+        let downloader = CefDownloader::new(install_dir.clone(), "linux-x64".to_string());
+
         downloader.extract_cef().await.expect("extract");
+
+        assert!(install_dir
+            .join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64/test.txt")
+            .exists());
+        assert_eq!(
+            std::fs::read_to_string(
+                install_dir.join(
+                    "cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64/resources/app.json",
+                ),
+            )
+            .unwrap(),
+            "{\"ready\":true}"
+        );
         assert!(downloader.is_installed());
     }
 
@@ -619,5 +662,21 @@ mod tests {
         let hash = sha1_hex(b"hello world");
         assert_eq!(hash.len(), 40);
         assert_eq!(hash, "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed");
+    }
+
+    fn create_test_tar_bz2(path: &Path, files: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).expect("create archive");
+        let compressor = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());
+        let mut archive = tar::Builder::new(compressor);
+        for (name, data) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive
+                .append_data(&mut header, name, &data[..])
+                .expect("append file");
+        }
+        archive.finish().expect("finish archive");
     }
 }

@@ -34,6 +34,26 @@ pub fn verify_sha1(path: &Path, expected: &str) -> Result<(), ComponentError> {
     Ok(())
 }
 
+pub fn extract_tar_bz2(archive_path: &Path, dest_dir: &Path) -> Result<(), ComponentError> {
+    let file = std::fs::File::open(archive_path)?;
+    let decompressor = bzip2::read::BzDecoder::new(file);
+    let mut archive = tar::Archive::new(decompressor);
+    archive
+        .unpack(dest_dir)
+        .map_err(|e| ComponentError::internal(format!("Extract failed: {e}")))?;
+    Ok(())
+}
+
+pub fn extract_tar_gz(archive_path: &Path, dest_dir: &Path) -> Result<(), ComponentError> {
+    let file = std::fs::File::open(archive_path)?;
+    let decompressor = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decompressor);
+    archive
+        .unpack(dest_dir)
+        .map_err(|e| ComponentError::internal(format!("Extract failed: {e}")))?;
+    Ok(())
+}
+
 pub async fn download_file(
     url: &str,
     dest: &Path,
@@ -144,6 +164,8 @@ pub async fn download_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::path::Path;
 
     #[test]
     fn a014_components_pct_zero_total_returns_zero() {
@@ -194,6 +216,84 @@ mod tests {
         let path = temp.path().join("nonexistent.bin");
         let err = verify_sha1(&path, "abc").unwrap_err();
         assert!(matches!(err, ComponentError::Io(_)));
+    }
+
+    #[test]
+    fn a014_components_extract_tar_bz2_decompresses_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive_path = temp.path().join("test.tar.bz2");
+        let dest_dir = temp.path().join("out-bz2");
+        create_test_tar_bz2(
+            &archive_path,
+            &[("cef_binary/test.txt", b"hello world"), ("cef_binary/nested/config.json", br#"{"ok":true}"#)],
+        );
+
+        let result = extract_tar_bz2(&archive_path, &dest_dir);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.join("cef_binary/test.txt")).unwrap(),
+            "hello world"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.join("cef_binary/nested/config.json")).unwrap(),
+            "{\"ok\":true}"
+        );
+    }
+
+    #[test]
+    fn a014_components_extract_tar_gz_decompresses_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive_path = temp.path().join("test.tar.gz");
+        let dest_dir = temp.path().join("out-gz");
+        create_test_tar_gz(&archive_path, &[("payload/file.txt", b"gzip payload")]);
+
+        let result = extract_tar_gz(&archive_path, &dest_dir);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            std::fs::read_to_string(dest_dir.join("payload/file.txt")).unwrap(),
+            "gzip payload"
+        );
+    }
+
+    #[test]
+    fn a014_components_extract_tar_bz2_returns_error_for_missing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive_path = temp.path().join("missing.tar.bz2");
+        let dest_dir = temp.path().join("out");
+
+        let err = extract_tar_bz2(&archive_path, &dest_dir).unwrap_err();
+
+        assert!(matches!(err, ComponentError::Io(_)));
+    }
+
+    fn create_test_tar_bz2(path: &Path, files: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).unwrap();
+        let compressor = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());
+        let mut archive = tar::Builder::new(compressor);
+        for (name, data) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive.append_data(&mut header, name, &data[..]).unwrap();
+        }
+        archive.finish().unwrap();
+    }
+
+    fn create_test_tar_gz(path: &Path, files: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).unwrap();
+        let compressor = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut archive = tar::Builder::new(compressor);
+        for (name, data) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive.append_data(&mut header, name, &data[..]).unwrap();
+        }
+        archive.into_inner().unwrap().flush().unwrap();
     }
 
     #[tokio::test]

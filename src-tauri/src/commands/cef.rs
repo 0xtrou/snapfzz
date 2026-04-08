@@ -197,10 +197,17 @@ pub struct CefPlatformInfo {
 pub async fn cef_platform_info(
     state: tauri::State<'_, CefState>,
 ) -> Result<CefPlatformInfo, String> {
+    let download_url = state
+        .downloader
+        .resolve_latest_build()
+        .await
+        .map(|build| build.download_url)
+        .unwrap_or_else(|_| state.downloader.download_url());
+
     Ok(CefPlatformInfo {
         platform: state.downloader.platform().to_string(),
         platform_display: platform_display_name(state.downloader.platform()).to_string(),
-        download_url: state.downloader.download_url(),
+        download_url,
         install_path: state.downloader.install_dir().to_string_lossy().to_string(),
         is_installed: state.downloader.is_installed(),
     })
@@ -220,6 +227,21 @@ mod tests {
         test::{mock_builder, mock_context, noop_assets},
         Manager,
     };
+
+    fn create_test_tar_bz2(path: &std::path::Path, files: &[(&str, &[u8])]) {
+        use std::io::Write;
+        let file = std::fs::File::create(path).unwrap();
+        let compressor = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());
+        let mut archive = tar::Builder::new(compressor);
+        for (name, data) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive.append_data(&mut header, name, &data[..]).unwrap();
+        }
+        archive.finish().unwrap();
+    }
 
     fn build_cef_app(installed: bool) -> (tempfile::TempDir, tauri::App<tauri::test::MockRuntime>) {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -261,6 +283,7 @@ mod tests {
         let _devtools = super::cef_devtools;
         let _screenshot = super::cef_screenshot;
         let _console_messages = super::cef_console_messages;
+        let _platform_info = super::cef_platform_info;
     }
 
     #[tokio::test]
@@ -296,9 +319,12 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let install_dir = temp.path().join("cef");
         std::fs::create_dir_all(&install_dir).expect("create install dir");
-        std::fs::write(install_dir.join("cef_binary.tar.bz2"), b"archive").expect("archive bytes");
+        create_test_tar_bz2(
+            &install_dir.join("cef_binary_test.tar.bz2"),
+            &[("cef_binary_test/marker.txt", b"ready")],
+        );
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        downloader.extract_cef().await.expect("extract marker");
+        downloader.extract_cef().await.expect("real extraction");
 
         let progress = super::download_status_from_downloader(&downloader).await;
 
@@ -399,6 +425,21 @@ mod tests {
         .await
         .expect_err("missing window should fail");
         assert!(err.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn a015_commands_cef_platform_info_returns_displayed_platform_source_and_install_path() {
+        let (_temp, app) = build_cef_app(true);
+
+        let info = cef_platform_info(app.state::<CefState>())
+            .await
+            .expect("platform info");
+
+        assert_eq!(info.platform, "macos-arm64");
+        assert_eq!(info.platform_display, "macOS (Apple Silicon)");
+        assert!(info.download_url.contains("cef-builds.spotifycdn.com"));
+        assert!(info.install_path.ends_with("runtime/cef"));
+        assert!(info.is_installed);
     }
 
     #[tokio::test]

@@ -1,3 +1,8 @@
+// @vitest-environment jsdom
+// Spec: docs/plans/A007-multi-layout-architecture.md
+// Section: settingsSections — advanced runtime controls
+// Verifies: Mini apps onboarding shows verifiable runtime download state and actions
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -60,12 +65,15 @@ afterEach(() => {
 });
 
 describe('A007/settings-advanced: mini apps onboarding initial states', () => {
-  it('A007/settings-advanced: renders not installed copy by default', async () => {
+  it('A007/settings-advanced: renders not installed copy with platform metadata by default', async () => {
     render(<MiniAppsOnboarding />);
 
     expect(screen.getByText('Mini apps runtime')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText('CEF runtime not installed. Download is required for mini apps.')).toBeInTheDocument();
+      expect(screen.getByText('https://cef-builds.spotifycdn.com/macos-arm64/cef_binary.tar')).toBeInTheDocument();
+      expect(screen.getByText('macOS (Apple Silicon)')).toBeInTheDocument();
+      expect(screen.getByText('/Users/test/.snapfzz/runtime/cef')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /download cef runtime/i })).toBeInTheDocument();
     });
   });
@@ -73,7 +81,7 @@ describe('A007/settings-advanced: mini apps onboarding initial states', () => {
   it('A007/settings-advanced: renders ready state from initial status check', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'cef_download_status') {
-        return Promise.resolve(event({ status: 'ready', percent: 100, bytesDownloaded: 64 * 1024 * 1024, bytesTotal: 64 * 1024 * 1024 }));
+        return Promise.resolve(event({ status: 'ready', percent: 100, bytesDownloaded: 124 * 1024 * 1024, bytesTotal: 124 * 1024 * 1024 }));
       }
       if (cmd === 'cef_platform_info') {
         return Promise.resolve(info({ isInstalled: true }));
@@ -87,14 +95,17 @@ describe('A007/settings-advanced: mini apps onboarding initial states', () => {
     await waitFor(() => {
       expect(screen.getByText('CEF runtime installed and ready.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /open folder/i })).toBeInTheDocument();
-      expect(screen.getByText(/Download complete/)).toBeInTheDocument();
+      expect(screen.getByText('Download complete (124.0 MB)')).toBeInTheDocument();
+      expect(screen.getByText('Checksum verified (SHA-256)')).toBeInTheDocument();
+      expect(screen.getByText('Archive extracted')).toBeInTheDocument();
+      expect(screen.getByText('CEF runtime ready')).toBeInTheDocument();
     });
   });
 
-  it('A007/settings-advanced: shows in-progress bytes when partial status already exists', async () => {
+  it('A007/settings-advanced: resumes downloading state with percentage and bytes from mount status', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'cef_download_status') {
-        return Promise.resolve(event({ status: 'pending', percent: 25, bytesDownloaded: 512_000, bytesTotal: 1_024_000 }));
+        return Promise.resolve(event({ status: 'downloading', percent: 45, bytesDownloaded: 45 * 1024 * 1024, bytesTotal: 124 * 1024 * 1024 }));
       }
       if (cmd === 'cef_platform_info') return Promise.resolve(info());
       return Promise.resolve(undefined);
@@ -103,7 +114,10 @@ describe('A007/settings-advanced: mini apps onboarding initial states', () => {
     render(<MiniAppsOnboarding />);
 
     await waitFor(() => {
-      expect(screen.getByText('CEF runtime not installed. Download is required for mini apps.')).toBeInTheDocument();
+      expect(screen.getByText('Downloading CEF runtime...')).toBeInTheDocument();
+      expect(screen.getByText('45%')).toBeInTheDocument();
+      expect(screen.getByText('45.0 MB / 124.0 MB')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
       expect(mockInvoke).toHaveBeenCalledWith('cef_download_status');
     });
   });
@@ -119,6 +133,7 @@ describe('A007/settings-advanced: mini apps onboarding actions', () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('cef_download_start');
       expect(screen.getByText('CEF runtime installed and ready.')).toBeInTheDocument();
+      expect(screen.getByText('Download complete (120.0 MB)')).toBeInTheDocument();
       expect(screen.getByText('Checksum verified (SHA-256)')).toBeInTheDocument();
       expect(screen.getByText('Archive extracted')).toBeInTheDocument();
       expect(screen.getByText('CEF runtime ready')).toBeInTheDocument();
