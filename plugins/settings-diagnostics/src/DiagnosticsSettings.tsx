@@ -212,10 +212,10 @@ export default function DiagnosticsSettings(): React.ReactElement {
               style={{ maxWidth: 800 }}
               labelStyle={{ width: 140 }}
               items={[
-                { key: 'cores', label: 'CPU Cores', children: hardware?.cores ?? '—' },
-                { key: 'ram', label: 'RAM', children: hardware ? `${hardware.ramGb} GB` : '—' },
-                { key: 'preset', label: 'Preset', children: preset },
-                { key: 'platform', label: 'Platform', children: platform },
+                { key: 'cores', label: 'CPU Cores', children: <div style={{ textAlign: 'right' }}>{hardware?.cores ?? '—'}</div> },
+                { key: 'ram', label: 'RAM', children: <div style={{ textAlign: 'right' }}>{hardware ? `${hardware.ramGb} GB` : '—'}</div> },
+                { key: 'preset', label: 'Preset', children: <div style={{ textAlign: 'right' }}>{preset}</div> },
+                { key: 'platform', label: 'Platform', children: <div style={{ textAlign: 'right' }}>{platform}</div> },
               ]}
             />
           </section>
@@ -233,35 +233,35 @@ export default function DiagnosticsSettings(): React.ReactElement {
                   {
                     key: 'python',
                     label: 'Python',
-                    children: pythonRuntime.python_installed ? (
+                    children: <div style={{ textAlign: 'right' }}>{pythonRuntime.python_installed ? (
                       <Tag color="success" icon={<CheckCircleOutlined />}>
                         {pythonRuntime.python_version ? `v${pythonRuntime.python_version}` : 'Installed'}
                       </Tag>
                     ) : (
                       <Tag color="error" icon={<CloseCircleOutlined />}>Not Installed</Tag>
-                    ),
+                    )}</div>,
                   },
                   {
                     key: 'uv',
                     label: 'uv (Package Manager)',
-                    children: pythonRuntime.uv_installed ? (
+                    children: <div style={{ textAlign: 'right' }}>{pythonRuntime.uv_installed ? (
                       <Tag color="success" icon={<CheckCircleOutlined />}>
                         {pythonRuntime.uv_version ? `v${pythonRuntime.uv_version}` : 'Installed'}
                       </Tag>
                     ) : (
                       <Tag color="error" icon={<CloseCircleOutlined />}>Not Installed</Tag>
-                    ),
+                    )}</div>,
                   },
                   pythonRuntime.python_path ? {
                     key: 'path',
                     label: 'Python Path',
-                    children: <Text code style={{ fontSize: 11 }}>{pythonRuntime.python_path}</Text>,
+                    children: <div style={{ textAlign: 'right' }}><Text code style={{ fontSize: 11 }}>{pythonRuntime.python_path}</Text></div>,
                   } : null,
                   {
                     key: 'packages',
                     label: 'Installed Packages',
-                    children: (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 400 }}>
+                    children: <div style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 400, justifyContent: 'flex-end' }}>
                         {pythonRuntime.installed_packages
                           .filter(pkg => {
                             const name = pkg.split('=')[0].split('[')[0].toLowerCase();
@@ -277,7 +277,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                           <Text type="secondary">No agent packages installed</Text>
                         )}
                       </div>
-                    ),
+                    </div>,
                   },
                 ].filter(Boolean)}
               />
