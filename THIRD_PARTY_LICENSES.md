@@ -110,7 +110,14 @@ The Snapfzz source code itself is licensed under the [Snapfzz Community License 
 
 ---
 
-## Python Runtime (AgentScope)
+## Python Runtime
+
+### LiteLLM
+- **License:** MIT
+- **URL:** https://github.com/BerriAI/litellm
+- **PyPI:** https://pypi.org/project/litellm/
+- **Used for:** Unified LLM gateway proxy — routes requests to 100+ providers (OpenAI, Anthropic, Ollama, Azure, Bedrock, etc.), virtual API key management, per-key budget enforcement, model routing/combos, spend tracking, request logging
+- **Note:** Only the MIT-licensed core is used (`pip install litellm[proxy]`). Code under the `enterprise/` directory of the LiteLLM repository is under a separate enterprise license and is NOT used by Snapfzz.
 
 ### AgentScope
 - **License:** Apache 2.0
@@ -120,7 +127,7 @@ The Snapfzz source code itself is licensed under the [Snapfzz Community License 
 ### uvicorn
 - **License:** BSD 3-Clause
 - **URL:** https://github.com/encode/uvicorn
-- **Used for:** ASGI server for AgentScope runtime
+- **Used for:** ASGI server for AgentScope runtime and LiteLLM proxy
 
 ### uv
 - **License:** Apache 2.0 / MIT
