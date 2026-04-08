@@ -224,7 +224,7 @@ export default function ComponentsSettings(): React.ReactElement {
         try {
           await bridge.invoke<DownloadProgress[]>('component_download', { id: packId });
         } catch {
-          // Skip failed packs, continue with next
+          // Skip failed packs
         }
       }
       await refreshComponents();
@@ -241,7 +241,7 @@ export default function ComponentsSettings(): React.ReactElement {
         try {
           await bridge.invoke<void>('component_uninstall', { id: packId });
         } catch {
-          // Skip failed packs, continue with next
+          // Skip failed packs
         }
       }
       await refreshComponents();
