@@ -171,7 +171,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
               bordered
               locale={{ emptyText: 'No system status data available.' }}
               dataSource={checks}
-              style={{ maxWidth: 500 }}
+              style={{ maxWidth: 800 }}
               renderItem={(check) => {
                 const indicator = checkIndicator(check);
                 return (
@@ -209,7 +209,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
               size="small"
               bordered
               column={1}
-              style={{ maxWidth: 500 }}
+              style={{ maxWidth: 800 }}
               labelStyle={{ width: 140 }}
               items={[
                 { key: 'cores', label: 'CPU Cores', children: hardware?.cores ?? '—' },
@@ -227,7 +227,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 size="small"
                 bordered
                 column={1}
-                style={{ maxWidth: 500 }}
+                style={{ maxWidth: 800 }}
                 labelStyle={{ width: 140 }}
                 items={[
                   {
@@ -291,7 +291,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
             <List
               size="small"
               bordered
-              style={{ maxWidth: 500 }}
+              style={{ maxWidth: 800 }}
               dataSource={cefRuntime ? [cefRuntime] : []}
               locale={{ emptyText: 'No system packs detected.' }}
               renderItem={(component) => (
