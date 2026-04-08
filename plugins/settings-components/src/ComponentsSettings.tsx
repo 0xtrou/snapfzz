@@ -57,7 +57,6 @@ function isPipPackageInstalled(packageName: string, installedPackages: string[])
 }
 
 function checkAgentscopeInstalled(installedPackages: string[]): boolean {
-  // Check for agentscope OR agentscope-runtime (covers both base and [ext])
   return installedPackages.some(pkg => {
     const name = pkg.split('=')[0].split('[')[0].toLowerCase();
     return name === 'agentscope' || name === 'agentscope-runtime' || name.startsWith('agentscope');
@@ -300,8 +299,6 @@ export default function ComponentsSettings(): React.ReactElement {
 
       // Check if pip packages are installed via python_runtime_status
       const installedPipPackages = pythonRuntime?.installed_packages || [];
-      
-      // Mark pip packages as installed based on pip list
       agentscope.isInstalled = checkAgentscopeInstalled(installedPipPackages);
       litellm.isInstalled = isPipPackageInstalled('litellm', installedPipPackages);
 
