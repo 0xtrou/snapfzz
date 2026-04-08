@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use snapfzz_kernel::budget::{self, preset::PresetName, BudgetRegistry};
+use snapfzz_kernel::budget::{self, device::DeviceInfo, preset::PresetName, BudgetRegistry};
 use std::sync::Arc;
 
 pub(crate) fn preset_name_from_str(preset_name: &str) -> Result<PresetName, String> {
@@ -20,20 +20,33 @@ pub(crate) fn startup_budget_value(registry: &BudgetRegistry) -> Value {
     })
 }
 
-pub(crate) fn hardware_info_value() -> Value {
-    let hw = budget::detect::detect_hardware();
+pub(crate) fn hardware_info_value_from_device(device: &DeviceInfo) -> Value {
     json!({
-        "cores": hw.cores,
-        "ramGb": hw.ram_gb,
-        "onBattery": hw.on_battery
+        "os": device.os,
+        "arch": device.arch,
+        "platform": device.platform,
+        "platformDisplay": device.platform_display,
+        "cores": device.cores,
+        "ramGb": device.ram_gb,
+        "onBattery": device.on_battery
     })
 }
 
 pub(crate) fn apply_preset(registry: &BudgetRegistry, preset_name: &str) -> Result<(), String> {
-    let hw = budget::detect::detect_hardware();
+    let device = budget::device::detect_device();
+    apply_preset_with_device(registry, preset_name, &device)
+}
+
+pub(crate) fn apply_preset_with_device(
+    registry: &BudgetRegistry,
+    preset_name: &str,
+    device: &DeviceInfo,
+) -> Result<(), String> {
+    let hw = budget::detect::HardwareInfo::from(device);
     let name = preset_name_from_str(preset_name)?;
 
     let new_preset = budget::preset::build_preset(name, &hw);
+
     let new_agentscope_max_mb = new_preset.memory.agentscope_max_mb;
     registry.swap_preset(new_preset);
 
@@ -118,8 +131,10 @@ pub async fn set_preset(
 }
 
 #[tauri::command]
-pub async fn get_hardware_info() -> Result<Value, String> {
-    Ok(hardware_info_value())
+pub async fn get_hardware_info(
+    device: tauri::State<'_, Arc<DeviceInfo>>,
+) -> Result<Value, String> {
+    Ok(hardware_info_value_from_device(&device))
 }
 
 #[cfg(test)]
@@ -181,11 +196,26 @@ mod tests {
     }
 
     #[test]
-    fn a008_commands_budget_hardware_info_value_serializes_detected_shape() {
-        let value = hardware_info_value();
-        assert!(value.get("cores").and_then(|v| v.as_u64()).is_some());
-        assert!(value.get("ramGb").and_then(|v| v.as_u64()).is_some());
-        assert!(value.get("onBattery").and_then(|v| v.as_bool()).is_some());
+    fn a008_commands_budget_hardware_info_value_from_device_serializes_all_device_fields() {
+        let device = DeviceInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            platform: "linux-x64".to_string(),
+            platform_display: "Linux (x86_64)".to_string(),
+            cores: 12,
+            ram_gb: 32,
+            on_battery: false,
+        };
+
+        let value = hardware_info_value_from_device(&device);
+
+        assert_eq!(value["os"], "linux");
+        assert_eq!(value["arch"], "x86_64");
+        assert_eq!(value["platform"], "linux-x64");
+        assert_eq!(value["platformDisplay"], "Linux (x86_64)");
+        assert_eq!(value["cores"], 12);
+        assert_eq!(value["ramGb"], 32);
+        assert_eq!(value["onBattery"], false);
     }
 
     #[test]
@@ -220,6 +250,27 @@ mod tests {
             .get("agentscope")
             .expect("agentscope process");
         assert_eq!(entry.max_memory_mb, snapshot.agentscope_max_mb);
+    }
+
+    #[test]
+    fn a008_commands_budget_apply_preset_with_device_uses_device_derived_hardware() {
+        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
+        register_process(&registry, "agentscope", 1);
+        let device = DeviceInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            platform: "linux-x64".to_string(),
+            platform_display: "Linux (x86_64)".to_string(),
+            cores: 16,
+            ram_gb: 64,
+            on_battery: false,
+        };
+
+        apply_preset_with_device(&registry, "performance", &device)
+            .expect("apply preset with explicit device");
+
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.preset_name, "performance");
     }
 
     #[test]
@@ -295,7 +346,27 @@ mod tests {
 
     #[test]
     fn a008_commands_budget_get_hardware_info_returns_shape() {
-        let value = tauri::async_runtime::block_on(get_hardware_info()).expect("hardware info");
+        let app = mock_builder()
+            .manage(Arc::new(DeviceInfo {
+                os: "linux".to_string(),
+                arch: "x86_64".to_string(),
+                platform: "linux-x64".to_string(),
+                platform_display: "Linux (x86_64)".to_string(),
+                cores: 12,
+                ram_gb: 32,
+                on_battery: false,
+            }))
+            .build(mock_context(noop_assets()))
+            .expect("build app");
+
+        let value = tauri::async_runtime::block_on(get_hardware_info(
+            app.state::<Arc<DeviceInfo>>(),
+        ))
+        .expect("hardware info");
+        assert!(value.get("os").and_then(|v| v.as_str()).is_some());
+        assert!(value.get("arch").and_then(|v| v.as_str()).is_some());
+        assert!(value.get("platform").and_then(|v| v.as_str()).is_some());
+        assert!(value.get("platformDisplay").and_then(|v| v.as_str()).is_some());
         assert!(value.get("cores").and_then(|v| v.as_u64()).is_some());
         assert!(value.get("ramGb").and_then(|v| v.as_u64()).is_some());
         assert!(value.get("onBattery").and_then(|v| v.as_bool()).is_some());

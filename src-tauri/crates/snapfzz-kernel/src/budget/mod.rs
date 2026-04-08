@@ -1,5 +1,6 @@
 pub mod controlled;
 pub mod detect;
+pub mod device;
 pub mod metrics;
 pub mod preset;
 pub mod supervised;
@@ -9,7 +10,8 @@ use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use crate::budget::controlled::{ControlledBudgets, CpuPermit, InvokePermit};
-use crate::budget::detect::{detect_hardware, select_preset};
+use crate::budget::detect::{HardwareInfo, select_preset};
+use crate::budget::device::detect_device;
 use crate::budget::metrics::{BudgetMetrics, ProcessStatus};
 use crate::budget::preset::{Preset, PresetName, build_preset};
 use crate::budget::supervised::{ProcessBudget, StorageState, SupervisedBudgets};
@@ -23,7 +25,8 @@ pub struct BudgetRegistry {
 
 impl BudgetRegistry {
     pub fn from_hardware() -> Self {
-        let hw = detect_hardware();
+        let device = detect_device();
+        let hw = HardwareInfo::from(&device);
         let preset_name = select_preset(&hw);
         let preset = build_preset(preset_name, &hw);
         Self::with_preset(preset)
@@ -51,7 +54,8 @@ impl BudgetRegistry {
     }
 
     pub fn with_preset_name(name: PresetName) -> Self {
-        let hw = detect_hardware();
+        let device = detect_device();
+        let hw = HardwareInfo::from(&device);
         Self::with_preset(build_preset(name, &hw))
     }
 

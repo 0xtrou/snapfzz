@@ -9,16 +9,66 @@ mod metrics;
 use snapfzz_cef::download::CefDownloader;
 use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_kernel::boot::PreflightService;
+use snapfzz_kernel::budget::device::DeviceInfo;
+use snapfzz_kernel::components::{ComponentError, ComponentRegistry};
 use snapfzz_packs::{
-    detect_platform, AgentScopeComponent, CefPackComponent, LiteLLMComponent, PythonComponent,
-    UvComponent,
+    detect_platform, AgentScopeComponent, CefPackComponent, LiteLLMComponent, PlatformInfo,
+    PythonComponent, UvComponent,
 };
-use snapfzz_kernel::components::ComponentRegistry;
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
 use std::sync::{Arc, Mutex};
 use tauri::RunEvent;
+
+fn detect_platform_for_components(device: &DeviceInfo) -> Result<PlatformInfo, ComponentError> {
+    detect_platform().or_else(|_| {
+        let (display, archive_ext) = match device.platform.as_str() {
+            "macos-arm64" => ("macOS (Apple Silicon)", ".tar.gz"),
+            "macos-x64" => ("macOS (Intel)", ".tar.gz"),
+            "linux-x64" => ("Linux (x86_64)", ".tar.gz"),
+            "windows-x64" => ("Windows (x64)", ".zip"),
+            _ => {
+                return Err(ComponentError::UnsupportedPlatform(format!(
+                    "{}-{}",
+                    device.os, device.arch
+                )));
+            }
+        };
+
+        let os = match device.os.as_str() {
+            "macos" => "macos",
+            "linux" => "linux",
+            "windows" => "windows",
+            _ => {
+                return Err(ComponentError::UnsupportedPlatform(format!(
+                    "{}-{}",
+                    device.os, device.arch
+                )));
+            }
+        };
+
+        let arch = match device.arch.as_str() {
+            "aarch64" => "aarch64",
+            "x86_64" => "x86_64",
+            _ => {
+                return Err(ComponentError::UnsupportedPlatform(format!(
+                    "{}-{}",
+                    device.os, device.arch
+                )));
+            }
+        };
+
+        Ok(PlatformInfo {
+            os,
+            arch,
+            platform: device.platform.clone(),
+            display,
+            exe_suffix: if os == "windows" { ".exe" } else { "" },
+            archive_ext,
+        })
+    })
+}
 
 fn main() {
     let data_dir = helpers::resolve_data_dir();
@@ -35,40 +85,44 @@ fn main() {
         Err(_) => Arc::new(Mutex::new(SecretVault::empty(vault_path))),
     };
     let registry = result.registry.clone();
+    let device = Arc::new(result.context.device().clone());
     let process_mgr = Arc::new(ProcessManager::with_parts(
         Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
         Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
     ));
     let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
-    let platform = detect_platform().expect("unsupported platform");
+    let platform = detect_platform_for_components(&device).expect("unsupported platform");
     let runtime_dir = data_dir.join("runtime");
     let bin_dir = runtime_dir.join("bin");
     let processes_dir = runtime_dir.join("processes");
     let packages_dir = runtime_dir.join("packages");
     let uv_bin = bin_dir.join(format!("uv{}", platform.exe_suffix));
-    let cef_runtime_downloader = Arc::new(
-        CefDownloader::from_current_platform(processes_dir.join("cef")).unwrap_or_else(|_| {
-            CefDownloader::new(processes_dir.join("cef"), "macos-arm64".to_string())
-        }),
-    );
+    let cef_runtime_downloader = Arc::new(CefDownloader::new(
+        processes_dir.join("cef"),
+        device.platform.clone(),
+    ));
     let cef_state = commands::cef::CefState {
         runtime: Arc::new(tauri::async_runtime::Mutex::new(CefRuntime::new(&data_dir))),
         downloader: cef_runtime_downloader,
+        device: device.clone(),
     };
     let mut component_registry = ComponentRegistry::new();
     component_registry.register(Arc::new(UvComponent::new(bin_dir.clone(), platform.clone())));
     component_registry.register(Arc::new(PythonComponent::new(
         uv_bin.clone(),
         bin_dir.join("python"),
+        platform.clone(),
         "3.12".to_string(),
     )));
     component_registry.register(Arc::new(AgentScopeComponent::new(
         uv_bin.clone(),
         packages_dir.join("agentscope"),
+        platform.clone(),
     )));
     component_registry.register(Arc::new(LiteLLMComponent::new(
         uv_bin.clone(),
         packages_dir.join("litellm"),
+        platform.clone(),
     )));
     component_registry.register(Arc::new(CefPackComponent::new(
         processes_dir.join("cef"),
@@ -86,6 +140,7 @@ fn main() {
         .manage(vault)
         .manage(cef_state)
         .manage(component_registry)
+        .manage(device)
         .manage(result.phase_timings_dto())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings, commands::settings::save_settings, commands::settings::get_data_dir, commands::settings::set_data_dir,

@@ -1,6 +1,7 @@
 use snapfzz_cef::download::{CefBuildInfo, CefDownloader};
 use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_cef::types::{CefError, ConsoleMessage, DownloadProgress, WindowConfig};
+use snapfzz_kernel::budget::device::DeviceInfo;
 use std::sync::Arc;
 use tauri::async_runtime::Mutex;
 
@@ -8,6 +9,7 @@ use tauri::async_runtime::Mutex;
 pub struct CefState {
     pub runtime: Arc<Mutex<CefRuntime>>,
     pub downloader: Arc<CefDownloader>,
+    pub device: Arc<DeviceInfo>,
 }
 
 #[tauri::command]
@@ -173,19 +175,11 @@ async fn download_status_from_downloader(downloader: &CefDownloader) -> Download
     }
 }
 
-fn platform_display_name(platform: &str) -> &'static str {
-    match platform {
-        "macos-arm64" => "macOS (Apple Silicon)",
-        "macos-x64" => "macOS (Intel)",
-        "linux-x64" => "Linux (x86_64)",
-        "windows-x64" => "Windows (x64)",
-        _ => "Unknown platform",
-    }
-}
-
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CefPlatformInfo {
+    pub os: String,
+    pub arch: String,
     pub platform: String,
     pub platform_display: String,
     pub download_url: String,
@@ -205,8 +199,10 @@ pub async fn cef_platform_info(
         .unwrap_or_else(|_| state.downloader.download_url());
 
     Ok(CefPlatformInfo {
-        platform: state.downloader.platform().to_string(),
-        platform_display: platform_display_name(state.downloader.platform()).to_string(),
+        os: state.device.os.clone(),
+        arch: state.device.arch.clone(),
+        platform: state.device.platform.clone(),
+        platform_display: state.device.platform_display.clone(),
         download_url,
         install_path: state.downloader.install_dir().to_string_lossy().to_string(),
         is_installed: state.downloader.is_installed(),
@@ -229,7 +225,6 @@ mod tests {
     };
 
     fn create_test_tar_bz2(path: &std::path::Path, files: &[(&str, &[u8])]) {
-        use std::io::Write;
         let file = std::fs::File::create(path).unwrap();
         let compressor = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());
         let mut archive = tar::Builder::new(compressor);
@@ -257,6 +252,15 @@ mod tests {
         let state = CefState {
             runtime: Arc::new(Mutex::new(CefRuntime::new(temp.path()))),
             downloader: Arc::new(CefDownloader::new(install_dir, "macos-arm64".to_string())),
+            device: Arc::new(DeviceInfo {
+                os: "macos".to_string(),
+                arch: "aarch64".to_string(),
+                platform: "macos-arm64".to_string(),
+                platform_display: "macOS (Apple Silicon)".to_string(),
+                cores: 8,
+                ram_gb: 16,
+                on_battery: false,
+            }),
         };
 
         let app = mock_builder()
@@ -438,6 +442,8 @@ mod tests {
             .await
             .expect("platform info");
 
+        assert_eq!(info.os, "macos");
+        assert_eq!(info.arch, "aarch64");
         assert_eq!(info.platform, "macos-arm64");
         assert_eq!(info.platform_display, "macOS (Apple Silicon)");
         assert!(info.download_url.contains("cef-builds.spotifycdn.com"));

@@ -9,20 +9,22 @@ use snapfzz_kernel::components::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
 
-use crate::platform::detect_platform;
+use crate::platform::PlatformInfo;
 
 #[derive(Debug, Clone)]
 pub struct AgentScopeComponent {
     uv_binary: PathBuf,
     install_dir: PathBuf,
+    platform: PlatformInfo,
     cancelled: Arc<AtomicBool>,
 }
 
 impl AgentScopeComponent {
-    pub fn new(uv_binary: PathBuf, install_dir: PathBuf) -> Self {
+    pub fn new(uv_binary: PathBuf, install_dir: PathBuf, platform: PlatformInfo) -> Self {
         Self {
             uv_binary,
             install_dir,
+            platform,
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -67,8 +69,8 @@ impl SystemComponent for AgentScopeComponent {
             description: "AgentScope Python runtime package for local agent execution.".into(),
             license: "Apache-2.0".into(),
             version: "latest".into(),
-            platform: detect_platform()?.platform,
-            platform_display: detect_platform()?.display.to_string(),
+            platform: self.platform.platform.clone(),
+            platform_display: self.platform.display.to_string(),
             download_url: String::new(),
             install_path: self.install_dir.to_string_lossy().into_owned(),
             size: 0,
@@ -175,24 +177,47 @@ mod tests {
         (temp, uv)
     }
 
+    fn test_platform() -> PlatformInfo {
+        PlatformInfo {
+            os: "macos",
+            arch: "aarch64",
+            platform: "macos-arm64".to_string(),
+            display: "macOS (Apple Silicon)",
+            exe_suffix: "",
+            archive_ext: ".tar.gz",
+        }
+    }
+
     #[test]
     fn t32_agentscope_is_installed_true_when_import_succeeds() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"run\" ]; then exit 0; fi\nexit 1\n");
-        let component = AgentScopeComponent::new(uv, PathBuf::from("/tmp/runtime/packages/agentscope"));
+        let component = AgentScopeComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/agentscope"),
+            test_platform(),
+        );
         assert!(component.is_installed());
     }
 
     #[test]
     fn t32_agentscope_is_installed_false_when_import_fails() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
-        let component = AgentScopeComponent::new(uv, PathBuf::from("/tmp/runtime/packages/agentscope"));
+        let component = AgentScopeComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/agentscope"),
+            test_platform(),
+        );
         assert!(!component.is_installed());
     }
 
     #[test]
     fn t32_agentscope_cancel_and_clear_toggle_flag() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 0\n");
-        let component = AgentScopeComponent::new(uv, PathBuf::from("/tmp/runtime/packages/agentscope"));
+        let component = AgentScopeComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/agentscope"),
+            test_platform(),
+        );
         assert!(!component.cancelled.load(Ordering::SeqCst));
         component.cancel();
         assert!(component.cancelled.load(Ordering::SeqCst));
@@ -203,7 +228,11 @@ mod tests {
     #[tokio::test]
     async fn t32_agentscope_verify_returns_installed_version() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"run\" ]; then echo '1.2.3'; exit 0; fi\nexit 1\n");
-        let component = AgentScopeComponent::new(uv, PathBuf::from("/tmp/runtime/packages/agentscope"));
+        let component = AgentScopeComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/agentscope"),
+            test_platform(),
+        );
 
         let version = component.verify().await.unwrap();
 
@@ -213,7 +242,11 @@ mod tests {
     #[tokio::test]
     async fn t32_agentscope_resolve_has_expected_component_info() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
-        let component = AgentScopeComponent::new(uv, PathBuf::from("/tmp/runtime/packages/agentscope"));
+        let component = AgentScopeComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/agentscope"),
+            test_platform(),
+        );
 
         let info = component.resolve().await.unwrap();
 

@@ -1,5 +1,4 @@
-use sysinfo::System;
-
+use crate::budget::device::{detect_device, DeviceInfo};
 use crate::budget::preset::PresetName;
 
 pub struct HardwareInfo {
@@ -8,33 +7,19 @@ pub struct HardwareInfo {
     pub on_battery: bool,
 }
 
-pub fn detect_hardware() -> HardwareInfo {
-    let sys = System::new_all();
-    let cores = sys.cpus().len();
-    let ram_gb = sys.total_memory() / (1024 * 1024 * 1024);
-
-    #[cfg(target_os = "macos")]
-    let on_battery = detect_battery_macos();
-    #[cfg(not(target_os = "macos"))]
-    let on_battery = false;
-
-    HardwareInfo {
-        cores,
-        ram_gb,
-        on_battery,
+impl From<&DeviceInfo> for HardwareInfo {
+    fn from(device: &DeviceInfo) -> Self {
+        Self {
+            cores: device.cores,
+            ram_gb: device.ram_gb,
+            on_battery: device.on_battery,
+        }
     }
 }
 
-#[cfg(target_os = "macos")]
-fn detect_battery_macos() -> bool {
-    std::process::Command::new("pmset")
-        .args(["-g", "batt"])
-        .output()
-        .map(|o| {
-            let output = String::from_utf8_lossy(&o.stdout);
-            output.contains("Battery Power")
-        })
-        .unwrap_or(false)
+pub fn detect_hardware() -> HardwareInfo {
+    let device = detect_device();
+    HardwareInfo::from(&device)
 }
 
 pub fn select_preset(hw: &HardwareInfo) -> PresetName {
@@ -48,4 +33,87 @@ pub fn select_preset(hw: &HardwareInfo) -> PresetName {
         return PresetName::Balanced;
     }
     PresetName::Battery
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detect_hardware, select_preset, HardwareInfo};
+    use crate::budget::device::{detect_device, DeviceInfo};
+    use crate::budget::preset::PresetName;
+
+    fn sample_device() -> DeviceInfo {
+        DeviceInfo {
+            os: "macos".to_string(),
+            arch: "aarch64".to_string(),
+            platform: "macos-arm64".to_string(),
+            platform_display: "macOS (Apple Silicon)".to_string(),
+            cores: 8,
+            ram_gb: 16,
+            on_battery: false,
+        }
+    }
+
+    #[test]
+    fn a008_detect_hardware_info_derives_from_device_info() {
+        let device = sample_device();
+        let hardware = HardwareInfo::from(&device);
+
+        assert_eq!(hardware.cores, device.cores);
+        assert_eq!(hardware.ram_gb, device.ram_gb);
+        assert_eq!(hardware.on_battery, device.on_battery);
+    }
+
+    #[test]
+    fn a008_detect_detect_hardware_matches_detect_device_fields() {
+        let device = detect_device();
+        let hardware = detect_hardware();
+
+        assert_eq!(hardware.cores, device.cores);
+        assert_eq!(hardware.ram_gb, device.ram_gb);
+        assert_eq!(hardware.on_battery, device.on_battery);
+    }
+
+    #[test]
+    fn a008_detect_select_preset_prefers_battery_when_on_battery() {
+        let hardware = HardwareInfo {
+            cores: 16,
+            ram_gb: 64,
+            on_battery: true,
+        };
+
+        assert_eq!(select_preset(&hardware), PresetName::Battery);
+    }
+
+    #[test]
+    fn a008_detect_select_preset_uses_performance_for_large_machines() {
+        let hardware = HardwareInfo {
+            cores: 8,
+            ram_gb: 16,
+            on_battery: false,
+        };
+
+        assert_eq!(select_preset(&hardware), PresetName::Performance);
+    }
+
+    #[test]
+    fn a008_detect_select_preset_uses_balanced_for_mid_tier_machines() {
+        let hardware = HardwareInfo {
+            cores: 4,
+            ram_gb: 8,
+            on_battery: false,
+        };
+
+        assert_eq!(select_preset(&hardware), PresetName::Balanced);
+    }
+
+    #[test]
+    fn a008_detect_select_preset_defaults_to_battery_for_small_machines() {
+        let hardware = HardwareInfo {
+            cores: 2,
+            ram_gb: 4,
+            on_battery: false,
+        };
+
+        assert_eq!(select_preset(&hardware), PresetName::Battery);
+    }
 }

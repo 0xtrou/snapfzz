@@ -13,7 +13,7 @@ interface SecretEntry {
   masked: string;
 }
 
-type VaultStatus = 'healthy' | 'keyfile' | 'missing';
+type VaultStatus = 'healthy' | 'missing';
 
 function maskSecretValue(raw: string): string {
   return raw.length > 4 ? `${'•'.repeat(raw.length - 4)}${raw.slice(-4)}` : '•'.repeat(raw.length);
@@ -40,7 +40,6 @@ export default function VaultSettings() {
   const [newName, setNewName] = useState('');
   const [newValue, setNewValue] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
-  const [valueError, setValueError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
 
@@ -73,8 +72,6 @@ export default function VaultSettings() {
     switch (status) {
       case 'healthy':
         return { color: 'success' as const, label: 'Healthy' };
-      case 'keyfile':
-        return { color: 'warning' as const, label: 'Fallback' };
       default:
         return { color: 'error' as const, label: 'Missing' };
     }
@@ -137,8 +134,6 @@ export default function VaultSettings() {
 
     if (!trimmedName) {
       setNameError('Secret name is required.');
-    } else if (!trimmedName.trim()) {
-      setNameError('Secret name is required');
       return;
     }
 
@@ -148,7 +143,6 @@ export default function VaultSettings() {
       setNewName('');
       setNewValue('');
       setNameError(null);
-      setValueError(null);
       await loadSecrets();
     } finally {
       setSubmitting(false);
@@ -236,10 +230,8 @@ export default function VaultSettings() {
                   aria-label="Secret value"
                   placeholder="Secret value"
                   value={newValue}
-                  status={valueError ? 'error' : undefined}
                   onChange={(event) => {
                     setNewValue(event.target.value);
-                    if (valueError) setValueError(null);
                   }}
                 />
                 <AppButton icon={<PlusOutlined />} loading={submitting} onClick={() => void handleAdd()}>
@@ -247,7 +239,6 @@ export default function VaultSettings() {
                 </AppButton>
               </Space.Compact>
               {nameError && <Text type="danger">{nameError}</Text>}
-              {valueError && <Text type="danger">{valueError}</Text>}
             </Space>
           </section>
         </Space>

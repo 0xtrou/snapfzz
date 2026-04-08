@@ -9,21 +9,28 @@ use snapfzz_kernel::components::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
 
-use crate::platform::detect_platform;
+use crate::platform::PlatformInfo;
 
 #[derive(Debug, Clone)]
 pub struct PythonComponent {
     uv_binary: PathBuf,
     install_dir: PathBuf,
+    platform: PlatformInfo,
     version: String,
     cancelled: Arc<AtomicBool>,
 }
 
 impl PythonComponent {
-    pub fn new(uv_binary: PathBuf, install_dir: PathBuf, version: String) -> Self {
+    pub fn new(
+        uv_binary: PathBuf,
+        install_dir: PathBuf,
+        platform: PlatformInfo,
+        version: String,
+    ) -> Self {
         Self {
             uv_binary,
             install_dir,
+            platform,
             version,
             cancelled: Arc::new(AtomicBool::new(false)),
         }
@@ -69,8 +76,8 @@ impl SystemComponent for PythonComponent {
             description: "Python runtime managed by uv. Required for AgentScope and Python-based packs.".into(),
             license: "PSF-2.0".into(),
             version: self.version.clone(),
-            platform: detect_platform()?.platform,
-            platform_display: detect_platform()?.display.to_string(),
+            platform: self.platform.platform.clone(),
+            platform_display: self.platform.display.to_string(),
             download_url: String::new(),
             install_path: self.install_dir.to_string_lossy().into_owned(),
             size: 0,
@@ -177,24 +184,38 @@ mod tests {
         (temp, uv)
     }
 
+    fn test_platform() -> PlatformInfo {
+        PlatformInfo {
+            os: "macos",
+            arch: "aarch64",
+            platform: "macos-arm64".to_string(),
+            display: "macOS (Apple Silicon)",
+            exe_suffix: "",
+            archive_ext: ".tar.gz",
+        }
+    }
+
     #[test]
     fn t32_python_is_installed_false_when_uv_fails() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
-        let component = PythonComponent::new(uv, PathBuf::from("/tmp/python"), "3.12".to_string());
+        let component =
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
         assert!(!component.is_installed());
     }
 
     #[test]
     fn t32_python_is_installed_true_when_uv_finds_version() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"python\" ] && [ \"$2\" = \"find\" ]; then exit 0; fi\nexit 1\n");
-        let component = PythonComponent::new(uv, PathBuf::from("/tmp/python"), "3.12".to_string());
+        let component =
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
         assert!(component.is_installed());
     }
 
     #[test]
     fn t32_python_cancel_and_clear_cancel_toggle_flag() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 0\n");
-        let component = PythonComponent::new(uv, PathBuf::from("/tmp/python"), "3.12".to_string());
+        let component =
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
         assert!(!component.cancelled.load(Ordering::SeqCst));
         component.cancel();
         assert!(component.cancelled.load(Ordering::SeqCst));
@@ -206,7 +227,12 @@ mod tests {
     async fn t32_python_download_returns_cancelled_when_pre_cancelled() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 0\n");
         let install_dir = tempfile::tempdir().unwrap();
-        let component = PythonComponent::new(uv, install_dir.path().join("python"), "3.12".to_string());
+        let component = PythonComponent::new(
+            uv,
+            install_dir.path().join("python"),
+            test_platform(),
+            "3.12".to_string(),
+        );
         component.cancel();
 
         let events = component.download().await.unwrap();
@@ -218,7 +244,8 @@ mod tests {
     #[tokio::test]
     async fn t32_python_verify_returns_python_version() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"run\" ]; then echo 'Python 3.12.7'; exit 0; fi\nexit 1\n");
-        let component = PythonComponent::new(uv, PathBuf::from("/tmp/python"), "3.12".to_string());
+        let component =
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
 
         let version = component.verify().await.unwrap();
 
@@ -228,7 +255,8 @@ mod tests {
     #[tokio::test]
     async fn t32_python_resolve_contains_required_component_info_fields() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
-        let component = PythonComponent::new(uv, PathBuf::from("/tmp/python"), "3.12".to_string());
+        let component =
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
 
         let info = component.resolve().await.unwrap();
 

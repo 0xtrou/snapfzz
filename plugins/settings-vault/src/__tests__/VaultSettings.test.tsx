@@ -167,10 +167,9 @@ describe('U011/vault-settings', () => {
     });
   });
 
-  it('U011/vault-settings: add secret with empty name still submits by trimming whitespace path', async () => {
+  it('U011/vault-settings: add secret with whitespace-only name shows error', async () => {
     const user = userEvent.setup();
-    const entries: Record<string, string> = {};
-    setupVault(entries);
+    setupVault({});
 
     render(<VaultSettings />);
 
@@ -179,12 +178,10 @@ describe('U011/vault-settings', () => {
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: '',
-        value: 'super-secret',
-      });
-      expect(screen.getByText('No secrets stored')).toBeInTheDocument();
+      expect(screen.getByText('Secret name is required.')).toBeInTheDocument();
     });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
   });
 
   it('U011/vault-settings: add secret accepts empty value and renders blank mask cell', async () => {
@@ -302,47 +299,21 @@ describe('U011/vault-settings', () => {
     });
   });
 
-  it('U011/vault-settings: keyfile status tone remains dormant in current UI state machine', async () => {
+  it('U011/vault-settings: whitespace-only name shows error and does not submit', async () => {
+    const user = userEvent.setup();
     setupVault({});
 
-    render(<VaultSettings />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Healthy')).toBeInTheDocument();
-      expect(screen.queryByText('Fallback')).not.toBeInTheDocument();
-    });
-  });
-
-  it('U011/vault-settings: whitespace-only name submit keeps button loading until store resolves', async () => {
-    let releaseStore: (() => void) | null = null;
-    mockInvoke.mockImplementation((command: string, args?: { key?: string; value?: string }) => {
-      if (command === 'vault_list') {
-        return Promise.resolve([]);
-      }
-      if (command === 'vault_read') {
-        return Promise.resolve('');
-      }
-      if (command === 'vault_store') {
-        return new Promise<void>((resolve) => {
-          releaseStore = resolve;
-        });
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const user = userEvent.setup();
     render(<VaultSettings />);
 
     await user.type(screen.getByLabelText('Secret name'), '   ');
     await user.type(screen.getByLabelText('Secret value'), 'value');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
-    expect(screen.getByRole('button', { name: /Add$/ })).toHaveClass('ant-btn-loading');
-
-    await act(async () => {
-      releaseStore?.();
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(screen.getByText('Secret name is required.')).toBeInTheDocument();
     });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
   });
 
   it('U011/vault-settings: trims name before storing and clears name error on change', async () => {
@@ -350,36 +321,68 @@ describe('U011/vault-settings', () => {
     const entries: Record<string, string> = {};
     setupVault(entries);
 
-    const setNameError = vi.fn();
-    const setValueError = vi.fn();
-    let useStateCall = 0;
-    mockUseState.mockImplementation((initialState: unknown) => {
-      useStateCall += 1;
-      if (useStateCall === 8) {
-        return ['Seeded name error', setNameError] as [string, React.Dispatch<React.SetStateAction<string>>];
-      }
-      if (useStateCall === 9) {
-        return ['Seeded value error', setValueError] as [string, React.Dispatch<React.SetStateAction<string>>];
-      }
-      return reactState.actualUseState(initialState as never);
-    });
+    mockUseState.mockImplementation(reactState.actualUseState);
 
     render(<VaultSettings />);
-
-    expect(screen.getByText('Seeded name error')).toBeInTheDocument();
-    expect(screen.getByText('Seeded value error')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Secret name'), '  provider:trimmed:key  ');
     await user.type(screen.getByLabelText('Secret value'), 'value');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     await waitFor(() => {
-      expect(setNameError).toHaveBeenCalledWith(null);
-      expect(setValueError).toHaveBeenCalledWith(null);
       expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
         key: 'provider:trimmed:key',
         value: 'value',
       });
+    });
+  });
+
+  it('U011/vault-settings: empty name shows error and prevents submit', async () => {
+    const user = userEvent.setup();
+    setupVault({});
+
+    render(<VaultSettings />);
+
+    await user.type(screen.getByLabelText('Secret name'), '   ');
+    await user.type(screen.getByLabelText('Secret value'), 'some-value');
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Secret name is required.')).toBeInTheDocument();
+    });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('vault_store', expect.anything());
+  });
+
+  it('U011/vault-settings: typing in name input clears name error', async () => {
+    const user = userEvent.setup();
+    setupVault({});
+
+    render(<VaultSettings />);
+
+    await user.type(screen.getByLabelText('Secret name'), 'test');
+    await user.clear(screen.getByLabelText('Secret name'));
+    await user.type(screen.getByLabelText('Secret name'), 'new-test');
+
+    expect(screen.getByLabelText('Secret name')).toHaveValue('new-test');
+  });
+
+  it('U011/vault-settings: typing in name input when there is a name error clears the error', async () => {
+    const user = userEvent.setup();
+    setupVault({});
+
+    render(<VaultSettings />);
+    await user.type(screen.getByLabelText('Secret name'), '   ');
+    await user.click(screen.getByRole('button', { name: /Add$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Secret name is required.')).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText('Secret name'), 'test-key');
+
+    await waitFor(() => {
+      expect(screen.queryByText('Secret name is required.')).not.toBeInTheDocument();
     });
   });
 });

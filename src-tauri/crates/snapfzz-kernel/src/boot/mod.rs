@@ -11,7 +11,8 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::budget::detect::{detect_hardware, select_preset};
+use crate::budget::detect::{select_preset, HardwareInfo};
+use crate::budget::device::{detect_device, DeviceInfo};
 use crate::budget::preset::{build_preset, PresetName};
 use crate::budget::BudgetRegistry;
 
@@ -244,7 +245,9 @@ impl PreflightService {
         durations.push(settings_timing);
         self.run_phase_hooks(Phase::Settings, &mut context)?;
 
-        let (registry, budget_timing) = self.phase_budget(context.settings());
+        let device = detect_device();
+        context.set_device(device);
+        let (registry, budget_timing) = self.phase_budget(context.settings(), context.device());
         context.set_registry(registry);
         eprintln!(
             "[preflight] Phase 4: budget — {}ms ({})",
@@ -315,17 +318,6 @@ impl PreflightService {
             duration_ms: start.elapsed().as_millis() as u64,
             status: PhaseStatus::Ok,
         })
-    }
-
-    fn phase_vault_stub(&self) -> PhaseTiming {
-        let start = Instant::now();
-        eprintln!("[preflight] Phase 2: vault — skipped (A011 not yet implemented)");
-        PhaseTiming {
-            phase: 2,
-            name: "vault",
-            duration_ms: start.elapsed().as_millis() as u64,
-            status: PhaseStatus::Degraded("vault not yet implemented".to_string()),
-        }
     }
 
     fn phase_settings(&self) -> (PreflightSettings, PhaseTiming) {
@@ -399,31 +391,38 @@ impl PreflightService {
         }
     }
 
-    fn phase_budget(&self, settings: &PreflightSettings) -> (Arc<BudgetRegistry>, PhaseTiming) {
+    fn phase_budget(
+        &self,
+        settings: &PreflightSettings,
+        device: &DeviceInfo,
+    ) -> (Arc<BudgetRegistry>, PhaseTiming) {
         let start = Instant::now();
+        let hardware = HardwareInfo::from(device);
 
         let registry = if settings.preset == "auto" || settings.preset.is_empty() {
-            BudgetRegistry::from_hardware()
+            let preset_name = select_preset(&hardware);
+            BudgetRegistry::with_preset(build_preset(preset_name, &hardware))
         } else {
-            let hw = detect_hardware();
             let preset_name = match settings.preset.as_str() {
                 "performance" => PresetName::Performance,
                 "balanced" => PresetName::Balanced,
                 "battery" => PresetName::Battery,
-                _ => select_preset(&hw),
+                _ => select_preset(&hardware),
             };
-            BudgetRegistry::with_preset(build_preset(preset_name, &hw))
+            BudgetRegistry::with_preset(build_preset(preset_name, &hardware))
         };
 
-        let (preset_name, cores, ram_gb) = {
+        let preset_name = {
             let preset = registry.preset.read().unwrap();
-            let hw = detect_hardware();
-            (preset.name.clone(), hw.cores, hw.ram_gb)
+            preset.name.clone()
         };
 
         eprintln!(
-            "[preflight] Phase 4: budget — {}ms (ok, preset={preset_name}, cores={cores}, ram={ram_gb}GB)",
-            start.elapsed().as_millis()
+            "[preflight] Phase 4: budget — {}ms (ok, preset={preset_name}, platform={}, cores={}, ram={}GB)",
+            start.elapsed().as_millis(),
+            device.platform,
+            device.cores,
+            device.ram_gb,
         );
 
         (
@@ -585,9 +584,11 @@ mod tests {
         let svc = PreflightService::new(tmp.path().to_path_buf());
         let default_settings = PreflightSettings::default();
 
-        let (registry, timing) = svc.phase_budget(&default_settings);
+        let device = detect_device();
+        let (registry, timing) = svc.phase_budget(&default_settings, &device);
 
         assert_eq!(timing.status, PhaseStatus::Ok);
+        assert!(!device.platform.is_empty());
         let preset = registry.preset.read().unwrap();
         let valid_names = ["performance", "balanced", "battery"];
         assert!(
@@ -684,7 +685,8 @@ mod tests {
             ..PreflightSettings::default()
         };
 
-        let (registry, timing) = svc.phase_budget(&settings);
+        let device = detect_device();
+        let (registry, timing) = svc.phase_budget(&settings, &device);
 
         assert_eq!(timing.status, PhaseStatus::Ok);
         let preset = registry.preset.read().unwrap();
@@ -759,6 +761,7 @@ mod tests {
 
         assert_eq!(&*ready.lock().unwrap(), &["ready:settings-registry"]);
         assert_eq!(result.context.settings().preset, result.settings.preset);
+        assert_eq!(result.context.device().platform, detect_device().platform);
         assert_eq!(
             result.context.registry().preset.read().unwrap().name,
             result.registry.preset.read().unwrap().name
@@ -770,6 +773,13 @@ mod tests {
     fn a012_hooks_context_settings_accessor_panics_before_phase_3() {
         let ctx = PreflightContext::new(PathBuf::from("/tmp/unused"));
         let _ = ctx.settings();
+    }
+
+    #[test]
+    #[should_panic(expected = "[preflight] device accessed before Phase 4")]
+    fn a012_hooks_context_device_accessor_panics_before_phase_4() {
+        let ctx = PreflightContext::new(PathBuf::from("/tmp/unused"));
+        let _ = ctx.device();
     }
 
     #[test]
@@ -802,6 +812,17 @@ mod tests {
             result.context.registry().preset.read().unwrap().name,
             result.registry.preset.read().unwrap().name
         );
+    }
+
+    #[test]
+    fn a012_hooks_context_device_accessible_after_phase_4() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut svc = PreflightService::new(tmp.path().to_path_buf());
+        svc.register_ready(Box::new(AssertDeviceReadyHook));
+
+        let result = svc.run_sync().unwrap();
+
+        assert!(!result.context.device().platform.is_empty());
     }
 
     #[test]
@@ -903,6 +924,7 @@ mod tests {
     impl OnPreflightReady for TestReadyHook {
         fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
             let _ = ctx.settings();
+            let _ = ctx.device();
             let _ = ctx.registry();
             self.ready.lock().unwrap().push("ready:settings-registry");
             Ok(())
@@ -923,6 +945,16 @@ mod tests {
     impl OnPreflightReady for AssertRegistryReadyHook {
         fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
             assert!(!ctx.registry().preset.read().unwrap().name.is_empty());
+            Ok(())
+        }
+    }
+
+    struct AssertDeviceReadyHook;
+
+    impl OnPreflightReady for AssertDeviceReadyHook {
+        fn on_preflight_ready(&self, ctx: &PreflightContext) -> Result<(), PreflightError> {
+            assert!(!ctx.device().platform.is_empty());
+            assert!(!ctx.device().platform_display.is_empty());
             Ok(())
         }
     }

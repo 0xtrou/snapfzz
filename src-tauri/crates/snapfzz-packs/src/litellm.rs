@@ -9,20 +9,22 @@ use snapfzz_kernel::components::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
 
-use crate::platform::detect_platform;
+use crate::platform::PlatformInfo;
 
 #[derive(Debug, Clone)]
 pub struct LiteLLMComponent {
     uv_binary: PathBuf,
     install_dir: PathBuf,
+    platform: PlatformInfo,
     cancelled: Arc<AtomicBool>,
 }
 
 impl LiteLLMComponent {
-    pub fn new(uv_binary: PathBuf, install_dir: PathBuf) -> Self {
+    pub fn new(uv_binary: PathBuf, install_dir: PathBuf, platform: PlatformInfo) -> Self {
         Self {
             uv_binary,
             install_dir,
+            platform,
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -67,8 +69,8 @@ impl SystemComponent for LiteLLMComponent {
             description: "LiteLLM proxy runtime package for unified model gateway and provider routing.".into(),
             license: "MIT".into(),
             version: "latest".into(),
-            platform: detect_platform()?.platform,
-            platform_display: detect_platform()?.display.to_string(),
+            platform: self.platform.platform.clone(),
+            platform_display: self.platform.display.to_string(),
             download_url: String::new(),
             install_path: self.install_dir.to_string_lossy().into_owned(),
             size: 0,
@@ -170,24 +172,47 @@ mod tests {
         (temp, uv)
     }
 
+    fn test_platform() -> PlatformInfo {
+        PlatformInfo {
+            os: "macos",
+            arch: "aarch64",
+            platform: "macos-arm64".to_string(),
+            display: "macOS (Apple Silicon)",
+            exe_suffix: "",
+            archive_ext: ".tar.gz",
+        }
+    }
+
     #[test]
     fn t32_litellm_is_installed_true_when_import_succeeds() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"run\" ]; then exit 0; fi\nexit 1\n");
-        let component = LiteLLMComponent::new(uv, PathBuf::from("/tmp/runtime/packages/litellm"));
+        let component = LiteLLMComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/litellm"),
+            test_platform(),
+        );
         assert!(component.is_installed());
     }
 
     #[test]
     fn t32_litellm_is_installed_false_when_import_fails() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
-        let component = LiteLLMComponent::new(uv, PathBuf::from("/tmp/runtime/packages/litellm"));
+        let component = LiteLLMComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/litellm"),
+            test_platform(),
+        );
         assert!(!component.is_installed());
     }
 
     #[test]
     fn t32_litellm_cancel_and_clear_toggle_flag() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 0\n");
-        let component = LiteLLMComponent::new(uv, PathBuf::from("/tmp/runtime/packages/litellm"));
+        let component = LiteLLMComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/litellm"),
+            test_platform(),
+        );
         assert!(!component.cancelled.load(Ordering::SeqCst));
         component.cancel();
         assert!(component.cancelled.load(Ordering::SeqCst));
@@ -198,7 +223,11 @@ mod tests {
     #[tokio::test]
     async fn t32_litellm_verify_returns_installed_version() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"run\" ]; then echo '2.0.1'; exit 0; fi\nexit 1\n");
-        let component = LiteLLMComponent::new(uv, PathBuf::from("/tmp/runtime/packages/litellm"));
+        let component = LiteLLMComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/litellm"),
+            test_platform(),
+        );
 
         let version = component.verify().await.unwrap();
 
@@ -208,7 +237,11 @@ mod tests {
     #[tokio::test]
     async fn t32_litellm_resolve_has_expected_component_info() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
-        let component = LiteLLMComponent::new(uv, PathBuf::from("/tmp/runtime/packages/litellm"));
+        let component = LiteLLMComponent::new(
+            uv,
+            PathBuf::from("/tmp/runtime/packages/litellm"),
+            test_platform(),
+        );
 
         let info = component.resolve().await.unwrap();
 
