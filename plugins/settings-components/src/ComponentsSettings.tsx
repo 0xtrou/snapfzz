@@ -318,7 +318,6 @@ export default function ComponentsSettings(): React.ReactElement {
       const agentscope = createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
       const litellm = createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
 
-      // Mark pip packages as installed based on backend response
       agentscope.isInstalled = isAgentscopeInstalled(pythonRuntime);
       agentscope.version = getAgentscopeVersion(pythonRuntime);
       litellm.isInstalled = pythonRuntime?.litellm.is_installed || false;
