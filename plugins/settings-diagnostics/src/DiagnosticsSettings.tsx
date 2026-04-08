@@ -208,6 +208,8 @@ export default function DiagnosticsSettings(): React.ReactElement {
               size="small"
               bordered
               column={1}
+              style={{ maxWidth: 500 }}
+              labelStyle={{ width: 140 }}
               items={[
                 { key: 'cores', label: 'CPU Cores', children: hardware?.cores ?? '—' },
                 { key: 'ram', label: 'RAM', children: hardware ? `${hardware.ramGb} GB` : '—' },
@@ -225,6 +227,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 bordered
                 column={1}
                 style={{ maxWidth: 500 }}
+                labelStyle={{ width: 140 }}
                 items={[
                   {
                     key: 'python',
