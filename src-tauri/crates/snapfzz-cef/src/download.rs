@@ -7,6 +7,7 @@ use std::sync::{
 
 use futures::StreamExt;
 use sha1::{Digest, Sha1};
+use tokio::sync::Mutex;
 
 use crate::types::{CefError, DownloadProgress, DownloadStatus};
 
@@ -20,6 +21,7 @@ pub struct CefDownloader {
     platform: String,
     cdn_platform: String,
     cancelled: Arc<AtomicBool>,
+    cached_build: Mutex<Option<CefBuildInfo>>,
 }
 
 impl CefDownloader {
@@ -30,6 +32,7 @@ impl CefDownloader {
             cdn_platform,
             platform,
             cancelled: Arc::new(AtomicBool::new(false)),
+            cached_build: Mutex::new(None),
         }
     }
 
@@ -79,6 +82,24 @@ impl CefDownloader {
     }
 
     pub async fn resolve_latest_build(&self) -> Result<CefBuildInfo, CefError> {
+        {
+            let cache = self.cached_build.lock().await;
+            if let Some(ref build) = *cache {
+                return Ok(build.clone());
+            }
+        }
+
+        let build = self.fetch_latest_build().await?;
+
+        {
+            let mut cache = self.cached_build.lock().await;
+            *cache = Some(build.clone());
+        }
+
+        Ok(build)
+    }
+
+    async fn fetch_latest_build(&self) -> Result<CefBuildInfo, CefError> {
         let client = reqwest::Client::new();
         let index: serde_json::Value = client
             .get(CEF_INDEX_URL)

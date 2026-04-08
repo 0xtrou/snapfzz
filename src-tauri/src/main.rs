@@ -16,28 +16,20 @@ use snapfzz_vault::{load_or_generate_master_key, SecretVault};
 use std::sync::{Arc, Mutex};
 use tauri::RunEvent;
 
-struct VaultInitializer;
-
-impl OnPreflightInit for VaultInitializer {
-    fn on_preflight_init(&self, ctx: &mut PreflightContext) -> Result<(), PreflightError> {
-        let master_key = load_or_generate_master_key(&ctx.data_dir)
-            .map_err(|e| PreflightError::HookFailed { phase: Phase::Vault, detail: format!("vault key: {e}") })?;
-        let vault = SecretVault::open(&master_key, ctx.data_dir.join("vault.enc"))
-            .map_err(|e| PreflightError::HookFailed { phase: Phase::Vault, detail: format!("vault open: {e}") })?;
-        ctx.set_extension("vault", Arc::new(Mutex::new(vault)));
-        Ok(())
-    }
-}
-
 fn main() {
     let data_dir = helpers::resolve_data_dir();
     let mut preflight = PreflightService::new(data_dir.clone());
-    preflight.register_init(Phase::Vault, Box::new(VaultInitializer));
     preflight.register_ready(Box::new(helpers::BootLogger));
     let result = preflight.run_sync().expect("[kernel] boot failed");
 
-    let vault = result.context.get_extension::<Arc<Mutex<SecretVault>>>("vault").cloned()
-        .unwrap_or_else(|| Arc::new(Mutex::new(SecretVault::empty(data_dir.join("vault.enc")))));
+    let vault_path = data_dir.join("vault.enc");
+    let vault: Arc<Mutex<SecretVault>> = match load_or_generate_master_key(&data_dir) {
+        Ok(master_key) => match SecretVault::open(&master_key, vault_path.clone()) {
+            Ok(v) => Arc::new(Mutex::new(v)),
+            Err(_) => Arc::new(Mutex::new(SecretVault::empty(vault_path))),
+        },
+        Err(_) => Arc::new(Mutex::new(SecretVault::empty(vault_path))),
+    };
     let registry = result.registry.clone();
     let process_mgr = Arc::new(ProcessManager::with_parts(
         Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
