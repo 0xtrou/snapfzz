@@ -3,6 +3,7 @@ import { Descriptions, List, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  PythonOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { createTauriBridge, SettingsHeader, AppButton } from '@snapfzz/shared';
@@ -44,6 +45,15 @@ type CheckIndicator = {
   message?: string;
 };
 
+interface PythonRuntimeStatus {
+  python_installed: boolean;
+  python_version?: string;
+  python_path?: string;
+  uv_installed: boolean;
+  uv_version?: string;
+  installed_packages: string[];
+}
+
 function checkLabel(name: string): string {
   if (name.length === 0) return name;
   return name.charAt(0).toUpperCase() + name.slice(1);
@@ -72,8 +82,7 @@ function checkIndicator(check: CheckTimingDto): CheckIndicator {
     icon: <CloseCircleOutlined />,
     color: 'error',
     label: 'Failed',
-      message: check.detail ?? 'Unable to complete this check.',
-
+    message: check.detail ?? 'Unable to complete this check.',
   };
 }
 
@@ -84,16 +93,18 @@ export default function DiagnosticsSettings(): React.ReactElement {
   const [preset, setPreset] = useState<string>('Performance');
   const [platform, setPlatform] = useState<string>('macOS (Apple Silicon)');
   const [components, setComponents] = useState<ComponentInfo[]>([]);
+  const [pythonRuntime, setPythonRuntime] = useState<PythonRuntimeStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
 
-    const [systemStatusResult, hardwareResult, snapshotResult, componentsResult] = await Promise.allSettled([
+    const [systemStatusResult, hardwareResult, snapshotResult, componentsResult, pythonResult] = await Promise.allSettled([
       bridge.invoke<CheckTimingDto[]>('preflight_status'),
       bridge.invoke<HardwareInfo>('get_hardware_info'),
       bridge.invoke<BudgetSnapshot>('budget_snapshot'),
       bridge.invoke<ComponentInfo[]>('component_list'),
+      bridge.invoke<PythonRuntimeStatus>('python_runtime_status').catch(() => null),
     ]);
 
     if (systemStatusResult.status === 'fulfilled') {
@@ -125,6 +136,10 @@ export default function DiagnosticsSettings(): React.ReactElement {
       }
     } else {
       setComponents([]);
+    }
+
+    if (pythonResult.status === 'fulfilled' && pythonResult.value) {
+      setPythonRuntime(pythonResult.value);
     }
 
     setRefreshing(false);
@@ -200,6 +215,64 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 { key: 'platform', label: 'Platform', children: platform },
               ]}
             />
+          </section>
+
+          <section>
+            <Text strong style={{ display: 'block', marginBottom: 12 }}>Python Runtime</Text>
+            {pythonRuntime ? (
+              <Descriptions
+                size="small"
+                bordered
+                column={1}
+                items={[
+                  {
+                    key: 'python',
+                    label: 'Python',
+                    children: pythonRuntime.python_installed ? (
+                      <Tag color="success" icon={<CheckCircleOutlined />}>
+                        {pythonRuntime.python_version ? `v${pythonRuntime.python_version}` : 'Installed'}
+                      </Tag>
+                    ) : (
+                      <Tag color="error" icon={<CloseCircleOutlined />}>Not Installed</Tag>
+                    ),
+                  },
+                  {
+                    key: 'uv',
+                    label: 'uv (Package Manager)',
+                    children: pythonRuntime.uv_installed ? (
+                      <Tag color="success" icon={<CheckCircleOutlined />}>
+                        {pythonRuntime.uv_version ? `v${pythonRuntime.uv_version}` : 'Installed'}
+                      </Tag>
+                    ) : (
+                      <Tag color="error" icon={<CloseCircleOutlined />}>Not Installed</Tag>
+                    ),
+                  },
+                  pythonRuntime.python_path ? {
+                    key: 'path',
+                    label: 'Python Path',
+                    children: <Text code style={{ fontSize: 11 }}>{pythonRuntime.python_path}</Text>,
+                  } : null,
+                  {
+                    key: 'packages',
+                    label: `Installed Packages (${pythonRuntime.installed_packages.length})`,
+                    children: pythonRuntime.installed_packages.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {pythonRuntime.installed_packages.slice(0, 10).map((pkg) => (
+                          <Tag key={pkg} color="blue">{pkg}</Tag>
+                        ))}
+                        {pythonRuntime.installed_packages.length > 10 && (
+                          <Tag>+{pythonRuntime.installed_packages.length - 10} more</Tag>
+                        )}
+                      </div>
+                    ) : (
+                      <Text type="secondary">No packages installed</Text>
+                    ),
+                  },
+                ].filter(Boolean)}
+              />
+            ) : (
+              <Text type="secondary">Loading Python runtime status...</Text>
+            )}
           </section>
 
           <section>
