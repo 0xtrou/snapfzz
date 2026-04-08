@@ -219,7 +219,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleInstallPythonPack = useCallback(async () => {
     setInstallingPythonPack(true);
     try {
-      const packIds = ['uv', 'python', 'agentscope', 'litellm'];
+      const packIds = ['uv', 'python'];
       for (const packId of packIds) {
         await bridge.invoke<DownloadProgress[]>('component_download', { id: packId }).catch(() => {});
       }
@@ -232,7 +232,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleUninstallPythonPack = useCallback(async () => {
     setUninstallingPythonPack(true);
     try {
-      const packIds = ['litellm', 'agentscope', 'python', 'uv'];
+      const packIds = ['python', 'uv'];
       for (const packId of packIds) {
         await bridge.invoke<void>('component_uninstall', { id: packId }).catch(() => {});
       }
@@ -246,10 +246,8 @@ export default function ComponentsSettings(): React.ReactElement {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
-      const agentscope = items.find((c) => c.id === 'agentscope');
-      const litellm = items.find((c) => c.id === 'litellm');
 
-      const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
+      const allPacks = [uv, python].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
       const anyInstalled = allPacks.some((p) => p.isInstalled);
 
@@ -257,8 +255,6 @@ export default function ComponentsSettings(): React.ReactElement {
         <PythonPackCard
           uv={mapComponentToSubPack(uv, 'uv')}
           python={mapComponentToSubPack(python, 'python')}
-          agentscope={agentscope ? mapComponentToSubPack(agentscope, 'agentscope') : undefined}
-          litellm={litellm ? mapComponentToSubPack(litellm, 'litellm') : undefined}
           isInstalling={installingPythonPack}
           isUninstalling={uninstallingPythonPack}
           allInstalled={allInstalled}

@@ -29,8 +29,6 @@ interface PythonSubPack {
 interface PythonPackCardProps {
   uv: PythonSubPack;
   python: PythonSubPack;
-  agentscope?: PythonSubPack;
-  litellm?: PythonSubPack;
   isInstalling: boolean;
   isUninstalling: boolean;
   allInstalled: boolean;
@@ -38,6 +36,19 @@ interface PythonPackCardProps {
   onInstallAll: () => void;
   onUninstallAll: () => void;
   onOpenFolder: (path: string) => void;
+}
+
+interface PythonSubPack {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  license: string;
+  platformDisplay: string;
+  downloadUrl: string;
+  installPath: string;
+  isInstalled: boolean;
+  status?: DownloadProgress;
 }
 
 const SUB_PACK_ROW_GAP = 12;
@@ -95,8 +106,6 @@ function SubPackCard({
 export default function PythonPackCard({
   uv,
   python,
-  agentscope,
-  litellm,
   isInstalling,
   isUninstalling,
   allInstalled,
@@ -105,9 +114,7 @@ export default function PythonPackCard({
   onUninstallAll,
   onOpenFolder,
 }: PythonPackCardProps): React.ReactElement {
-  const packs: PythonSubPack[] = [uv, python].filter(Boolean);
-  if (agentscope) packs.push(agentscope);
-  if (litellm) packs.push(litellm);
+  const packs: PythonSubPack[] = [uv, python];
 
   const installPath = python.installPath.replace('/bin/python', '') || '~/.snapfzz/runtime';
 
