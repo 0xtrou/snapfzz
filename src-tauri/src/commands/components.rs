@@ -120,6 +120,21 @@ pub async fn component_verify(
     component.verify().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn component_uninstall(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<(), String> {
+    let component = registry
+        .get(&id)
+        .ok_or_else(|| format!("Component '{id}' not found"))?;
+    let install_dir = component.install_dir();
+    if install_dir.exists() {
+        std::fs::remove_dir_all(install_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn find_archive_size(install_dir: &std::path::Path) -> u64 {
     std::fs::read_dir(install_dir)
         .ok()
@@ -297,6 +312,24 @@ mod tests {
         assert_eq!(hash, "test-hash");
     }
 
+    #[tokio::test]
+    async fn a014_components_cmd_component_uninstall_removes_install_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("test-component");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("payload.txt"), b"installed").unwrap();
+
+        let mut registry = ComponentRegistry::new();
+        registry.register(Arc::new(TestComponent::new(dir.clone(), true)));
+        let app = tauri::test::mock_builder()
+            .manage(Arc::new(registry))
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+
+        component_uninstall("test-component".into(), app.state()).await.unwrap();
+        assert!(!dir.exists());
+    }
+
     struct FailingComponent {
         dir: PathBuf,
     }
@@ -381,6 +414,17 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
         let err = component_verify("nonexistent".into(), app.state()).await.unwrap_err();
+        assert!(err.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn a014_components_cmd_component_uninstall_returns_error_for_unknown() {
+        let registry = Arc::new(ComponentRegistry::new());
+        let app = tauri::test::mock_builder()
+            .manage(registry)
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let err = component_uninstall("nonexistent".into(), app.state()).await.unwrap_err();
         assert!(err.contains("not found"));
     }
 

@@ -81,6 +81,7 @@ fn main() {
             commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages, commands::cef::cef_platform_info,
             commands::components::component_list, commands::components::component_info, commands::components::component_download,
             commands::components::component_download_cancel, commands::components::component_status, commands::components::component_verify,
+            commands::components::component_uninstall,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])
         .setup(move |app| {
