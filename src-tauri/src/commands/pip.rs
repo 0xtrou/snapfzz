@@ -5,9 +5,6 @@ use tauri::State;
 use snapfzz_kernel::settings::SettingsManager;
 
 fn get_runtime_dir(settings: &State<'_, Arc<SettingsManager>>) -> String {
-    let settings_mgr = settings.inner();
-    // Data dir is stored in the SettingsManager, construct runtime path from it
-    // Default: ~/.snapfzz/runtime
     dirs::home_dir()
         .map(|h| h.join(".snapfzz").join("runtime").to_string_lossy().to_string())
         .unwrap_or_else(|| "~/.snapfzz/runtime".to_string())
@@ -49,6 +46,13 @@ pub async fn python_pip_install_packages(
     }
 }
 
+#[derive(serde::Serialize, Clone)]
+pub struct PipPackageInfo {
+    pub name: String,
+    pub version: String,
+    pub is_installed: bool,
+}
+
 #[derive(serde::Serialize)]
 pub struct PythonRuntimeStatus {
     pub python_installed: bool,
@@ -57,6 +61,18 @@ pub struct PythonRuntimeStatus {
     pub uv_installed: bool,
     pub uv_version: Option<String>,
     pub installed_packages: Vec<String>,
+    pub agentscope: PipPackageInfo,
+    pub agentscope_runtime: PipPackageInfo,
+    pub litellm: PipPackageInfo,
+}
+
+fn find_package_in_list(package_name: &str, installed_packages: &[String]) -> Option<String> {
+    installed_packages.iter().find(|pkg| {
+        let name = pkg.split('=').next().unwrap_or("").split('[').next().unwrap_or("").to_lowercase();
+        name == package_name.to_lowercase() || name.starts_with(&format!("{}-", package_name.to_lowercase()))
+    }).map(|pkg| {
+        pkg.split('=').nth(1).unwrap_or("unknown").to_string()
+    })
 }
 
 #[tauri::command]
@@ -96,7 +112,7 @@ pub async fn python_runtime_status(
         (false, None)
     };
     
-    let installed_packages = if uv_installed && python_installed {
+    let installed_packages: Vec<String> = if uv_installed && python_installed {
         let output = Command::new(&uv_bin)
             .arg("pip")
             .arg("list")
@@ -110,7 +126,7 @@ pub async fn python_runtime_status(
             .map(|s| {
                 s.lines()
                     .filter(|line| !line.is_empty())
-                    .map(|line| line.split('=').next().unwrap_or(line).to_string())
+                    .map(|line| line.to_string())
                     .collect()
             })
             .unwrap_or_default()
@@ -118,12 +134,35 @@ pub async fn python_runtime_status(
         vec![]
     };
     
+    // Check for specific packages
+    let agentscope_version = find_package_in_list("agentscope", &installed_packages);
+    let agentscope_is_installed = agentscope_version.is_some();
+    let agentscope_runtime_version = find_package_in_list("agentscope-runtime", &installed_packages);
+    let agentscope_runtime_is_installed = agentscope_runtime_version.is_some();
+    let litellm_version = find_package_in_list("litellm", &installed_packages);
+    let litellm_is_installed = litellm_version.is_some();
+    
     Ok(PythonRuntimeStatus {
         python_installed,
         python_version,
         python_path,
         uv_installed,
         uv_version,
-        installed_packages,
+        installed_packages: installed_packages.iter().map(|s| s.split('=').next().unwrap_or(s).to_string()).collect(),
+        agentscope: PipPackageInfo {
+            name: "agentscope".to_string(),
+            version: agentscope_version.unwrap_or_default(),
+            is_installed: agentscope_is_installed,
+        },
+        agentscope_runtime: PipPackageInfo {
+            name: "agentscope-runtime".to_string(),
+            version: agentscope_runtime_version.unwrap_or_default(),
+            is_installed: agentscope_runtime_is_installed,
+        },
+        litellm: PipPackageInfo {
+            name: "litellm".to_string(),
+            version: litellm_version.unwrap_or_default(),
+            is_installed: litellm_is_installed,
+        },
     })
 }
