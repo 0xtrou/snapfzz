@@ -12,21 +12,23 @@ fn get_runtime_dir(settings: &State<'_, Arc<SettingsManager>>) -> String {
 
 #[tauri::command]
 pub async fn python_pip_install_packages(
-    packages: Vec<String>,
     settings: State<'_, Arc<SettingsManager>>,
 ) -> Result<String, String> {
     let runtime_path = get_runtime_dir(&settings);
-    let python_bin = PathBuf::from(&runtime_path)
-        .join("bin")
-        .join("python");
+    let python_bin = PathBuf::from(&runtime_path).join("bin").join("python");
     
     if !python_bin.exists() {
         return Err("Python not installed. Please install Python first.".to_string());
     }
     
-    let uv_bin = PathBuf::from(&runtime_path)
-        .join("bin")
-        .join("uv");
+    let uv_bin = PathBuf::from(&runtime_path).join("bin").join("uv");
+    
+    // Install specific versions
+    let packages = vec![
+        "agentscope==1.0.18",
+        "agentscope-runtime==1.1.3",
+        "litellm==1.83.4",
+    ];
     
     let output = Command::new(&uv_bin)
         .arg("pip")
