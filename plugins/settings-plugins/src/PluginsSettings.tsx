@@ -63,7 +63,10 @@ export default function PluginsSettings(): React.ReactElement {
 
   return (
     <div>
-      <SettingsHeader title="Plugins" />
+      <SettingsHeader
+        title="Plugins"
+        subtitle="Manage installed plugins and monitor their reliability status. Disabled plugins are quarantined after repeated failures."
+      />
       <div style={{ padding: "16px 32px", maxWidth: 800 }}>
       <List<PluginEntry>
         loading={loading}

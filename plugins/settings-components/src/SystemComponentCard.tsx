@@ -3,8 +3,8 @@ import { Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
-  DownloadOutlined,
   FolderOpenOutlined,
   GithubOutlined,
   GlobalOutlined,
@@ -151,7 +151,7 @@ export default function SystemComponentCard({
           {installed ? (
             <Tag color="success" icon={<CheckCircleOutlined />}>Installed</Tag>
           ) : downloading ? (
-            <Tag color="processing" icon={<LoadingOutlined />}>Downloading</Tag>
+            <Tag color="processing" icon={<LoadingOutlined />}>Installing</Tag>
           ) : (
             <Tag icon={<CloseCircleOutlined />}>Not Installed</Tag>
           )}
@@ -177,21 +177,11 @@ export default function SystemComponentCard({
 
         <Space size={8} wrap>
           {installed ? (
-            <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
-              Open folder
-            </AppButton>
-          ) : (
-            <AppButton
-              icon={<DownloadOutlined />}
-              loading={busyDownload}
-              disabled={downloadDisabled}
-              onClick={() => onDownload(component.id)}
-            >
-              Download
-            </AppButton>
-          )}
-
-          <AppButton
+            <>
+              <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
+                Open folder
+              </AppButton>
+              <AppButton
             variant="danger"
             icon={<DeleteOutlined />}
             disabled={!installed}
@@ -200,6 +190,16 @@ export default function SystemComponentCard({
           >
             Uninstall
           </AppButton>
+              </>
+          ) : (
+            <AppButton
+              loading={busyDownload}
+              disabled={downloadDisabled || downloading}
+              onClick={() => onDownload(component.id)}
+            >
+              { downloading ? 'Installing...' : 'Install' }
+            </AppButton>
+          )}
         </Space>
       </Space>
     </div>

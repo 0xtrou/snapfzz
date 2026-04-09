@@ -93,7 +93,7 @@ fn main() {
             commands::components::component_list, commands::components::component_info, commands::components::component_download,
             commands::components::component_download_cancel, commands::components::component_status, commands::components::component_verify,
             commands::components::component_uninstall, commands::components::python_pack_metadata,
-            commands::pip::python_pack_install_all, commands::pip::python_runtime_status,
+            commands::pip::python_pack_install_all, commands::pip::python_pack_uninstall_all, commands::pip::python_runtime_status,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])
         .setup(move |app| {

@@ -39,7 +39,7 @@ fn snapfzz_home() -> PathBuf {
 }
 
 fn validate_open_path_target(path: &str) -> Result<(), String> {
-    if path.starts_with("http://") || path.starts_with("https://") {
+    if path.starts_with("http://") || path.starts_with("https://") || path.starts_with("data:") {
         return Ok(());
     }
 
@@ -344,6 +344,11 @@ mod tests {
     fn a014_commands_system_validate_open_path_target_accepts_https_and_http() {
         assert!(super::validate_open_path_target("https://snapfzz.com").is_ok());
         assert!(super::validate_open_path_target("http://localhost:5173").is_ok());
+    }
+
+    #[test]
+    fn a014_commands_system_validate_open_path_target_accepts_data_urls() {
+        assert!(super::validate_open_path_target("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==").is_ok());
     }
 
     #[test]

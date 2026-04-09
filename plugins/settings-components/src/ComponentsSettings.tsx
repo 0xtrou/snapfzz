@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Input, List, Skeleton, Space, Typography } from 'antd';
-import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
+import { Input, List, message, Skeleton, Space, Typography } from 'antd';
+import {
+  createTauriBridge,
+  invokeWithToast,
+  parseAndToastResponse,
+  type ApiResponse,
+  SettingsHeader,
+} from '@snapfzz/shared';
 import SystemComponentCard, {
   type ComponentInfo,
   type DownloadProgress,
@@ -9,6 +15,11 @@ import PythonPackCard from './PythonPackCard';
 
 const { Text } = Typography;
 const bridge = createTauriBridge();
+
+message.config({
+  top: 60,
+  duration: 3,
+});
 
 const COMPONENT_ORDER: string[] = ['python-runtime', 'cef'];
 const ROW_GAP_PX = 16;
@@ -109,6 +120,7 @@ function indexByOrder(id: string, order: string[]): number {
 function mapComponentToSubPack(
   component: ComponentInfo | undefined,
   metadata: PythonPackMetadataItem | undefined,
+  venvPath: string,
 ): Parameters<typeof PythonPackCard>[0]['uv'] {
   if (!metadata) {
     return {
@@ -119,7 +131,7 @@ function mapComponentToSubPack(
       license: '',
       platformDisplay: '',
       downloadUrl: 'pip',
-      installPath: '~/.snapfzz/runtime/python/venv',
+      installPath: venvPath,
       isInstalled: false,
       repositoryUrl: '',
       websiteUrl: '',
@@ -134,7 +146,7 @@ function mapComponentToSubPack(
     license: metadata.license,
     platformDisplay: metadata.platformDisplay,
     downloadUrl: component?.downloadUrl || 'pip',
-    installPath: component?.installPath || '~/.snapfzz/runtime/python/venv',
+    installPath: component?.installPath || venvPath,
     isInstalled: component?.isInstalled ?? false,
     repositoryUrl: metadata.repositoryUrl,
     websiteUrl: metadata.websiteUrl,
@@ -154,6 +166,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const [pythonRuntime, setPythonRuntime] = useState<{
     installed_packages: string[];
     venv_exists: boolean;
+    venv_path: string;
     install_steps: Array<{ id: string; label: string; is_installed: boolean }>;
     agentscope: { name: string; version: string; is_installed: boolean };
     agentscope_runtime: { name: string; version: string; is_installed: boolean };
@@ -240,7 +253,11 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleDownload = useCallback(async (id: string) => {
     setDownloadBusyId(id);
     try {
-      await bridge.invoke<void>('component_download', { id });
+      const response = await bridge.invoke<ApiResponse<DownloadProgress[]>>('component_download', { id });
+      await parseAndToastResponse(response, {
+        successMessage: 'Component installed successfully',
+        errorMessage: 'Unable to install component.',
+      });
       await refreshComponents();
     } catch {
       void 0;
@@ -252,7 +269,11 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleUninstall = useCallback(async (id: string) => {
     setUninstallBusyId(id);
     try {
-      await bridge.invoke<void>('component_uninstall', { id });
+      const response = await bridge.invoke<ApiResponse<void>>('component_uninstall', { id });
+      await parseAndToastResponse(response, {
+        successMessage: 'Component removed successfully',
+        errorMessage: 'Unable to uninstall component.',
+      });
       await refreshComponents();
     } catch {
       setError('Unable to uninstall component.');
@@ -272,15 +293,24 @@ export default function ComponentsSettings(): React.ReactElement {
       const python = components.find((c) => c.id === 'python');
 
       if (uv && !uv.isInstalled) {
-        await bridge.invoke<void>('component_download', { id: 'uv' });
+        await invokeWithToast(bridge, 'component_download', { id: 'uv' }, {
+          successMessage: 'uv installed successfully',
+          errorMessage: 'Failed to install uv',
+        });
       }
       if (python && !python.isInstalled) {
-        await bridge.invoke<void>('component_download', { id: 'python' });
+        await invokeWithToast(bridge, 'component_download', { id: 'python' }, {
+          successMessage: 'Python installed successfully',
+          errorMessage: 'Failed to install Python',
+        });
       }
 
-      await bridge.invoke<string>('python_pack_install_all');
+      await invokeWithToast(bridge, 'python_pack_install_all', undefined, {
+        successMessage: 'Python runtime ecosystem installed',
+        errorMessage: 'Failed to install Python packages',
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to install Python packages');
+      void 0;
     } finally {
       setInstallingPythonPack(false);
       await refreshComponents();
@@ -290,11 +320,13 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleUninstallPythonPack = useCallback(async () => {
     setUninstallingPythonPack(true);
     try {
-      const packIds = ['python', 'uv'];
-      for (const packId of packIds) {
-        await bridge.invoke<void>('component_uninstall', { id: packId }).catch(() => {});
-      }
+      await invokeWithToast(bridge, 'python_pack_uninstall_all', undefined, {
+        successMessage: 'Python runtime removed',
+        errorMessage: 'Failed to uninstall Python runtime',
+      });
       await refreshComponents();
+    } catch {
+      void 0;
     } finally {
       setUninstallingPythonPack(false);
     }
@@ -304,6 +336,7 @@ export default function ComponentsSettings(): React.ReactElement {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
+      const venvPath = pythonRuntime?.venv_path || '/Users/mrk/.snapfzz/runtime/python/venv';
       
       const agentscopeMeta = pythonPackMetadata.find((m) => m.id === 'agentscope');
       const agentscopeRuntimeMeta = pythonPackMetadata.find((m) => m.id === 'agentscope-runtime');
@@ -317,7 +350,7 @@ export default function ComponentsSettings(): React.ReactElement {
         platform: 'any',
         platformDisplay: agentscopeMeta.platformDisplay,
         downloadUrl: 'pip',
-        installPath: '~/.snapfzz/runtime/python/venv',
+        installPath: venvPath,
         size: 0,
         checksum: '',
         checksumAlgorithm: '',
@@ -335,7 +368,7 @@ export default function ComponentsSettings(): React.ReactElement {
         platform: 'any',
         platformDisplay: agentscopeRuntimeMeta.platformDisplay,
         downloadUrl: 'pip',
-        installPath: '~/.snapfzz/runtime/python/venv',
+        installPath: venvPath,
         size: 0,
         checksum: '',
         checksumAlgorithm: '',
@@ -353,7 +386,7 @@ export default function ComponentsSettings(): React.ReactElement {
         platform: 'any',
         platformDisplay: litellmMeta.platformDisplay,
         downloadUrl: 'pip',
-        installPath: '~/.snapfzz/runtime/python/venv',
+        installPath: venvPath,
         size: 0,
         checksum: '',
         checksumAlgorithm: '',
@@ -372,11 +405,11 @@ export default function ComponentsSettings(): React.ReactElement {
 
       return (
         <PythonPackCard
-          uv={mapComponentToSubPack(uv, uvMeta)}
-          python={mapComponentToSubPack(python, pythonMeta)}
-          agentscope={mapComponentToSubPack(agentscope, agentscopeMeta)}
-          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, agentscopeRuntimeMeta)}
-          litellm={mapComponentToSubPack(litellm, litellmMeta)}
+          uv={mapComponentToSubPack(uv, uvMeta, venvPath)}
+          python={mapComponentToSubPack(python, pythonMeta, venvPath)}
+          agentscope={mapComponentToSubPack(agentscope, agentscopeMeta, venvPath)}
+          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, agentscopeRuntimeMeta, venvPath)}
+          litellm={mapComponentToSubPack(litellm, litellmMeta, venvPath)}
           isInstalling={installingPythonPack}
           isUninstalling={uninstallingPythonPack}
           allInstalled={allInstalled}
@@ -427,7 +460,10 @@ export default function ComponentsSettings(): React.ReactElement {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      <SettingsHeader title="System Packs" />
+      <SettingsHeader
+        title="System Packs"
+        subtitle="Install and manage runtime dependencies for AI agent development, including Python environments and the CEF browser engine."
+      />
       <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Input.Search

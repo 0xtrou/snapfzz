@@ -158,7 +158,10 @@ export default function DiagnosticsSettings(): React.ReactElement {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      <SettingsHeader title="Diagnostics" />
+      <SettingsHeader
+        title="Diagnostics"
+        subtitle="System health overview displaying hardware configuration, runtime status, and component verification results."
+      />
       <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <section>

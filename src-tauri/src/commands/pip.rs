@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use snapfzz_kernel::response::{error_codes, ApiResponse};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::{detect_platform, PlatformInfo, PythonRuntime, PythonRuntimeStatus};
 use tauri::State;
@@ -24,21 +25,42 @@ fn runtime_for(settings: &State<'_, Arc<SettingsManager>>) -> Result<PythonRunti
 #[tauri::command]
 pub async fn python_pack_install_all(
     settings: State<'_, Arc<SettingsManager>>,
-) -> Result<String, String> {
-    let runtime = runtime_for(&settings)?;
+) -> Result<ApiResponse<String>, ApiResponse<()>> {
+    let runtime = runtime_for(&settings)
+        .map_err(|e| ApiResponse::error(error_codes::INTERNAL_ERROR, e))?;
+
     runtime
         .install_all_packages()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ApiResponse::error(error_codes::INSTALL_FAILED, e.to_string()))?;
 
     let status = runtime.status();
     if status.agentscope.is_installed
         && status.agentscope_runtime.is_installed
         && status.litellm.is_installed
     {
-        Ok("Python runtime and package ecosystem installed".to_string())
+        Ok(ApiResponse::success(
+            "Python runtime and package ecosystem installed".to_string(),
+        ))
     } else {
-        Err("Python runtime install completed but one or more packages are missing".to_string())
+        Err(ApiResponse::error(
+            error_codes::INSTALL_FAILED,
+            "Python runtime install completed but one or more packages are missing",
+        ))
     }
+}
+
+#[tauri::command]
+pub async fn python_pack_uninstall_all(
+    settings: State<'_, Arc<SettingsManager>>,
+) -> Result<ApiResponse<()>, ApiResponse<()>> {
+    let runtime = runtime_for(&settings)
+        .map_err(|e| ApiResponse::error(error_codes::INTERNAL_ERROR, e))?;
+
+    runtime
+        .uninstall_all()
+        .map_err(|e| ApiResponse::error(error_codes::UNINSTALL_FAILED, e.to_string()))?;
+
+    Ok(ApiResponse::<()>::success_empty())
 }
 
 #[tauri::command]

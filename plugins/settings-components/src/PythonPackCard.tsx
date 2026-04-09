@@ -3,11 +3,12 @@ import { Divider, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
-  DownloadOutlined,
   FolderOpenOutlined,
   GithubOutlined,
   GlobalOutlined,
+  LoadingOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
 import { Tooltip } from 'antd';
@@ -96,9 +97,6 @@ function SubPackCard({
           {pack.version && (
             <Text type="secondary" style={{ fontSize: 12 }}>v{pack.version}</Text>
           )}
-          {pack.isInstalled && (
-            <Text type="secondary" style={{ fontSize: 12 }}>{pack.installPath}</Text>
-          )}
           {pack.repositoryUrl && (
             <Tooltip title="View Repository">
               <button
@@ -122,6 +120,22 @@ function SubPackCard({
             </Tooltip>
           )}
         </Space>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Location:</Text>
+          <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{pack.installPath}</Text>
+          <Tooltip title="Copy path">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(pack.installPath);
+              }}
+              style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+              <CopyOutlined style={{ fontSize: 12 }} />
+            </button>
+          </Tooltip>
+        </div>
       </Space>
     </div>
   );
@@ -144,7 +158,7 @@ export default function PythonPackCard({
 }: PythonPackCardProps): React.ReactElement {
   const packs: PythonSubPack[] = [uv, python, agentscope, agentscopeRuntime, litellm];
 
-  const installPath = python.installPath || '~/.snapfzz/runtime/python/venv';
+  const installPath = python.installPath;
 
   return (
     <div
@@ -172,7 +186,7 @@ export default function PythonPackCard({
               {allInstalled ? (
                 <><CheckCircleOutlined /> All Installed</>
               ) : isInstalling ? (
-                <><DownloadOutlined /> Installing...</>
+                <><LoadingOutlined /> Installing...</>
               ) : anyInstalled ? (
                 <><CheckCircleOutlined /> Partially Installed</>
               ) : (
@@ -212,16 +226,9 @@ export default function PythonPackCard({
         </Space>
 
         <Space size={8} wrap>
-          <AppButton
-            icon={<DownloadOutlined />}
-            loading={isInstalling}
-            disabled={allInstalled || isInstalling}
-            onClick={onInstallAll}
-          >
-            {isInstalling ? 'Installing...' : allInstalled ? 'Installed' : 'Install All'}
-          </AppButton>
-
-          <AppButton
+          {allInstalled ? (
+            <>
+            <AppButton
             icon={<FolderOpenOutlined />}
             disabled={!anyInstalled}
             onClick={() => onOpenFolder(installPath)}
@@ -236,8 +243,18 @@ export default function PythonPackCard({
             loading={isUninstalling}
             onClick={onUninstallAll}
           >
-            {isUninstalling ? 'Uninstalling...' : 'Uninstall All'}
+            {isUninstalling ? 'Uninstalling...' : 'Uninstall'}
           </AppButton>
+            </>
+          ) : (<AppButton
+            loading={isInstalling}
+            disabled={allInstalled || isInstalling}
+            onClick={onInstallAll}
+          >
+            {isInstalling ? 'Installing...' : allInstalled ? 'Installed' : 'Install'}
+          </AppButton>)}
+
+          
         </Space>
       </Space>
     </div>

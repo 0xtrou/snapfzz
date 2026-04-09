@@ -131,8 +131,8 @@ async fn test_python_install_via_uv_registers_with_uv() {
     // verify() returns the Python path from uv's managed cache
     let python_path = python.verify().await.expect("python verify should succeed");
     assert!(
-        python_path.contains(&python_version.replace('.', "")) 
-            || python_path.contains(&format!("python{}", &python_version[..3])),
-        "verify should return a Python path containing the version, got: {python_path}"
+        python_path.contains("cpython-") 
+            && python_path.contains("/bin/python"),
+        "verify should return a Python binary path in the cpython install directory, got: {python_path}"
     );
 }

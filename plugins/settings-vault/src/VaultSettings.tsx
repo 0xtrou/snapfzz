@@ -151,7 +151,10 @@ export default function VaultSettings() {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      <SettingsHeader title="Secret Vault" />
+      <SettingsHeader
+        title="Secret Vault"
+        subtitle="Securely store API keys and sensitive credentials using the operating system's native keychain integration."
+      />
       <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={32} style={{ width: '100%' }}>
           <section>

@@ -22,6 +22,7 @@ pub struct PythonRuntimeStatus {
     pub uv_installed: bool,
     pub uv_version: Option<String>,
     pub venv_exists: bool,
+    pub venv_path: String,
     pub installed_packages: Vec<String>,
     pub agentscope: PipPackageInfo,
     pub agentscope_runtime: PipPackageInfo,
@@ -65,6 +66,7 @@ mod tests {
             uv_installed: true,
             uv_version: Some("0.6.6".into()),
             venv_exists: false,
+            venv_path: "/Users/test/.snapfzz/runtime/python/venv".into(),
             installed_packages: vec!["requests".into()],
             agentscope: PipPackageInfo {
                 name: "agentscope".into(),

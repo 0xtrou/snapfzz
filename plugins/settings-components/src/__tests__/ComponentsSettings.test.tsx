@@ -168,7 +168,7 @@ describe('A007/settings-components: install button triggers actual invoke comman
         ]);
       }
       if (cmd === 'component_download') {
-        return Promise.resolve([]);
+        return Promise.resolve({ success: true, data: [] });
       }
       return Promise.resolve(undefined);
     });

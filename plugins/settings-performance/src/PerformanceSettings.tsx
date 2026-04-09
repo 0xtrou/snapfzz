@@ -221,6 +221,7 @@ export default function PerformanceSettings() {
     <div style={{ contain: 'layout paint' }}>
       <SettingsHeader
         title="Performance"
+        subtitle="Monitor resource allocation and adjust budget presets to balance responsiveness against system load."
         isDirty={isDirty}
         saving={saving}
         saveSuccess={saveSuccess}
