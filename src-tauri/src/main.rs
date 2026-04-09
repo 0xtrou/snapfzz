@@ -9,11 +9,10 @@ mod metrics;
 use snapfzz_cef::download::CefDownloader;
 use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_kernel::boot::PreflightService;
-use snapfzz_kernel::budget::device::DeviceInfo;
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::{
-    ComponentError, ComponentRegistry, PlatformInfo, PythonDownloader, UvDownloader, constants,
+    ComponentRegistry, PythonDownloader, UvDownloader, constants,
     detect_platform,
 };
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};

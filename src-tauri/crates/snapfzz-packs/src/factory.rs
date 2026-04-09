@@ -10,12 +10,14 @@ pub fn make_litellm(runtime: PythonRuntime, platform: PlatformInfo) -> LiteLLMRu
 }
 
 pub struct AgentScopeRuntime {
+    #[allow(dead_code)]
     runtime: PythonRuntime,
     #[allow(dead_code)]
     platform: PlatformInfo,
 }
 
 pub struct LiteLLMRuntime {
+    #[allow(dead_code)]
     runtime: PythonRuntime,
     #[allow(dead_code)]
     platform: PlatformInfo,

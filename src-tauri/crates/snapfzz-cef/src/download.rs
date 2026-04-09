@@ -436,7 +436,6 @@ impl SystemComponent for CefDownloader {
                     DownloadStatus::Ready => KernelStatus::Ready,
                     DownloadStatus::Cancelled => KernelStatus::Cancelled,
                     DownloadStatus::Failed(msg) => KernelStatus::Failed(msg),
-                    _ => KernelStatus::Pending,
                 },
             })
             .collect())
