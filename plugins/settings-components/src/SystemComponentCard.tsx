@@ -151,7 +151,7 @@ export default function SystemComponentCard({
           {installed ? (
             <Tag color="success" icon={<CheckCircleOutlined />}>Installed</Tag>
           ) : downloading ? (
-            <Tag color="processing" icon={<LoadingOutlined />}>Downloading</Tag>
+            <Tag color="processing" icon={<LoadingOutlined />}>Installing</Tag>
           ) : (
             <Tag icon={<CloseCircleOutlined />}>Not Installed</Tag>
           )}

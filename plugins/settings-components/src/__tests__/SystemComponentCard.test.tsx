@@ -68,7 +68,7 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
   });
 
-  it('A007/settings-components: renders downloading state and cancel action from status', async () => {
+  it('A007/settings-components: renders installing state and cancel action from status', async () => {
     const onCancelDownload = vi.fn();
     const user = userEvent.setup();
 
@@ -85,7 +85,7 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
       />,
     );
 
-    expect(screen.getByText('Downloading')).toBeInTheDocument();
+    expect(screen.getByText('Installing')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /cancel download/i }));
     expect(onCancelDownload).toHaveBeenCalledWith('cef');
   });
@@ -177,7 +177,7 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
       />,
     );
 
-    expect(screen.getByText('Downloading')).toBeInTheDocument();
+    expect(screen.getByText('Installing')).toBeInTheDocument();
     expect(screen.getByText('63%')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancel download/i })).toBeInTheDocument();
   });
