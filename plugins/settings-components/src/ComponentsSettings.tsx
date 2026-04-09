@@ -80,7 +80,6 @@ export default function ComponentsSettings(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [components, setComponents] = useState<ComponentInfo[]>([]);
-  const [statusById, setStatusById] = useState<Record<string, DownloadProgress>>({});
   const [downloadBusyId, setDownloadBusyId] = useState<string | null>(null);
   const [uninstallBusyId, setUninstallBusyId] = useState<string | null>(null);
   const [installingPythonPack, setInstallingPythonPack] = useState(false);
@@ -107,27 +106,6 @@ export default function ComponentsSettings(): React.ReactElement {
       setPythonPackMetadata(metadata);
       setLoading(false);
 
-      const ordered = [...list].sort((a, b) => a.name.localeCompare(b.name));
-
-      const statuses = await Promise.all(
-        ordered.map(async (component) => {
-          try {
-            const status = await bridge.invoke<DownloadProgress>('component_status', { id: component.id });
-            return [component.id, status] as const;
-          } catch {
-            return [component.id, {
-              componentId: component.id,
-              bytesDownloaded: 0,
-              bytesTotal: 0,
-              percent: 0,
-              status: component.isInstalled ? 'ready' : 'pending',
-            }] as const;
-          }
-        }),
-      );
-
-      setStatusById(Object.fromEntries(statuses));
-
       try {
         const pythonStatus = await bridge.invoke<typeof pythonRuntime>('python_runtime_status');
         setPythonRuntime(pythonStatus);
@@ -138,17 +116,7 @@ export default function ComponentsSettings(): React.ReactElement {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load system packs right now.');
       setComponents([]);
-      setStatusById({});
       setLoading(false);
-    }
-  }, []);
-
-  const refreshStatus = useCallback(async (id: string) => {
-    try {
-      const status = await bridge.invoke<DownloadProgress>('component_status', { id });
-      setStatusById((prev) => ({ ...prev, [id]: status }));
-    } catch {
-      void 0;
     }
   }, []);
 
@@ -206,23 +174,14 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleDownload = useCallback(async (id: string) => {
     setDownloadBusyId(id);
     try {
-      await bridge.invoke<DownloadProgress[]>('component_download', { id });
+      await bridge.invoke<void>('component_download', { id });
       await refreshComponents();
     } catch {
-      await refreshStatus(id);
+      void 0;
     } finally {
       setDownloadBusyId(null);
     }
-  }, [refreshComponents, refreshStatus]);
-
-  const handleCancelDownload = useCallback(async (id: string) => {
-    try {
-      await bridge.invoke<void>('component_download_cancel', { id });
-      await refreshStatus(id);
-    } catch {
-      void 0;
-    }
-  }, [refreshStatus]);
+  }, [refreshComponents]);
 
   const handleUninstall = useCallback(async (id: string) => {
     setUninstallBusyId(id);
@@ -363,11 +322,9 @@ export default function ComponentsSettings(): React.ReactElement {
           <List.Item key={component.id} style={{ marginBottom: ROW_GAP_PX }}>
             <SystemComponentCard
               component={component}
-              status={statusById[component.id]}
               busyDownload={downloadBusyId === component.id}
               busyUninstall={uninstallBusyId === component.id}
               onDownload={handleDownload}
-              onCancelDownload={handleCancelDownload}
               onUninstall={handleUninstall}
               onOpenFolder={handleOpenFolder}
             />
@@ -377,7 +334,6 @@ export default function ComponentsSettings(): React.ReactElement {
     );
   }, [
     downloadBusyId,
-    handleCancelDownload,
     handleDownload,
     handleInstallPythonPack,
     handleOpenFolder,
@@ -387,7 +343,6 @@ export default function ComponentsSettings(): React.ReactElement {
     loading,
     pythonPackMetadata,
     pythonRuntime,
-    statusById,
     uninstallBusyId,
     uninstallingPythonPack,
   ]);

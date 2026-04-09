@@ -24,7 +24,7 @@ fn python_pack_specs() -> Vec<String> {
     vec![
         package_spec("agentscope", versions::AGENTSCOPE),
         package_spec("agentscope-runtime", versions::AGENTSCOPE_RUNTIME),
-        package_spec("litellm[proxy]", versions::LITELLM),
+        package_spec("litellm", versions::LITELLM),
     ]
 }
 

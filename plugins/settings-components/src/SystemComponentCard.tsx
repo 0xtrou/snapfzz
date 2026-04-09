@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Progress, Space, Tag, Typography } from 'antd';
+import { Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -51,41 +51,29 @@ export interface DependencyBadge {
 
 interface SystemComponentCardProps {
   component: ComponentInfo;
-  status?: DownloadProgress;
   busyDownload: boolean;
   busyUninstall: boolean;
   downloadDisabled?: boolean;
   dependencyBadges?: DependencyBadge[];
   installOrderLabel?: string;
   onDownload: (id: string) => void;
-  onCancelDownload: (id: string) => void;
   onUninstall: (id: string) => void;
   onOpenFolder: (path: string) => void;
 }
 
-function resolveStatus(status?: DownloadProgress): 'downloading' | 'ready' | 'pending' {
-  const value = String(status?.status ?? '').toLowerCase();
-  if (value.includes('ready')) return 'ready';
-  if (value.includes('downloading')) return 'downloading';
-  return 'pending';
-}
-
 export default function SystemComponentCard({
   component,
-  status,
   busyDownload,
   busyUninstall,
   downloadDisabled = false,
   dependencyBadges,
   installOrderLabel,
   onDownload,
-  onCancelDownload,
   onUninstall,
   onOpenFolder,
 }: SystemComponentCardProps): React.ReactElement {
-  const statusKind = resolveStatus(status);
-  const installed = component.isInstalled || statusKind === 'ready';
-  const downloading = statusKind === 'downloading' || busyDownload;
+  const installed = component.isInstalled;
+  const downloading = busyDownload;
 
   const handleOpenUrl = useCallback((url: string) => {
     void bridge.invoke<void>('open_path', { path: url });
@@ -169,15 +157,6 @@ export default function SystemComponentCard({
           )}
         </div>
 
-        {downloading && status && (
-          <Progress
-            percent={Math.round(status.percent)}
-            status="active"
-            size="small"
-            format={(pct) => `${pct}%`}
-          />
-        )}
-
         <div>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 2 }}>
             Source
@@ -209,12 +188,6 @@ export default function SystemComponentCard({
               onClick={() => onDownload(component.id)}
             >
               Download
-            </AppButton>
-          )}
-
-          {downloading && !installed && (
-            <AppButton onClick={() => onCancelDownload(component.id)}>
-              Cancel download
             </AppButton>
           )}
 
