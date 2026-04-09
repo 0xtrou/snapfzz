@@ -187,8 +187,6 @@ export default function PythonPackCard({
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           {isInstalling && installSteps.length > 0 ? (
             <InstallProgressOverlay
-              current={installSteps.filter((s) => s.is_installed).length}
-              total={installSteps.length}
               steps={installSteps.map((s, i, arr) => {
                 const activeIdx = arr.findIndex((x) => !x.is_installed);
                 return {
