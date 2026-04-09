@@ -213,7 +213,7 @@ pub fn python_pack_metadata() -> Vec<PythonPackMetadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snapfzz_kernel::components::component::{ComponentError, SystemComponent};
+    use snapfzz_packs::{ComponentError, SystemComponent};
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
     use tauri::Manager;

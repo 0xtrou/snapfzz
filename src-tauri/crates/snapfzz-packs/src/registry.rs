@@ -49,7 +49,7 @@ impl Default for ComponentRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::component::{
+    use crate::component::{
         ComponentError, ComponentInfo, DownloadProgress, DownloadStatus,
     };
     use std::path::{Path, PathBuf};

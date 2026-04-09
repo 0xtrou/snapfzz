@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
-use snapfzz_kernel::components::{DownloadStatus, SystemComponent};
-use snapfzz_packs::{detect_platform, versions, PythonComponent, UvComponent};
+use snapfzz_packs::{detect_platform, versions, DownloadStatus, SystemComponent, UvDownloader, PythonDownloader};
 
 fn python_major_minor(version: &str) -> String {
     let mut parts = version.split('.');
@@ -46,7 +45,7 @@ fn find_python_binary(root: &std::path::Path) -> PathBuf {
 async fn test_uv_download_actually_works() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let platform = detect_platform().expect("supported platform");
-    let uv = UvComponent::new(temp_dir.path().to_path_buf(), platform.clone());
+    let uv = UvDownloader::new(temp_dir.path().to_path_buf(), platform.clone());
 
     let progress = uv.download().await.expect("uv download should succeed");
 
@@ -81,13 +80,13 @@ async fn test_uv_download_actually_works() {
 async fn test_python_install_via_uv_writes_runtime_files() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let platform = detect_platform().expect("supported platform");
-    let uv = UvComponent::new(temp_dir.path().join("bin"), platform.clone());
+    let uv = UvDownloader::new(temp_dir.path().join("bin"), platform.clone());
 
     uv.download().await.expect("uv download should succeed");
 
     let python_version = versions::PYTHON.to_string();
     let python_install_dir = temp_dir.path().join("python");
-    let python = PythonComponent::new(
+    let python = PythonDownloader::new(
         uv.binary_path(),
         python_install_dir.clone(),
         platform,
