@@ -104,10 +104,14 @@ impl SystemComponent for PythonDownloader {
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
+        let is_installed = self.is_installed();
+
         {
             let cache = self.cached_info.lock().await;
             if let Some(ref info) = *cache {
-                return Ok(info.clone());
+                let mut info = info.clone();
+                info.is_installed = is_installed;
+                return Ok(info);
             }
         }
 
