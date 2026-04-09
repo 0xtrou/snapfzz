@@ -39,7 +39,7 @@ function createPlaceholder(id: string, name: string, description: string): Compo
     platform: 'any',
     platformDisplay: 'Cross-platform',
     downloadUrl: 'pip',
-    installPath: `~/.snapfzz/runtime/packages/${id}`,
+    installPath: '~/.snapfzz/runtime/python/venv',
     size: 0,
     checksum: '',
     checksumAlgorithm: '',
@@ -48,56 +48,17 @@ function createPlaceholder(id: string, name: string, description: string): Compo
   };
 }
 
-function isPipPackageInstalled(packageName: string, installedPackages: string[]): boolean {
-  const normalizedPackage = packageName.toLowerCase().replace('[ext]', '');
-  return installedPackages.some(pkg => {
-    const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-    return name === normalizedPackage || name.startsWith(normalizedPackage + '-');
-  });
-}
-
-function checkAgentscopeInstalled(installedPackages: string[]): boolean {
-  return installedPackages.some(pkg => {
-    const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-    return name === 'agentscope' || name === 'agentscope-runtime';
-  });
-}
-
-function getAgentscopeVersion(pythonRuntime: typeof pythonRuntime): string {
-  if (!pythonRuntime) return '1.0.18';
-  if (pythonRuntime.agentscope_runtime.is_installed && pythonRuntime.agentscope_runtime.version) {
-    return pythonRuntime.agentscope_runtime.version;
-  }
-  if (pythonRuntime.agentscope.is_installed && pythonRuntime.agentscope.version) {
-    return pythonRuntime.agentscope.version;
-  }
-  return '1.0.18';
-}
-
-function getLitellmVersion(pythonRuntime: typeof pythonRuntime): string {
-  return pythonRuntime?.litellm.is_installed && pythonRuntime.litellm.version
-    ? pythonRuntime.litellm.version
-    : '1.83.4';
-}
-
-function isAgentscopeInstalled(pythonRuntime: typeof pythonRuntime): boolean {
-  if (!pythonRuntime) return false;
-  return pythonRuntime.agentscope.is_installed || pythonRuntime.agentscope_runtime.is_installed;
-}
-
-function isLitellmInstalled(pythonRuntime: typeof pythonRuntime): boolean {
-  return pythonRuntime?.litellm.is_installed || false;
-}
-
 function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
   const fallback = {
     id: subPackId,
-    version: subPackId === 'python' ? '3.12' : 'latest',
-    license: subPackId === 'python' ? 'PSF-2.0' : 'MIT',
-    platformDisplay: 'Unknown',
-    downloadUrl: 'Unavailable',
-    installPath: `~/.snapfzz/runtime/${subPackId}`,
+    version: '',
+    license: '',
+    platformDisplay: '',
+    downloadUrl: 'pip',
+    installPath: '~/.snapfzz/runtime/python/venv',
     isInstalled: false,
+    repositoryUrl: '',
+    websiteUrl: '',
   };
 
   if (!component) {
@@ -105,10 +66,12 @@ function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: 
       ...fallback,
       name: subPackId === 'uv' ? 'uv (Python Package Manager)' :
             subPackId === 'python' ? 'Python 3.12' :
-            subPackId === 'agentscope' ? 'AgentScope' : 'LiteLLM',
+            subPackId === 'agentscope' ? 'AgentScope' :
+            subPackId === 'agentscope-runtime' ? 'AgentScope Runtime' : 'LiteLLM',
       description: subPackId === 'uv' ? 'Fast Python package manager.' :
                    subPackId === 'python' ? 'Python runtime managed by uv.' :
                    subPackId === 'agentscope' ? 'AI agent framework.' :
+                   subPackId === 'agentscope-runtime' ? 'Multi-agent distributed coordination.' :
                    'LLM proxy and model router.',
     };
   }
@@ -117,17 +80,21 @@ function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: 
     id: subPackId,
     name: subPackId === 'uv' ? 'uv (Python Package Manager)' :
           subPackId === 'python' ? 'Python 3.12' :
-          subPackId === 'agentscope' ? 'AgentScope' : 'LiteLLM',
+          subPackId === 'agentscope' ? 'AgentScope' :
+          subPackId === 'agentscope-runtime' ? 'AgentScope Runtime' : 'LiteLLM',
     version: component.version || fallback.version,
     description: subPackId === 'uv' ? 'Fast Python package manager. Required for all Python runtimes.' :
                  subPackId === 'python' ? 'Python runtime managed by uv. Required for AgentScope and Python-based packs.' :
                  subPackId === 'agentscope' ? 'AI agent framework. Requires Python runtime.' :
+                 subPackId === 'agentscope-runtime' ? 'Multi-agent distributed coordination. Requires Python runtime.' :
                  'LLM proxy and model router. Requires Python runtime.',
     license: component.license || fallback.license,
     platformDisplay: component.platformDisplay || fallback.platformDisplay,
     downloadUrl: component.downloadUrl || fallback.downloadUrl,
     installPath: component.installPath || fallback.installPath,
     isInstalled: component.isInstalled,
+    repositoryUrl: component.repositoryUrl || '',
+    websiteUrl: component.websiteUrl || '',
   };
 }
 
@@ -141,8 +108,10 @@ export default function ComponentsSettings(): React.ReactElement {
   const [uninstallBusyId, setUninstallBusyId] = useState<string | null>(null);
   const [installingPythonPack, setInstallingPythonPack] = useState(false);
   const [uninstallingPythonPack, setUninstallingPythonPack] = useState(false);
-  const [pythonRuntime, setPythonRuntime] = useState<{ 
+  const [pythonRuntime, setPythonRuntime] = useState<{
     installed_packages: string[];
+    venv_exists: boolean;
+    install_steps: Array<{ id: string; label: string; is_installed: boolean }>;
     agentscope: { name: string; version: string; is_installed: boolean };
     agentscope_runtime: { name: string; version: string; is_installed: boolean };
     litellm: { name: string; version: string; is_installed: boolean };
@@ -176,14 +145,9 @@ export default function ComponentsSettings(): React.ReactElement {
       );
 
       setStatusById(Object.fromEntries(statuses));
-      
-      // Fetch installed pip packages to detect AgentScope/LiteLLM
+
       try {
-        const pythonStatus = await bridge.invoke<{ 
-          installed_packages: string[];
-          agentscope: { is_installed: boolean; version: string };
-          litellm: { is_installed: boolean; version: string };
-        }>('python_runtime_status');
+        const pythonStatus = await bridge.invoke<typeof pythonRuntime>('python_runtime_status');
         setPythonRuntime(pythonStatus);
       } catch (e) {
         console.error('Failed to fetch python_runtime_status:', e);
@@ -297,17 +261,10 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleInstallPythonPack = useCallback(async () => {
     setInstallingPythonPack(true);
     try {
-      await bridge.invoke<DownloadProgress[]>('component_download', { id: 'uv' }).catch(() => {});
-      await bridge.invoke<DownloadProgress[]>('component_download', { id: 'python' }).catch(() => {});
-      
-      try {
-        await bridge.invoke<void>('python_pip_install_packages');
-      } catch {
-      }
-      
-      await refreshComponents();
+      await bridge.invoke<string>('python_pack_install_all');
     } finally {
       setInstallingPythonPack(false);
+      await refreshComponents();
     }
   }, [refreshComponents]);
 
@@ -329,14 +286,17 @@ export default function ComponentsSettings(): React.ReactElement {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
       const agentscope = createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
+      const agentscopeRuntime = createPlaceholder('agentscope-runtime', 'AgentScope Runtime', 'Multi-agent distributed coordination');
       const litellm = createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
 
-      agentscope.isInstalled = isAgentscopeInstalled(pythonRuntime);
-      agentscope.version = getAgentscopeVersion(pythonRuntime);
-      litellm.isInstalled = isLitellmInstalled(pythonRuntime);
-      litellm.version = getLitellmVersion(pythonRuntime);
+      agentscope.isInstalled = pythonRuntime?.agentscope.is_installed ?? false;
+      agentscope.version = pythonRuntime?.agentscope.version ?? '';
+      agentscopeRuntime.isInstalled = pythonRuntime?.agentscope_runtime.is_installed ?? false;
+      agentscopeRuntime.version = pythonRuntime?.agentscope_runtime.version ?? '';
+      litellm.isInstalled = pythonRuntime?.litellm.is_installed ?? false;
+      litellm.version = pythonRuntime?.litellm.version ?? '';
 
-      const allPacks = [uv, python, agentscope, litellm].filter(Boolean) as ComponentInfo[];
+      const allPacks = [uv, python, agentscope, agentscopeRuntime, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
       const anyInstalled = allPacks.some((p) => p.isInstalled);
 
@@ -345,11 +305,13 @@ export default function ComponentsSettings(): React.ReactElement {
           uv={mapComponentToSubPack(uv, 'uv')}
           python={mapComponentToSubPack(python, 'python')}
           agentscope={mapComponentToSubPack(agentscope, 'agentscope')}
+          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, 'agentscope-runtime')}
           litellm={mapComponentToSubPack(litellm, 'litellm')}
           isInstalling={installingPythonPack}
           isUninstalling={uninstallingPythonPack}
           allInstalled={allInstalled}
           anyInstalled={anyInstalled}
+          installSteps={pythonRuntime?.install_steps ?? []}
           onInstallAll={handleInstallPythonPack}
           onUninstallAll={handleUninstallPythonPack}
           onOpenFolder={handleOpenFolder}

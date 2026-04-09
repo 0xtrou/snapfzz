@@ -6,10 +6,12 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   FolderOpenOutlined,
+  LoadingOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
 import { AppButton } from '@snapfzz/shared';
 import type { DownloadProgress } from './SystemComponentCard';
+import InstallProgressOverlay from './InstallProgressOverlay';
 
 const { Text } = Typography;
 
@@ -23,6 +25,8 @@ interface PythonSubPack {
   downloadUrl: string;
   installPath: string;
   isInstalled: boolean;
+  repositoryUrl: string;
+  websiteUrl: string;
   status?: DownloadProgress;
 }
 
@@ -30,27 +34,16 @@ interface PythonPackCardProps {
   uv: PythonSubPack;
   python: PythonSubPack;
   agentscope: PythonSubPack;
+  agentscopeRuntime: PythonSubPack;
   litellm: PythonSubPack;
   isInstalling: boolean;
   isUninstalling: boolean;
   allInstalled: boolean;
   anyInstalled: boolean;
+  installSteps: Array<{ id: string; label: string; is_installed: boolean }>;
   onInstallAll: () => void;
   onUninstallAll: () => void;
   onOpenFolder: (path: string) => void;
-}
-
-interface PythonSubPack {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  license: string;
-  platformDisplay: string;
-  downloadUrl: string;
-  installPath: string;
-  isInstalled: boolean;
-  status?: DownloadProgress;
 }
 
 const SUB_PACK_ROW_GAP = 12;
@@ -99,6 +92,16 @@ function SubPackCard({
           {pack.isInstalled && (
             <Text type="secondary" style={{ fontSize: 12 }}>{pack.installPath}</Text>
           )}
+          {pack.repositoryUrl && (
+            <a href={pack.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
+              Repository
+            </a>
+          )}
+          {pack.websiteUrl && (
+            <a href={pack.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
+              Website
+            </a>
+          )}
         </Space>
       </Space>
     </div>
@@ -109,18 +112,20 @@ export default function PythonPackCard({
   uv,
   python,
   agentscope,
+  agentscopeRuntime,
   litellm,
   isInstalling,
   isUninstalling,
   allInstalled,
   anyInstalled,
+  installSteps,
   onInstallAll,
   onUninstallAll,
   onOpenFolder,
 }: PythonPackCardProps): React.ReactElement {
-  const packs: PythonSubPack[] = [uv, python, agentscope, litellm];
+  const packs: PythonSubPack[] = [uv, python, agentscope, agentscopeRuntime, litellm];
 
-  const installPath = python.installPath.replace('/bin/python', '') || '~/.snapfzz/runtime';
+  const installPath = python.installPath || '~/.snapfzz/runtime/python/venv';
 
   return (
     <div
@@ -161,10 +166,26 @@ export default function PythonPackCard({
         <Divider style={{ margin: '4px 0 12px 0' }} />
 
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
-          <Text type="secondary" style={{ fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-            Runtime Components
-          </Text>
-          {packs.map((pack, index) => (
+          {isInstalling && installSteps.length > 0 ? (
+            <InstallProgressOverlay
+              current={installSteps.filter((s) => s.is_installed).length}
+              total={installSteps.length}
+              steps={installSteps.map((s, i, arr) => {
+                const activeIdx = arr.findIndex((x) => !x.is_installed);
+                return {
+                  id: s.id,
+                  label: s.label,
+                  status: (s.is_installed ? 'done' : i === activeIdx ? 'running' : 'pending') as 'done' | 'running' | 'pending',
+                };
+              })}
+            />
+          ) : (
+            <Text type="secondary" style={{ fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Runtime Components
+            </Text>
+          )}
+
+          {!isInstalling && packs.map((pack, index) => (
             <SubPackCard
               key={pack.id}
               pack={pack}

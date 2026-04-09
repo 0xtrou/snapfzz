@@ -12,8 +12,8 @@ use snapfzz_kernel::boot::PreflightService;
 use snapfzz_kernel::budget::device::DeviceInfo;
 use snapfzz_kernel::components::{ComponentError, ComponentRegistry};
 use snapfzz_packs::{
-    detect_platform, AgentScopeComponent, CefPackComponent, LiteLLMComponent, PlatformInfo,
-    PythonComponent, UvComponent,
+    detect_platform, CefPackComponent, make_agentscope, make_litellm, PlatformInfo,
+    PythonComponent, UvComponent, versions,
 };
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
@@ -93,10 +93,10 @@ fn main() {
     let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
     let platform = detect_platform_for_components(&device).expect("unsupported platform");
     let runtime_dir = data_dir.join("runtime");
-    let bin_dir = runtime_dir.join("bin");
+    let python_dir = runtime_dir.join("python");
+    let python_bin_dir = python_dir.join("bin");
     let processes_dir = runtime_dir.join("processes");
-    let packages_dir = runtime_dir.join("packages");
-    let uv_bin = bin_dir.join(format!("uv{}", platform.exe_suffix));
+    let uv_bin = python_bin_dir.join(format!("uv{}", platform.exe_suffix));
     let cef_runtime_downloader = Arc::new(CefDownloader::new(
         processes_dir.join("cef"),
         device.platform.clone(),
@@ -107,21 +107,19 @@ fn main() {
         device: device.clone(),
     };
     let mut component_registry = ComponentRegistry::new();
-    component_registry.register(Arc::new(UvComponent::new(bin_dir.clone(), platform.clone())));
+    component_registry.register(Arc::new(UvComponent::new(python_bin_dir.clone(), platform.clone())));
     component_registry.register(Arc::new(PythonComponent::new(
         uv_bin.clone(),
-        bin_dir.join("python"),
+        python_bin_dir.join("python"),
         platform.clone(),
-        "3.12".to_string(),
+        versions::PYTHON.to_string(),
     )));
-    component_registry.register(Arc::new(AgentScopeComponent::new(
-        uv_bin.clone(),
-        packages_dir.join("agentscope"),
+    component_registry.register(Arc::new(make_agentscope(
+        runtime_dir.clone(),
         platform.clone(),
     )));
-    component_registry.register(Arc::new(LiteLLMComponent::new(
-        uv_bin.clone(),
-        packages_dir.join("litellm"),
+    component_registry.register(Arc::new(make_litellm(
+        runtime_dir.clone(),
         platform.clone(),
     )));
     component_registry.register(Arc::new(CefPackComponent::new(
@@ -158,7 +156,7 @@ fn main() {
             commands::components::component_list, commands::components::component_info, commands::components::component_download,
             commands::components::component_download_cancel, commands::components::component_status, commands::components::component_verify,
             commands::components::component_uninstall,
-            commands::pip::python_pip_install_packages, commands::pip::python_runtime_status,
+            commands::pip::python_pack_install_all, commands::pip::python_runtime_status,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])
         .setup(move |app| {

@@ -26,6 +26,8 @@ export interface ComponentInfo {
   checksum: string;
   checksumAlgorithm: string;
   isInstalled: boolean;
+  repositoryUrl?: string;
+  websiteUrl?: string;
 }
 
 export interface DownloadProgress {
@@ -122,9 +124,21 @@ export default function SystemComponentCard({
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Space size={12} wrap>
             <Text type="secondary">{component.platformDisplay || component.platform || 'Unknown platform'}</Text>
-            {component.license && (
-              <Text type="secondary" style={{ fontSize: 12 }}>License: {component.license}</Text>
-            )}
+{component.license && (
+  <Text type="secondary" style={{ fontSize: 12 }}>License: {component.license}</Text>
+)}
+
+{component.repositoryUrl && (
+  <a href={component.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
+    Repository
+  </a>
+)}
+
+{component.websiteUrl && (
+  <a href={component.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
+    Website
+  </a>
+)}
           </Space>
           {installed ? (
             <Tag color="success" icon={<CheckCircleOutlined />}>Installed</Tag>

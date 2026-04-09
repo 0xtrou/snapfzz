@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use snapfzz_kernel::components::{DownloadStatus, SystemComponent};
-use snapfzz_packs::{detect_platform, PythonComponent, UvComponent};
+use snapfzz_packs::{detect_platform, versions, PythonComponent, UvComponent};
 
 fn python_major_minor(version: &str) -> String {
     let mut parts = version.split('.');
@@ -85,7 +85,7 @@ async fn test_python_install_via_uv_writes_runtime_files() {
 
     uv.download().await.expect("uv download should succeed");
 
-    let python_version = "3.12".to_string();
+    let python_version = versions::PYTHON.to_string();
     let python_install_dir = temp_dir.path().join("python");
     let python = PythonComponent::new(
         uv.binary_path(),

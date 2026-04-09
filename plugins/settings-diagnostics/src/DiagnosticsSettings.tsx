@@ -51,6 +51,7 @@ interface PythonRuntimeStatus {
   python_path?: string;
   uv_installed: boolean;
   uv_version?: string;
+  venv_exists: boolean;
   installed_packages: string[];
 }
 

@@ -17,6 +17,8 @@ pub struct ComponentInfo {
     pub checksum: String,
     pub checksum_algorithm: String,
     pub is_installed: bool,
+    pub repository_url: String,
+    pub website_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +83,14 @@ pub trait SystemComponent: Send + Sync {
         self.install_dir().to_path_buf()
     }
 
+    fn repository_url(&self) -> &str {
+        ""
+    }
+
+    fn website_url(&self) -> &str {
+        ""
+    }
+
     fn visible_in_components_list(&self) -> bool {
         true
     }
@@ -122,6 +132,8 @@ mod tests {
             checksum: "abc123".into(),
             checksum_algorithm: "sha1".into(),
             is_installed: false,
+            repository_url: "https://github.com/chromiumembedded/cef".into(),
+            website_url: "https://chromiumembedded.github.io/cef/".into(),
         };
         let json = serde_json::to_value(&info).unwrap();
         assert_eq!(json["componentId"], serde_json::Value::Null);

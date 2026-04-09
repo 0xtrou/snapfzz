@@ -36,6 +36,8 @@ pub async fn component_list(
                     checksum: String::new(),
                     checksum_algorithm: String::new(),
                     is_installed: component.is_installed(),
+                    repository_url: component.repository_url().into(),
+                    website_url: component.website_url().into(),
                 });
             }
         }
@@ -208,6 +210,8 @@ mod tests {
                 checksum: "abc123".into(),
                 checksum_algorithm: "sha1".into(),
                 is_installed: self.installed,
+                repository_url: String::new(),
+                website_url: String::new(),
             })
         }
         async fn download(&self) -> Result<Vec<DownloadProgress>, ComponentError> {

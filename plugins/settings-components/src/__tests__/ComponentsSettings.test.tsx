@@ -37,9 +37,6 @@ function component(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-  return id.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-}
-
 function status(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     componentId: 'cef',

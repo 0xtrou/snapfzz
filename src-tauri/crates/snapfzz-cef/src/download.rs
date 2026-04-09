@@ -411,6 +411,8 @@ impl SystemComponent for CefDownloader {
             checksum: build.sha1,
             checksum_algorithm: "sha1".into(),
             is_installed: self.is_installed(),
+            repository_url: "https://github.com/chromiumembedded/cef".into(),
+            website_url: "https://chromiumembedded.github.io/cef/".into(),
         })
     }
 

@@ -10,6 +10,8 @@ use snapfzz_kernel::components::{
 };
 
 use crate::platform::PlatformInfo;
+use crate::pip_pack::PythonRuntime;
+use crate::versions;
 
 #[derive(Debug, Clone)]
 pub struct PythonComponent {
@@ -46,6 +48,7 @@ impl PythonComponent {
             .output()
             .map_err(ComponentError::from)
     }
+
 }
 
 #[async_trait::async_trait]
@@ -55,7 +58,7 @@ impl SystemComponent for PythonComponent {
     }
 
     fn name(&self) -> &str {
-        "Python 3.12"
+        "Python"
     }
 
     fn install_dir(&self) -> &Path {
@@ -72,7 +75,7 @@ impl SystemComponent for PythonComponent {
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
         Ok(ComponentInfo {
             id: "python".into(),
-            name: "Python 3.12".into(),
+            name: format!("Python {}", versions::PYTHON),
             description: "Python runtime managed by uv. Required for AgentScope and Python-based packs.".into(),
             license: "PSF-2.0".into(),
             version: self.version.clone(),
@@ -84,6 +87,8 @@ impl SystemComponent for PythonComponent {
             checksum: String::new(),
             checksum_algorithm: String::new(),
             is_installed: self.is_installed(),
+            repository_url: "https://github.com/python/cpython".into(),
+            website_url: "https://www.python.org/".into(),
         })
     }
 
@@ -114,6 +119,30 @@ impl SystemComponent for PythonComponent {
             "--install-dir",
             self.install_dir.to_string_lossy().as_ref(),
         ])?;
+
+        if !output.status.success() {
+            return Err(ComponentError::internal(format!(
+                "uv python install failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        // Create virtual environment after Python installation
+        let venv_dir = PathBuf::from(&self.install_dir)
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("venv"))
+            .unwrap_or_else(|| PathBuf::from("/tmp/python-venv"));
+        
+        let _ = std::fs::create_dir_all(&venv_dir);
+        if let Some(python_bin) = PythonRuntime::find_python_binary(&self.install_dir) {
+            let _ = self.run_uv([
+                "venv",
+                "--python",
+                python_bin.to_string_lossy().as_ref(),
+                venv_dir.to_string_lossy().as_ref(),
+            ]);
+        }
 
         if !output.status.success() {
             return Err(ComponentError::internal(format!(
@@ -199,7 +228,7 @@ mod tests {
     fn t32_python_is_installed_false_when_uv_fails() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
         let component =
-            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), versions::PYTHON.to_string());
         assert!(!component.is_installed());
     }
 
@@ -207,7 +236,7 @@ mod tests {
     fn t32_python_is_installed_true_when_uv_finds_version() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"python\" ] && [ \"$2\" = \"find\" ]; then exit 0; fi\nexit 1\n");
         let component =
-            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), versions::PYTHON.to_string());
         assert!(component.is_installed());
     }
 
@@ -215,7 +244,7 @@ mod tests {
     fn t32_python_cancel_and_clear_cancel_toggle_flag() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 0\n");
         let component =
-            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), versions::PYTHON.to_string());
         assert!(!component.cancelled.load(Ordering::SeqCst));
         component.cancel();
         assert!(component.cancelled.load(Ordering::SeqCst));
@@ -231,7 +260,7 @@ mod tests {
             uv,
             install_dir.path().join("python"),
             test_platform(),
-            "3.12".to_string(),
+            versions::PYTHON.to_string(),
         );
         component.cancel();
 
@@ -245,7 +274,7 @@ mod tests {
     async fn t32_python_verify_returns_python_version() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nif [ \"$1\" = \"run\" ]; then echo 'Python 3.12.7'; exit 0; fi\nexit 1\n");
         let component =
-            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), versions::PYTHON.to_string());
 
         let version = component.verify().await.unwrap();
 
@@ -256,14 +285,14 @@ mod tests {
     async fn t32_python_resolve_contains_required_component_info_fields() {
         let (_temp, uv) = setup_mock_uv("#!/bin/sh\nexit 1\n");
         let component =
-            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), "3.12".to_string());
+            PythonComponent::new(uv, PathBuf::from("/tmp/python"), test_platform(), versions::PYTHON.to_string());
 
         let info = component.resolve().await.unwrap();
 
         assert_eq!(info.id, "python");
-        assert_eq!(info.name, "Python 3.12");
+        assert_eq!(info.name, format!("Python {}", versions::PYTHON));
         assert_eq!(info.license, "PSF-2.0");
-        assert_eq!(info.version, "3.12");
+        assert_eq!(info.version, versions::PYTHON);
         assert_eq!(info.install_path, "/tmp/python");
         assert!(!info.is_installed);
     }

@@ -1,6 +1,6 @@
 use snapfzz_cef::download::{CefBuildInfo, CefDownloader};
 use snapfzz_cef::runtime::CefRuntime;
-use snapfzz_cef::types::{CefError, ConsoleMessage, DownloadProgress, WindowConfig};
+use snapfzz_cef::types::{ConsoleMessage, DownloadProgress, WindowConfig};
 use snapfzz_kernel::budget::device::DeviceInfo;
 use std::sync::Arc;
 use tauri::async_runtime::Mutex;
@@ -209,7 +209,8 @@ pub async fn cef_platform_info(
     })
 }
 
-pub fn map_cef_error(error: CefError) -> String {
+#[cfg(test)]
+fn map_cef_error(error: CefError) -> String {
     error.to_string()
 }
 

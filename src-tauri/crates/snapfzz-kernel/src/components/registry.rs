@@ -97,6 +97,8 @@ mod tests {
                 checksum: "abc".into(),
                 checksum_algorithm: "sha1".into(),
                 is_installed: false,
+                repository_url: String::new(),
+                website_url: String::new(),
             })
         }
         async fn download(&self) -> Result<Vec<DownloadProgress>, ComponentError> {

@@ -12,8 +12,9 @@ use snapfzz_kernel::components::{
 };
 
 use crate::platform::PlatformInfo;
+use crate::versions;
 
-const DEFAULT_UV_VERSION: &str = "0.11.4";
+const DEFAULT_UV_VERSION: &str = versions::UV;
 const DEFAULT_UV_RELEASES_URL: &str = "https://api.github.com/repos/astral-sh/uv/releases/latest";
 const USER_AGENT: &str = "snapfzz-packs/0.1.0";
 
@@ -206,6 +207,8 @@ impl SystemComponent for UvComponent {
             checksum: String::new(),
             checksum_algorithm: String::new(),
             is_installed: self.is_installed(),
+            repository_url: "https://github.com/astral-sh/uv".into(),
+            website_url: "https://docs.astral.sh/uv".into(),
         })
     }
 
