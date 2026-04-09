@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Input, List, Space, Typography } from 'antd';
+import { Input, List, Skeleton, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 import SystemComponentCard, {
   type ComponentInfo,
@@ -12,6 +12,72 @@ const bridge = createTauriBridge();
 
 const COMPONENT_ORDER: string[] = ['python-runtime', 'cef'];
 const ROW_GAP_PX = 16;
+
+function ComponentCardSkeleton(): React.ReactElement {
+  return (
+    <div
+      style={{
+        width: '100%',
+        border: '1px solid var(--border-default)',
+        borderRadius: 8,
+        padding: 16,
+        background: 'var(--bg-primary)',
+      }}
+    >
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+          <Space direction="vertical" size={4} style={{ flex: 1 }}>
+            <Skeleton.Input active size="small" style={{ width: 200, height: 22 }} />
+            <Skeleton.Input active size="small" style={{ width: 300, height: 16 }} />
+          </Space>
+          <Skeleton.Input active size="small" style={{ width: 60, height: 22 }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+          <Space size={12}>
+            <Skeleton.Input active size="small" style={{ width: 100, height: 16 }} />
+            <Skeleton.Input active size="small" style={{ width: 120, height: 16 }} />
+          </Space>
+          <Skeleton.Button active size="small" style={{ width: 80 }} />
+        </div>
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Skeleton.Input active size="small" style={{ width: 60, height: 12 }} />
+          <Skeleton.Input active size="small" style={{ width: '100%', height: 14 }} />
+        </Space>
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Skeleton.Input active size="small" style={{ width: 60, height: 12 }} />
+          <Skeleton.Input active size="small" style={{ width: '100%', height: 14 }} />
+        </div>
+        <Space size={8}>
+          <Skeleton.Button active size="small" style={{ width: 100 }} />
+          <Skeleton.Button active size="small" style={{ width: 100 }} />
+        </Space>
+      </Space>
+    </div>
+  );
+}
+
+function LoadingState(): React.ReactElement {
+  return (
+    <Space direction="vertical" size={20} style={{ width: '100%' }}>
+      <section>
+        <Space direction="vertical" size={4} style={{ width: '100%', marginBottom: 10 }}>
+          <Skeleton.Input active size="small" style={{ width: 150, height: 20 }} />
+          <Skeleton.Input active size="small" style={{ width: 300, height: 14 }} />
+        </Space>
+        <div style={{ border: '1px solid var(--border-default)', borderRadius: 8, padding: 16, background: 'var(--bg-primary)' }}>
+          <Skeleton active paragraph={{ rows: 4 }} />
+        </div>
+      </section>
+      <section>
+        <Space direction="vertical" size={4} style={{ width: '100%', marginBottom: 10 }}>
+          <Skeleton.Input active size="small" style={{ width: 130, height: 20 }} />
+          <Skeleton.Input active size="small" style={{ width: 280, height: 14 }} />
+        </Space>
+        <ComponentCardSkeleton />
+      </section>
+    </Space>
+  );
+}
 
 interface PythonPackMetadataItem {
   id: string;
@@ -377,7 +443,9 @@ export default function ComponentsSettings(): React.ReactElement {
             </Text>
           )}
 
-          {groupedComponents.length === 0 && !loading ? (
+          {loading ? (
+            <LoadingState />
+          ) : groupedComponents.length === 0 ? (
             <Text type="secondary">No system packs match your search.</Text>
           ) : (
             <Space direction="vertical" size={20} style={{ width: '100%' }}>
