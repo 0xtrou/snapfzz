@@ -1,12 +1,19 @@
 use snapfzz_kernel::components::{
-    ComponentInfo, ComponentRegistry, DownloadProgress, DownloadStatus,
+    ComponentInfo, ComponentRegistry, DownloadProgress, DownloadStatus, SystemComponent,
 };
+use std::path::Path;
 use std::sync::Arc;
 
-#[tauri::command]
-pub async fn component_list(
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
-) -> Result<Vec<ComponentInfo>, String> {
+pub(crate) fn do_component_get(
+    id: &str,
+    registry: &ComponentRegistry,
+) -> Result<Arc<dyn SystemComponent>, String> {
+    registry
+        .get(id)
+        .ok_or_else(|| format!("Component '{id}' not found"))
+}
+
+pub(crate) async fn do_component_list(registry: &ComponentRegistry) -> Result<Vec<ComponentInfo>, String> {
     let components = registry.list();
     let mut handles = Vec::with_capacity(components.len());
 
@@ -42,56 +49,40 @@ pub async fn component_list(
             }
         }
     }
+
     Ok(infos)
 }
 
-#[tauri::command]
-pub async fn component_info(
-    id: String,
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+pub(crate) async fn do_component_info(
+    id: &str,
+    registry: &ComponentRegistry,
 ) -> Result<ComponentInfo, String> {
-    let component = registry
-        .get(&id)
-        .ok_or_else(|| format!("Component '{id}' not found"))?;
+    let component = do_component_get(id, registry)?;
     component.resolve().await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn component_download(
-    id: String,
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+pub(crate) async fn do_component_download(
+    id: &str,
+    registry: &ComponentRegistry,
 ) -> Result<Vec<DownloadProgress>, String> {
-    let component = registry
-        .get(&id)
-        .ok_or_else(|| format!("Component '{id}' not found"))?;
+    let component = do_component_get(id, registry)?;
     component.clear_cancel();
     component.download().await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn component_download_cancel(
-    id: String,
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+pub(crate) fn do_component_download_cancel(
+    id: &str,
+    registry: &ComponentRegistry,
 ) -> Result<(), String> {
-    let component = registry
-        .get(&id)
-        .ok_or_else(|| format!("Component '{id}' not found"))?;
+    let component = do_component_get(id, registry)?;
     component.cancel();
     Ok(())
 }
 
-#[tauri::command]
-pub async fn component_status(
-    id: String,
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
-) -> Result<DownloadProgress, String> {
-    let component = registry
-        .get(&id)
-        .ok_or_else(|| format!("Component '{id}' not found"))?;
-
+pub(crate) fn do_component_status(id: &str, component: &dyn SystemComponent) -> DownloadProgress {
     let is_installed = component.is_installed();
     let install_dir = component.install_dir();
-    let archive_size = find_archive_size(install_dir);
+    let archive_size = do_find_archive_size(install_dir);
 
     let status = if is_installed {
         DownloadStatus::Ready
@@ -107,8 +98,8 @@ pub async fn component_status(
         archive_size.saturating_add(1024).max(1)
     };
 
-    Ok(DownloadProgress {
-        component_id: id,
+    DownloadProgress {
+        component_id: id.to_string(),
         bytes_downloaded: archive_size,
         bytes_total,
         percent: if is_installed {
@@ -119,28 +110,18 @@ pub async fn component_status(
             ((archive_size as f32 / bytes_total as f32) * 100.0).min(100.0)
         },
         status,
-    })
+    }
 }
 
-#[tauri::command]
-pub async fn component_verify(
-    id: String,
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+pub(crate) async fn do_component_verify(
+    id: &str,
+    registry: &ComponentRegistry,
 ) -> Result<String, String> {
-    let component = registry
-        .get(&id)
-        .ok_or_else(|| format!("Component '{id}' not found"))?;
+    let component = do_component_get(id, registry)?;
     component.verify().await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn component_uninstall(
-    id: String,
-    registry: tauri::State<'_, Arc<ComponentRegistry>>,
-) -> Result<(), String> {
-    let component = registry
-        .get(&id)
-        .ok_or_else(|| format!("Component '{id}' not found"))?;
+pub(crate) fn do_component_uninstall(component: &dyn SystemComponent) -> Result<(), String> {
     let install_dir = component.install_dir();
     if install_dir.exists() {
         std::fs::remove_dir_all(install_dir).map_err(|e| e.to_string())?;
@@ -148,7 +129,7 @@ pub async fn component_uninstall(
     Ok(())
 }
 
-fn find_archive_size(install_dir: &std::path::Path) -> u64 {
+pub(crate) fn do_find_archive_size(install_dir: &Path) -> u64 {
     std::fs::read_dir(install_dir)
         .ok()
         .and_then(|entries| {
@@ -164,6 +145,64 @@ fn find_archive_size(install_dir: &std::path::Path) -> u64 {
         })
         .unwrap_or(0)
 }
+
+#[tauri::command]
+pub async fn component_list(
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<Vec<ComponentInfo>, String> {
+    do_component_list(&registry).await
+}
+
+#[tauri::command]
+pub async fn component_info(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<ComponentInfo, String> {
+    do_component_info(&id, &registry).await
+}
+
+#[tauri::command]
+pub async fn component_download(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<Vec<DownloadProgress>, String> {
+    do_component_download(&id, &registry).await
+}
+
+#[tauri::command]
+pub async fn component_download_cancel(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<(), String> {
+    do_component_download_cancel(&id, &registry)
+}
+
+#[tauri::command]
+pub async fn component_status(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<DownloadProgress, String> {
+    let component = do_component_get(&id, &registry)?;
+    Ok(do_component_status(&id, component.as_ref()))
+}
+
+#[tauri::command]
+pub async fn component_verify(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<String, String> {
+    do_component_verify(&id, &registry).await
+}
+
+#[tauri::command]
+pub async fn component_uninstall(
+    id: String,
+    registry: tauri::State<'_, Arc<ComponentRegistry>>,
+) -> Result<(), String> {
+    let component = do_component_get(&id, &registry)?;
+    do_component_uninstall(component.as_ref())
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -448,25 +487,25 @@ mod tests {
     #[test]
     fn a014_components_find_archive_size_returns_zero_for_empty_dir() {
         let temp = tempfile::tempdir().unwrap();
-        assert_eq!(find_archive_size(temp.path()), 0);
+        assert_eq!(do_find_archive_size(temp.path()), 0);
     }
 
     #[test]
     fn a014_components_find_archive_size_finds_tar_bz2() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("cef.tar.bz2"), vec![0u8; 1024]).unwrap();
-        assert_eq!(find_archive_size(temp.path()), 1024);
+        assert_eq!(do_find_archive_size(temp.path()), 1024);
     }
 
     #[test]
     fn a014_components_find_archive_size_finds_tar_gz() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("llama.tar.gz"), vec![0u8; 2048]).unwrap();
-        assert_eq!(find_archive_size(temp.path()), 2048);
+        assert_eq!(do_find_archive_size(temp.path()), 2048);
     }
 
     #[test]
     fn a014_components_find_archive_size_returns_zero_for_nonexistent_dir() {
-        assert_eq!(find_archive_size(std::path::Path::new("/nonexistent/path")), 0);
+        assert_eq!(do_find_archive_size(std::path::Path::new("/nonexistent/path")), 0);
     }
 }
