@@ -202,12 +202,24 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleInstallPythonPack = useCallback(async () => {
     setInstallingPythonPack(true);
     try {
+      const uv = components.find((c) => c.id === 'uv');
+      const python = components.find((c) => c.id === 'python');
+
+      if (uv && !uv.isInstalled) {
+        await bridge.invoke<void>('component_download', { id: 'uv' });
+      }
+      if (python && !python.isInstalled) {
+        await bridge.invoke<void>('component_download', { id: 'python' });
+      }
+
       await bridge.invoke<string>('python_pack_install_all');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to install Python packages');
     } finally {
       setInstallingPythonPack(false);
       await refreshComponents();
     }
-  }, [refreshComponents]);
+  }, [components, refreshComponents]);
 
   const handleUninstallPythonPack = useCallback(async () => {
     setUninstallingPythonPack(true);

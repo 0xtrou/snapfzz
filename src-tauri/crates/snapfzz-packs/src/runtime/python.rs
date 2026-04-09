@@ -164,6 +164,12 @@ impl PythonRuntime {
     }
 
     pub fn install_all_packages(&self) -> Result<String, ComponentError> {
+        if !self.is_runtime_ready() {
+            return Err(ComponentError::internal(
+                "Python runtime is not ready. Please install Python and create a virtual environment first."
+            ));
+        }
+
         let specs = python_pack_specs();
         let output = self.run_uv([
             "pip",
