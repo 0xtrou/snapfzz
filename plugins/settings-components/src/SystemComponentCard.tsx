@@ -177,20 +177,11 @@ export default function SystemComponentCard({
 
         <Space size={8} wrap>
           {installed ? (
+            <>
               <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
                 Open folder
               </AppButton>
-          ) : (
-            <AppButton
-              loading={busyDownload}
-              disabled={downloadDisabled}
-              onClick={() => onDownload(component.id)}
-            >
-              Install
-            </AppButton>
-          )}
-
-          <AppButton
+              <AppButton
             variant="danger"
             icon={<DeleteOutlined />}
             disabled={!installed}
@@ -199,6 +190,16 @@ export default function SystemComponentCard({
           >
             Uninstall
           </AppButton>
+              </>
+          ) : (
+            <AppButton
+              loading={busyDownload}
+              disabled={downloadDisabled || downloading}
+              onClick={() => onDownload(component.id)}
+            >
+              { downloading ? 'Installing...' : 'Install' }
+            </AppButton>
+          )}
         </Space>
       </Space>
     </div>

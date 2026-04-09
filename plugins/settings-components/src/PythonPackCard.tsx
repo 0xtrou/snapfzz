@@ -226,15 +226,9 @@ export default function PythonPackCard({
         </Space>
 
         <Space size={8} wrap>
-          <AppButton
-            loading={isInstalling}
-            disabled={allInstalled || isInstalling}
-            onClick={onInstallAll}
-          >
-            {isInstalling ? 'Installing...' : allInstalled ? 'Installed' : 'Install All'}
-          </AppButton>
-
-          <AppButton
+          {allInstalled ? (
+            <>
+            <AppButton
             icon={<FolderOpenOutlined />}
             disabled={!anyInstalled}
             onClick={() => onOpenFolder(installPath)}
@@ -249,8 +243,18 @@ export default function PythonPackCard({
             loading={isUninstalling}
             onClick={onUninstallAll}
           >
-            {isUninstalling ? 'Uninstalling...' : 'Uninstall All'}
+            {isUninstalling ? 'Uninstalling...' : 'Uninstall'}
           </AppButton>
+            </>
+          ) : (<AppButton
+            loading={isInstalling}
+            disabled={allInstalled || isInstalling}
+            onClick={onInstallAll}
+          >
+            {isInstalling ? 'Installing...' : allInstalled ? 'Installed' : 'Install'}
+          </AppButton>)}
+
+          
         </Space>
       </Space>
     </div>
