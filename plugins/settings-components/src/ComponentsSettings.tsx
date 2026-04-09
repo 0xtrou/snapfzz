@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Input, List, Skeleton, Space, Typography } from 'antd';
-import { createTauriBridge, SettingsHeader } from '@snapfzz/shared';
+import { Input, List, message, Skeleton, Space, Typography } from 'antd';
+import { createTauriBridge, invokeWithToast, SettingsHeader } from '@snapfzz/shared';
 import SystemComponentCard, {
   type ComponentInfo,
   type DownloadProgress,
@@ -9,6 +9,11 @@ import PythonPackCard from './PythonPackCard';
 
 const { Text } = Typography;
 const bridge = createTauriBridge();
+
+message.config({
+  top: 60,
+  duration: 3,
+});
 
 const COMPONENT_ORDER: string[] = ['python-runtime', 'cef'];
 const ROW_GAP_PX = 16;
@@ -274,15 +279,24 @@ export default function ComponentsSettings(): React.ReactElement {
       const python = components.find((c) => c.id === 'python');
 
       if (uv && !uv.isInstalled) {
-        await bridge.invoke<void>('component_download', { id: 'uv' });
+        await invokeWithToast(bridge, 'component_download', { id: 'uv' }, {
+          successMessage: 'uv installed successfully',
+          errorMessage: 'Failed to install uv',
+        });
       }
       if (python && !python.isInstalled) {
-        await bridge.invoke<void>('component_download', { id: 'python' });
+        await invokeWithToast(bridge, 'component_download', { id: 'python' }, {
+          successMessage: 'Python installed successfully',
+          errorMessage: 'Failed to install Python',
+        });
       }
 
-      await bridge.invoke<string>('python_pack_install_all');
+      await invokeWithToast(bridge, 'python_pack_install_all', undefined, {
+        successMessage: 'Python runtime ecosystem installed',
+        errorMessage: 'Failed to install Python packages',
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to install Python packages');
+      void 0;
     } finally {
       setInstallingPythonPack(false);
       await refreshComponents();
@@ -292,8 +306,13 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleUninstallPythonPack = useCallback(async () => {
     setUninstallingPythonPack(true);
     try {
-      await bridge.invoke<void>('python_pack_uninstall_all');
+      await invokeWithToast(bridge, 'python_pack_uninstall_all', undefined, {
+        successMessage: 'Python runtime removed',
+        errorMessage: 'Failed to uninstall Python runtime',
+      });
       await refreshComponents();
+    } catch {
+      void 0;
     } finally {
       setUninstallingPythonPack(false);
     }

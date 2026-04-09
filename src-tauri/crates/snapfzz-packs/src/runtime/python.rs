@@ -123,6 +123,31 @@ impl PythonRuntime {
         self.is_uv_ready() && self.is_python_installed() && self.is_venv_created()
     }
 
+    pub fn create_venv(&self) -> Result<(), ComponentError> {
+        if self.venv_dir().exists() {
+            return Ok(());
+        }
+
+        let python_bin = Self::find_python_binary(&self.python_install_dir())
+            .ok_or_else(|| ComponentError::internal("Python not found in install directory"))?;
+
+        let output = self.run_uv([
+            "venv",
+            "--python",
+            python_bin.to_string_lossy().as_ref(),
+            self.venv_dir().to_string_lossy().as_ref(),
+        ])?;
+
+        if !output.status.success() {
+            return Err(ComponentError::internal(format!(
+                "uv venv failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        Ok(())
+    }
+
     pub fn install_package(&self, package: &str) -> Result<String, ComponentError> {
         let output = self.run_uv([
             "pip",
@@ -164,10 +189,16 @@ impl PythonRuntime {
     }
 
     pub fn install_all_packages(&self) -> Result<String, ComponentError> {
-        if !self.is_runtime_ready() {
-            return Err(ComponentError::internal(
-                "Python runtime is not ready. Please install Python and create a virtual environment first."
-            ));
+        if !self.is_uv_ready() {
+            return Err(ComponentError::internal("uv is not installed"));
+        }
+
+        if !self.is_python_installed() {
+            return Err(ComponentError::internal("Python is not installed"));
+        }
+
+        if !self.is_venv_created() {
+            self.create_venv()?;
         }
 
         let specs = python_pack_specs();
@@ -354,8 +385,9 @@ impl PythonRuntime {
     }
 
     pub fn uninstall_all(&self) -> Result<(), ComponentError> {
-        if self.runtime_dir.exists() {
-            std::fs::remove_dir_all(&self.runtime_dir)?;
+        let python_dir = self.runtime_dir.join("python");
+        if python_dir.exists() {
+            std::fs::remove_dir_all(&python_dir)?;
         }
         Ok(())
     }
