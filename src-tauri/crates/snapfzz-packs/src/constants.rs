@@ -96,3 +96,67 @@ pub fn cef_metadata() -> PythonPackMetadata {
         website_url: "https://chromiumembedded.github.io/cef/".into(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn t32_constants_version_strings_are_valid() {
+        assert!(versions::UV.starts_with(|c: char| c.is_ascii_digit()));
+        assert!(versions::PYTHON.starts_with(|c: char| c.is_ascii_digit()));
+        assert!(versions::AGENTSCOPE.starts_with(|c: char| c.is_ascii_digit()));
+        assert!(versions::AGENTSCOPE_RUNTIME.starts_with(|c: char| c.is_ascii_digit()));
+        assert!(versions::LITELLM.starts_with(|c: char| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn t32_constants_urls_are_https() {
+        assert!(urls::UV_RELEASES_URL.starts_with("https://"));
+        assert!(urls::UV_DOWNLOAD_BASE.starts_with("https://"));
+    }
+
+    #[test]
+    fn t32_constants_python_packs_returns_five_entries() {
+        let packs = python_packs();
+        assert_eq!(packs.len(), 5);
+
+        let ids: Vec<&str> = packs.iter().map(|p| p.id.as_str()).collect();
+        assert!(ids.contains(&"uv"));
+        assert!(ids.contains(&"python"));
+        assert!(ids.contains(&"agentscope"));
+        assert!(ids.contains(&"agentscope-runtime"));
+        assert!(ids.contains(&"litellm"));
+    }
+
+    #[test]
+    fn t32_constants_python_packs_have_required_fields() {
+        for pack in python_packs() {
+            assert!(!pack.id.is_empty());
+            assert!(!pack.name.is_empty());
+            assert!(!pack.description.is_empty());
+            assert!(!pack.license.is_empty());
+            assert!(!pack.platform_display.is_empty());
+            assert!(pack.repository_url.starts_with("https://"));
+            assert!(pack.website_url.starts_with("https://"));
+        }
+    }
+
+    #[test]
+    fn t32_constants_cef_metadata_has_expected_fields() {
+        let cef = cef_metadata();
+        assert_eq!(cef.id, "cef");
+        assert_eq!(cef.name, "CEF Runtime");
+        assert!(!cef.description.is_empty());
+        assert_eq!(cef.license, "BSD-3-Clause");
+    }
+
+    #[test]
+    fn t32_constants_metadata_serializes_to_camel_case() {
+        let pack = python_packs().into_iter().next().unwrap();
+        let json = serde_json::to_string(&pack).unwrap();
+        assert!(json.contains("\"platformDisplay\""));
+        assert!(json.contains("\"repositoryUrl\""));
+        assert!(json.contains("\"websiteUrl\""));
+    }
+}
