@@ -46,7 +46,7 @@ function ComponentCardSkeleton(): React.ReactElement {
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Skeleton.Input active size="small" style={{ width: 60, height: 12 }} />
           <Skeleton.Input active size="small" style={{ width: '100%', height: 14 }} />
-        </div>
+        </Space>
         <Space size={8}>
           <Skeleton.Button active size="small" style={{ width: 100 }} />
           <Skeleton.Button active size="small" style={{ width: 100 }} />
