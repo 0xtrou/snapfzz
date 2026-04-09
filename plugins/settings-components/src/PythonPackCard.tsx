@@ -8,6 +8,7 @@ import {
   FolderOpenOutlined,
   GithubOutlined,
   GlobalOutlined,
+  LoadingOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
 import { Tooltip } from 'antd';
@@ -185,7 +186,7 @@ export default function PythonPackCard({
               {allInstalled ? (
                 <><CheckCircleOutlined /> All Installed</>
               ) : isInstalling ? (
-                <><DownloadOutlined /> Installing...</>
+                <><LoadingOutlined /> Installing...</>
               ) : anyInstalled ? (
                 <><CheckCircleOutlined /> Partially Installed</>
               ) : (
@@ -226,7 +227,6 @@ export default function PythonPackCard({
 
         <Space size={8} wrap>
           <AppButton
-            icon={<DownloadOutlined />}
             loading={isInstalling}
             disabled={allInstalled || isInstalling}
             onClick={onInstallAll}
