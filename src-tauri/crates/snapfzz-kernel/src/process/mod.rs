@@ -73,11 +73,15 @@ impl ProcessManager {
         Self { state, logs }
     }
 
-    pub async fn spawn(
+    /// Spawns a process with a pre-built command and budget configuration.
+    /// A033/ProcessManager: Lower-level spawn that accepts any command
+    pub async fn spawn_process(
         &self,
         name: &str,
-        config: &SpawnConfig,
+        command: &mut tokio::process::Command,
+        budget: ProcessBudget,
         registry: &BudgetRegistry,
+        health_timeout_secs: u64,
     ) -> Result<u32, ProcessError> {
         if self.state.lock().await.children.contains_key(name) {
             return Err(ProcessError::SpawnFailed(format!(
@@ -87,21 +91,6 @@ impl ProcessManager {
 
         cleanup_stale_pid(self.logs.data_dir(), name);
 
-        let mut command = tokio::process::Command::new(runtime_command_binary());
-        command
-            .args(["run", "python", "app.py"])
-            .current_dir(&config.working_dir)
-            .env("SNAPFZZ_HOST", &config.host)
-            .env("SNAPFZZ_PORT", config.port.to_string())
-            .stdout(piped_stdio())
-            .stderr(piped_stdio())
-            .kill_on_drop(true);
-
-        #[cfg(unix)]
-        {
-            command.process_group(0);
-        }
-
         let mut child = command
             .spawn()
             .map_err(|error| ProcessError::SpawnFailed(error.to_string()))?;
@@ -109,6 +98,7 @@ impl ProcessManager {
         let child_pid = child.id().unwrap_or(0);
         write_pid_file(self.logs.data_dir(), name, child_pid);
 
+        // Capture stdout
         if let Some(stdout) = child.stdout.take() {
             let logs = self.logs.clone();
             let process_name = name.to_string();
@@ -120,6 +110,7 @@ impl ProcessManager {
             });
         }
 
+        // Capture stderr
         if let Some(stderr) = child.stderr.take() {
             let logs = self.logs.clone();
             let process_name = name.to_string();
@@ -138,6 +129,36 @@ impl ProcessManager {
                 .insert(name.to_string(), ChildState { child, pid: child_pid });
         }
 
+        registry.register_process(name, budget);
+
+        wait_until_healthy(registry, name, health_timeout_secs as u32, Duration::from_secs(1)).await?;
+        Ok(child_pid)
+    }
+
+    /// Spawns a process using the legacy uv-based command.
+    /// A033/ProcessManager: Legacy spawn using hardcoded uv command (deprecated)
+    #[deprecated(note = "Use spawn_process with ManagedService instead")]
+    pub async fn spawn(
+        &self,
+        name: &str,
+        config: &SpawnConfig,
+        registry: &BudgetRegistry,
+    ) -> Result<u32, ProcessError> {
+        let mut command = tokio::process::Command::new(runtime_command_binary());
+        command
+            .args(["run", "python", "app.py"])
+            .current_dir(&config.working_dir)
+            .env("SNAPFZZ_HOST", &config.host)
+            .env("SNAPFZZ_PORT", config.port.to_string())
+            .stdout(piped_stdio())
+            .stderr(piped_stdio())
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
+
         let prev = registry.supervised.processes.get(name);
         let prev_restart_count = prev.as_ref().map(|proc| proc.restart_count).unwrap_or(0);
         let is_restart = prev.is_some();
@@ -154,26 +175,22 @@ impl ProcessManager {
             .unwrap_or(preset_agentscope_max_mb);
         drop(prev);
 
-        registry.register_process(
-            name,
-            ProcessBudget {
-                pid: Some(child_pid),
-                max_memory_mb: prev_max_memory,
-                health_url: format!("http://{}:{}/health", config.host, config.port),
-                health_interval_ms: 2000,
-                max_health_failures: 3,
-                max_restarts: preset_max_restarts,
-                location: ProcessLocation::Local,
-                consecutive_failures: 0,
-                restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
-                status: ProcessStatus::Starting,
-                started_at: Some(Instant::now()),
-                owner: "system".to_string(),
-            },
-        );
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: prev_max_memory,
+            health_url: format!("http://{}:{}/health", config.host, config.port),
+            health_interval_ms: 2000,
+            max_health_failures: 3,
+            max_restarts: preset_max_restarts,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
+            status: ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
 
-        wait_until_healthy(registry, name, 120, Duration::from_secs(1)).await?;
-        Ok(child_pid)
+        self.spawn_process(name, &mut command, budget, registry, 120).await
     }
 
     pub async fn shutdown(&self, name: &str) -> Result<(), ProcessError> {

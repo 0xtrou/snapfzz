@@ -1,11 +1,16 @@
 use serde::Serialize;
 use snapfzz_kernel::boot::{OnPreflightReady, PreflightContext, PreflightError};
-use snapfzz_kernel::budget::BudgetRegistry;
+use snapfzz_kernel::budget::{BudgetRegistry, supervised::{ProcessBudget, ProcessLocation}};
 use snapfzz_kernel::process::{ProcessManager, SpawnConfig};
 use snapfzz_kernel::settings::SettingsManager;
+use snapfzz_packs::platform::detect_platform;
+use snapfzz_packs::runtime::agentscope::AgentScopeService;
+use snapfzz_packs::runtime::python::PythonRuntime;
+use snapfzz_packs::service::{ManagedService, ServiceConfig, ServiceError};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::Emitter;
 
 const AGENTSCOPE_PORT: u16 = 8090;
@@ -125,22 +130,67 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
     process_mgr: Arc<ProcessManager>,
     settings_mgr: Arc<SettingsManager>,
 ) {
-    match resolve_spawn_config(&settings_mgr) {
-        Ok(config) => match process_mgr.spawn("agentscope", &config, &registry).await {
-            Ok(_) => {
-                let _ = handle.emit("agent-status", "online");
-                emit_supervisor(
-                    &handle,
-                    "success",
-                    "agentscope",
-                    "AgentScope Runtime started successfully".into(),
-                );
-            }
-            Err(err) => {
-                let msg = spawn_failure(err);
-                emit_supervisor(&handle, "error", "agentscope", msg);
-            }
-        },
+    // A033/spawn_agentscope: Use AgentScopeService with spawn_process
+    let result = async {
+        let config = resolve_spawn_config(&settings_mgr)?;
+        let data_dir = resolve_data_dir();
+        
+        let platform = detect_platform().map_err(|e| e.to_string())?;
+        let runtime = Arc::new(PythonRuntime::new(data_dir, platform));
+        let service = AgentScopeService::new(runtime);
+        
+        if !service.can_start() {
+            return Err("AgentScope dependencies not installed".to_string());
+        }
+        
+        let service_config = ServiceConfig {
+            host: config.host.clone(),
+            port: config.port,
+            working_dir: config.working_dir.clone(),
+        };
+        
+        let mut command = service.spawn_command(&service_config)
+            .map_err(|e: ServiceError| e.to_string())?;
+        
+        let limits = service.resource_limits();
+        let (preset_max_memory, preset_max_restarts) = {
+            let preset = registry.preset.read().unwrap();
+            (preset.memory.agentscope_max_mb, preset.reliability.max_restarts)
+        };
+        
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: limits.max_memory_mb.min(preset_max_memory),
+            health_url: format!("http://{}:{}/health", config.host, config.port),
+            health_interval_ms: 2000,
+            max_health_failures: 3,
+            max_restarts: limits.max_restarts.min(preset_max_restarts),
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: snapfzz_kernel::budget::metrics::ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
+        
+        process_mgr
+            .spawn_process("agentscope", &mut command, budget, &registry, 120)
+            .await
+            .map_err(|e| e.to_string())?;
+        
+        Ok::<(), String>(())
+    }.await;
+    
+    match result {
+        Ok(_) => {
+            let _ = handle.emit("agent-status", "online");
+            emit_supervisor(
+                &handle,
+                "success",
+                "agentscope",
+                "AgentScope Runtime started successfully".into(),
+            );
+        }
         Err(err) => {
             let msg = spawn_failure(err);
             emit_supervisor(&handle, "error", "agentscope", msg);
