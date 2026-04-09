@@ -86,7 +86,7 @@ describe('U011/vault-settings', () => {
     expect(section?.id).toBe('vault');
     expect(section?.label).toBe('Secret Vault');
     expect(section?.icon).toBe('LockOutlined');
-    expect(section?.order).toBe(50);
+    expect(section?.order).toBe(5);
 
     const mod = await section?.component();
     expect((mod as { default: unknown }).default).toBeDefined();
