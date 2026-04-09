@@ -4,6 +4,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use tokio::sync::Mutex;
 
 use crate::component::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
@@ -18,6 +19,7 @@ pub struct PythonDownloader {
     platform: PlatformInfo,
     version: String,
     cancelled: Arc<AtomicBool>,
+    cached_info: Arc<Mutex<Option<ComponentInfo>>>,
 }
 
 impl PythonDownloader {
@@ -33,6 +35,7 @@ impl PythonDownloader {
             platform,
             version,
             cancelled: Arc::new(AtomicBool::new(false)),
+            cached_info: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -70,7 +73,14 @@ impl SystemComponent for PythonDownloader {
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
-        Ok(ComponentInfo {
+        {
+            let cache = self.cached_info.lock().await;
+            if let Some(ref info) = *cache {
+                return Ok(info.clone());
+            }
+        }
+
+        let info = ComponentInfo {
             id: "python".into(),
             name: format!("Python {}", constants::versions::PYTHON),
             description: "Python runtime managed by uv. Required for AgentScope and Python-based packs.".into(),
@@ -86,7 +96,14 @@ impl SystemComponent for PythonDownloader {
             is_installed: self.is_installed(),
             repository_url: "https://github.com/python/cpython".into(),
             website_url: "https://www.python.org/".into(),
-        })
+        };
+
+        {
+            let mut cache = self.cached_info.lock().await;
+            *cache = Some(info.clone());
+        }
+
+        Ok(info)
     }
 
     async fn download(&self) -> Result<Vec<DownloadProgress>, ComponentError> {

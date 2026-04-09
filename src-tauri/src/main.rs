@@ -44,10 +44,9 @@ fn main() {
     let runtime_dir = data_dir.join("runtime");
     let python_dir = runtime_dir.join("python");
     let python_bin_dir = python_dir.join("bin");
-    let processes_dir = runtime_dir.join("processes");
     let uv_bin = python_bin_dir.join(format!("uv{}", platform.exe_suffix));
     let cef_runtime_downloader = Arc::new(CefDownloader::new(
-        processes_dir.join("cef"),
+        runtime_dir.join("cef"),
         device.platform.clone(),
     ));
     let cef_state = commands::cef::CefState {

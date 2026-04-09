@@ -4,6 +4,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use tokio::sync::Mutex;
 
 use serde::Deserialize;
 use crate::component::{
@@ -21,6 +22,7 @@ pub struct UvDownloader {
     platform: PlatformInfo,
     release_api_url: String,
     cancelled: Arc<AtomicBool>,
+    cached_info: Arc<Mutex<Option<ComponentInfo>>>,
 }
 
 impl UvDownloader {
@@ -30,6 +32,7 @@ impl UvDownloader {
             platform,
             release_api_url: constants::urls::UV_RELEASES_URL.to_string(),
             cancelled: Arc::new(AtomicBool::new(false)),
+            cached_info: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -45,6 +48,7 @@ impl UvDownloader {
             platform,
             release_api_url,
             cancelled: Arc::new(AtomicBool::new(false)),
+            cached_info: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -148,7 +152,13 @@ impl SystemComponent for UvDownloader {
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
-        // First try to fetch from GitHub API (with fallback to hardcoded version on rate limit)
+        {
+            let cache = self.cached_info.lock().await;
+            if let Some(ref info) = *cache {
+                return Ok(info.clone());
+            }
+        }
+
         let client = reqwest::Client::new();
         let release_result = client
             .get(&self.release_api_url)
@@ -171,11 +181,9 @@ impl SystemComponent for UvDownloader {
                 (release.tag_name, asset.browser_download_url, asset.size)
             }
             _ => {
-                // Fallback to hardcoded version on rate limit or network error
                 let base_url = format!("{}/{}", constants::urls::UV_DOWNLOAD_BASE, constants::versions::UV);
                 let download_url = format!("{}/{}", base_url, self.asset_name());
                 
-                // Approximate sizes from GitHub release page
                 let size = match self.platform.platform.as_str() {
                     "macos-arm64" => 11_000_000,
                     "macos-x64" => 11_500_000,
@@ -190,7 +198,7 @@ impl SystemComponent for UvDownloader {
             }
         };
 
-        Ok(ComponentInfo {
+        let info = ComponentInfo {
             id: "uv".into(),
             name: "uv (Python Package Manager)".into(),
             description: "Fast Python package manager. Required for all Python runtimes.".into(),
@@ -206,7 +214,14 @@ impl SystemComponent for UvDownloader {
             is_installed: self.is_installed(),
             repository_url: "https://github.com/astral-sh/uv".into(),
             website_url: "https://docs.astral.sh/uv".into(),
-        })
+        };
+
+        {
+            let mut cache = self.cached_info.lock().await;
+            *cache = Some(info.clone());
+        }
+
+        Ok(info)
     }
 
     async fn download(&self) -> Result<Vec<DownloadProgress>, ComponentError> {

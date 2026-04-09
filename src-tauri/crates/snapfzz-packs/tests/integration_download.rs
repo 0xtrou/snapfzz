@@ -1,5 +1,60 @@
 use snapfzz_packs::{detect_platform, versions, DownloadStatus, SystemComponent, UvDownloader, PythonDownloader};
 
+fn validate_runtime_path(path: &std::path::Path, expected_subdir: &str) {
+    let home = dirs::home_dir().expect("home directory");
+    let snapfzz_runtime = home.join(".snapfzz").join("runtime");
+    
+    assert!(
+        path.starts_with(&snapfzz_runtime),
+        "Path {:?} must be under ~/.snapfzz/runtime",
+        path
+    );
+    
+    let relative = path.strip_prefix(&snapfzz_runtime).expect("path should be under snapfzz/runtime");
+    let first_component = relative.components().next().expect("should have subdirectory");
+    let first_dir = first_component.as_os_str().to_string_lossy();
+    
+    assert!(
+        first_dir == expected_subdir,
+        "Path {:?} must be under ~/.snapfzz/runtime/{}, got ~/.snapfzz/runtime/{}",
+        path,
+        expected_subdir,
+        first_dir
+    );
+}
+
+#[test]
+fn t32_paths_uv_installs_under_runtime_python() {
+    let home = dirs::home_dir().expect("home directory");
+    let runtime_dir = home.join(".snapfzz").join("runtime");
+    let python_bin_dir = runtime_dir.join("python").join("bin");
+    
+    let platform = detect_platform().expect("supported platform");
+    let uv = UvDownloader::new(python_bin_dir.clone(), platform);
+    
+    validate_runtime_path(uv.install_dir(), "python");
+    validate_runtime_path(&uv.binary_path().parent().unwrap().to_path_buf(), "python");
+}
+
+#[test]
+fn t32_paths_python_installs_under_runtime_python() {
+    let home = dirs::home_dir().expect("home directory");
+    let runtime_dir = home.join(".snapfzz").join("runtime");
+    let python_bin_dir = runtime_dir.join("python").join("bin");
+    let uv_bin = python_bin_dir.join("uv");
+    let python_install_dir = python_bin_dir.join("python");
+    
+    let platform = detect_platform().expect("supported platform");
+    let python = PythonDownloader::new(
+        uv_bin,
+        python_install_dir.clone(),
+        platform,
+        versions::PYTHON.to_string(),
+    );
+    
+    validate_runtime_path(python.install_dir(), "python");
+}
+
 #[tokio::test]
 async fn test_uv_download_actually_works() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
