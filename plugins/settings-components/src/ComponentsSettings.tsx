@@ -292,10 +292,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleUninstallPythonPack = useCallback(async () => {
     setUninstallingPythonPack(true);
     try {
-      const packIds = ['python', 'uv'];
-      for (const packId of packIds) {
-        await bridge.invoke<void>('component_uninstall', { id: packId }).catch(() => {});
-      }
+      await bridge.invoke<void>('python_pack_uninstall_all');
       await refreshComponents();
     } finally {
       setUninstallingPythonPack(false);

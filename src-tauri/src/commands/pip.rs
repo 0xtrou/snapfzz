@@ -42,6 +42,14 @@ pub async fn python_pack_install_all(
 }
 
 #[tauri::command]
+pub async fn python_pack_uninstall_all(
+    settings: State<'_, Arc<SettingsManager>>,
+) -> Result<(), String> {
+    let runtime = runtime_for(&settings)?;
+    runtime.uninstall_all().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn python_runtime_status(
     settings: State<'_, Arc<SettingsManager>>,
 ) -> Result<PythonRuntimeStatus, String> {

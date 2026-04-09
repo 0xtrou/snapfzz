@@ -352,4 +352,11 @@ impl PythonRuntime {
             ],
         }
     }
+
+    pub fn uninstall_all(&self) -> Result<(), ComponentError> {
+        if self.runtime_dir.exists() {
+            std::fs::remove_dir_all(&self.runtime_dir)?;
+        }
+        Ok(())
+    }
 }
