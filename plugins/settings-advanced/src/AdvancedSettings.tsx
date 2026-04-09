@@ -47,7 +47,10 @@ export default function AdvancedSettings(): React.ReactElement {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      <SettingsHeader title="Advanced" />
+      <SettingsHeader
+        title="Advanced"
+        subtitle="Low-level configuration options for data storage location and factory reset operations."
+      />
       <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={32} style={{ width: '100%' }}>
           <section>

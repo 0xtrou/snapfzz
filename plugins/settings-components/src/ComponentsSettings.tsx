@@ -427,7 +427,10 @@ export default function ComponentsSettings(): React.ReactElement {
 
   return (
     <div style={{ color: 'var(--text-primary)' }}>
-      <SettingsHeader title="System Packs" />
+      <SettingsHeader
+        title="System Packs"
+        subtitle="Install and manage runtime dependencies for AI agent development, including Python environments and the CEF browser engine."
+      />
       <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Input.Search

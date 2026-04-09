@@ -209,6 +209,7 @@ export default function GeneralSettings(): React.ReactElement {
     <div style={{ color: 'var(--text-primary)' }}>
       <SettingsHeader
         title="General"
+        subtitle="Configure application appearance, startup behavior, and typography preferences."
         isDirty={isDirty}
         saving={saving}
         saveSuccess={saveSuccess}

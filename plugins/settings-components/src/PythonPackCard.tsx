@@ -3,8 +3,8 @@ import { Divider, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
-  DownloadOutlined,
   FolderOpenOutlined,
   GithubOutlined,
   GlobalOutlined,
@@ -96,9 +96,6 @@ function SubPackCard({
           {pack.version && (
             <Text type="secondary" style={{ fontSize: 12 }}>v{pack.version}</Text>
           )}
-          {pack.isInstalled && (
-            <Text type="secondary" style={{ fontSize: 12 }}>{pack.installPath}</Text>
-          )}
           {pack.repositoryUrl && (
             <Tooltip title="View Repository">
               <button
@@ -122,6 +119,22 @@ function SubPackCard({
             </Tooltip>
           )}
         </Space>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Location:</Text>
+          <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{pack.installPath}</Text>
+          <Tooltip title="Copy path">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(pack.installPath);
+              }}
+              style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+            >
+              <CopyOutlined style={{ fontSize: 12 }} />
+            </button>
+          </Tooltip>
+        </div>
       </Space>
     </div>
   );

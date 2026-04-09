@@ -3,8 +3,8 @@ import { Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
-  DownloadOutlined,
   FolderOpenOutlined,
   GithubOutlined,
   GlobalOutlined,
@@ -177,17 +177,26 @@ export default function SystemComponentCard({
 
         <Space size={8} wrap>
           {installed ? (
-            <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
-              Open folder
-            </AppButton>
+            <>
+              <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
+                Open folder
+              </AppButton>
+              <AppButton
+                icon={<CopyOutlined />}
+                onClick={() => {
+                  void navigator.clipboard.writeText(component.installPath);
+                }}
+              >
+                Copy path
+              </AppButton>
+            </>
           ) : (
             <AppButton
-              icon={<DownloadOutlined />}
               loading={busyDownload}
               disabled={downloadDisabled}
               onClick={() => onDownload(component.id)}
             >
-              Download
+              Install
             </AppButton>
           )}
 

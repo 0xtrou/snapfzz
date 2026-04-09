@@ -598,7 +598,10 @@ export default function ProcessesSettings() {
 
   return (
     <div style={{ contain: 'layout paint' }}>
-      <SettingsHeader title="Processes">
+      <SettingsHeader
+        title="Processes"
+        subtitle="Monitor and control supervised processes. View logs, manage runtime configuration, and restart or terminate services."
+      >
         <span
           data-testid="live-indicator"
           style={{
