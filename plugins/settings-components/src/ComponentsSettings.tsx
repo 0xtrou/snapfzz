@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Input, List, message, Skeleton, Space, Typography } from 'antd';
-import { createTauriBridge, invokeWithToast, SettingsHeader } from '@snapfzz/shared';
+import {
+  createTauriBridge,
+  invokeWithToast,
+  parseAndToastResponse,
+  type ApiResponse,
+  SettingsHeader,
+} from '@snapfzz/shared';
 import SystemComponentCard, {
   type ComponentInfo,
   type DownloadProgress,
@@ -247,7 +253,11 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleDownload = useCallback(async (id: string) => {
     setDownloadBusyId(id);
     try {
-      await bridge.invoke<void>('component_download', { id });
+      const response = await bridge.invoke<ApiResponse<DownloadProgress[]>>('component_download', { id });
+      await parseAndToastResponse(response, {
+        successMessage: 'Component installed successfully',
+        errorMessage: 'Unable to install component.',
+      });
       await refreshComponents();
     } catch {
       void 0;
@@ -259,7 +269,11 @@ export default function ComponentsSettings(): React.ReactElement {
   const handleUninstall = useCallback(async (id: string) => {
     setUninstallBusyId(id);
     try {
-      await bridge.invoke<void>('component_uninstall', { id });
+      const response = await bridge.invoke<ApiResponse<void>>('component_uninstall', { id });
+      await parseAndToastResponse(response, {
+        successMessage: 'Component removed successfully',
+        errorMessage: 'Unable to uninstall component.',
+      });
       await refreshComponents();
     } catch {
       setError('Unable to uninstall component.');

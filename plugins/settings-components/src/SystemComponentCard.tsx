@@ -177,19 +177,9 @@ export default function SystemComponentCard({
 
         <Space size={8} wrap>
           {installed ? (
-            <>
               <AppButton icon={<FolderOpenOutlined />} onClick={() => onOpenFolder(component.installPath)}>
                 Open folder
               </AppButton>
-              <AppButton
-                icon={<CopyOutlined />}
-                onClick={() => {
-                  void navigator.clipboard.writeText(component.installPath);
-                }}
-              >
-                Copy path
-              </AppButton>
-            </>
           ) : (
             <AppButton
               loading={busyDownload}

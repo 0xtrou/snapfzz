@@ -1,3 +1,4 @@
+use snapfzz_kernel::response::{error_codes, ApiResponse};
 use snapfzz_packs::{
     ComponentInfo, ComponentRegistry, DownloadProgress, DownloadStatus, SystemComponent,
 };
@@ -166,8 +167,18 @@ pub async fn component_info(
 pub async fn component_download(
     id: String,
     registry: tauri::State<'_, Arc<ComponentRegistry>>,
-) -> Result<Vec<DownloadProgress>, String> {
-    do_component_download(&id, &registry).await
+) -> Result<ApiResponse<Vec<DownloadProgress>>, ApiResponse<()>> {
+    do_component_download(&id, &registry)
+        .await
+        .map(ApiResponse::success)
+        .map_err(|error| {
+            let code = if error.contains("not found") {
+                error_codes::NOT_FOUND
+            } else {
+                error_codes::INSTALL_FAILED
+            };
+            ApiResponse::error(code, error)
+        })
 }
 
 #[tauri::command]
@@ -199,9 +210,14 @@ pub async fn component_verify(
 pub async fn component_uninstall(
     id: String,
     registry: tauri::State<'_, Arc<ComponentRegistry>>,
-) -> Result<(), String> {
-    let component = do_component_get(&id, &registry)?;
+) -> Result<ApiResponse<()>, ApiResponse<()>> {
+    let component = do_component_get(&id, &registry)
+        .map_err(|error| ApiResponse::error(error_codes::NOT_FOUND, error))?;
+
     do_component_uninstall(component.as_ref())
+        .map_err(|error| ApiResponse::error(error_codes::UNINSTALL_FAILED, error))?;
+
+    Ok(ApiResponse::<()>::success_empty())
 }
 
 #[tauri::command]
@@ -325,7 +341,9 @@ mod tests {
             .manage(registry)
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
-        let events = component_download("test-component".into(), app.state()).await.unwrap();
+        let response = component_download("test-component".into(), app.state()).await.unwrap();
+        assert!(response.success);
+        let events = response.data.expect("download events data");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].status, DownloadStatus::Ready);
     }
@@ -388,7 +406,8 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
 
-        component_uninstall("test-component".into(), app.state()).await.unwrap();
+        let response = component_uninstall("test-component".into(), app.state()).await.unwrap();
+        assert!(response.success);
         assert!(!dir.exists());
     }
 
@@ -443,7 +462,10 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
         let err = component_download("nonexistent".into(), app.state()).await.unwrap_err();
-        assert!(err.contains("not found"));
+        assert!(!err.success);
+        let error = err.error.expect("api error");
+        assert_eq!(error.code, error_codes::NOT_FOUND);
+        assert!(error.message.contains("not found"));
     }
 
     #[tokio::test]
@@ -487,7 +509,10 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
         let err = component_uninstall("nonexistent".into(), app.state()).await.unwrap_err();
-        assert!(err.contains("not found"));
+        assert!(!err.success);
+        let error = err.error.expect("api error");
+        assert_eq!(error.code, error_codes::NOT_FOUND);
+        assert!(error.message.contains("not found"));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import type { ApiResponse, ApiError } from './api-response';
 import type { TauriBridge } from './tauri-bridge';
 
 export interface ToastOptions {
@@ -14,7 +15,7 @@ export interface ToastAPI {
 
 let _toastAPI: ToastAPI | null = null;
 
-export function setToastAPI(api: ToastAPI): void {
+export function setToastAPI(api: ToastAPI | null): void {
   _toastAPI = api;
 }
 
@@ -22,10 +23,8 @@ export function getToastAPI(): ToastAPI | null {
   return _toastAPI;
 }
 
-export async function invokeWithToast<T>(
-  bridge: TauriBridge,
-  command: string,
-  args: Record<string, unknown> | undefined,
+export async function parseAndToastResponse<T>(
+  response: ApiResponse<T>,
   options: ToastOptions = {},
 ): Promise<T> {
   const {
@@ -35,23 +34,41 @@ export async function invokeWithToast<T>(
     showErrorToast = true,
   } = options;
 
-  try {
-    const result = await bridge.invoke<T>(command, args);
-
+  if (response.success) {
     if (showSuccessToast && successMessage && _toastAPI) {
       _toastAPI.success(successMessage);
     }
-
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    
-    if (showErrorToast && _toastAPI) {
-      _toastAPI.error(errorMessage || message);
-    }
-
-    throw error;
+    return response.data as T;
   }
+
+  const error = response.error;
+  const message = errorMessage || error?.message || 'An error occurred';
+
+  if (showErrorToast && _toastAPI) {
+    _toastAPI.error(message);
+  }
+
+  throw new ApiErrorResponseError(error);
+}
+
+export class ApiErrorResponseError extends Error {
+  public readonly error?: ApiError;
+
+  constructor(error?: ApiError) {
+    super(error?.message || 'An error occurred');
+    this.name = 'ApiErrorResponseError';
+    this.error = error;
+  }
+}
+
+export async function invokeWithToast<T>(
+  bridge: TauriBridge,
+  command: string,
+  args: Record<string, unknown> | undefined,
+  options: ToastOptions = {},
+): Promise<T> {
+  const response = await bridge.invoke<ApiResponse<T>>(command, args);
+  return parseAndToastResponse(response, options);
 }
 
 export function createToastedBridge(bridge: TauriBridge) {
