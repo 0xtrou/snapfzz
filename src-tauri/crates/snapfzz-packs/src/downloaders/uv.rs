@@ -6,32 +6,29 @@ use std::sync::{
 };
 
 use serde::Deserialize;
-use snapfzz_kernel::components::{
-    download_file, extract_tar_gz, ComponentError, ComponentInfo, DownloadProgress,
-    DownloadStatus, SystemComponent,
+use crate::component::{
+    ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
-
+use crate::download::{download_file, extract_tar_gz};
+use crate::constants;
 use crate::platform::PlatformInfo;
-use crate::versions;
 
-const DEFAULT_UV_VERSION: &str = versions::UV;
-const DEFAULT_UV_RELEASES_URL: &str = "https://api.github.com/repos/astral-sh/uv/releases/latest";
 const USER_AGENT: &str = "snapfzz-packs/0.1.0";
 
 #[derive(Debug, Clone)]
-pub struct UvComponent {
+pub struct UvDownloader {
     install_dir: PathBuf,
     platform: PlatformInfo,
     release_api_url: String,
     cancelled: Arc<AtomicBool>,
 }
 
-impl UvComponent {
+impl UvDownloader {
     pub fn new(install_dir: PathBuf, platform: PlatformInfo) -> Self {
         Self {
             install_dir,
             platform,
-            release_api_url: DEFAULT_UV_RELEASES_URL.to_string(),
+            release_api_url: constants::urls::UV_RELEASES_URL.to_string(),
             cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -133,7 +130,7 @@ struct GithubAsset {
 }
 
 #[async_trait::async_trait]
-impl SystemComponent for UvComponent {
+impl SystemComponent for UvDownloader {
     fn id(&self) -> &str {
         "uv"
     }
@@ -175,7 +172,7 @@ impl SystemComponent for UvComponent {
             }
             _ => {
                 // Fallback to hardcoded version on rate limit or network error
-                let base_url = format!("https://github.com/astral-sh/uv/releases/download/{DEFAULT_UV_VERSION}");
+                let base_url = format!("{}/{}", constants::urls::UV_DOWNLOAD_BASE, constants::versions::UV);
                 let download_url = format!("{}/{}", base_url, self.asset_name());
                 
                 // Approximate sizes from GitHub release page
@@ -189,7 +186,7 @@ impl SystemComponent for UvComponent {
                     _ => 11_000_000,
                 };
 
-                (DEFAULT_UV_VERSION.to_string(), download_url, size)
+                (constants::versions::UV.to_string(), download_url, size)
             }
         };
 
@@ -360,7 +357,6 @@ fn ensure_executable(path: &Path) -> Result<(), ComponentError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::PlatformInfo;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn platform(platform: &str, archive_ext: &'static str, exe_suffix: &'static str) -> PlatformInfo {
@@ -386,7 +382,7 @@ mod tests {
         ];
 
         for (platform_key, archive_ext, exe_suffix, expected) in cases {
-            let component = UvComponent::new(
+            let component = UvDownloader::new(
                 PathBuf::from("/tmp/snapfzz/runtime/bin"),
                 platform(platform_key, archive_ext, exe_suffix),
             );
@@ -397,7 +393,7 @@ mod tests {
     #[test]
     fn t32_uv_is_installed_detects_binary_presence() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         assert!(!component.is_installed());
 
         std::fs::write(component.binary_path(), b"#!/bin/sh\necho uv\n").unwrap();
@@ -407,7 +403,7 @@ mod tests {
     #[test]
     fn t32_uv_cancel_and_clear_cancel_toggle_internal_flag() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         assert!(!component.cancelled.load(Ordering::SeqCst));
         component.cancel();
         assert!(component.cancelled.load(Ordering::SeqCst));
@@ -418,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn t32_uv_download_returns_cancelled_when_pre_cancelled() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         component.cancel();
 
         let events = component.download().await.unwrap();
@@ -430,7 +426,7 @@ mod tests {
     #[tokio::test]
     async fn t32_uv_verify_executes_binary_and_returns_version() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         let binary = component.binary_path();
         std::fs::write(&binary, b"#!/bin/sh\nprintf 'uv 0.5.0\\n'\n").unwrap();
         ensure_executable(&binary).unwrap();
@@ -461,7 +457,7 @@ mod tests {
         });
 
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::with_release_url(
+        let component = UvDownloader::with_release_url(
             temp.path().to_path_buf(),
             platform("linux-x64", ".tar.gz", ""),
             format!("http://{addr}/latest"),
@@ -503,7 +499,7 @@ mod tests {
         });
 
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::with_release_url(
+        let component = UvDownloader::with_release_url(
             temp.path().to_path_buf(),
             platform("linux-x64", ".tar.gz", ""),
             format!("http://{addr}/latest"),
@@ -517,7 +513,7 @@ mod tests {
     #[test]
     fn t32_uv_extract_archive_tar_gz_places_binary_in_target_path() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         let archive_path = temp.path().join("uv.tar.gz");
 
         let file = std::fs::File::create(&archive_path).unwrap();
@@ -543,7 +539,7 @@ mod tests {
     #[test]
     fn t32_uv_extract_archive_returns_not_found_when_binary_missing() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         let archive_path = temp.path().join("empty.tar.gz");
 
         let file = std::fs::File::create(&archive_path).unwrap();
@@ -566,7 +562,7 @@ mod tests {
     #[test]
     fn t32_uv_extract_archive_zip_branch_extracts_exe() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("windows-x64", ".zip", ".exe"));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("windows-x64", ".zip", ".exe"));
         let archive_path = temp.path().join("uv.zip");
 
         let file = std::fs::File::create(&archive_path).unwrap();
@@ -585,7 +581,7 @@ mod tests {
     #[tokio::test]
     async fn t32_uv_verify_returns_error_when_binary_exits_nonzero() {
         let temp = tempfile::tempdir().unwrap();
-        let component = UvComponent::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
         let binary = component.binary_path();
         std::fs::write(&binary, b"#!/bin/sh\nexit 9\n").unwrap();
         ensure_executable(&binary).unwrap();

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures::StreamExt;
 use sha1::{Digest, Sha1};
 
-use super::component::{ComponentError, DownloadProgress, DownloadStatus};
+use crate::component::{ComponentError, DownloadProgress, DownloadStatus};
 
 pub fn pct(downloaded: u64, total: u64) -> f32 {
     if total == 0 {

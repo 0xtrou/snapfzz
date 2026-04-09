@@ -6,9 +6,12 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   FolderOpenOutlined,
+  GithubOutlined,
+  GlobalOutlined,
   LoadingOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import { AppButton } from '@snapfzz/shared';
 import type { DownloadProgress } from './SystemComponentCard';
 import InstallProgressOverlay from './InstallProgressOverlay';
@@ -93,14 +96,18 @@ function SubPackCard({
             <Text type="secondary" style={{ fontSize: 12 }}>{pack.installPath}</Text>
           )}
           {pack.repositoryUrl && (
-            <a href={pack.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
-              Repository
-            </a>
+            <Tooltip title="View Repository">
+              <a href={pack.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+                <GithubOutlined style={{ fontSize: 14 }} />
+              </a>
+            </Tooltip>
           )}
           {pack.websiteUrl && (
-            <a href={pack.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
-              Website
-            </a>
+            <Tooltip title="Visit Website">
+              <a href={pack.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+                <GlobalOutlined style={{ fontSize: 14 }} />
+              </a>
+            </Tooltip>
           )}
         </Space>
       </Space>

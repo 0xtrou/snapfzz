@@ -27,8 +27,7 @@ pub async fn python_pack_install_all(
 ) -> Result<String, String> {
     let runtime = runtime_for(&settings)?;
     runtime
-        .install_all_with_progress()
-        .await
+        .install_all_packages()
         .map_err(|e| e.to_string())?;
 
     let status = runtime.status();

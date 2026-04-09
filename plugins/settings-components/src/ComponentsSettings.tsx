@@ -13,6 +13,16 @@ const bridge = createTauriBridge();
 const COMPONENT_ORDER: string[] = ['python-runtime', 'cef'];
 const ROW_GAP_PX = 16;
 
+interface PythonPackMetadataItem {
+  id: string;
+  name: string;
+  description: string;
+  license: string;
+  platformDisplay: string;
+  repositoryUrl: string;
+  websiteUrl: string;
+}
+
 type ComponentGroup = {
   key: string;
   title: string;
@@ -30,71 +40,38 @@ function indexByOrder(id: string, order: string[]): number {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
-function createPlaceholder(id: string, name: string, description: string): ComponentInfo {
-  return {
-    id,
-    name,
-    description,
-    version: 'latest',
-    platform: 'any',
-    platformDisplay: 'Cross-platform',
-    downloadUrl: 'pip',
-    installPath: '~/.snapfzz/runtime/python/venv',
-    size: 0,
-    checksum: '',
-    checksumAlgorithm: '',
-    isInstalled: false,
-    license: 'MIT',
-  };
-}
-
-function mapComponentToSubPack(component: ComponentInfo | undefined, subPackId: string): Parameters<typeof PythonPackCard>[0]['uv'] {
-  const fallback = {
-    id: subPackId,
-    version: '',
-    license: '',
-    platformDisplay: '',
-    downloadUrl: 'pip',
-    installPath: '~/.snapfzz/runtime/python/venv',
-    isInstalled: false,
-    repositoryUrl: '',
-    websiteUrl: '',
-  };
-
-  if (!component) {
+function mapComponentToSubPack(
+  component: ComponentInfo | undefined,
+  metadata: PythonPackMetadataItem | undefined,
+): Parameters<typeof PythonPackCard>[0]['uv'] {
+  if (!metadata) {
     return {
-      ...fallback,
-      name: subPackId === 'uv' ? 'uv (Python Package Manager)' :
-            subPackId === 'python' ? 'Python 3.12' :
-            subPackId === 'agentscope' ? 'AgentScope' :
-            subPackId === 'agentscope-runtime' ? 'AgentScope Runtime' : 'LiteLLM',
-      description: subPackId === 'uv' ? 'Fast Python package manager.' :
-                   subPackId === 'python' ? 'Python runtime managed by uv.' :
-                   subPackId === 'agentscope' ? 'AI agent framework.' :
-                   subPackId === 'agentscope-runtime' ? 'Multi-agent distributed coordination.' :
-                   'LLM proxy and model router.',
+      id: '',
+      name: '',
+      version: '',
+      description: '',
+      license: '',
+      platformDisplay: '',
+      downloadUrl: 'pip',
+      installPath: '~/.snapfzz/runtime/python/venv',
+      isInstalled: false,
+      repositoryUrl: '',
+      websiteUrl: '',
     };
   }
 
   return {
-    id: subPackId,
-    name: subPackId === 'uv' ? 'uv (Python Package Manager)' :
-          subPackId === 'python' ? 'Python 3.12' :
-          subPackId === 'agentscope' ? 'AgentScope' :
-          subPackId === 'agentscope-runtime' ? 'AgentScope Runtime' : 'LiteLLM',
-    version: component.version || fallback.version,
-    description: subPackId === 'uv' ? 'Fast Python package manager. Required for all Python runtimes.' :
-                 subPackId === 'python' ? 'Python runtime managed by uv. Required for AgentScope and Python-based packs.' :
-                 subPackId === 'agentscope' ? 'AI agent framework. Requires Python runtime.' :
-                 subPackId === 'agentscope-runtime' ? 'Multi-agent distributed coordination. Requires Python runtime.' :
-                 'LLM proxy and model router. Requires Python runtime.',
-    license: component.license || fallback.license,
-    platformDisplay: component.platformDisplay || fallback.platformDisplay,
-    downloadUrl: component.downloadUrl || fallback.downloadUrl,
-    installPath: component.installPath || fallback.installPath,
-    isInstalled: component.isInstalled,
-    repositoryUrl: component.repositoryUrl || '',
-    websiteUrl: component.websiteUrl || '',
+    id: metadata.id,
+    name: metadata.name,
+    version: component?.version || '',
+    description: metadata.description,
+    license: metadata.license,
+    platformDisplay: metadata.platformDisplay,
+    downloadUrl: component?.downloadUrl || 'pip',
+    installPath: component?.installPath || '~/.snapfzz/runtime/python/venv',
+    isInstalled: component?.isInstalled ?? false,
+    repositoryUrl: metadata.repositoryUrl,
+    websiteUrl: metadata.websiteUrl,
   };
 }
 
@@ -108,6 +85,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const [uninstallBusyId, setUninstallBusyId] = useState<string | null>(null);
   const [installingPythonPack, setInstallingPythonPack] = useState(false);
   const [uninstallingPythonPack, setUninstallingPythonPack] = useState(false);
+  const [pythonPackMetadata, setPythonPackMetadata] = useState<PythonPackMetadataItem[]>([]);
   const [pythonRuntime, setPythonRuntime] = useState<{
     installed_packages: string[];
     venv_exists: boolean;
@@ -121,8 +99,12 @@ export default function ComponentsSettings(): React.ReactElement {
     setLoading(true);
     setError(null);
     try {
-      const list = await bridge.invoke<ComponentInfo[]>('component_list');
+      const [list, metadata] = await Promise.all([
+        bridge.invoke<ComponentInfo[]>('component_list'),
+        bridge.invoke<PythonPackMetadataItem[]>('python_pack_metadata'),
+      ]);
       setComponents(list);
+      setPythonPackMetadata(metadata);
       setLoading(false);
 
       const ordered = [...list].sort((a, b) => a.name.localeCompare(b.name));
@@ -285,28 +267,79 @@ export default function ComponentsSettings(): React.ReactElement {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
-      const agentscope = createPlaceholder('agentscope', 'AgentScope', 'AI agent framework');
-      const agentscopeRuntime = createPlaceholder('agentscope-runtime', 'AgentScope Runtime', 'Multi-agent distributed coordination');
-      const litellm = createPlaceholder('litellm', 'LiteLLM', 'LLM proxy');
+      
+      const agentscopeMeta = pythonPackMetadata.find((m) => m.id === 'agentscope');
+      const agentscopeRuntimeMeta = pythonPackMetadata.find((m) => m.id === 'agentscope-runtime');
+      const litellmMeta = pythonPackMetadata.find((m) => m.id === 'litellm');
 
-      agentscope.isInstalled = pythonRuntime?.agentscope.is_installed ?? false;
-      agentscope.version = pythonRuntime?.agentscope.version ?? '';
-      agentscopeRuntime.isInstalled = pythonRuntime?.agentscope_runtime.is_installed ?? false;
-      agentscopeRuntime.version = pythonRuntime?.agentscope_runtime.version ?? '';
-      litellm.isInstalled = pythonRuntime?.litellm.is_installed ?? false;
-      litellm.version = pythonRuntime?.litellm.version ?? '';
+      const agentscope: ComponentInfo | undefined = agentscopeMeta ? {
+        id: 'agentscope',
+        name: agentscopeMeta.name,
+        description: agentscopeMeta.description,
+        version: pythonRuntime?.agentscope.version ?? '',
+        platform: 'any',
+        platformDisplay: agentscopeMeta.platformDisplay,
+        downloadUrl: 'pip',
+        installPath: '~/.snapfzz/runtime/python/venv',
+        size: 0,
+        checksum: '',
+        checksumAlgorithm: '',
+        isInstalled: pythonRuntime?.agentscope.is_installed ?? false,
+        license: agentscopeMeta.license,
+        repositoryUrl: agentscopeMeta.repositoryUrl,
+        websiteUrl: agentscopeMeta.websiteUrl,
+      } : undefined;
+
+      const agentscopeRuntime: ComponentInfo | undefined = agentscopeRuntimeMeta ? {
+        id: 'agentscope-runtime',
+        name: agentscopeRuntimeMeta.name,
+        description: agentscopeRuntimeMeta.description,
+        version: pythonRuntime?.agentscope_runtime.version ?? '',
+        platform: 'any',
+        platformDisplay: agentscopeRuntimeMeta.platformDisplay,
+        downloadUrl: 'pip',
+        installPath: '~/.snapfzz/runtime/python/venv',
+        size: 0,
+        checksum: '',
+        checksumAlgorithm: '',
+        isInstalled: pythonRuntime?.agentscope_runtime.is_installed ?? false,
+        license: agentscopeRuntimeMeta.license,
+        repositoryUrl: agentscopeRuntimeMeta.repositoryUrl,
+        websiteUrl: agentscopeRuntimeMeta.websiteUrl,
+      } : undefined;
+
+      const litellm: ComponentInfo | undefined = litellmMeta ? {
+        id: 'litellm',
+        name: litellmMeta.name,
+        description: litellmMeta.description,
+        version: pythonRuntime?.litellm.version ?? '',
+        platform: 'any',
+        platformDisplay: litellmMeta.platformDisplay,
+        downloadUrl: 'pip',
+        installPath: '~/.snapfzz/runtime/python/venv',
+        size: 0,
+        checksum: '',
+        checksumAlgorithm: '',
+        isInstalled: pythonRuntime?.litellm.is_installed ?? false,
+        license: litellmMeta.license,
+        repositoryUrl: litellmMeta.repositoryUrl,
+        websiteUrl: litellmMeta.websiteUrl,
+      } : undefined;
 
       const allPacks = [uv, python, agentscope, agentscopeRuntime, litellm].filter(Boolean) as ComponentInfo[];
       const allInstalled = allPacks.every((p) => p.isInstalled);
       const anyInstalled = allPacks.some((p) => p.isInstalled);
 
+      const uvMeta = pythonPackMetadata.find((m) => m.id === 'uv');
+      const pythonMeta = pythonPackMetadata.find((m) => m.id === 'python');
+
       return (
         <PythonPackCard
-          uv={mapComponentToSubPack(uv, 'uv')}
-          python={mapComponentToSubPack(python, 'python')}
-          agentscope={mapComponentToSubPack(agentscope, 'agentscope')}
-          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, 'agentscope-runtime')}
-          litellm={mapComponentToSubPack(litellm, 'litellm')}
+          uv={mapComponentToSubPack(uv, uvMeta)}
+          python={mapComponentToSubPack(python, pythonMeta)}
+          agentscope={mapComponentToSubPack(agentscope, agentscopeMeta)}
+          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, agentscopeRuntimeMeta)}
+          litellm={mapComponentToSubPack(litellm, litellmMeta)}
           isInstalling={installingPythonPack}
           isUninstalling={uninstallingPythonPack}
           allInstalled={allInstalled}
@@ -352,6 +385,7 @@ export default function ComponentsSettings(): React.ReactElement {
     handleUninstallPythonPack,
     installingPythonPack,
     loading,
+    pythonPackMetadata,
     pythonRuntime,
     statusById,
     uninstallBusyId,
@@ -361,7 +395,7 @@ export default function ComponentsSettings(): React.ReactElement {
   return (
     <div style={{ color: 'var(--text-primary)' }}>
       <SettingsHeader title="System Packs" />
-      <div style={{ padding: '16px 32px', maxWidth: 920 }}>
+      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Input.Search
             allowClear

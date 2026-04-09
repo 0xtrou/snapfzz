@@ -10,65 +10,15 @@ use snapfzz_cef::download::CefDownloader;
 use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_kernel::boot::PreflightService;
 use snapfzz_kernel::budget::device::DeviceInfo;
-use snapfzz_kernel::components::{ComponentError, ComponentRegistry};
-use snapfzz_packs::{
-    detect_platform, CefPackComponent, make_agentscope, make_litellm, PlatformInfo,
-    PythonComponent, UvComponent, versions,
-};
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
+use snapfzz_packs::{
+    ComponentError, ComponentRegistry, PlatformInfo, PythonDownloader, UvDownloader, constants,
+    detect_platform,
+};
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
 use std::sync::{Arc, Mutex};
 use tauri::RunEvent;
-
-fn detect_platform_for_components(device: &DeviceInfo) -> Result<PlatformInfo, ComponentError> {
-    detect_platform().or_else(|_| {
-        let (display, archive_ext) = match device.platform.as_str() {
-            "macos-arm64" => ("macOS (Apple Silicon)", ".tar.gz"),
-            "macos-x64" => ("macOS (Intel)", ".tar.gz"),
-            "linux-x64" => ("Linux (x86_64)", ".tar.gz"),
-            "windows-x64" => ("Windows (x64)", ".zip"),
-            _ => {
-                return Err(ComponentError::UnsupportedPlatform(format!(
-                    "{}-{}",
-                    device.os, device.arch
-                )));
-            }
-        };
-
-        let os = match device.os.as_str() {
-            "macos" => "macos",
-            "linux" => "linux",
-            "windows" => "windows",
-            _ => {
-                return Err(ComponentError::UnsupportedPlatform(format!(
-                    "{}-{}",
-                    device.os, device.arch
-                )));
-            }
-        };
-
-        let arch = match device.arch.as_str() {
-            "aarch64" => "aarch64",
-            "x86_64" => "x86_64",
-            _ => {
-                return Err(ComponentError::UnsupportedPlatform(format!(
-                    "{}-{}",
-                    device.os, device.arch
-                )));
-            }
-        };
-
-        Ok(PlatformInfo {
-            os,
-            arch,
-            platform: device.platform.clone(),
-            display,
-            exe_suffix: if os == "windows" { ".exe" } else { "" },
-            archive_ext,
-        })
-    })
-}
 
 fn main() {
     let data_dir = helpers::resolve_data_dir();
@@ -91,7 +41,7 @@ fn main() {
         Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
     ));
     let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
-    let platform = detect_platform_for_components(&device).expect("unsupported platform");
+    let platform = detect_platform().expect("unsupported platform");
     let runtime_dir = data_dir.join("runtime");
     let python_dir = runtime_dir.join("python");
     let python_bin_dir = python_dir.join("bin");
@@ -107,24 +57,12 @@ fn main() {
         device: device.clone(),
     };
     let mut component_registry = ComponentRegistry::new();
-    component_registry.register(Arc::new(UvComponent::new(python_bin_dir.clone(), platform.clone())));
-    component_registry.register(Arc::new(PythonComponent::new(
+    component_registry.register(Arc::new(UvDownloader::new(python_bin_dir.clone(), platform.clone())));
+    component_registry.register(Arc::new(PythonDownloader::new(
         uv_bin.clone(),
         python_bin_dir.join("python"),
         platform.clone(),
-        versions::PYTHON.to_string(),
-    )));
-    component_registry.register(Arc::new(make_agentscope(
-        runtime_dir.clone(),
-        platform.clone(),
-    )));
-    component_registry.register(Arc::new(make_litellm(
-        runtime_dir.clone(),
-        platform.clone(),
-    )));
-    component_registry.register(Arc::new(CefPackComponent::new(
-        processes_dir.join("cef"),
-        platform,
+        constants::versions::PYTHON.to_string(),
     )));
     let component_registry = Arc::new(component_registry);
 
@@ -155,7 +93,7 @@ fn main() {
             commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages, commands::cef::cef_platform_info,
             commands::components::component_list, commands::components::component_info, commands::components::component_download,
             commands::components::component_download_cancel, commands::components::component_status, commands::components::component_verify,
-            commands::components::component_uninstall,
+            commands::components::component_uninstall, commands::components::python_pack_metadata,
             commands::pip::python_pack_install_all, commands::pip::python_runtime_status,
             fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
         ])

@@ -282,7 +282,7 @@ impl CefDownloader {
             status: DownloadStatus::Extracting,
         });
 
-        snapfzz_kernel::components::download::extract_tar_bz2(
+        snapfzz_packs::extract_tar_bz2(
             &self.install_dir.join(&build.filename),
             &self.install_dir,
         )
@@ -328,7 +328,7 @@ impl CefDownloader {
 
     pub async fn extract_cef(&self) -> Result<(), CefError> {
         let archive = self.find_archive()?;
-        snapfzz_kernel::components::download::extract_tar_bz2(&archive, &self.install_dir)
+        snapfzz_packs::extract_tar_bz2(&archive, &self.install_dir)
             .map_err(|e| CefError::Io(e.to_string()))?;
         Ok(())
     }
@@ -360,7 +360,7 @@ fn platform_display_name(platform: &str) -> &'static str {
     }
 }
 
-use snapfzz_kernel::components::{
+use snapfzz_packs::{
     ComponentError, ComponentInfo, DownloadProgress as KernelProgress, DownloadStatus as KernelStatus,
     SystemComponent,
 };

@@ -64,7 +64,7 @@ export default function PluginsSettings(): React.ReactElement {
   return (
     <div>
       <SettingsHeader title="Plugins" />
-      <div style={{ padding: "16px 32px", maxWidth: 640 }}>
+      <div style={{ padding: "16px 32px", maxWidth: 800 }}>
       <List<PluginEntry>
         loading={loading}
         dataSource={plugins}

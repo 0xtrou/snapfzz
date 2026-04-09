@@ -1,4 +1,4 @@
-use snapfzz_kernel::components::ComponentError;
+use crate::component::ComponentError;
 
 #[derive(Debug, Clone)]
 pub struct PlatformInfo {

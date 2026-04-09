@@ -152,7 +152,7 @@ export default function VaultSettings() {
   return (
     <div style={{ color: 'var(--text-primary)' }}>
       <SettingsHeader title="Secret Vault" />
-      <div style={{ padding: '16px 32px', maxWidth: 840 }}>
+      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={32} style={{ width: '100%' }}>
           <section>
             <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>

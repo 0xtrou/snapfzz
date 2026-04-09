@@ -6,8 +6,11 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   FolderOpenOutlined,
+  GithubOutlined,
+  GlobalOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import { AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -129,15 +132,19 @@ export default function SystemComponentCard({
 )}
 
 {component.repositoryUrl && (
-  <a href={component.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
-    Repository
-  </a>
+  <Tooltip title="View Repository">
+    <a href={component.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+      <GithubOutlined style={{ fontSize: 14 }} />
+    </a>
+  </Tooltip>
 )}
 
 {component.websiteUrl && (
-  <a href={component.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
-    Website
-  </a>
+  <Tooltip title="Visit Website">
+    <a href={component.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+      <GlobalOutlined style={{ fontSize: 14 }} />
+    </a>
+  </Tooltip>
 )}
           </Space>
           {installed ? (

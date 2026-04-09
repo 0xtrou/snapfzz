@@ -1,6 +1,7 @@
-use snapfzz_kernel::components::{
+use snapfzz_packs::{
     ComponentInfo, ComponentRegistry, DownloadProgress, DownloadStatus, SystemComponent,
 };
+use snapfzz_packs::{python_packs, PythonPackMetadata};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -201,6 +202,11 @@ pub async fn component_uninstall(
 ) -> Result<(), String> {
     let component = do_component_get(&id, &registry)?;
     do_component_uninstall(component.as_ref())
+}
+
+#[tauri::command]
+pub fn python_pack_metadata() -> Vec<PythonPackMetadata> {
+    python_packs()
 }
 
 

@@ -628,7 +628,7 @@ export default function ProcessesSettings() {
 
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
 
-      <div style={{ padding: '16px 32px' }}>
+      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <div style={{ marginBottom: 12 }}>
           <Text style={{ color: 'var(--text-muted)', fontSize: 13 }} data-testid="aggregate-stats">
             System &nbsp;

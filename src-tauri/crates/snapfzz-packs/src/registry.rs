@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::component::SystemComponent;
+use crate::component::SystemComponent;
 
 pub struct ComponentRegistry {
     components: HashMap<String, Arc<dyn SystemComponent>>,

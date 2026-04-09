@@ -6,6 +6,7 @@ import {
   PythonOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import { createTauriBridge, SettingsHeader, AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -158,7 +159,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
   return (
     <div style={{ color: 'var(--text-primary)' }}>
       <SettingsHeader title="Diagnostics" />
-      <div style={{ padding: '16px 32px', maxWidth: 760 }}>
+      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <section>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -261,23 +262,26 @@ export default function DiagnosticsSettings(): React.ReactElement {
                   {
                     key: 'packages',
                     label: 'Installed Packages',
-                    children: <div style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 400, justifyContent: 'flex-end' }}>
-                        {pythonRuntime.installed_packages
-                          .filter(pkg => {
-                            const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-                            return name.startsWith('agentscope') || name.startsWith('litellm');
-                          })
-                          .map((pkg) => (
-                          <Tag key={pkg} color="blue">{pkg.split('=')[0]}</Tag>
-                        ))}
-                        {pythonRuntime.installed_packages.filter(pkg => {
+                    children: <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end', alignItems: 'center', minHeight: 24 }}>
+                      {pythonRuntime.installed_packages
+                        .filter(pkg => {
                           const name = pkg.split('=')[0].split('[')[0].toLowerCase();
                           return name.startsWith('agentscope') || name.startsWith('litellm');
-                        }).length === 0 && (
-                          <Text type="secondary">No agent packages installed</Text>
-                        )}
-                      </div>
+                        })
+                        .map((pkg) => {
+                        const [name, version] = pkg.split('=');
+                        return (
+                          <Tooltip key={pkg} title={version ? `v${version}` : pkg}>
+                            <Tag color="blue">{name.split('[')[0]}</Tag>
+                          </Tooltip>
+                        );
+                      })}
+                      {pythonRuntime.installed_packages.filter(pkg => {
+                        const name = pkg.split('=')[0].split('[')[0].toLowerCase();
+                        return name.startsWith('agentscope') || name.startsWith('litellm');
+                      }).length === 0 && (
+                        <Text type="secondary">No agent packages installed</Text>
+                      )}
                     </div>,
                   },
                 ].filter(Boolean)}
