@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Divider, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
@@ -8,15 +8,15 @@ import {
   FolderOpenOutlined,
   GithubOutlined,
   GlobalOutlined,
-  LoadingOutlined,
   PythonOutlined,
 } from '@ant-design/icons';
 import { Tooltip } from 'antd';
-import { AppButton } from '@snapfzz/shared';
+import { AppButton, createTauriBridge } from '@snapfzz/shared';
 import type { DownloadProgress } from './SystemComponentCard';
 import InstallProgressOverlay from './InstallProgressOverlay';
 
 const { Text } = Typography;
+const bridge = createTauriBridge();
 
 interface PythonSubPack {
   id: string;
@@ -61,6 +61,10 @@ function SubPackCard({
 }) {
   const isInstalled = pack.isInstalled;
 
+  const handleOpenUrl = useCallback((url: string) => {
+    void bridge.invoke<void>('open_path', { path: url });
+  }, []);
+
   return (
     <div
       style={{
@@ -97,16 +101,24 @@ function SubPackCard({
           )}
           {pack.repositoryUrl && (
             <Tooltip title="View Repository">
-              <a href={pack.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => handleOpenUrl(pack.repositoryUrl)}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+              >
                 <GithubOutlined style={{ fontSize: 14 }} />
-              </a>
+              </button>
             </Tooltip>
           )}
           {pack.websiteUrl && (
             <Tooltip title="Visit Website">
-              <a href={pack.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => handleOpenUrl(pack.websiteUrl)}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+              >
                 <GlobalOutlined style={{ fontSize: 14 }} />
-              </a>
+              </button>
             </Tooltip>
           )}
         </Space>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Progress, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
@@ -11,9 +11,10 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import { Tooltip } from 'antd';
-import { AppButton } from '@snapfzz/shared';
+import { AppButton, createTauriBridge } from '@snapfzz/shared';
 
 const { Text } = Typography;
+const bridge = createTauriBridge();
 
 export interface ComponentInfo {
   id: string;
@@ -86,6 +87,10 @@ export default function SystemComponentCard({
   const installed = component.isInstalled || statusKind === 'ready';
   const downloading = statusKind === 'downloading' || busyDownload;
 
+  const handleOpenUrl = useCallback((url: string) => {
+    void bridge.invoke<void>('open_path', { path: url });
+  }, []);
+
   return (
     <div
       data-testid={`system-component-card-${component.id}`}
@@ -133,17 +138,25 @@ export default function SystemComponentCard({
 
 {component.repositoryUrl && (
   <Tooltip title="View Repository">
-    <a href={component.repositoryUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+    <button
+      type="button"
+      onClick={() => handleOpenUrl(component.repositoryUrl!)}
+      style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+    >
       <GithubOutlined style={{ fontSize: 14 }} />
-    </a>
+    </button>
   </Tooltip>
 )}
 
 {component.websiteUrl && (
   <Tooltip title="Visit Website">
-    <a href={component.websiteUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center' }}>
+    <button
+      type="button"
+      onClick={() => handleOpenUrl(component.websiteUrl!)}
+      style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-link)', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+    >
       <GlobalOutlined style={{ fontSize: 14 }} />
-    </a>
+    </button>
   </Tooltip>
 )}
           </Space>

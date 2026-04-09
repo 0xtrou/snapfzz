@@ -52,7 +52,7 @@ fn main() {
     ));
     let cef_state = commands::cef::CefState {
         runtime: Arc::new(tauri::async_runtime::Mutex::new(CefRuntime::new(&data_dir))),
-        downloader: cef_runtime_downloader,
+        downloader: cef_runtime_downloader.clone(),
         device: device.clone(),
     };
     let mut component_registry = ComponentRegistry::new();
@@ -63,6 +63,7 @@ fn main() {
         platform.clone(),
         constants::versions::PYTHON.to_string(),
     )));
+    component_registry.register(cef_runtime_downloader);
     let component_registry = Arc::new(component_registry);
 
     let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) =
