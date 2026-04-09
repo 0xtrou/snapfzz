@@ -158,7 +158,7 @@ export default function PythonPackCard({
 }: PythonPackCardProps): React.ReactElement {
   const packs: PythonSubPack[] = [uv, python, agentscope, agentscopeRuntime, litellm];
 
-  const installPath = python.installPath || '~/.snapfzz/runtime/python/venv';
+  const installPath = python.installPath;
 
   return (
     <div

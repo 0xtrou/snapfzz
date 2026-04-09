@@ -49,6 +49,39 @@ impl PythonDownloader {
             .output()
             .map_err(ComponentError::from)
     }
+
+    fn find_python_in_dir(dir: &Path, major_version: &str) -> Option<PathBuf> {
+        if !dir.exists() {
+            return None;
+        }
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("cpython-") {
+                    let preferred = entry
+                        .path()
+                        .join("bin")
+                        .join(format!("python{}", major_version));
+                    if preferred.exists() {
+                        return Some(preferred);
+                    }
+
+                    let py3 = entry.path().join("bin").join("python3");
+                    if py3.exists() {
+                        return Some(py3);
+                    }
+
+                    let py = entry.path().join("bin").join("python");
+                    if py.exists() {
+                        return Some(py);
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 #[async_trait::async_trait]
@@ -66,10 +99,8 @@ impl SystemComponent for PythonDownloader {
     }
 
     fn is_installed(&self) -> bool {
-        match self.run_uv(["python", "find", self.version.as_str()]) {
-            Ok(output) => output.status.success(),
-            Err(_) => false,
-        }
+        let major = self.version.split('.').next().unwrap_or("3");
+        Self::find_python_in_dir(&self.install_dir, major).is_some()
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
@@ -118,7 +149,12 @@ impl SystemComponent for PythonDownloader {
             }]);
         }
 
-        let output = self.run_uv(["python", "install", self.version.as_str()])?;
+        let install_dir_str = self.install_dir.to_string_lossy();
+        let output = self.run_uv([
+            "python", "install",
+            "--install-dir", install_dir_str.as_ref(),
+            self.version.as_str()
+        ])?;
         if !output.status.success() {
             return Err(ComponentError::internal(format!(
                 "uv python install failed: {}",
@@ -144,14 +180,15 @@ impl SystemComponent for PythonDownloader {
     }
 
     async fn verify(&self) -> Result<String, ComponentError> {
-        let output = self.run_uv(["python", "find", self.version.as_str()])?;
-        if !output.status.success() {
-            return Err(ComponentError::internal(format!(
-                "uv python find failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
+        let major = self.version.split('.').next().unwrap_or("3");
+        match Self::find_python_in_dir(&self.install_dir, major) {
+            Some(path) => Ok(path.to_string_lossy().to_string()),
+            None => Err(ComponentError::internal(format!(
+                "Python {} not found in {}",
+                self.version,
+                self.install_dir.display()
+            ))),
         }
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     async fn extract(&self) -> Result<(), ComponentError> {

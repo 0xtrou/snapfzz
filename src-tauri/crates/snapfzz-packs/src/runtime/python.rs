@@ -298,6 +298,7 @@ impl PythonRuntime {
             uv_installed,
             uv_version,
             venv_exists,
+            venv_path: self.venv_dir().to_string_lossy().into_owned(),
             installed_packages: installed_packages
                 .iter()
                 .map(|(name, _)| name.clone())

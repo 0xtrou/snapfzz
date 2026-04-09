@@ -109,6 +109,7 @@ function indexByOrder(id: string, order: string[]): number {
 function mapComponentToSubPack(
   component: ComponentInfo | undefined,
   metadata: PythonPackMetadataItem | undefined,
+  venvPath: string,
 ): Parameters<typeof PythonPackCard>[0]['uv'] {
   if (!metadata) {
     return {
@@ -119,7 +120,7 @@ function mapComponentToSubPack(
       license: '',
       platformDisplay: '',
       downloadUrl: 'pip',
-      installPath: '~/.snapfzz/runtime/python/venv',
+      installPath: venvPath,
       isInstalled: false,
       repositoryUrl: '',
       websiteUrl: '',
@@ -134,7 +135,7 @@ function mapComponentToSubPack(
     license: metadata.license,
     platformDisplay: metadata.platformDisplay,
     downloadUrl: component?.downloadUrl || 'pip',
-    installPath: component?.installPath || '~/.snapfzz/runtime/python/venv',
+    installPath: component?.installPath || venvPath,
     isInstalled: component?.isInstalled ?? false,
     repositoryUrl: metadata.repositoryUrl,
     websiteUrl: metadata.websiteUrl,
@@ -154,6 +155,7 @@ export default function ComponentsSettings(): React.ReactElement {
   const [pythonRuntime, setPythonRuntime] = useState<{
     installed_packages: string[];
     venv_exists: boolean;
+    venv_path: string;
     install_steps: Array<{ id: string; label: string; is_installed: boolean }>;
     agentscope: { name: string; version: string; is_installed: boolean };
     agentscope_runtime: { name: string; version: string; is_installed: boolean };
@@ -304,6 +306,7 @@ export default function ComponentsSettings(): React.ReactElement {
     if (isPythonGroup) {
       const uv = items.find((c) => c.id === 'uv');
       const python = items.find((c) => c.id === 'python');
+      const venvPath = pythonRuntime?.venv_path || '/Users/mrk/.snapfzz/runtime/python/venv';
       
       const agentscopeMeta = pythonPackMetadata.find((m) => m.id === 'agentscope');
       const agentscopeRuntimeMeta = pythonPackMetadata.find((m) => m.id === 'agentscope-runtime');
@@ -317,7 +320,7 @@ export default function ComponentsSettings(): React.ReactElement {
         platform: 'any',
         platformDisplay: agentscopeMeta.platformDisplay,
         downloadUrl: 'pip',
-        installPath: '~/.snapfzz/runtime/python/venv',
+        installPath: venvPath,
         size: 0,
         checksum: '',
         checksumAlgorithm: '',
@@ -335,7 +338,7 @@ export default function ComponentsSettings(): React.ReactElement {
         platform: 'any',
         platformDisplay: agentscopeRuntimeMeta.platformDisplay,
         downloadUrl: 'pip',
-        installPath: '~/.snapfzz/runtime/python/venv',
+        installPath: venvPath,
         size: 0,
         checksum: '',
         checksumAlgorithm: '',
@@ -353,7 +356,7 @@ export default function ComponentsSettings(): React.ReactElement {
         platform: 'any',
         platformDisplay: litellmMeta.platformDisplay,
         downloadUrl: 'pip',
-        installPath: '~/.snapfzz/runtime/python/venv',
+        installPath: venvPath,
         size: 0,
         checksum: '',
         checksumAlgorithm: '',
@@ -372,11 +375,11 @@ export default function ComponentsSettings(): React.ReactElement {
 
       return (
         <PythonPackCard
-          uv={mapComponentToSubPack(uv, uvMeta)}
-          python={mapComponentToSubPack(python, pythonMeta)}
-          agentscope={mapComponentToSubPack(agentscope, agentscopeMeta)}
-          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, agentscopeRuntimeMeta)}
-          litellm={mapComponentToSubPack(litellm, litellmMeta)}
+          uv={mapComponentToSubPack(uv, uvMeta, venvPath)}
+          python={mapComponentToSubPack(python, pythonMeta, venvPath)}
+          agentscope={mapComponentToSubPack(agentscope, agentscopeMeta, venvPath)}
+          agentscopeRuntime={mapComponentToSubPack(agentscopeRuntime, agentscopeRuntimeMeta, venvPath)}
+          litellm={mapComponentToSubPack(litellm, litellmMeta, venvPath)}
           isInstalling={installingPythonPack}
           isUninstalling={uninstallingPythonPack}
           allInstalled={allInstalled}
