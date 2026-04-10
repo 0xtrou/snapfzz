@@ -27,10 +27,12 @@ pub struct CpuBudget {
     pub zone2_envelope: usize,
 }
 
+/// A008/MemoryBudget: Unified memory budget shared by all processes.
+/// All supervised processes draw from this pool - no per-process limits.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryBudget {
+    /// Total memory budget for all processes combined (MB)
     pub app_total_mb: u64,
-    pub agentscope_max_mb: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,8 +85,6 @@ pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
             let cpu_permits = std::cmp::max((hw.cores * 4 / 5) as usize, 4);
             // 80% of RAM in MB, capped at 16GB.
             let app_total_mb = std::cmp::min((hw.ram_gb as u64) * 1024 * 4 / 5, 16384);
-            // AgentScope gets 75% of the app total.
-            let agentscope_max_mb = app_total_mb * 3 / 4;
             Preset {
                 name: "performance".into(),
                 frame: FrameBudget {
@@ -95,10 +95,7 @@ pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
                     permits: cpu_permits,
                     zone2_envelope: cpu_permits / 2,
                 },
-                memory: MemoryBudget {
-                    app_total_mb,
-                    agentscope_max_mb,
-                },
+                memory: MemoryBudget { app_total_mb },
                 startup: StartupBudget {
                     visible_ms: 200,
                     interactive_ms: 500,
@@ -132,10 +129,7 @@ pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
                 permits: 4,
                 zone2_envelope: 2,
             },
-            memory: MemoryBudget {
-                app_total_mb: 2048,
-                agentscope_max_mb: 1024,
-            },
+            memory: MemoryBudget { app_total_mb: 2048 },
             startup: StartupBudget {
                 visible_ms: 200,
                 interactive_ms: 500,
@@ -168,10 +162,7 @@ pub fn build_preset(name: PresetName, hw: &HardwareInfo) -> Preset {
                 permits: 2,
                 zone2_envelope: 1,
             },
-            memory: MemoryBudget {
-                app_total_mb: 1024,
-                agentscope_max_mb: 512,
-            },
+            memory: MemoryBudget { app_total_mb: 1024 },
             startup: StartupBudget {
                 visible_ms: 200,
                 interactive_ms: 500,
@@ -298,7 +289,6 @@ mod tests {
         let preset = build_preset(PresetName::Performance, &hw);
         assert_eq!(preset.cpu.permits, 6);
         assert_eq!(preset.memory.app_total_mb, 13107);
-        assert_eq!(preset.memory.agentscope_max_mb, 9830);
     }
 
     #[test]
@@ -311,7 +301,6 @@ mod tests {
         let preset = build_preset(PresetName::Performance, &hw);
         assert_eq!(preset.cpu.permits, 4);
         assert_eq!(preset.memory.app_total_mb, 6553);
-        assert_eq!(preset.memory.agentscope_max_mb, 4914);
     }
 
     #[test]
@@ -323,7 +312,6 @@ mod tests {
         };
         let preset = build_preset(PresetName::Performance, &hw);
         assert_eq!(preset.memory.app_total_mb, 16384);
-        assert_eq!(preset.memory.agentscope_max_mb, 12288);
     }
 
     #[test]
@@ -347,7 +335,7 @@ mod tests {
         let perf = build_preset(PresetName::Performance, &hw);
         let batt = build_preset(PresetName::Battery, &hw);
         assert!(perf.cpu.permits > batt.cpu.permits);
-        assert!(perf.memory.agentscope_max_mb > batt.memory.agentscope_max_mb);
+        assert!(perf.memory.app_total_mb > batt.memory.app_total_mb);
         assert!(perf.network.max_concurrent_invokes > batt.network.max_concurrent_invokes);
     }
 

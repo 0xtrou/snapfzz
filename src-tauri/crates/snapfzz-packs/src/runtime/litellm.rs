@@ -32,15 +32,14 @@ impl ManagedService for LiteLLMService {
         &self,
         config: &ServiceConfig,
     ) -> Result<tokio::process::Command, ServiceError> {
-        let python = self.runtime.venv_python();
-        if !python.exists() {
-            return Err(ServiceError::DependencyNotInstalled("Python venv".into()));
+        // A033/LiteLLM: Use litellm CLI directly (not python -m litellm which doesn't work)
+        let litellm_bin = self.runtime.venv_dir().join("bin").join("litellm");
+        if !litellm_bin.exists() {
+            return Err(ServiceError::DependencyNotInstalled("litellm CLI".into()));
         }
 
-        let mut cmd = tokio::process::Command::new(python);
-        cmd.arg("-m")
-            .arg("litellm")
-            .arg("--port")
+        let mut cmd = tokio::process::Command::new(litellm_bin);
+        cmd.arg("--port")
             .arg(config.port.to_string())
             .current_dir(&config.working_dir)
             .stdout(std::process::Stdio::piped())
@@ -57,7 +56,7 @@ impl ManagedService for LiteLLMService {
 
     fn health_config(&self, config: &ServiceConfig) -> HealthConfig {
         HealthConfig {
-            url: format!("http://{}:{}/health", config.host, config.port),
+            url: format!("http://{}:{}/health/liveness", config.host, config.port),
             interval_ms: 5000,
             max_failures: 3,
         }
@@ -115,7 +114,7 @@ mod tests {
             working_dir: PathBuf::from("/tmp"),
         };
         let health = service.health_config(&config);
-        assert_eq!(health.url, "http://127.0.0.1:4000/health");
+        assert_eq!(health.url, "http://127.0.0.1:4000/health/liveness");
         assert_eq!(health.interval_ms, 5000);
         assert_eq!(health.max_failures, 3);
     }

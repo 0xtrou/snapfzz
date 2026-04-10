@@ -7,6 +7,7 @@ members = [
   "crates/snapfzz-vault",
   "crates/snapfzz-cef",
   "crates/snapfzz-packs",
+  "crates/snapfzz-llm",
 ]
 resolver = "2"
 
@@ -41,6 +42,7 @@ snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
 snapfzz-cef = { path = "crates/snapfzz-cef" }
 snapfzz-packs = { path = "crates/snapfzz-packs" }
+snapfzz-llm = { path = "crates/snapfzz-llm" }
 shellexpand = "3.1.2"
 
 [target.'cfg(unix)'.dependencies]

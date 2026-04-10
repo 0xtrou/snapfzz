@@ -20,6 +20,7 @@
     "@snapfzz/settings-advanced": "workspace:*",
     "@snapfzz/settings-components": "workspace:*",
     "@snapfzz/settings-general": "workspace:*",
+    "@snapfzz/settings-llm": "workspace:*",
     "@snapfzz/settings-performance": "workspace:*",
     "@snapfzz/settings-plugins": "workspace:*",
     "@snapfzz/settings-processes": "workspace:*",

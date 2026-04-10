@@ -15,8 +15,10 @@ interface BudgetMetrics {
   invokeTotal: number;
   batchIntervalMs: number;
   batchRateMs: number;
-  agentscopeRssMb: number | null;
-  agentscopeMaxMb: number;
+  /// A008/UnifiedBudget: Total RSS across all processes
+  totalRssMb: number;
+  /// A008/UnifiedBudget: Shared memory limit from preset
+  appTotalMb: number;
   agentscopeStatus: 'starting' | 'online' | 'unhealthy' | 'restarting' | 'stopped' | 'errored';
   storageUsedGb: number;
   storageMaxGb: number;
@@ -81,13 +83,13 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       key: 'memory',
       name: 'Memory',
       icon: 'DatabaseOutlined',
-      current: `${metrics.agentscopeRssMb != null ? Math.round(metrics.agentscopeRssMb) : '—'} MB`,
-      limit: `${metrics.agentscopeMaxMb} MB`,
+      current: `${Math.round(metrics.totalRssMb)} MB`,
+      limit: `${metrics.appTotalMb} MB`,
       percent:
-        metrics.agentscopeMaxMb > 0 && metrics.agentscopeRssMb != null
-          ? Math.round((metrics.agentscopeRssMb / metrics.agentscopeMaxMb) * 100)
+        metrics.appTotalMb > 0
+          ? Math.round((metrics.totalRssMb / metrics.appTotalMb) * 100)
           : 0,
-      description: 'Memory limit for the agent runtime process. Monitored every 2s. If exceeded, the process is killed and restarted automatically. Example: a 512MB limit means the agent can hold ~50K messages in memory before hitting the cap.',
+      description: 'Unified memory budget shared by all processes (agentscope, litellm). Monitored every 2s. If total exceeds the limit, the enforcing loop logs a warning. Example: with 16GB limit, all processes combined must stay under 16GB.',
     },
     {
       key: 'network',
@@ -293,7 +295,7 @@ export default function PerformanceSettings() {
             </Radio.Group>
             {metrics && (
               <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.agentscopeMaxMb >= 1024 ? `${metrics.agentscopeMaxMb / 1024}GB` : `${metrics.agentscopeMaxMb}MB`} agent cap · {metrics.batchIntervalMs}ms batch · uptime {Math.floor(metrics.uptimeSecs / 60)}m
+                Active: {metrics.presetName} · {metrics.cpuTotal} CPU permits · {metrics.appTotalMb >= 1024 ? `${Math.round(metrics.appTotalMb / 1024)}GB` : `${metrics.appTotalMb}MB`} unified memory · {metrics.batchIntervalMs}ms batch · uptime {Math.floor(metrics.uptimeSecs / 60)}m
               </Text>
             )}
           </Space>

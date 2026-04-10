@@ -1,9 +1,10 @@
 pub mod budget;
 pub mod cef;
 pub mod components;
+pub mod llm;
+pub mod pip;
 pub mod process;
 pub mod settings;
-pub mod pip;
 pub mod stream;
 pub mod system;
 pub mod vault;

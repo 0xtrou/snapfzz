@@ -1,12 +1,9 @@
 use serde::Serialize;
 use serde_json::Value;
 use snapfzz_kernel::budget::BudgetRegistry;
-use snapfzz_kernel::process::ProcessManager;
-use snapfzz_kernel::settings::SettingsManager;
+use snapfzz_kernel::process::{ProcessFactoryRegistry, ProcessManager};
 use std::sync::Arc;
 use tauri::Emitter;
-
-use crate::helpers;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,39 +72,22 @@ pub(crate) fn do_kill_process(name: &str, process_mgr: &ProcessManager) -> Resul
 pub async fn restart_process<R: tauri::Runtime>(
     name: String,
     app: tauri::AppHandle<R>,
-    registry: tauri::State<'_, Arc<BudgetRegistry>>,
-    process_mgr: tauri::State<'_, Arc<ProcessManager>>,
-    settings_mgr: tauri::State<'_, Arc<SettingsManager>>,
+    factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
 ) -> Result<(), String> {
-    process_mgr
-        .shutdown(&name)
-        .await
-        .map_err(|e| e.to_string())?;
+    // A037/restart_process: Use ProcessFactoryRegistry for generic dispatch
+    let mut registry = factory_registry.lock().await;
+    let result = registry.restart(&name).await;
 
-    // A033/restart_process: Dispatch managed service restart by service id
-    match name.as_str() {
-        "agentscope" => {
-            helpers::spawn_agentscope(
-                app.clone(),
-                registry.inner().clone(),
-                process_mgr.inner().clone(),
-                settings_mgr.inner().clone(),
-            )
-            .await;
+    match result {
+        Ok(()) => {
+            emit_supervisor(&app, "success", &name, format!("{} restarted successfully", name));
+            Ok(())
         }
-        "litellm" => {
-            helpers::spawn_litellm(
-                app.clone(),
-                registry.inner().clone(),
-                process_mgr.inner().clone(),
-                settings_mgr.inner().clone(),
-            )
-            .await;
+        Err(e) => {
+            emit_supervisor(&app, "error", &name, format!("Failed to restart {}: {}", name, e));
+            Err(e.to_string())
         }
-        _ => return Err(format!("Unknown service: {name}")),
     }
-
-    Ok(())
 }
 
 #[tauri::command]
@@ -127,21 +107,6 @@ pub async fn kill_process<R: tauri::Runtime>(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn update_process_config(
-    name: String,
-    max_memory_mb: u64,
-    registry: tauri::State<'_, Arc<BudgetRegistry>>,
-) -> Result<(), String> {
-    let mut entry = registry
-        .supervised
-        .processes
-        .get_mut(&name)
-        .ok_or_else(|| format!("update_process_config: process '{name}' not registered"))?;
-    entry.max_memory_mb = max_memory_mb;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,26 +115,21 @@ mod tests {
         preset::PresetName,
         supervised::{ProcessBudget, ProcessLocation},
     };
-    use snapfzz_kernel::process::{logs::ProcessLogs, runtime::RuntimeState};
-    use snapfzz_kernel::settings::Settings;
-    use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+    use snapfzz_kernel::process::{logs::ProcessLogs, runtime::RuntimeState, ProcessFactoryRegistry};
+    use snapfzz_kernel::settings::SettingsManager;
+    use snapfzz_packs::{detect_platform, runtime::python::PythonRuntime};
+    use std::sync::Arc;
     use tauri::{
         test::{mock_builder, mock_context, noop_assets},
         Manager,
     };
     use tokio::sync::Mutex;
 
-    fn cwd_lock() -> &'static StdMutex<()> {
-        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| StdMutex::new(()))
-    }
-
-    fn register_process(registry: &Arc<BudgetRegistry>, name: &str, max_memory_mb: u64) {
+    fn register_process(registry: &Arc<BudgetRegistry>, name: &str) {
         registry.register_process(
             name,
             ProcessBudget {
                 pid: None,
-                max_memory_mb,
                 health_url: "http://127.0.0.1:1/health".to_string(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
@@ -184,10 +144,30 @@ mod tests {
         );
     }
 
+    fn make_factory_registry(
+        data_dir: &std::path::Path,
+    ) -> Arc<tokio::sync::Mutex<ProcessFactoryRegistry>> {
+        let budget_registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
+        let logs = Arc::new(ProcessLogs::with_max_lines(data_dir.to_path_buf(), 100));
+        let settings_mgr = Arc::new(SettingsManager::new(data_dir.to_path_buf()));
+        let platform = detect_platform().expect("platform");
+        let python_runtime = Arc::new(PythonRuntime::new(data_dir.join("runtime"), platform));
+
+        let mut registry = ProcessFactoryRegistry::new(
+            budget_registry,
+            logs,
+            settings_mgr,
+            python_runtime,
+        );
+        registry.register(Arc::new(crate::factories::AgentScopeFactory::new()));
+        registry.register(Arc::new(crate::factories::LiteLLMFactory::new()));
+        Arc::new(tokio::sync::Mutex::new(registry))
+    }
+
     #[test]
     fn a014_process_list_processes_returns_registered_snapshots() {
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        register_process(&registry, "agentscope", 512);
+        register_process(&registry, "agentscope");
 
         let app = mock_builder()
             .manage(registry)
@@ -246,40 +226,6 @@ mod tests {
     }
 
     #[test]
-    fn a014_commands_process_update_config_direct_success_and_missing_error() {
-        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        register_process(&registry, "agentscope", 512);
-
-        let app = mock_builder()
-            .manage(registry.clone())
-            .build(mock_context(noop_assets()))
-            .expect("build app");
-
-        tauri::async_runtime::block_on(super::update_process_config(
-            "agentscope".to_string(),
-            2048,
-            app.state::<Arc<BudgetRegistry>>(),
-        ))
-        .expect("update config");
-
-        let max_memory = registry
-            .supervised
-            .processes
-            .get("agentscope")
-            .expect("process exists")
-            .max_memory_mb;
-        assert_eq!(max_memory, 2048);
-
-        let err = tauri::async_runtime::block_on(super::update_process_config(
-            "missing".to_string(),
-            1024,
-            app.state::<Arc<BudgetRegistry>>(),
-        ))
-        .expect_err("missing process should fail");
-        assert!(err.contains("not registered"));
-    }
-
-    #[test]
     fn a014_commands_process_do_kill_process_returns_runtime_not_running_error() {
         let process_mgr = ProcessManager::new();
         let err = super::do_kill_process("missing", &process_mgr)
@@ -335,106 +281,23 @@ mod tests {
     }
 
     #[test]
-    fn t34_restart_process_dispatch_agentscope_returns_ok() {
-        let _guard = cwd_lock()
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        let original_cwd = std::env::current_dir().expect("current dir");
+    fn t37_restart_process_returns_error_for_unknown_service() {
         let temp = tempfile::tempdir().expect("tempdir");
-        std::env::set_current_dir(temp.path()).expect("set current dir");
-
-        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        let process_mgr = Arc::new(ProcessManager::new());
-        let settings_dir = tempfile::tempdir().expect("settings temp");
-        let settings_mgr = Arc::new(SettingsManager::new(settings_dir.path().to_path_buf()));
-        settings_mgr
-            .save(&Settings::default())
-            .expect("save default settings");
+        let factory_registry = make_factory_registry(temp.path());
 
         let app = mock_builder()
-            .manage(registry)
-            .manage(process_mgr)
-            .manage(settings_mgr)
-            .build(mock_context(noop_assets()))
-            .expect("build app");
-
-        let result = tauri::async_runtime::block_on(super::restart_process(
-            "agentscope".to_string(),
-            app.handle().clone(),
-            app.state::<Arc<BudgetRegistry>>(),
-            app.state::<Arc<ProcessManager>>(),
-            app.state::<Arc<SettingsManager>>(),
-        ));
-
-        std::env::set_current_dir(&original_cwd).expect("restore cwd");
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn t34_restart_process_dispatch_litellm_returns_ok() {
-        let _guard = cwd_lock()
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        let original_cwd = std::env::current_dir().expect("current dir");
-        let temp = tempfile::tempdir().expect("tempdir");
-        std::env::set_current_dir(temp.path()).expect("set current dir");
-
-        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        let process_mgr = Arc::new(ProcessManager::new());
-        let settings_dir = tempfile::tempdir().expect("settings temp");
-        let settings_mgr = Arc::new(SettingsManager::new(settings_dir.path().to_path_buf()));
-        settings_mgr
-            .save(&Settings::default())
-            .expect("save default settings");
-
-        let app = mock_builder()
-            .manage(registry)
-            .manage(process_mgr)
-            .manage(settings_mgr)
-            .build(mock_context(noop_assets()))
-            .expect("build app");
-
-        let result = tauri::async_runtime::block_on(super::restart_process(
-            "litellm".to_string(),
-            app.handle().clone(),
-            app.state::<Arc<BudgetRegistry>>(),
-            app.state::<Arc<ProcessManager>>(),
-            app.state::<Arc<SettingsManager>>(),
-        ));
-
-        std::env::set_current_dir(&original_cwd).expect("restore cwd");
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn t34_restart_process_dispatch_returns_error_for_unknown_service() {
-        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        let process_mgr = Arc::new(ProcessManager::new());
-        let settings_dir = tempfile::tempdir().expect("settings temp");
-        let settings_mgr = Arc::new(SettingsManager::new(settings_dir.path().to_path_buf()));
-        settings_mgr
-            .save(&Settings::default())
-            .expect("save default settings");
-
-        let app = mock_builder()
-            .manage(registry)
-            .manage(process_mgr)
-            .manage(settings_mgr)
+            .manage(factory_registry)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
         let err = tauri::async_runtime::block_on(super::restart_process(
             "unknown".to_string(),
             app.handle().clone(),
-            app.state::<Arc<BudgetRegistry>>(),
-            app.state::<Arc<ProcessManager>>(),
-            app.state::<Arc<SettingsManager>>(),
+            app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
         ))
         .expect_err("unknown service should fail");
 
-        assert_eq!(err, "Unknown service: unknown");
+        assert!(err.contains("unknown process factory"));
     }
 
     #[test]

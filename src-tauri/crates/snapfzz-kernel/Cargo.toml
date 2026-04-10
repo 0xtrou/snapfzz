@@ -20,6 +20,7 @@ tar = "0.4"
 bzip2 = "0.5"
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+snapfzz-packs = { path = "../snapfzz-packs" }
 
 [dev-dependencies]
 tempfile = "3"

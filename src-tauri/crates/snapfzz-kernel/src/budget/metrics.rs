@@ -14,8 +14,6 @@ pub struct ProcessSnapshot {
     pub rss_mb: Option<f64>,
     /// CPU usage percentage sampled on the last enforce_loop tick.
     pub cpu_pct: Option<f32>,
-    /// Hard memory ceiling from the registered budget.
-    pub max_memory_mb: u64,
     /// Number of times the process has been restarted.
     pub restart_count: u32,
     /// Consecutive health-check failures since the last success.
@@ -40,9 +38,12 @@ pub struct BudgetMetrics {
     pub invoke_total: usize,
     pub batch_interval_ms: u64,
     pub batch_rate_ms: u64,
-    // Backward-compatible agentscope fields (derived from `processes`).
+    /// Unified memory budget shared by all processes (MB)
+    pub app_total_mb: u64,
+    /// Sum of RSS across all local processes (MB)
+    pub total_rss_mb: f64,
+    /// Backward-compatible agentscope fields (derived from `processes`).
     pub agentscope_rss_mb: Option<f64>,
-    pub agentscope_max_mb: u64,
     pub agentscope_status: ProcessStatus,
     pub storage_used_gb: u64,
     pub storage_max_gb: u64,

@@ -229,7 +229,6 @@ mod tests {
             "agentscope",
             snapfzz_kernel::budget::supervised::ProcessBudget {
                 pid: None,
-                max_memory_mb: 512,
                 health_url: format!("http://{addr}/health"),
                 health_interval_ms: 1000,
                 max_health_failures: 3,

@@ -1,12 +1,11 @@
 // A008/SupervisedDomain: Zone 3 render — reads live process snapshots from Rust via shared TauriBridge,
 // refreshes every 2s, displays process table with detail panels, logs, and controls.
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Table,
   Tag,
   Progress,
   Space,
-  Input,
   Typography,
   Tooltip,
 } from 'antd';
@@ -18,9 +17,9 @@ import {
   CopyOutlined,
   LinkOutlined,
   FolderOpenOutlined,
-  SaveOutlined,
 } from '@ant-design/icons';
-import { createTauriBridge, SettingsHeader, ConfirmAction, AgentscopeHostSchema, AgentscopePortSchema, AppButton } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
+import AnsiLogViewer from './AnsiLogViewer';
 
 const { Text } = Typography;
 
@@ -31,13 +30,20 @@ export interface ProcessSnapshot {
   status: 'starting' | 'online' | 'unhealthy' | 'restarting' | 'stopped' | 'errored';
   rssMb: number | null;
   cpuPct: number | null;
-  maxMemoryMb: number;
   restartCount: number;
   consecutiveFailures: number;
   uptimeSecs: number;
   location: string;
   healthUrl: string;
   owner: string;
+}
+
+// A008/UnifiedBudget: Metrics returned from budget registry snapshot
+export interface BudgetMetrics {
+  presetName: string;
+  appTotalMb: number;
+  totalRssMb: number;
+  processes: ProcessSnapshot[];
 }
 
 const REFRESH_INTERVAL_MS = 2000;
@@ -82,76 +88,22 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
-function memoryPct(rss: number | null, max: number): number {
+function memoryPct(rss: number | null, totalMb: number): number {
   if (rss == null) return 0;
-  if (max === 0) return 0;
-  return Math.min(100, Math.round((rss / max) * 100));
+  if (totalMb === 0) return 0;
+  return Math.min(100, Math.round((rss / totalMb) * 100));
 }
 
 interface DetailPanelProps {
   process: ProcessSnapshot;
+  appTotalMb: number;
+  totalRssMb: number;
   onAction: () => void;
 }
 
-// Per ENGINEERING_GUIDE/Settings Propagation: emits DOM event after save so all windows re-apply.
-// A007/MultiLayout: preferences window is separate — DOM event triggers useAppSettings re-read.
-function emitSettingsChanged() {
-  window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
-}
-
-function DetailPanel({ process, onAction }: DetailPanelProps) {
+function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelProps) {
   const [showLogs, setShowLogs] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
-
-  // Per A007/settingsSections + A008/SupervisedDomain: agentscope host/port is now configured
-  // inside the Processes detail panel, not in a separate Runtime settings section.
-  const [agentscopeHost, setAgentscopeHost] = useState('127.0.0.1');
-  const [agentscopePort, setAgentscopePort] = useState('8090');
-  const [savedHost, setSavedHost] = useState('127.0.0.1');
-  const [savedPort, setSavedPort] = useState('8090');
-  const [configSaving, setConfigSaving] = useState(false);
-  const configDirty = agentscopeHost !== savedHost || agentscopePort !== savedPort;
-
-  const hostValidation = AgentscopeHostSchema.safeParse(agentscopeHost);
-  const portValidation = AgentscopePortSchema.safeParse(agentscopePort);
-  const configValid = hostValidation.success && portValidation.success;
-  const hostError = !hostValidation.success ? hostValidation.error.issues[0]?.message : null;
-  const portError = !portValidation.success ? portValidation.error.issues[0]?.message : null;
-
-  const logContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (process.name !== 'agentscope') return;
-    bridge.invoke<Record<string, unknown>>('get_settings').then((settings) => {
-      const host = typeof settings.agentscopeHost === 'string' ? settings.agentscopeHost : '127.0.0.1';
-      const port = typeof settings.agentscopePort === 'string' ? settings.agentscopePort
-        : typeof settings.agentscopePort === 'number' ? String(settings.agentscopePort)
-        : '8090';
-      setAgentscopeHost(host);
-      setAgentscopePort(port);
-      setSavedHost(host);
-      setSavedPort(port);
-    }).catch(() => void 0);
-  }, [process.name]);
-
-  const handleSaveAndRestart = useCallback(async () => {
-    setConfigSaving(true);
-    try {
-      const current = await bridge.invoke<Record<string, unknown>>('get_settings');
-      await bridge.invoke<void>('save_settings', {
-        settings: { ...current, agentscopeHost, agentscopePort },
-      });
-      emitSettingsChanged();
-      setSavedHost(agentscopeHost);
-      setSavedPort(agentscopePort);
-      await bridge.invoke<void>('restart_process', { name: 'agentscope' });
-      onAction();
-    } catch {
-      void 0;
-    } finally {
-      setConfigSaving(false);
-    }
-  }, [agentscopeHost, agentscopePort, onAction]);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -169,13 +121,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
     return () => clearInterval(id);
   }, [showLogs, fetchLogs]);
 
-  useEffect(() => {
-    if (logContainerRef.current && logs.length > 0) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  const memPct = memoryPct(process.rssMb, process.maxMemoryMb);
+  const memPct = memoryPct(process.rssMb, appTotalMb);
 
   const handleRestart = async () => {
     try {
@@ -213,103 +159,6 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
         borderTop: '1px solid var(--border-default)',
       }}
     >
-      {process.name === 'agentscope' && (
-        <div
-          data-testid="agentscope-config-section"
-          style={{
-            marginBottom: 20,
-            padding: '14px 16px',
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 8,
-          }}
-        >
-          <Text
-            style={{
-              display: 'block',
-              color: 'var(--text-secondary)',
-              fontWeight: 600,
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              marginBottom: 12,
-            }}
-          >
-            Configuration
-          </Text>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 10 }}>
-            <div style={{ flex: 1 }}>
-              <Text style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>
-                Host
-              </Text>
-              <Input
-                data-testid="agentscope-host-input"
-                value={agentscopeHost}
-                onChange={(e) => setAgentscopeHost(e.target.value)}
-                placeholder="127.0.0.1"
-                status={hostError ? 'error' : undefined}
-                style={{
-                  background: 'var(--bg-input)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)',
-                  fontSize: 13,
-                }}
-              />
-              {hostError && (
-                <Text style={{ color: 'var(--color-error)', fontSize: 11, display: 'block', marginTop: 2 }}>
-                  {hostError}
-                </Text>
-              )}
-            </div>
-            <div style={{ width: 110 }}>
-              <Text style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 4 }}>
-                Port
-              </Text>
-              <Input
-                data-testid="agentscope-port-input"
-                value={agentscopePort}
-                onChange={(e) => setAgentscopePort(e.target.value)}
-                placeholder="8090"
-                status={portError ? 'error' : undefined}
-                style={{
-                  background: 'var(--bg-input)',
-                  borderColor: 'var(--border-default)',
-                  color: 'var(--text-primary)',
-                  fontSize: 13,
-                }}
-              />
-              {portError && (
-                <Text style={{ color: 'var(--color-error)', fontSize: 11, display: 'block', marginTop: 2 }}>
-                  {portError}
-                </Text>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              Changes require process restart to take effect
-            </Text>
-            <ConfirmAction
-              title="Save and restart agent runtime?"
-              description="The agent runtime will restart with the new connection settings."
-              onConfirm={handleSaveAndRestart}
-              okText="Save & Restart"
-              danger
-              disabled={!configDirty || !configValid}
-            >
-              <AppButton
-                size="small"
-                icon={<SaveOutlined />}
-                loading={configSaving}
-                disabled={!configDirty || !configValid}
-                data-testid="btn-save-restart-agentscope"
-              >
-                Save & Restart
-              </AppButton>
-            </ConfirmAction>
-          </div>
-        </div>
-      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
         <div>
           <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>PID</Text>
@@ -372,7 +221,7 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
           <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Memory</Text>
           <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-            {process.rssMb != null ? Math.round(process.rssMb) : '—'}/{process.maxMemoryMb} MB ({memPct}%)
+            {process.rssMb != null ? Math.round(process.rssMb) : '—'} MB
           </Text>
         </div>
         <Progress
@@ -386,10 +235,10 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
-          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>Max Memory</Text>
+          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>App Memory Budget</Text>
           <div style={{ marginTop: 4 }}>
-            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>{process.maxMemoryMb} MB</Text>
-            <Text style={{ color: 'var(--text-muted)', fontSize: 11, display: 'block' }}>Set via Performance preset</Text>
+            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>{Math.round(totalRssMb)} / {appTotalMb} MB</Text>
+            <Text style={{ color: 'var(--text-muted)', fontSize: 11, display: 'block' }}>Unified across all processes</Text>
           </div>
         </div>
         <div style={{ flex: 1 }}>
@@ -469,45 +318,24 @@ function DetailPanel({ process, onAction }: DetailPanelProps) {
       </Space>
 
       {showLogs && (
-        <div
-          ref={logContainerRef}
+        <AnsiLogViewer
+          logs={logs}
           data-testid={`log-panel-${process.name}`}
-          style={{
-            maxHeight: 200,
-            overflowY: 'auto',
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 6,
-            padding: '8px 12px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12,
-            color: 'var(--text-secondary)',
-          }}
-        >
-          {logs.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)' }}>No logs</div>
-          ) : (
-            logs.map((line) => (
-              <div key={`${process.name}-${line}`} style={{ lineHeight: 1.6 }}>
-                {line}
-              </div>
-            ))
-          )}
-        </div>
+        />
       )}
     </div>
   );
 }
 
 export default function ProcessesSettings() {
-  const [processes, setProcesses] = useState<ProcessSnapshot[]>([]);
+  const [metrics, setMetrics] = useState<BudgetMetrics | null>(null);
   const [hasData, setHasData] = useState(false);
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
 
-  const fetchProcesses = useCallback(async () => {
+  const fetchMetrics = useCallback(async () => {
     try {
-      const result = await bridge.invoke<ProcessSnapshot[]>('list_processes');
-      setProcesses(result);
+      const result = await bridge.invoke<BudgetMetrics>('budget_snapshot');
+      setMetrics(result);
       setHasData(true);
     } catch {
       void 0;
@@ -515,12 +343,14 @@ export default function ProcessesSettings() {
   }, []);
 
   useEffect(() => {
-    void fetchProcesses();
-    const id = setInterval(() => { void fetchProcesses(); }, REFRESH_INTERVAL_MS);
+    void fetchMetrics();
+    const id = setInterval(() => { void fetchMetrics(); }, REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [fetchProcesses]);
+  }, [fetchMetrics]);
 
-  const totalMemoryMb = processes.reduce((sum, p) => sum + (p.rssMb ?? 0), 0);
+  const processes = metrics?.processes ?? [];
+  const appTotalMb = metrics?.appTotalMb ?? 0;
+  const totalRssMb = metrics?.totalRssMb ?? 0;
 
   const columns = [
     {
@@ -560,9 +390,9 @@ export default function ProcessesSettings() {
       title: 'Memory',
       key: 'memory',
       render: (_: unknown, record: ProcessSnapshot) => {
-        const pct = memoryPct(record.rssMb, record.maxMemoryMb);
+        const pct = memoryPct(record.rssMb, appTotalMb);
         return (
-          <div style={{ minWidth: 120 }}>
+          <div style={{ minWidth: 140 }}>
             <Progress
               percent={pct}
               strokeColor={
@@ -574,7 +404,7 @@ export default function ProcessesSettings() {
               }
               trailColor="var(--bg-subtle)"
               size="small"
-              format={() => `${record.rssMb != null ? Math.round(record.rssMb) : '—'}/${record.maxMemoryMb} MB`}
+              format={() => `${record.rssMb != null ? Math.round(record.rssMb) : '—'} / ${appTotalMb} MB`}
             />
           </div>
         );
@@ -640,7 +470,7 @@ export default function ProcessesSettings() {
             </Text>
             {' · '}
             <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-              {Math.round(totalMemoryMb)} MB total
+              {Math.round(totalRssMb)} / {appTotalMb} MB unified
             </Text>
           </Text>
         </div>
@@ -663,7 +493,9 @@ export default function ProcessesSettings() {
             expandedRowRender: (record) => (
               <DetailPanel
                 process={record}
-                onAction={fetchProcesses}
+                appTotalMb={appTotalMb}
+                totalRssMb={totalRssMb}
+                onAction={fetchMetrics}
               />
             ),
             rowExpandable: (record) => record.key !== '__cloud_sandbox__',

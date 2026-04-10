@@ -17,7 +17,6 @@ pub enum ProcessLocation {
 #[derive(Debug, Clone)]
 pub struct ProcessBudget {
     pub pid: Option<u32>,
-    pub max_memory_mb: u64,
     pub health_url: String,
     pub health_interval_ms: u64,
     pub max_health_failures: u32,
@@ -75,7 +74,7 @@ impl SupervisedBudgets {
 
         match &entry.location {
             ProcessLocation::Local => {
-                let mut sys = System::new();
+                let mut sys = System::new_all();
                 sys.refresh_processes(ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]), true);
                 sys.process(SysPid::from_u32(pid))
                     .map(|p| p.memory() as f64 / 1_048_576.0)
@@ -84,11 +83,20 @@ impl SupervisedBudgets {
         }
     }
 
-    pub fn is_memory_exceeded(&self, name: &str) -> bool {
-        let max = self.processes.get(name).map(|p| p.max_memory_mb).unwrap_or(0);
-        self.check_memory(name)
-            .map(|rss| rss > max as f64)
-            .unwrap_or(false)
+    /// A008/CPU: Get CPU percentage for a process by name.
+    pub fn check_cpu(&self, name: &str) -> Option<f32> {
+        let entry = self.processes.get(name)?;
+        let pid = entry.pid?;
+
+        match &entry.location {
+            ProcessLocation::Local => {
+                let mut sys = System::new_all();
+                sys.refresh_processes(ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]), true);
+                sys.process(SysPid::from_u32(pid))
+                    .map(|p| p.cpu_usage() as f32)
+            }
+            ProcessLocation::Cloud { .. } => None,
+        }
     }
 
     pub async fn check_health(&self, name: &str) -> bool {
@@ -134,18 +142,21 @@ impl SupervisedBudgets {
                 let name = entry.key().clone();
                 let budget = entry.value();
 
-                let rss_mb = budget.pid.and_then(|pid| match &budget.location {
+                let (rss_mb, cpu_pct) = budget.pid.and_then(|pid| match &budget.location {
                     ProcessLocation::Local => {
-                        let mut sys = System::new();
+                        let mut sys = System::new_all();
                         sys.refresh_processes(
                             ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]),
                             true,
                         );
-                        sys.process(SysPid::from_u32(pid))
-                            .map(|p| p.memory() as f64 / 1_048_576.0)
+                        sys.process(SysPid::from_u32(pid)).map(|p| {
+                            let rss = p.memory() as f64 / 1_048_576.0;
+                            let cpu = p.cpu_usage() as f32;
+                            (Some(rss), Some(cpu))
+                        })
                     }
                     ProcessLocation::Cloud { .. } => None,
-                });
+                }).unwrap_or((None, None));
 
                 let location = match &budget.location {
                     ProcessLocation::Local => "local".to_string(),
@@ -159,8 +170,7 @@ impl SupervisedBudgets {
                     pid: budget.pid,
                     status: budget.status.clone(),
                     rss_mb,
-                    cpu_pct: None,
-                    max_memory_mb: budget.max_memory_mb,
+                    cpu_pct,
                     restart_count: budget.restart_count,
                     consecutive_failures: budget.consecutive_failures,
                     uptime_secs,
@@ -170,6 +180,35 @@ impl SupervisedBudgets {
                 }
             })
             .collect()
+    }
+
+    /// A008/UnifiedBudget: Sum of RSS across all local processes.
+    pub fn total_rss_mb(&self) -> f64 {
+        self.processes
+            .iter()
+            .filter_map(|entry| {
+                let budget = entry.value();
+                let pid = budget.pid?;
+                match &budget.location {
+                    ProcessLocation::Local => {
+                        let mut sys = System::new_all();
+                        sys.refresh_processes(
+                            ProcessesToUpdate::Some(&[SysPid::from_u32(pid)]),
+                            true,
+                        );
+                        sys.process(SysPid::from_u32(pid))
+                            .map(|p| p.memory() as f64 / 1_048_576.0)
+                    }
+                    ProcessLocation::Cloud { .. } => None,
+                }
+            })
+            .sum()
+    }
+
+    /// A008/UnifiedBudget: Check if total RSS exceeds the unified budget limit.
+    pub fn is_total_memory_exceeded(&self, app_total_mb: u64) -> bool {
+        let total_rss = self.total_rss_mb();
+        total_rss > app_total_mb as f64
     }
 
     pub fn measure_storage(&self) -> u64 {
@@ -224,7 +263,6 @@ mod tests {
     fn make_budget(name_hint: &str) -> ProcessBudget {
         ProcessBudget {
             pid: Some(1),
-            max_memory_mb: 512,
             health_url: "http://127.0.0.1:9999/health".into(),
             health_interval_ms: 2000,
             max_health_failures: 3,
@@ -327,7 +365,6 @@ mod tests {
             "cloud",
             ProcessBudget {
                 pid: Some(1),
-                max_memory_mb: 2048,
                 health_url: "http://cloud.example.com:8090/health".into(),
                 health_interval_ms: 5000,
                 max_health_failures: 5,
@@ -446,21 +483,6 @@ mod tests {
             "uptime_secs should be at least 5, got {}",
             snap.uptime_secs
         );
-    }
-
-    #[test]
-    fn a008_supervised_memory_exceeded_returns_false_for_invalid_pid() {
-        let sup = make_supervised();
-        sup.register_process(
-            "test",
-            ProcessBudget {
-                pid: Some(999_999_999),
-                max_memory_mb: 512,
-                ..make_budget("test")
-            },
-        );
-
-        assert!(!sup.is_memory_exceeded("test"));
     }
 
     #[test]
