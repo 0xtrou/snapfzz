@@ -3,7 +3,7 @@ use snapfzz_vault::{SecretVault, VaultError};
 use uuid::Uuid;
 
 const MASTER_KEY_NAME: &str = "litellm:master_key";
-const PROVIDER_PREFIX: &str = "provider";
+const PROVIDER_PREFIX: &str = "litellm:provider";
 
 pub fn store_provider_key(
     vault: &mut SecretVault,
@@ -132,14 +132,14 @@ mod tests {
     }
 
     #[test]
-    fn a013_vault_provider_keys_stored_with_provider_id_name_format() {
-        // A013/Vault: provider keys stored with provider:{id}:{name} format
+    fn a013_vault_provider_keys_stored_with_litellm_namespace() {
+        // A013/Vault: provider keys stored with litellm:provider:{id}:{name} format
         let (_temp, mut vault) = test_vault();
 
         store_provider_key(&mut vault, "openai", "key_1", "sk-test").expect("store key");
 
         let keys = vault.list().expect("list keys");
-        assert_eq!(keys, vec!["provider:openai:key_1".to_string()]);
+        assert_eq!(keys, vec!["litellm:provider:openai:key_1".to_string()]);
     }
 
     #[test]
