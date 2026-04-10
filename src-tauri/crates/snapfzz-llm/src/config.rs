@@ -2,7 +2,11 @@ use crate::types::{GatewayConfig, LlmError};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-pub fn generate_config(config: &GatewayConfig, vault_keys: &[String]) -> Result<String, LlmError> {
+pub fn generate_config(
+    config: &GatewayConfig,
+    vault_keys: &[String],
+    data_dir: &Path,
+) -> Result<String, LlmError> {
     if !config
         .general_settings
         .master_key
@@ -30,7 +34,13 @@ pub fn generate_config(config: &GatewayConfig, vault_keys: &[String]) -> Result<
         }
     }
 
-    Ok(serde_yaml::to_string(config)?)
+    let mut config = config.clone();
+    if config.general_settings.database_url.is_none() {
+        let db_path = data_dir.join("gateway").join("litellm.db");
+        config.general_settings.database_url = Some(format!("sqlite:///{}", db_path.display()));
+    }
+
+    Ok(serde_yaml::to_string(&config)?)
 }
 
 pub fn write_config_atomically(path: &Path, yaml: &str) -> Result<(), LlmError> {
@@ -116,20 +126,28 @@ mod tests {
     #[test]
     fn a013_config_generate_config_produces_valid_yaml() {
         // A013/Config: generate_config produces valid YAML
+        let temp = tempfile::tempdir().expect("tempdir");
         let config = sample_config();
-        let yaml = generate_config(&config, &["key_1".to_string()]).expect("generate yaml");
+        let yaml =
+            generate_config(&config, &["key_1".to_string()], temp.path()).expect("generate yaml");
 
         let parsed: GatewayConfig = serde_yaml::from_str(&yaml).expect("parse yaml");
-        assert_eq!(parsed, config);
+        assert_eq!(parsed.model_list, config.model_list);
+        assert!(parsed.general_settings.database_url.is_some());
     }
 
     #[test]
     fn a013_config_model_list_includes_all_enabled_providers() {
         // A013/Config: model_list includes all enabled providers
+        let temp = tempfile::tempdir().expect("tempdir");
         let config = sample_config();
 
-        let yaml =
-            generate_config(&config, &["key_1".to_string(), "key_2".to_string()]).expect("yaml");
+        let yaml = generate_config(
+            &config,
+            &["key_1".to_string(), "key_2".to_string()],
+            temp.path(),
+        )
+        .expect("yaml");
 
         assert!(yaml.contains("model_name: gpt-4o"));
         assert!(yaml.contains("model_name: claude-sonnet"));
@@ -138,8 +156,9 @@ mod tests {
     #[test]
     fn a013_config_router_settings_includes_strategy_and_aliases() {
         // A013/Config: router_settings includes strategy and aliases
+        let temp = tempfile::tempdir().expect("tempdir");
         let config = sample_config();
-        let yaml = generate_config(&config, &[]).expect("yaml");
+        let yaml = generate_config(&config, &[], temp.path()).expect("yaml");
 
         assert!(yaml.contains("routing_strategy: simple-shuffle"));
         assert!(yaml.contains("fast: gpt-4o"));
@@ -149,14 +168,25 @@ mod tests {
     #[test]
     fn a013_config_master_key_uses_env_var_reference() {
         // A013/Config: master_key uses env var reference
+        let temp = tempfile::tempdir().expect("tempdir");
         let mut config = sample_config();
         config.general_settings.master_key = "raw-secret-value".to_string();
 
-        let result = generate_config(&config, &[]);
+        let result = generate_config(&config, &[], temp.path());
 
         assert!(
             matches!(result, Err(LlmError::Message(message)) if message.contains("os.environ/"))
         );
+    }
+
+    #[test]
+    fn a013_config_database_url_defaults_to_sqlite() {
+        // A013/Config: database_url defaults to sqlite in data_dir
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config = sample_config();
+        let yaml = generate_config(&config, &[], temp.path()).expect("yaml");
+
+        assert!(yaml.contains("database_url: sqlite:///"));
     }
 
     #[test]

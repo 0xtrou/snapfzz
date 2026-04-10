@@ -91,7 +91,7 @@ pub async fn llm_save_config(
     let data_path = PathBuf::from(data_dir);
     let config_path = config::config_path(&data_path);
     
-    let yaml = config::generate_config(&config, &all_keys)
+    let yaml = config::generate_config(&config, &all_keys, &data_path)
         .map_err(|e| e.to_string())?;
     
     config::write_config_atomically(&config_path, &yaml)
