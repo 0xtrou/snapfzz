@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig, SpawnSecrets};
 use snapfzz_kernel::settings::Settings;
+use snapfzz_packs::data::{slugs, DataDir};
 use snapfzz_packs::runtime::litellm::LiteLLMService;
 use snapfzz_packs::runtime::python::PythonRuntime;
 use snapfzz_packs::service::{ManagedService, ResourceLimits, ServiceConfig, ServiceError};
@@ -11,12 +12,18 @@ use snapfzz_vault::SecretVault;
 
 pub struct LiteLLMFactory {
     vault: Arc<std::sync::Mutex<SecretVault>>,
-    data_dir: PathBuf,
+    service: LiteLLMService,
 }
 
 impl LiteLLMFactory {
-    pub fn new(vault: Arc<std::sync::Mutex<SecretVault>>, data_dir: PathBuf) -> Self {
-        Self { vault, data_dir }
+    pub fn new(
+        runtime: Arc<PythonRuntime>,
+        vault: Arc<std::sync::Mutex<SecretVault>>,
+        base_data_dir: PathBuf,
+    ) -> Self {
+        let data_dir = DataDir::new(&base_data_dir);
+        let service = LiteLLMService::new(runtime, data_dir);
+        Self { vault, service }
     }
 
     fn resolve_secrets_from_vault(&self) -> SpawnSecrets {
@@ -70,31 +77,25 @@ impl ProcessFactory for LiteLLMFactory {
     }
 
     fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
-        let cwd = std::env::current_dir().ok()?;
-        [
-            cwd.join("intelligence"),
-            cwd.join("..").join("intelligence"),
-            cwd.join("../..").join("intelligence"),
-        ]
-        .into_iter()
-        .find(|candidate| candidate.join("pyproject.toml").exists())
+        self.service.working_dir().ok()
     }
 
-    fn can_start(&self, runtime: &PythonRuntime) -> bool {
-        let service = LiteLLMService::new(Arc::new(runtime.clone()));
-        service.can_start()
+    fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+        self.service.can_start()
     }
 
     fn build_command(
         &self,
         config: &SpawnConfig,
-        runtime: &PythonRuntime,
+        _runtime: &PythonRuntime,
     ) -> Result<tokio::process::Command, ServiceError> {
-        let service = LiteLLMService::new(Arc::new(runtime.clone()));
-        let config_path = self.data_dir.join("gateway").join("config.yaml");
+        self.service
+            .working_dir()
+            .map_err(|e| ServiceError::SpawnFailed(e.to_string()))?;
+        let config_path = self.service.config_path();
         let secrets = self.resolve_secrets_from_vault();
 
-        let mut cmd = service.spawn_command(&ServiceConfig {
+        let mut cmd = self.service.spawn_command(&ServiceConfig {
             host: config.host.clone(),
             port: config.port,
             working_dir: config.working_dir.clone(),
@@ -104,6 +105,12 @@ impl ProcessFactory for LiteLLMFactory {
             cmd.arg("--config").arg(&config_path);
         }
 
+        let db_path = self
+            .service
+            .data_dir()
+            .database_path(slugs::LITELLM, "litellm.db");
+        cmd.env("DATABASE_URL", format!("sqlite:///{}", db_path.display()));
+
         for (key, value) in secrets.env {
             cmd.env(key, value);
         }
@@ -112,14 +119,11 @@ impl ProcessFactory for LiteLLMFactory {
     }
 
     fn resource_limits(&self) -> ResourceLimits {
-        ResourceLimits {
-            max_memory_mb: 256,
-            max_restarts: 10,
-        }
+        self.service.resource_limits()
     }
 
     fn config_path(&self, _data_dir: &PathBuf) -> Option<PathBuf> {
-        Some(self.data_dir.join("gateway").join("config.yaml"))
+        Some(self.service.config_path())
     }
 }
 
@@ -132,23 +136,21 @@ mod tests {
     use snapfzz_packs::runtime::python::PythonRuntime;
     use snapfzz_vault::{load_or_generate_master_key, SecretVault};
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex, OnceLock};
+    use std::sync::{Arc, Mutex};
 
-    fn cwd_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    fn runtime() -> PythonRuntime {
-        let temp = tempfile::tempdir().expect("tempdir");
+    fn runtime(base_dir: &std::path::Path) -> Arc<PythonRuntime> {
         let platform = detect_platform().expect("platform");
-        PythonRuntime::new(temp.path().to_path_buf(), platform)
+        Arc::new(PythonRuntime::new(base_dir.join("runtime"), platform))
     }
 
     fn make_factory(data_dir: &std::path::Path) -> LiteLLMFactory {
         let master_key = load_or_generate_master_key(data_dir).expect("master key");
         let vault = SecretVault::open(&master_key, data_dir.join("vault.enc")).expect("vault");
-        LiteLLMFactory::new(Arc::new(Mutex::new(vault)), data_dir.to_path_buf())
+        LiteLLMFactory::new(
+            runtime(data_dir),
+            Arc::new(Mutex::new(vault)),
+            data_dir.to_path_buf(),
+        )
     }
 
     #[test]
@@ -169,7 +171,7 @@ mod tests {
     fn t37_litellm_factory_can_start_checks_python_runtime() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory = make_factory(temp.path());
-        assert!(!factory.can_start(&runtime()));
+        assert!(!factory.can_start(&runtime(temp.path())));
     }
 
     #[test]
@@ -182,33 +184,29 @@ mod tests {
             working_dir: PathBuf::from("/tmp"),
         };
         let error = factory
-            .build_command(&config, &runtime())
-            .expect_err("venv missing");
-        assert!(error.to_string().contains("Python venv"));
+            .build_command(&config, &runtime(temp.path()))
+            .expect_err("litellm CLI missing");
+        assert!(error.to_string().contains("litellm CLI"));
     }
 
     #[test]
-    fn t37_litellm_factory_working_dir_finds_intelligence_project() {
-        let _guard = cwd_lock().lock().unwrap();
-        let original = std::env::current_dir().expect("cwd");
-        let fixture = tempfile::tempdir().expect("tempdir");
-        let project = fixture.path().join("project");
-        let intelligence = fixture.path().join("intelligence");
-        std::fs::create_dir_all(&project).expect("project dir");
-        std::fs::create_dir_all(&intelligence).expect("intelligence dir");
-        std::fs::write(
-            intelligence.join("pyproject.toml"),
-            "[project]\nname='intelligence'\n",
-        )
-        .expect("pyproject");
-        std::env::set_current_dir(&project).expect("set cwd");
-
+    fn t37_litellm_factory_config_path_uses_data_dir_runtime_slug() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let working_dir = make_factory(temp.path())
+        let factory = make_factory(temp.path());
+        let path = factory
+            .config_path(&PathBuf::from("/unused"))
+            .expect("config path");
+        assert!(path.to_string_lossy().contains("data/litellm/config.yaml"));
+    }
+
+    #[test]
+    fn t37_litellm_factory_working_dir_returns_data_dir_runtime_slug() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let working_dir = factory
             .working_dir(&Settings::default())
             .expect("working dir");
-
-        std::env::set_current_dir(original).expect("restore cwd");
-        assert_eq!(working_dir, intelligence);
+        assert!(working_dir.to_string_lossy().contains("data/litellm"));
+        assert!(working_dir.exists());
     }
 }

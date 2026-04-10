@@ -44,6 +44,8 @@ pub struct Settings {
         deserialize_with = "deserialize_string_or_number_litellm"
     )]
     pub litellm_port: String,
+    #[serde(default)]
+    pub agentscope_working_dir: String,
 }
 
 fn default_model() -> String {
@@ -140,6 +142,7 @@ impl Default for Settings {
             agentscope_port: default_agentscope_port(),
             litellm_host: default_litellm_host(),
             litellm_port: default_litellm_port(),
+            agentscope_working_dir: String::new(),
         }
     }
 }

@@ -1,5 +1,6 @@
 pub mod component;
 pub mod constants;
+pub mod data;
 pub mod download;
 pub mod downloaders;
 pub mod platform;
@@ -22,4 +23,5 @@ pub use service::{
 };
 pub use status::{InstallStep, PipPackageInfo, PythonRuntimeStatus};
 
+pub use data::{DataDir, DataError};
 pub use constants::versions;

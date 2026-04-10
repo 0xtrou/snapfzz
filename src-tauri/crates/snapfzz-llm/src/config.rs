@@ -36,7 +36,7 @@ pub fn generate_config(
 
     let mut config = config.clone();
     if config.general_settings.database_url.is_none() {
-        let db_path = data_dir.join("gateway").join("litellm.db");
+        let db_path = data_dir.join("data").join("litellm").join("litellm.db");
         config.general_settings.database_url = Some(format!("sqlite:///{}", db_path.display()));
     }
 
@@ -60,7 +60,7 @@ pub fn write_config_atomically(path: &Path, yaml: &str) -> Result<(), LlmError> 
 }
 
 pub fn config_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("gateway").join("config.yaml")
+    data_dir.join("data").join("litellm").join("config.yaml")
 }
 
 #[cfg(test)]
@@ -211,8 +211,8 @@ mod tests {
     }
 
     #[test]
-    fn a013_config_path_uses_gateway_subdirectory() {
+    fn a013_config_path_uses_data_runtime_slug() {
         let path = config_path(&PathBuf::from("/tmp/snapfzz"));
-        assert_eq!(path, PathBuf::from("/tmp/snapfzz/gateway/config.yaml"));
+        assert_eq!(path, PathBuf::from("/tmp/snapfzz/data/litellm/config.yaml"));
     }
 }

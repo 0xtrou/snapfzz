@@ -1,4 +1,5 @@
 // A033/ManagedService: Trait for spawnable services that depend on Python packages
+use crate::data::{DataDir, DataError};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -70,6 +71,12 @@ pub trait ManagedService: Send + Sync {
 
     /// Resource limits for this service
     fn resource_limits(&self) -> ResourceLimits;
+
+    fn data_dir(&self) -> &DataDir;
+
+    fn working_dir(&self) -> Result<PathBuf, DataError> {
+        self.data_dir().ensure_runtime_dir(self.id())
+    }
 
     /// Check if this service can start (all deps installed)
     fn can_start(&self) -> bool;
