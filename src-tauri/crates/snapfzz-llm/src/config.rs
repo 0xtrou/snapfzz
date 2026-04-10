@@ -1,7 +1,4 @@
-use crate::types::{
-    DefaultKeyGenerateParams, GatewayConfig, GeneralSettings, LiteLLMParams, LiteLLMSettings,
-    LlmError, ModelDeployment, RouterSettings,
-};
+use crate::types::{GatewayConfig, LlmError};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -59,7 +56,10 @@ pub fn config_path(data_dir: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FallbackRule, LlmError};
+    use crate::types::{
+        DefaultKeyGenerateParams, FallbackRule, GeneralSettings, LiteLLMParams, LiteLLMSettings,
+        LlmError, ModelDeployment, RouterSettings,
+    };
     use std::collections::HashMap;
     use std::path::PathBuf;
 

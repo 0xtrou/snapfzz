@@ -24,17 +24,6 @@ pub async fn llm_store_provider_key(
 }
 
 #[tauri::command]
-pub async fn llm_read_provider_key(
-    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
-    provider_id: String,
-    key_name: String,
-) -> Result<String, String> {
-    let mut guard = vault.lock().unwrap();
-    vault::read_provider_key(&mut guard, &provider_id, &key_name)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub async fn llm_delete_provider_key(
     vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     provider_id: String,
@@ -55,27 +44,33 @@ pub async fn llm_list_provider_keys(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn llm_get_or_create_master_key(
-    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
-) -> Result<String, String> {
-    let mut guard = vault.lock().unwrap();
-    vault::get_or_create_master_key(&mut guard)
-        .map_err(|e| e.to_string())
-}
-
 // A013/Config: Config management commands
 
 #[tauri::command]
 pub async fn llm_save_config(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     config: GatewayConfig,
-    vault_keys: Vec<String>,
     data_dir: String,
 ) -> Result<(), String> {
+    // A013/Vault: Fetch key names from vault, not from caller
+    let all_keys = {
+        let mut guard = vault.lock().unwrap();
+        let mut keys = Vec::new();
+        for deployment in &config.model_list {
+            // Extract provider ID from model name (e.g., "openai/gpt-4o" -> "openai")
+            if let Some(provider_id) = deployment.litellm_params.model.split('/').next() {
+                let provider_keys = vault::list_provider_keys(&mut guard, provider_id)
+                    .unwrap_or_default();
+                keys.extend(provider_keys);
+            }
+        }
+        keys
+    };
+    
     let data_path = PathBuf::from(data_dir);
     let config_path = config::config_path(&data_path);
     
-    let yaml = config::generate_config(&config, &vault_keys)
+    let yaml = config::generate_config(&config, &all_keys)
         .map_err(|e| e.to_string())?;
     
     config::write_config_atomically(&config_path, &yaml)
@@ -90,13 +85,19 @@ pub async fn llm_get_config_path(data_dir: String) -> Result<String, String> {
 }
 
 // A013/Keys: LiteLLM virtual key management commands
+// Master key is read from vault internally - never exposed to frontend
 
 #[tauri::command]
 pub async fn llm_generate_key(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     params: KeyGenerateParams,
 ) -> Result<GeneratedKey, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     keys::generate_key(&client, &base_url, &master_key, &params)
         .await
@@ -105,11 +106,16 @@ pub async fn llm_generate_key(
 
 #[tauri::command]
 pub async fn llm_list_keys(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     page: Option<u32>,
     size: Option<u32>,
 ) -> Result<KeyListResponse, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     keys::list_keys(&client, &base_url, &master_key, page, size)
         .await
@@ -118,10 +124,15 @@ pub async fn llm_list_keys(
 
 #[tauri::command]
 pub async fn llm_delete_key(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     key: String,
 ) -> Result<bool, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     keys::delete_key(&client, &base_url, &master_key, &key)
         .await
@@ -130,10 +141,15 @@ pub async fn llm_delete_key(
 
 #[tauri::command]
 pub async fn llm_get_key_info(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     key: String,
 ) -> Result<KeyInfo, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     keys::get_key_info(&client, &base_url, &master_key, &key)
         .await
@@ -142,11 +158,16 @@ pub async fn llm_get_key_info(
 
 #[tauri::command]
 pub async fn llm_update_key(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     key: String,
     params: KeyUpdateParams,
 ) -> Result<KeyInfo, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     keys::update_key(&client, &base_url, &master_key, &key, &params)
         .await
@@ -157,10 +178,15 @@ pub async fn llm_update_key(
 
 #[tauri::command]
 pub async fn llm_get_spend_logs(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     filters: SpendFilters,
 ) -> Result<Vec<SpendLog>, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     spend::get_spend_logs(&client, &base_url, &master_key, &filters)
         .await
@@ -169,10 +195,15 @@ pub async fn llm_get_spend_logs(
 
 #[tauri::command]
 pub async fn llm_get_key_spend(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
     key: String,
 ) -> Result<KeySpend, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     spend::get_key_spend(&client, &base_url, &master_key, &key)
         .await
@@ -181,9 +212,14 @@ pub async fn llm_get_key_spend(
 
 #[tauri::command]
 pub async fn llm_get_global_spend(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
     base_url: String,
-    master_key: String,
 ) -> Result<GlobalSpend, String> {
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    
     let client = reqwest::Client::new();
     spend::get_global_spend(&client, &base_url, &master_key)
         .await
