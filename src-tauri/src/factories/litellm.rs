@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig, SpawnSecrets};
 use snapfzz_kernel::settings::Settings;
+use snapfzz_packs::data::{slugs, DataDir};
 use snapfzz_packs::runtime::litellm::LiteLLMService;
 use snapfzz_packs::runtime::python::PythonRuntime;
 use snapfzz_packs::service::{ManagedService, ResourceLimits, ServiceConfig, ServiceError};
@@ -11,12 +12,15 @@ use snapfzz_vault::SecretVault;
 
 pub struct LiteLLMFactory {
     vault: Arc<std::sync::Mutex<SecretVault>>,
-    data_dir: PathBuf,
+    data_dir: DataDir,
 }
 
 impl LiteLLMFactory {
-    pub fn new(vault: Arc<std::sync::Mutex<SecretVault>>, data_dir: PathBuf) -> Self {
-        Self { vault, data_dir }
+    pub fn new(vault: Arc<std::sync::Mutex<SecretVault>>, base_data_dir: PathBuf) -> Self {
+        Self {
+            vault,
+            data_dir: DataDir::new(&base_data_dir),
+        }
     }
 
     fn resolve_secrets_from_vault(&self) -> SpawnSecrets {
@@ -78,6 +82,7 @@ impl ProcessFactory for LiteLLMFactory {
         ]
         .into_iter()
         .find(|candidate| candidate.join("pyproject.toml").exists())
+        .and_then(|p| std::fs::canonicalize(&p).ok())
     }
 
     fn can_start(&self, runtime: &PythonRuntime) -> bool {
@@ -91,7 +96,11 @@ impl ProcessFactory for LiteLLMFactory {
         runtime: &PythonRuntime,
     ) -> Result<tokio::process::Command, ServiceError> {
         let service = LiteLLMService::new(Arc::new(runtime.clone()));
-        let config_path = self.data_dir.join("gateway").join("config.yaml");
+        let litellm_dir = self
+            .data_dir
+            .ensure_runtime_dir(slugs::LITELLM)
+            .map_err(|e| ServiceError::SpawnFailed(e.to_string()))?;
+        let config_path = litellm_dir.join("config.yaml");
         let secrets = self.resolve_secrets_from_vault();
 
         let mut cmd = service.spawn_command(&ServiceConfig {
@@ -103,6 +112,10 @@ impl ProcessFactory for LiteLLMFactory {
         if config_path.exists() {
             cmd.arg("--config").arg(&config_path);
         }
+
+        // A037/DataDir: LiteLLM database lives in data/litellm/
+        let db_path = self.data_dir.database_path(slugs::LITELLM, "litellm.db");
+        cmd.env("DATABASE_URL", format!("sqlite:///{}", db_path.display()));
 
         for (key, value) in secrets.env {
             cmd.env(key, value);
@@ -119,7 +132,7 @@ impl ProcessFactory for LiteLLMFactory {
     }
 
     fn config_path(&self, _data_dir: &PathBuf) -> Option<PathBuf> {
-        Some(self.data_dir.join("gateway").join("config.yaml"))
+        Some(self.data_dir.config_path(slugs::LITELLM, "config.yaml"))
     }
 }
 
@@ -183,8 +196,18 @@ mod tests {
         };
         let error = factory
             .build_command(&config, &runtime())
-            .expect_err("venv missing");
-        assert!(error.to_string().contains("Python venv"));
+            .expect_err("litellm CLI missing");
+        assert!(error.to_string().contains("litellm CLI"));
+    }
+
+    #[test]
+    fn t37_litellm_factory_config_path_uses_data_dir_runtime_slug() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let path = factory
+            .config_path(&PathBuf::from("/unused"))
+            .expect("config path");
+        assert!(path.to_string_lossy().contains("data/litellm/config.yaml"));
     }
 
     #[test]
@@ -209,6 +232,7 @@ mod tests {
             .expect("working dir");
 
         std::env::set_current_dir(original).expect("restore cwd");
-        assert_eq!(working_dir, intelligence);
+        let expected = std::fs::canonicalize(&intelligence).expect("canonicalize expected");
+        assert_eq!(working_dir, expected);
     }
 }

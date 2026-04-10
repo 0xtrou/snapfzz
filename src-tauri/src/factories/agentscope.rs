@@ -43,6 +43,7 @@ impl ProcessFactory for AgentScopeFactory {
         ]
         .into_iter()
         .find(|candidate| candidate.join("pyproject.toml").exists())
+        .and_then(|p| std::fs::canonicalize(&p).ok())
     }
 
     fn can_start(&self, runtime: &PythonRuntime) -> bool {
@@ -148,6 +149,7 @@ mod tests {
             .expect("working dir");
 
         std::env::set_current_dir(original).expect("restore cwd");
-        assert_eq!(working_dir, intelligence);
+        let expected = std::fs::canonicalize(&intelligence).expect("canonicalize expected");
+        assert_eq!(working_dir, expected);
     }
 }
