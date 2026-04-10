@@ -61,3 +61,9 @@ After fixes:
 ## Deferred
 
 None - all findings require immediate fix.
+
+## Next Task
+
+**T36: Settings LLM Plugin** - UI plugin for LLM Gateway management
+- Task spec: `tasks/T36-settings-llm-plugin/spec.md`
+- Status: Created, ready for implementation
