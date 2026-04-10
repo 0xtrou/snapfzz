@@ -12,8 +12,7 @@ use snapfzz_kernel::boot::PreflightService;
 use snapfzz_kernel::process::{self, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::{
-    ComponentRegistry, PythonDownloader, UvDownloader, constants,
-    detect_platform,
+    constants, detect_platform, ComponentRegistry, PythonDownloader, UvDownloader,
 };
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
 use std::sync::{Arc, Mutex};
@@ -36,8 +35,13 @@ fn main() {
     let registry = result.registry.clone();
     let device = Arc::new(result.context.device().clone());
     let process_mgr = Arc::new(ProcessManager::with_parts(
-        Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
-        Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
+        Arc::new(tokio::sync::Mutex::new(
+            process::runtime::RuntimeState::new(),
+        )),
+        Arc::new(process::logs::ProcessLogs::with_max_lines(
+            data_dir.clone(),
+            1000,
+        )),
     ));
     let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
     let platform = detect_platform().expect("unsupported platform");
@@ -55,7 +59,10 @@ fn main() {
         device: device.clone(),
     };
     let mut component_registry = ComponentRegistry::new();
-    component_registry.register(Arc::new(UvDownloader::new(python_bin_dir.clone(), platform.clone())));
+    component_registry.register(Arc::new(UvDownloader::new(
+        python_bin_dir.clone(),
+        platform.clone(),
+    )));
     component_registry.register(Arc::new(PythonDownloader::new(
         uv_bin.clone(),
         python_bin_dir.join("python"),
@@ -65,8 +72,12 @@ fn main() {
     component_registry.register(cef_runtime_downloader);
     let component_registry = Arc::new(component_registry);
 
-    let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) =
-        (registry.clone(), process_mgr.clone(), process_mgr.clone(), settings_mgr.clone());
+    let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) = (
+        registry.clone(),
+        process_mgr.clone(),
+        process_mgr.clone(),
+        settings_mgr.clone(),
+    );
 
     tauri::Builder::default()
         .manage(registry)
@@ -78,28 +89,95 @@ fn main() {
         .manage(device)
         .manage(result.phase_timings_dto())
         .invoke_handler(tauri::generate_handler![
-            commands::settings::get_settings, commands::settings::save_settings, commands::settings::get_data_dir, commands::settings::set_data_dir,
-            commands::vault::vault_store, commands::vault::vault_read, commands::vault::vault_delete, commands::vault::vault_list, commands::vault::vault_has,
-            commands::process::restart_process, commands::process::kill_process, commands::process::list_processes, commands::process::get_process_logs,
-            commands::process::clear_process_logs, commands::process::update_process_config,
-            commands::budget::budget_snapshot, commands::budget::set_preset, commands::budget::get_batch_interval, commands::budget::get_startup_budget,
-            commands::budget::budget_record_strike, commands::budget::budget_report_violation, commands::budget::get_hardware_info,
-            commands::stream::send_message, commands::stream::stop_generation, commands::stream::create_session, commands::stream::load_session,
-            commands::system::agent_health, commands::system::open_preferences, commands::system::open_path, commands::system::pick_folder, commands::system::preflight_status,
-            commands::cef::cef_download_start, commands::cef::cef_download_status, commands::cef::cef_download_cancel, commands::cef::cef_resolve_build, commands::cef::cef_is_ready,
-            commands::cef::cef_open_window, commands::cef::cef_close_window,
-            commands::cef::cef_navigate, commands::cef::cef_go_back, commands::cef::cef_reload,
-            commands::cef::cef_devtools, commands::cef::cef_screenshot, commands::cef::cef_console_messages, commands::cef::cef_platform_info,
-            commands::components::component_list, commands::components::component_info, commands::components::component_download,
-            commands::components::component_download_cancel, commands::components::component_status, commands::components::component_verify,
-            commands::components::component_uninstall, commands::components::python_pack_metadata,
-            commands::pip::python_pack_install_all, commands::pip::python_pack_uninstall_all, commands::pip::python_runtime_status,
-            fonts::install_font_from_url, fonts::install_font_from_file, fonts::list_installed_fonts, fonts::remove_font,
+            commands::settings::get_settings,
+            commands::settings::save_settings,
+            commands::settings::get_data_dir,
+            commands::settings::set_data_dir,
+            commands::vault::vault_store,
+            commands::vault::vault_read,
+            commands::vault::vault_delete,
+            commands::vault::vault_list,
+            commands::vault::vault_has,
+            commands::process::restart_process,
+            commands::process::kill_process,
+            commands::process::list_processes,
+            commands::process::get_process_logs,
+            commands::process::clear_process_logs,
+            commands::process::update_process_config,
+            commands::budget::budget_snapshot,
+            commands::budget::set_preset,
+            commands::budget::get_batch_interval,
+            commands::budget::get_startup_budget,
+            commands::budget::budget_record_strike,
+            commands::budget::budget_report_violation,
+            commands::budget::get_hardware_info,
+            commands::stream::send_message,
+            commands::stream::stop_generation,
+            commands::stream::create_session,
+            commands::stream::load_session,
+            commands::system::agent_health,
+            commands::system::open_preferences,
+            commands::system::open_path,
+            commands::system::pick_folder,
+            commands::system::preflight_status,
+            commands::cef::cef_download_start,
+            commands::cef::cef_download_status,
+            commands::cef::cef_download_cancel,
+            commands::cef::cef_resolve_build,
+            commands::cef::cef_is_ready,
+            commands::cef::cef_open_window,
+            commands::cef::cef_close_window,
+            commands::cef::cef_navigate,
+            commands::cef::cef_go_back,
+            commands::cef::cef_reload,
+            commands::cef::cef_devtools,
+            commands::cef::cef_screenshot,
+            commands::cef::cef_console_messages,
+            commands::cef::cef_platform_info,
+            commands::components::component_list,
+            commands::components::component_info,
+            commands::components::component_download,
+            commands::components::component_download_cancel,
+            commands::components::component_status,
+            commands::components::component_verify,
+            commands::components::component_uninstall,
+            commands::components::python_pack_metadata,
+            commands::pip::python_pack_install_all,
+            commands::pip::python_pack_uninstall_all,
+            commands::pip::python_runtime_status,
+            commands::llm::llm_store_provider_key,
+            commands::llm::llm_read_provider_key,
+            commands::llm::llm_delete_provider_key,
+            commands::llm::llm_list_provider_keys,
+            commands::llm::llm_get_or_create_master_key,
+            commands::llm::llm_save_config,
+            commands::llm::llm_get_config_path,
+            commands::llm::llm_generate_key,
+            commands::llm::llm_list_keys,
+            commands::llm::llm_delete_key,
+            commands::llm::llm_get_key_info,
+            commands::llm::llm_update_key,
+            commands::llm::llm_get_spend_logs,
+            commands::llm::llm_get_key_spend,
+            commands::llm::llm_get_global_spend,
+            commands::llm::llm_get_models,
+            fonts::install_font_from_url,
+            fonts::install_font_from_file,
+            fonts::list_installed_fonts,
+            fonts::remove_font,
         ])
         .setup(move |app| {
             menus::setup_menus(app)?;
-            tauri::async_runtime::spawn(helpers::spawn_agentscope(app.handle().clone(), setup_registry.clone(), setup_process_mgr.clone(), setup_settings_mgr.clone()));
-            tauri::async_runtime::spawn(metrics::run_metrics_loop(setup_registry.clone(), app.handle().clone()));
+            tauri::async_runtime::spawn(helpers::spawn_agentscope(
+                app.handle().clone(),
+                setup_registry.clone(),
+                setup_process_mgr.clone(),
+                setup_settings_mgr.clone(),
+            ));
+            tauri::async_runtime::spawn(metrics::run_metrics_loop(
+                setup_registry.clone(),
+                app.handle().clone(),
+            ));
             Ok(())
         })
         .build(tauri::generate_context!())
