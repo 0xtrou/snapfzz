@@ -1,3 +1,5 @@
+// A013/UI: LlmSettings component tests
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
@@ -21,7 +23,7 @@ vi.mock('../hooks/useLlmCommands', () => ({
   getSpendLogs: () => Promise.resolve([]),
 }));
 
-describe('LlmSettings', () => {
+describe('A013/UI: LlmSettings', () => {
   it('renders title and subtitle', () => {
     render(<LlmSettings />);
     expect(screen.getByText('LLM Providers')).toBeInTheDocument();

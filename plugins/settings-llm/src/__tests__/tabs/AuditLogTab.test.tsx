@@ -1,3 +1,5 @@
+// A013/UI/AuditLogTab: Spend logs viewer tests
+
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AuditLogTab from '../../tabs/AuditLogTab';
@@ -14,7 +16,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   getSpendLogs: () => mockInvoke(),
 }));
 
-describe('AuditLogTab', () => {
+describe('A013/UI/AuditLogTab', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
   });

@@ -1,3 +1,5 @@
+// A013/UI/ApiKeysTab: Virtual key management tests
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -23,7 +25,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   generateKey: () => mockInvoke(),
 }));
 
-describe('ApiKeysTab', () => {
+describe('A013/UI/ApiKeysTab', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
   });

@@ -1,8 +1,10 @@
+// A013/UI/RoutingTab: Model routing configuration tests
+
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import RoutingTab from '../../tabs/RoutingTab';
 
-describe('RoutingTab', () => {
+describe('A013/UI/RoutingTab', () => {
   it('renders coming soon message', () => {
     render(<RoutingTab />);
     expect(screen.getByText('Coming Soon')).toBeInTheDocument();
