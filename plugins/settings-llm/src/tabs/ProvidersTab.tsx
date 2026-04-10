@@ -61,7 +61,8 @@ export default function ProvidersTab() {
         }
       }
       setEntries(allEntries);
-    } catch {
+    } catch (error) {
+      console.error('[ProvidersTab] Failed to load providers:', error);
       setEntries([]);
     } finally {
       setLoading(false);
