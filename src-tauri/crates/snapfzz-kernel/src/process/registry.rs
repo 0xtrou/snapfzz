@@ -67,11 +67,19 @@ impl ProcessFactoryRegistry {
             self.processes.insert(name.to_string(), process);
         }
 
-        self.processes
+        let result = self.processes
             .get_mut(name)
             .expect("process inserted")
             .spawn()
-            .await
+            .await;
+
+        if result.is_err() {
+            // C2/C7: Cleanup orphaned child and remove stale BudgetedProcess on spawn failure
+            let _ = self.process_mgr.shutdown(name).await;
+            self.processes.remove(name);
+        }
+
+        result
     }
 
     pub async fn spawn_all(&mut self) -> Vec<(String, Result<(), ProcessError>)> {
@@ -86,13 +94,15 @@ impl ProcessFactoryRegistry {
         out
     }
 
-    pub fn kill(&mut self, name: &str) -> Result<(), ProcessError> {
-        let mut process = self.processes.remove(name).ok_or_else(|| {
+    pub async fn kill(&mut self, name: &str) -> Result<(), ProcessError> {
+        let process = self.processes.get_mut(name).ok_or_else(|| {
             ProcessError::RuntimeNotRunning {
                 name: name.to_string(),
             }
         })?;
-        process.kill()
+        process.kill().await?;
+        self.processes.remove(name);
+        Ok(())
     }
 
     pub async fn restart(&mut self, name: &str) -> Result<(), ProcessError> {
@@ -256,7 +266,7 @@ mod tests {
         registry.register(Arc::new(TestFactory { name: "agentscope" }));
 
         let _ = registry.spawn("agentscope").await;
-        let _ = registry.kill("agentscope");
+        let _ = registry.kill("agentscope").await;
         assert!(registry.get("agentscope").is_none());
     }
 

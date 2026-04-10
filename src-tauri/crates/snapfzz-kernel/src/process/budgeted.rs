@@ -116,7 +116,7 @@ impl BudgetedProcess {
             max_health_failures: self.max_health_failures,
             max_restarts: self.max_restarts,
             location: ProcessLocation::Local,
-            consecutive_failures: self.consecutive_failures,
+            consecutive_failures: 0,
             restart_count: self.restart_count,
             status: self.status.clone(),
             started_at: Some(Instant::now()),
@@ -137,12 +137,8 @@ impl BudgetedProcess {
         Ok(())
     }
 
-    pub fn kill(&mut self) -> Result<(), ProcessError> {
-        self.process_mgr.kill(&self.name)?;
-        {
-            let mut guard = self.process_mgr.state.blocking_lock();
-            guard.children.remove(&self.name);
-        }
+    pub async fn kill(&mut self) -> Result<(), ProcessError> {
+        self.process_mgr.shutdown(&self.name).await?;
         self.registry.supervised.unregister_process(&self.name);
         self.pid = None;
         self.status = ProcessStatus::Stopped;
@@ -151,7 +147,7 @@ impl BudgetedProcess {
     }
 
     pub async fn restart(&mut self) -> Result<(), ProcessError> {
-        self.kill()?;
+        self.kill().await?;
         self.restart_count += 1;
         self.spawn().await
     }
