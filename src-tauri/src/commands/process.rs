@@ -118,17 +118,12 @@ mod tests {
     use snapfzz_kernel::process::{logs::ProcessLogs, runtime::RuntimeState, ProcessFactoryRegistry};
     use snapfzz_kernel::settings::SettingsManager;
     use snapfzz_packs::{detect_platform, runtime::python::PythonRuntime};
-    use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+    use std::sync::Arc;
     use tauri::{
         test::{mock_builder, mock_context, noop_assets},
         Manager,
     };
     use tokio::sync::Mutex;
-
-    fn cwd_lock() -> &'static StdMutex<()> {
-        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| StdMutex::new(()))
-    }
 
     fn register_process(registry: &Arc<BudgetRegistry>, name: &str) {
         registry.register_process(

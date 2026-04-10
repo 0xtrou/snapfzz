@@ -90,11 +90,11 @@ fn main() {
     factory_registry.register(Arc::new(factories::LiteLLMFactory::new()));
     let factory_registry = Arc::new(tokio::sync::Mutex::new(factory_registry));
 
-    let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) = (
+    let (setup_registry, setup_process_mgr, run_process_mgr, setup_factory_registry) = (
         registry.clone(),
         process_mgr.clone(),
         process_mgr.clone(),
-        settings_mgr.clone(),
+        factory_registry.clone(),
     );
 
     tauri::Builder::default()
@@ -106,7 +106,7 @@ fn main() {
         .manage(component_registry)
         .manage(device)
         .manage(result.phase_timings_dto())
-        .manage(factory_registry.clone())
+        .manage(factory_registry)
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -185,22 +185,39 @@ fn main() {
         ])
         .setup(move |app| {
             menus::setup_menus(app)?;
-            tauri::async_runtime::spawn(helpers::spawn_agentscope(
-                app.handle().clone(),
-                setup_registry.clone(),
-                setup_process_mgr.clone(),
-                setup_settings_mgr.clone(),
-            ));
-            tauri::async_runtime::spawn(helpers::spawn_litellm(
-                app.handle().clone(),
-                setup_registry.clone(),
-                setup_process_mgr.clone(),
-                setup_settings_mgr.clone(),
-            ));
+            
+            // A037/BootSpawn: Use ProcessFactoryRegistry to spawn all registered processes
+            let factory_registry = setup_factory_registry.clone();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut registry = factory_registry.lock().await;
+                let results = registry.spawn_all().await;
+                for (name, result) in results {
+                    match result {
+                        Ok(()) => {
+                            helpers::emit_supervisor(
+                                &app_handle,
+                                "success",
+                                &name,
+                                format!("{} started successfully", name),
+                            );
+                        }
+                        Err(e) => {
+                            helpers::emit_supervisor(
+                                &app_handle,
+                                "error",
+                                &name,
+                                format!("Failed to start {}: {}", name, e),
+                            );
+                        }
+                    }
+                }
+            });
+            
             tauri::async_runtime::spawn(metrics::run_metrics_loop(
                 setup_registry.clone(),
                 setup_process_mgr.clone(),
-                setup_settings_mgr.clone(),
+                setup_factory_registry.clone(),
                 app.handle().clone(),
             ));
             Ok(())

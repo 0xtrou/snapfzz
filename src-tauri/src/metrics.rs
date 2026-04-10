@@ -2,17 +2,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use snapfzz_kernel::budget::{metrics::ProcessStatus, BudgetRegistry};
-use snapfzz_kernel::process::ProcessManager;
-use snapfzz_kernel::settings::SettingsManager;
+use snapfzz_kernel::process::{ProcessFactoryRegistry, ProcessManager};
 use tauri::Emitter;
 
-use crate::commands::process::emit_supervisor;
 use crate::helpers;
 
 pub async fn run_metrics_loop(
     registry: Arc<BudgetRegistry>,
-    process_mgr: Arc<ProcessManager>,
-    settings_mgr: Arc<SettingsManager>,
+    _process_mgr: Arc<ProcessManager>,
+    factory_registry: Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>,
     handle: tauri::AppHandle,
 ) {
     loop {
@@ -28,7 +26,7 @@ pub async fn run_metrics_loop(
             if let Some(failures) =
                 snapfzz_kernel::process::health::apply_health_check(&registry, name).await
             {
-                emit_supervisor(
+                helpers::emit_supervisor(
                     &handle,
                     "error",
                     name,
@@ -42,15 +40,15 @@ pub async fn run_metrics_loop(
                     drop(entry);
 
                     if failures >= threshold && restarts < max_restarts {
-                        emit_supervisor(
+                        helpers::emit_supervisor(
                             &handle,
                             "warning",
                             name,
                             "Auto-restarting due to health failures".into(),
                         );
-                        perform_restart(&handle, &registry, &process_mgr, &settings_mgr, name).await;
+                        perform_restart(&handle, &factory_registry, name).await;
                     } else if restarts >= max_restarts {
-                        emit_supervisor(
+                        helpers::emit_supervisor(
                             &handle,
                             "error",
                             name,
@@ -70,7 +68,7 @@ pub async fn run_metrics_loop(
                     preset.memory.app_total_mb
                 };
 
-                emit_supervisor(
+                helpers::emit_supervisor(
                     &handle,
                     "error",
                     "system",
@@ -95,14 +93,13 @@ pub async fn run_metrics_loop(
                     drop(entry);
 
                     if restarts < max_restarts {
-                        emit_supervisor(
+                        helpers::emit_supervisor(
                             &handle,
                             "warning",
                             &name,
                             "Auto-restarting largest process due to unified memory limit".into(),
                         );
-                        perform_restart(&handle, &registry, &process_mgr, &settings_mgr, &name)
-                            .await;
+                        perform_restart(&handle, &factory_registry, &name).await;
                     }
                 }
             }
@@ -116,34 +113,26 @@ pub async fn run_metrics_loop(
 
 async fn perform_restart(
     handle: &tauri::AppHandle,
-    registry: &Arc<BudgetRegistry>,
-    process_mgr: &Arc<ProcessManager>,
-    settings_mgr: &Arc<SettingsManager>,
+    factory_registry: &Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>,
     name: &str,
 ) {
-    let _ = process_mgr.shutdown(name).await;
-
-    match name {
-        "agentscope" => {
-            helpers::spawn_agentscope(
-                handle.clone(),
-                registry.clone(),
-                process_mgr.clone(),
-                settings_mgr.clone(),
-            )
-            .await;
+    let mut registry = factory_registry.lock().await;
+    match registry.restart(name).await {
+        Ok(()) => {
+            helpers::emit_supervisor(
+                handle,
+                "success",
+                name,
+                format!("{} restarted successfully", name),
+            );
         }
-        "litellm" => {
-            helpers::spawn_litellm(
-                handle.clone(),
-                registry.clone(),
-                process_mgr.clone(),
-                settings_mgr.clone(),
-            )
-            .await;
-        }
-        _ => {
-            emit_supervisor(handle, "error", name, format!("Unknown service: {name}"));
+        Err(e) => {
+            helpers::emit_supervisor(
+                handle,
+                "error",
+                name,
+                format!("Failed to restart {}: {}", name, e),
+            );
         }
     }
 }
