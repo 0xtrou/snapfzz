@@ -156,6 +156,11 @@ mod tests {
             Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
             logs,
         ));
+        
+        let master_key = snapfzz_vault::load_or_generate_master_key(data_dir).expect("master key");
+        let vault = snapfzz_vault::SecretVault::open(&master_key, data_dir.join("vault.enc"))
+            .unwrap_or_else(|_| snapfzz_vault::SecretVault::empty(data_dir.join("vault.enc")));
+        let vault = Arc::new(std::sync::Mutex::new(vault));
 
         let mut registry = ProcessFactoryRegistry::new(
             budget_registry,
@@ -164,7 +169,10 @@ mod tests {
             python_runtime,
         );
         registry.register(Arc::new(crate::factories::AgentScopeFactory::new()));
-        registry.register(Arc::new(crate::factories::LiteLLMFactory::new()));
+        registry.register(Arc::new(crate::factories::LiteLLMFactory::new(
+            vault,
+            data_dir.to_path_buf(),
+        )));
         Arc::new(tokio::sync::Mutex::new(registry))
     }
 

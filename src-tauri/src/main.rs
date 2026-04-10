@@ -85,7 +85,10 @@ fn main() {
         python_runtime,
     );
     factory_registry.register(Arc::new(factories::AgentScopeFactory::new()));
-    factory_registry.register(Arc::new(factories::LiteLLMFactory::new()));
+    factory_registry.register(Arc::new(factories::LiteLLMFactory::new(
+        vault.clone(),
+        data_dir.clone(),
+    )));
     let factory_registry = Arc::new(tokio::sync::Mutex::new(factory_registry));
 
     let (setup_registry, setup_factory_registry) = (

@@ -21,7 +21,7 @@ pub mod runtime;
 pub mod supervisor;
 
 pub use budgeted::BudgetedProcess;
-pub use factory::ProcessFactory;
+pub use factory::{ProcessFactory, SpawnSecrets};
 pub use registry::ProcessFactoryRegistry;
 
 #[derive(Debug)]

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use snapfzz_packs::runtime::python::PythonRuntime;
@@ -6,6 +7,12 @@ use tokio::process::Command;
 
 use crate::process::SpawnConfig;
 use crate::settings::Settings;
+
+/// A037/SpawnSecrets: Environment variables to inject when spawning a process.
+#[derive(Default, Clone)]
+pub struct SpawnSecrets {
+    pub env: HashMap<String, String>,
+}
 
 // A037/factory_trait: Declarative process factory contract for managed services.
 pub trait ProcessFactory: Send + Sync {
@@ -38,6 +45,10 @@ pub trait ProcessFactory: Send + Sync {
     ) -> Result<Command, ServiceError>;
 
     fn resource_limits(&self) -> ResourceLimits;
+
+    fn config_path(&self, _data_dir: &PathBuf) -> Option<PathBuf> {
+        None
+    }
 }
 
 #[cfg(test)]

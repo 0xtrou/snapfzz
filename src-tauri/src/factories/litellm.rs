@@ -1,23 +1,58 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use snapfzz_kernel::process::{ProcessFactory, SpawnConfig};
+use snapfzz_kernel::process::{ProcessFactory, SpawnConfig, SpawnSecrets};
 use snapfzz_kernel::settings::Settings;
 use snapfzz_packs::runtime::litellm::LiteLLMService;
 use snapfzz_packs::runtime::python::PythonRuntime;
 use snapfzz_packs::service::{ManagedService, ResourceLimits, ServiceConfig, ServiceError};
+use snapfzz_vault::SecretVault;
 
-pub struct LiteLLMFactory;
-
-impl LiteLLMFactory {
-    pub fn new() -> Self {
-        Self
-    }
+pub struct LiteLLMFactory {
+    vault: Arc<std::sync::Mutex<SecretVault>>,
+    data_dir: PathBuf,
 }
 
-impl Default for LiteLLMFactory {
-    fn default() -> Self {
-        Self::new()
+impl LiteLLMFactory {
+    pub fn new(vault: Arc<std::sync::Mutex<SecretVault>>, data_dir: PathBuf) -> Self {
+        Self { vault, data_dir }
+    }
+
+    fn resolve_secrets_from_vault(&self) -> SpawnSecrets {
+        let mut guard = match self.vault.lock() {
+            Ok(g) => g,
+            Err(_) => return SpawnSecrets::default(),
+        };
+
+        let mut env = HashMap::new();
+
+        if let Ok(master_key) = snapfzz_llm::vault::get_or_create_master_key(&mut guard) {
+            env.insert("LITELLM_MASTER_KEY".to_string(), master_key);
+        }
+
+        for provider in &[
+            "openai",
+            "anthropic",
+            "google",
+            "mistral",
+            "cohere",
+            "azure",
+        ] {
+            if let Ok(keys) = snapfzz_llm::vault::list_provider_keys(&mut guard, provider) {
+                for key_name in keys {
+                    if let Ok(key_value) =
+                        snapfzz_llm::vault::read_provider_key(&mut guard, provider, &key_name)
+                    {
+                        let env_var =
+                            snapfzz_llm::vault::provider_key_to_env_var(provider, &key_name);
+                        env.insert(env_var, key_value);
+                    }
+                }
+            }
+        }
+
+        SpawnSecrets { env }
     }
 }
 
@@ -56,11 +91,24 @@ impl ProcessFactory for LiteLLMFactory {
         runtime: &PythonRuntime,
     ) -> Result<tokio::process::Command, ServiceError> {
         let service = LiteLLMService::new(Arc::new(runtime.clone()));
-        service.spawn_command(&ServiceConfig {
+        let config_path = self.data_dir.join("gateway").join("config.yaml");
+        let secrets = self.resolve_secrets_from_vault();
+
+        let mut cmd = service.spawn_command(&ServiceConfig {
             host: config.host.clone(),
             port: config.port,
             working_dir: config.working_dir.clone(),
-        })
+        })?;
+
+        if config_path.exists() {
+            cmd.arg("--config").arg(&config_path);
+        }
+
+        for (key, value) in secrets.env {
+            cmd.env(key, value);
+        }
+
+        Ok(cmd)
     }
 
     fn resource_limits(&self) -> ResourceLimits {
@@ -68,6 +116,10 @@ impl ProcessFactory for LiteLLMFactory {
             max_memory_mb: 256,
             max_restarts: 10,
         }
+    }
+
+    fn config_path(&self, _data_dir: &PathBuf) -> Option<PathBuf> {
+        Some(self.data_dir.join("gateway").join("config.yaml"))
     }
 }
 
@@ -78,8 +130,9 @@ mod tests {
     use snapfzz_kernel::settings::Settings;
     use snapfzz_packs::detect_platform;
     use snapfzz_packs::runtime::python::PythonRuntime;
+    use snapfzz_vault::{load_or_generate_master_key, SecretVault};
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Arc, Mutex, OnceLock};
 
     fn cwd_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -92,27 +145,37 @@ mod tests {
         PythonRuntime::new(temp.path().to_path_buf(), platform)
     }
 
+    fn make_factory(data_dir: &std::path::Path) -> LiteLLMFactory {
+        let master_key = load_or_generate_master_key(data_dir).expect("master key");
+        let vault = SecretVault::open(&master_key, data_dir.join("vault.enc")).expect("vault");
+        LiteLLMFactory::new(Arc::new(Mutex::new(vault)), data_dir.to_path_buf())
+    }
+
     #[test]
     fn t37_litellm_factory_health_path_is_health_liveness() {
-        let factory = LiteLLMFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         assert_eq!(factory.health_path(), "/health/liveness");
     }
 
     #[test]
     fn t37_litellm_factory_port_settings_keys_match_settings_contract() {
-        let factory = LiteLLMFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         assert_eq!(factory.port_settings_keys(), ("litellmHost", "litellmPort"));
     }
 
     #[test]
     fn t37_litellm_factory_can_start_checks_python_runtime() {
-        let factory = LiteLLMFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         assert!(!factory.can_start(&runtime()));
     }
 
     #[test]
     fn t37_litellm_factory_build_command_creates_python_module_command() {
-        let factory = LiteLLMFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         let config = SpawnConfig {
             host: "127.0.0.1".to_string(),
             port: 4000,
@@ -140,7 +203,8 @@ mod tests {
         .expect("pyproject");
         std::env::set_current_dir(&project).expect("set cwd");
 
-        let working_dir = LiteLLMFactory::new()
+        let temp = tempfile::tempdir().expect("tempdir");
+        let working_dir = make_factory(temp.path())
             .working_dir(&Settings::default())
             .expect("working dir");
 
