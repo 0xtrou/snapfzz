@@ -92,10 +92,11 @@ describe('U011/vault-settings', () => {
     expect((mod as { default: unknown }).default).toBeDefined();
   });
 
-  it('U011/vault-settings: maskSecretValue handles long and short inputs', () => {
-    expect(maskSecretValue('abcdef')).toBe('••cdef');
-    expect(maskSecretValue('abcd')).toBe('••••');
-    expect(maskSecretValue('')).toBe('');
+  it('U011/vault-settings: maskSecretValue fully masks all inputs', () => {
+    expect(maskSecretValue('abcdef')).toBe('••••••••');
+    expect(maskSecretValue('abcd')).toBe('••••••••');
+    expect(maskSecretValue('')).toBe('••••••••');
+    expect(maskSecretValue('sk-long-api-key-12345')).toBe('•••••••••••••••••••••');
   });
 
   it('U011/vault-settings: shows healthy status when vault_list succeeds', async () => {
@@ -108,7 +109,7 @@ describe('U011/vault-settings', () => {
     });
   });
 
-  it('U011/vault-settings: shows secret entries table with masked values', async () => {
+  it('U011/vault-settings: shows secret entries table with fully masked values', async () => {
     setupVault({
       'provider:openai:apiKey': 'sk-test-4f9x',
       'provider:anthropic:apiKey': 'an-test-1234',
@@ -119,12 +120,12 @@ describe('U011/vault-settings', () => {
     await waitFor(() => {
       expect(screen.getByText('provider:openai:apiKey')).toBeInTheDocument();
       expect(screen.getByText('provider:anthropic:apiKey')).toBeInTheDocument();
-      expect(screen.getByText('••••••••4f9x')).toBeInTheDocument();
-      expect(screen.getByText('••••••••1234')).toBeInTheDocument();
+      const maskedCells = screen.getAllByText('••••••••••••');
+      expect(maskedCells).toHaveLength(2);
     });
   });
 
-  it('U011/vault-settings: masks secrets showing only last 4 chars', async () => {
+  it('U011/vault-settings: masks secrets without revealing any characters', async () => {
     setupVault({
       'provider:openai:apiKey': 'sk-1234567890',
     });
@@ -132,11 +133,17 @@ describe('U011/vault-settings', () => {
     render(<VaultSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('•••••••••7890')).toBeInTheDocument();
+      const expected = maskSecretValue('sk-1234567890');
+      const masked = screen.getByText(expected);
+      expect(masked).toBeInTheDocument();
+      expect(masked.textContent).not.toContain('7');
+      expect(masked.textContent).not.toContain('8');
+      expect(masked.textContent).not.toContain('9');
+      expect(masked.textContent).not.toContain('0');
     });
   });
 
-  it('U011/vault-settings: masks short secrets (≤4 chars) fully', async () => {
+  it('U011/vault-settings: masks short secrets with minimum 8 bullets', async () => {
     setupVault({
       'provider:openai:apiKey': 'abc',
     });
@@ -144,7 +151,7 @@ describe('U011/vault-settings', () => {
     render(<VaultSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('•••')).toBeInTheDocument();
+      expect(screen.getByText('••••••••')).toBeInTheDocument();
     });
   });
 
@@ -219,7 +226,7 @@ describe('U011/vault-settings', () => {
         value: 'sk-new-secret',
       });
       expect(screen.getByText('provider:openai:apiKey')).toBeInTheDocument();
-      expect(screen.getByText('•••••••••cret')).toBeInTheDocument();
+      expect(screen.getByText(maskSecretValue('sk-new-secret'))).toBeInTheDocument();
     });
 
     expect(screen.getByLabelText('Secret name')).toHaveValue('');

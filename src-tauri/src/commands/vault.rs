@@ -169,17 +169,16 @@ mod tests {
         assert!(err.contains("secret not found"));
     }
 
+    // Per A011/Vault: list() is not rate-limited (intentionally removed for bulk reads).
     #[test]
-    fn a014_commands_vault_do_list_rate_limit_error_path_is_exposed() {
+    fn a014_commands_vault_do_list_succeeds_repeatedly_without_rate_limit() {
         let mut vault = initialized_vault();
         do_vault_store(&mut vault, "k", "v").expect("store");
 
-        for _ in 0..10 {
-            let _ = do_vault_list(&mut vault);
+        for i in 0..20 {
+            let result = do_vault_list(&mut vault).expect(&format!("list call {}", i));
+            assert_eq!(result, vec!["k"]);
         }
-
-        let err = do_vault_list(&mut vault).expect_err("rate limited list");
-        assert!(err.contains("rate limited"));
     }
 
     #[test]
