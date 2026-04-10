@@ -20,6 +20,10 @@ use tauri::RunEvent;
 
 fn main() {
     let data_dir = helpers::resolve_data_dir();
+    
+    // A008/BootCleanup: Kill any orphan processes from previous runs before starting
+    process::cleanup_all_orphan_processes(&data_dir);
+    
     let mut preflight = PreflightService::new(data_dir.clone());
     preflight.register_ready(Box::new(helpers::BootLogger));
     let result = preflight.run_sync().expect("[kernel] boot failed");
@@ -103,7 +107,6 @@ fn main() {
             commands::process::list_processes,
             commands::process::get_process_logs,
             commands::process::clear_process_logs,
-            commands::process::update_process_config,
             commands::budget::budget_snapshot,
             commands::budget::set_preset,
             commands::budget::get_batch_interval,
@@ -181,6 +184,8 @@ fn main() {
             ));
             tauri::async_runtime::spawn(metrics::run_metrics_loop(
                 setup_registry.clone(),
+                setup_process_mgr.clone(),
+                setup_settings_mgr.clone(),
                 app.handle().clone(),
             ));
             Ok(())

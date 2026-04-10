@@ -127,21 +127,6 @@ pub async fn kill_process<R: tauri::Runtime>(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn update_process_config(
-    name: String,
-    max_memory_mb: u64,
-    registry: tauri::State<'_, Arc<BudgetRegistry>>,
-) -> Result<(), String> {
-    let mut entry = registry
-        .supervised
-        .processes
-        .get_mut(&name)
-        .ok_or_else(|| format!("update_process_config: process '{name}' not registered"))?;
-    entry.max_memory_mb = max_memory_mb;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,12 +149,11 @@ mod tests {
         LOCK.get_or_init(|| StdMutex::new(()))
     }
 
-    fn register_process(registry: &Arc<BudgetRegistry>, name: &str, max_memory_mb: u64) {
+    fn register_process(registry: &Arc<BudgetRegistry>, name: &str) {
         registry.register_process(
             name,
             ProcessBudget {
                 pid: None,
-                max_memory_mb,
                 health_url: "http://127.0.0.1:1/health".to_string(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
@@ -187,7 +171,7 @@ mod tests {
     #[test]
     fn a014_process_list_processes_returns_registered_snapshots() {
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        register_process(&registry, "agentscope", 512);
+        register_process(&registry, "agentscope");
 
         let app = mock_builder()
             .manage(registry)
@@ -243,40 +227,6 @@ mod tests {
         ))
         .expect("tail after clear");
         assert!(tailed_after_clear.is_empty());
-    }
-
-    #[test]
-    fn a014_commands_process_update_config_direct_success_and_missing_error() {
-        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        register_process(&registry, "agentscope", 512);
-
-        let app = mock_builder()
-            .manage(registry.clone())
-            .build(mock_context(noop_assets()))
-            .expect("build app");
-
-        tauri::async_runtime::block_on(super::update_process_config(
-            "agentscope".to_string(),
-            2048,
-            app.state::<Arc<BudgetRegistry>>(),
-        ))
-        .expect("update config");
-
-        let max_memory = registry
-            .supervised
-            .processes
-            .get("agentscope")
-            .expect("process exists")
-            .max_memory_mb;
-        assert_eq!(max_memory, 2048);
-
-        let err = tauri::async_runtime::block_on(super::update_process_config(
-            "missing".to_string(),
-            1024,
-            app.state::<Arc<BudgetRegistry>>(),
-        ))
-        .expect_err("missing process should fail");
-        assert!(err.contains("not registered"));
     }
 
     #[test]

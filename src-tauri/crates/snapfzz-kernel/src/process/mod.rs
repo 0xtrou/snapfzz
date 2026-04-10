@@ -1,19 +1,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 
-use crate::budget::metrics::ProcessStatus;
-use crate::budget::{
-    supervised::{ProcessBudget, ProcessLocation},
-    BudgetRegistry,
-};
+use crate::budget::supervised::ProcessBudget;
+use crate::budget::BudgetRegistry;
 use crate::process::health::{apply_health_check, wait_until_healthy};
 use crate::process::logs::ProcessLogs;
-use crate::process::runtime::{piped_stdio, ChildState, RuntimeState};
-use crate::process::supervisor::{apply_memory_limit, restart_runtime, wait_for_shutdown};
+use crate::process::runtime::{ChildState, RuntimeState};
+use crate::process::supervisor::wait_for_shutdown;
 
 pub mod health;
 pub mod logs;
@@ -129,68 +126,14 @@ impl ProcessManager {
                 .insert(name.to_string(), ChildState { child, pid: child_pid });
         }
 
+        // A008/UnifiedBudget: Register process first, then update PID after spawn
         registry.register_process(name, budget);
+        if child_pid > 0 {
+            registry.update_process_pid(name, child_pid);
+        }
 
         wait_until_healthy(registry, name, health_timeout_secs as u32, Duration::from_secs(1)).await?;
         Ok(child_pid)
-    }
-
-    /// Spawns a process using the legacy uv-based command.
-    /// A033/ProcessManager: Legacy spawn using hardcoded uv command (deprecated)
-    #[deprecated(note = "Use spawn_process with ManagedService instead")]
-    pub async fn spawn(
-        &self,
-        name: &str,
-        config: &SpawnConfig,
-        registry: &BudgetRegistry,
-    ) -> Result<u32, ProcessError> {
-        let mut command = tokio::process::Command::new(runtime_command_binary());
-        command
-            .args(["run", "python", "app.py"])
-            .current_dir(&config.working_dir)
-            .env("SNAPFZZ_HOST", &config.host)
-            .env("SNAPFZZ_PORT", config.port.to_string())
-            .stdout(piped_stdio())
-            .stderr(piped_stdio())
-            .kill_on_drop(true);
-
-        #[cfg(unix)]
-        {
-            command.process_group(0);
-        }
-
-        let prev = registry.supervised.processes.get(name);
-        let prev_restart_count = prev.as_ref().map(|proc| proc.restart_count).unwrap_or(0);
-        let is_restart = prev.is_some();
-        let (preset_agentscope_max_mb, preset_max_restarts) = {
-            let preset = registry.preset.read().unwrap();
-            (
-                preset.memory.agentscope_max_mb,
-                preset.reliability.max_restarts,
-            )
-        };
-        let prev_max_memory = prev
-            .as_ref()
-            .map(|proc| proc.max_memory_mb)
-            .unwrap_or(preset_agentscope_max_mb);
-        drop(prev);
-
-        let budget = ProcessBudget {
-            pid: None,
-            max_memory_mb: prev_max_memory,
-            health_url: format!("http://{}:{}/health", config.host, config.port),
-            health_interval_ms: 2000,
-            max_health_failures: 3,
-            max_restarts: preset_max_restarts,
-            location: ProcessLocation::Local,
-            consecutive_failures: 0,
-            restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
-            status: ProcessStatus::Starting,
-            started_at: Some(Instant::now()),
-            owner: "system".to_string(),
-        };
-
-        self.spawn_process(name, &mut command, budget, registry, 120).await
     }
 
     pub async fn shutdown(&self, name: &str) -> Result<(), ProcessError> {
@@ -222,19 +165,6 @@ impl ProcessManager {
         wait_for_shutdown(&mut child_state.child).await;
         remove_pid_file(self.logs.data_dir(), name);
         Ok(())
-    }
-
-    /// Restarts a process using the legacy spawn pattern.
-    /// A033/ProcessManager: Deprecated - use service-specific restart logic
-    #[deprecated(note = "Use ManagedService restart with spawn_process instead")]
-    pub async fn restart(
-        &self,
-        name: &str,
-        config: &SpawnConfig,
-        registry: &BudgetRegistry,
-    ) -> Result<(), ProcessError> {
-        #[allow(deprecated)]
-        restart_runtime(self, name, config, registry).await
     }
 
     pub fn kill(&self, name: &str) -> Result<(), ProcessError> {
@@ -283,8 +213,8 @@ impl ProcessManager {
         apply_health_check(registry, name).await
     }
 
-    pub fn enforce_memory_limit(&self, registry: &BudgetRegistry, name: &str) -> bool {
-        apply_memory_limit(registry, name)
+    pub fn enforce_memory_limit(&self, registry: &BudgetRegistry, _name: &str) -> bool {
+        supervisor::is_total_memory_exceeded(registry)
     }
 }
 
@@ -292,10 +222,6 @@ impl Default for ProcessManager {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn runtime_command_binary() -> String {
-    std::env::var("SNAPFZZ_RUNTIME_COMMAND").unwrap_or_else(|_| "uv".to_string())
 }
 
 fn pid_file_path(data_dir: &std::path::Path, name: &str) -> PathBuf {
@@ -312,6 +238,43 @@ fn write_pid_file(data_dir: &std::path::Path, name: &str, pid: u32) {
 
 fn remove_pid_file(data_dir: &std::path::Path, name: &str) {
     let _ = std::fs::remove_file(pid_file_path(data_dir, name));
+}
+
+/// A008/BootCleanup: Clean up all known orphan processes at boot time.
+/// Scans PID files for agentscope and litellm, kills any orphan processes still running.
+pub fn cleanup_all_orphan_processes(data_dir: &std::path::Path) {
+    const MANAGED_PROCESSES: &[&str] = &["agentscope", "litellm"];
+    
+    for name in MANAGED_PROCESSES {
+        cleanup_stale_pid(data_dir, name);
+    }
+}
+
+/// A008/PortCleanup: Kill any process holding the specified port.
+/// Used before spawning to ensure the port is available.
+#[cfg(unix)]
+pub fn kill_process_on_port(port: u16) {
+    use std::process::Command;
+    
+    let output = Command::new("lsof")
+        .args(["-i", &format!(":{port}"), "-t"])
+        .output();
+    
+    if let Ok(output) = output {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for pid_str in stdout.lines() {
+            if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub fn kill_process_on_port(_port: u16) {
+    // Non-Unix platforms don't support this cleanup method
 }
 
 fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
@@ -386,7 +349,6 @@ mod tests {
             name,
             ProcessBudget {
                 pid: Some(std::process::id()),
-                max_memory_mb: u64::MAX,
                 health_url: "http://127.0.0.1:1/health".to_string(),
                 health_interval_ms: 100,
                 max_health_failures: 3,
@@ -404,22 +366,6 @@ mod tests {
     fn env_lock() -> &'static StdMutex<()> {
         static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| StdMutex::new(()))
-    }
-
-    fn create_fake_runtime_command_script(root: &Path) -> PathBuf {
-        let script = root.join("fake-runtime.sh");
-        let mut file = std::fs::File::create(&script).expect("create fake runtime script");
-        writeln!(file, "#!/bin/sh").expect("write shebang");
-        writeln!(file, "sleep 30").expect("write sleep command");
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
-                .expect("set script executable");
-        }
-
-        script
     }
 
     async fn spawn_health_server() -> u16 {
@@ -589,75 +535,6 @@ mod tests {
         assert!(matches!(entry.status, ProcessStatus::Unhealthy));
     }
 
-    #[tokio::test]
-    async fn a014_process_spawn_supports_multiple_named_processes() {
-        let _env_guard = env_lock().lock().expect("env lock");
-        let temp = tempfile::tempdir().expect("tempdir");
-        let fake_runtime = create_fake_runtime_command_script(temp.path());
-
-        let previous = std::env::var("SNAPFZZ_RUNTIME_COMMAND").ok();
-        unsafe {
-            std::env::set_var("SNAPFZZ_RUNTIME_COMMAND", &fake_runtime);
-        }
-
-        let manager = ProcessManager::with_parts(
-            Arc::new(Mutex::new(RuntimeState::new())),
-            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
-        );
-        let registry = make_registry();
-
-        let alpha_port = spawn_health_server().await;
-        let beta_port = spawn_health_server().await;
-        let alpha = SpawnConfig {
-            host: "127.0.0.1".to_string(),
-            port: alpha_port,
-            working_dir: temp.path().to_path_buf(),
-        };
-        let beta = SpawnConfig {
-            host: "127.0.0.1".to_string(),
-            port: beta_port,
-            working_dir: temp.path().to_path_buf(),
-        };
-
-        let alpha_pid = manager
-            .spawn("agentscope", &alpha, &registry)
-            .await
-            .expect("spawn agentscope process");
-        let beta_pid = manager
-            .spawn("miniapp", &beta, &registry)
-            .await
-            .expect("spawn miniapp process");
-
-        assert!(alpha_pid > 0);
-        assert!(beta_pid > 0);
-
-        {
-            let state = manager.state.lock().await;
-            assert_eq!(state.children.len(), 2);
-            assert!(state.children.contains_key("agentscope"));
-            assert!(state.children.contains_key("miniapp"));
-        }
-
-        manager
-            .shutdown("agentscope")
-            .await
-            .expect("shutdown agentscope process");
-        manager
-            .shutdown("miniapp")
-            .await
-            .expect("shutdown miniapp process");
-
-        if let Some(previous) = previous {
-            unsafe {
-                std::env::set_var("SNAPFZZ_RUNTIME_COMMAND", previous);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("SNAPFZZ_RUNTIME_COMMAND");
-            }
-        }
-    }
-
     #[test]
     fn a014_process_error_display_and_io_conversion_are_wired() {
         let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
@@ -695,7 +572,6 @@ mod tests {
 
         let budget = ProcessBudget {
             pid: None,
-            max_memory_mb: 512,
             health_url: health_url.clone(),
             health_interval_ms: 1000,
             max_health_failures: 3,
@@ -758,7 +634,6 @@ mod tests {
 
         let budget = ProcessBudget {
             pid: None,
-            max_memory_mb: 512,
             health_url: health_url.clone(),
             health_interval_ms: 1000,
             max_health_failures: 3,
@@ -818,9 +693,8 @@ mod tests {
 
         let budget = ProcessBudget {
             pid: None,
-            max_memory_mb: 512,
             health_url: "http://127.0.0.1:1/health".to_string(),
-            health_interval_ms: 100,
+            health_interval_ms: 1000,
             max_health_failures: 3,
             max_restarts: 3,
             location: ProcessLocation::Local,
@@ -872,7 +746,6 @@ mod tests {
 
         let budget = ProcessBudget {
             pid: None,
-            max_memory_mb: 512,
             health_url: health_url.clone(),
             health_interval_ms: 1000,
             max_health_failures: 3,

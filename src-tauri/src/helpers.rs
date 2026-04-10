@@ -4,7 +4,7 @@ use snapfzz_kernel::budget::{
     supervised::{ProcessBudget, ProcessLocation},
     BudgetRegistry,
 };
-use snapfzz_kernel::process::{ProcessManager, SpawnConfig};
+use snapfzz_kernel::process::{self, ProcessManager, SpawnConfig};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::platform::detect_platform;
 use snapfzz_packs::runtime::agentscope::AgentScopeService;
@@ -179,12 +179,13 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
     settings_mgr: Arc<SettingsManager>,
 ) {
     // A033/spawn_agentscope: Use AgentScopeService with spawn_process
+    let data_dir = resolve_data_dir();
+    let runtime_dir = data_dir.join("runtime");
     let result = async {
         let config = resolve_spawn_config(&settings_mgr)?;
-        let data_dir = resolve_data_dir();
 
         let platform = detect_platform().map_err(|e| e.to_string())?;
-        let runtime = Arc::new(PythonRuntime::new(data_dir, platform));
+        let runtime = Arc::new(PythonRuntime::new(runtime_dir, platform));
         let service = AgentScopeService::new(runtime);
 
         if !service.can_start() {
@@ -197,22 +198,21 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
             working_dir: config.working_dir.clone(),
         };
 
+        // A008/PortCleanup: Kill any orphan holding the port before spawn
+        process::kill_process_on_port(config.port);
+
         let mut command = service
             .spawn_command(&service_config)
             .map_err(|e: ServiceError| e.to_string())?;
 
         let limits = service.resource_limits();
-        let (preset_max_memory, preset_max_restarts) = {
+        let preset_max_restarts = {
             let preset = registry.preset.read().unwrap();
-            (
-                preset.memory.agentscope_max_mb,
-                preset.reliability.max_restarts,
-            )
+            preset.reliability.max_restarts
         };
 
         let budget = ProcessBudget {
             pid: None,
-            max_memory_mb: limits.max_memory_mb.min(preset_max_memory),
             health_url: format!("http://{}:{}/health", config.host, config.port),
             health_interval_ms: 2000,
             max_health_failures: 3,
@@ -229,6 +229,14 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
             .spawn_process("agentscope", &mut command, budget, &registry, 120)
             .await
             .map_err(|e| e.to_string())?;
+
+        // A008/PersistPort: Save agentscope port to settings for frontend retrieval
+        {
+            let mut settings = settings_mgr.load().unwrap_or_default();
+            settings.agentscope_host = config.host.clone();
+            settings.agentscope_port = config.port.to_string();
+            let _ = settings_mgr.save(&settings);
+        }
 
         Ok::<(), String>(())
     }
@@ -262,9 +270,10 @@ pub async fn spawn_litellm<R: tauri::Runtime>(
     let result = async {
         let config = resolve_litellm_spawn_config(&settings_mgr)?;
         let data_dir = resolve_data_dir();
+        let runtime_dir = data_dir.join("runtime");
 
         let platform = detect_platform().map_err(|e| e.to_string())?;
-        let runtime = Arc::new(PythonRuntime::new(data_dir, platform));
+        let runtime = Arc::new(PythonRuntime::new(runtime_dir, platform));
         let service = LiteLLMService::new(runtime);
 
         if !service.can_start() {
@@ -277,23 +286,22 @@ pub async fn spawn_litellm<R: tauri::Runtime>(
             working_dir: config.working_dir.clone(),
         };
 
+        // A008/PortCleanup: Kill any orphan holding the port before spawn
+        process::kill_process_on_port(config.port);
+
         let mut command = service
             .spawn_command(&service_config)
             .map_err(|e: ServiceError| e.to_string())?;
 
         let limits = service.resource_limits();
-        let (preset_max_memory, preset_max_restarts) = {
+        let preset_max_restarts = {
             let preset = registry.preset.read().unwrap();
-            (
-                preset.memory.agentscope_max_mb,
-                preset.reliability.max_restarts,
-            )
+            preset.reliability.max_restarts
         };
 
         let budget = ProcessBudget {
             pid: None,
-            max_memory_mb: limits.max_memory_mb.min(preset_max_memory),
-            health_url: format!("http://{}:{}/health", config.host, config.port),
+            health_url: format!("http://{}:{}/health/liveness", config.host, config.port),
             health_interval_ms: 2000,
             max_health_failures: 3,
             max_restarts: limits.max_restarts.min(preset_max_restarts),
@@ -772,5 +780,42 @@ mod tests {
         std::env::set_current_dir(&original_cwd)
             .or_else(|_| std::env::set_current_dir(&fallback_cwd))
             .expect("restore cwd");
+    }
+
+    #[test]
+    fn a014_helpers_python_runtime_uses_runtime_subdir() {
+        use snapfzz_packs::runtime::python::PythonRuntime;
+        use snapfzz_packs::platform::detect_platform;
+
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = temp.path().to_path_buf();
+        let platform = detect_platform().expect("platform");
+
+        let runtime = PythonRuntime::new(data_dir.join("runtime"), platform);
+
+        assert!(runtime.venv_dir().ends_with("python/venv"));
+        assert!(runtime.uv_binary().to_string_lossy().contains("runtime/python/bin"));
+    }
+
+    #[test]
+    fn a014_helpers_agentscope_can_start_with_correct_runtime_dir() {
+        use snapfzz_packs::runtime::agentscope::AgentScopeService;
+        use snapfzz_packs::runtime::python::PythonRuntime;
+        use snapfzz_packs::platform::detect_platform;
+        use std::sync::Arc;
+
+        let real_runtime = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join(".snapfzz/runtime"))
+            .expect("runtime path");
+
+        if real_runtime.exists() {
+            let platform = detect_platform().expect("platform");
+            let runtime = Arc::new(PythonRuntime::new(real_runtime.clone(), platform));
+            let service = AgentScopeService::new(runtime);
+
+            assert!(service.can_start(), "can_start should be true when runtime exists at {:#?}", real_runtime);
+        }
     }
 }

@@ -24,7 +24,7 @@ fn python_pack_specs() -> Vec<String> {
     vec![
         package_spec("agentscope", versions::AGENTSCOPE),
         package_spec("agentscope-runtime", versions::AGENTSCOPE_RUNTIME),
-        package_spec("litellm", versions::LITELLM),
+        format!("litellm[proxy]=={}", versions::LITELLM), // A013/LiteLLM: proxy extras for backoff, etc.
         "greenlet".to_string(), // A013/SQLAlchemy: Required for SQLAlchemy asyncio
     ]
 }
@@ -427,10 +427,10 @@ mod tests {
     #[test]
     fn t32_python_pack_specs_returns_all_required_packages() {
         let specs = python_pack_specs();
-        assert_eq!(specs.len(), 3);
+        assert_eq!(specs.len(), 4);
         assert!(specs[0].starts_with("agentscope=="));
         assert!(specs[1].starts_with("agentscope-runtime=="));
-        assert!(specs[2].starts_with("litellm=="));
+        assert!(specs[2].starts_with("litellm[proxy]=="));
     }
 
     #[test]

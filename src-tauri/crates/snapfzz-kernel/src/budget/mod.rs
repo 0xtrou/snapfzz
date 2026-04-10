@@ -121,12 +121,22 @@ impl BudgetRegistry {
         loop {
             tokio::time::sleep(Duration::from_millis(interval_ms)).await;
 
+            // A008/UnifiedBudget: Check total memory against unified budget
+            let app_total_mb = {
+                let preset = self.preset.read().unwrap();
+                preset.memory.app_total_mb
+            };
+
+            if self.supervised.is_total_memory_exceeded(app_total_mb) {
+                let total_rss = self.supervised.total_rss_mb();
+                eprintln!(
+                    "[budget] total RSS ({:.0}MB) exceeded unified budget ({app_total_mb}MB)",
+                    total_rss
+                );
+            }
+
             for entry in self.supervised.processes.iter() {
                 let name = entry.key();
-
-                if self.supervised.is_memory_exceeded(name) {
-                    eprintln!("[budget] process '{name}' exceeded memory limit — should be killed");
-                }
 
                 let healthy = self.supervised.check_health(name).await;
                 if healthy {
@@ -163,6 +173,8 @@ impl BudgetRegistry {
         let disabled_plugins: Vec<String> = ctrl.disabled_plugin_ids();
 
         let preset = self.preset.read().unwrap();
+        let total_rss_mb = self.supervised.total_rss_mb();
+
         BudgetMetrics {
             preset_name: preset.name.clone(),
             cpu_used: ctrl.cpu_total() - ctrl.cpu_available(),
@@ -171,8 +183,9 @@ impl BudgetRegistry {
             invoke_total: ctrl.invoke_total(),
             batch_interval_ms: ctrl.batch_interval(),
             batch_rate_ms: ctrl.batch_rate(),
+            app_total_mb: preset.memory.app_total_mb,
+            total_rss_mb,
             agentscope_rss_mb,
-            agentscope_max_mb: preset.memory.agentscope_max_mb,
             agentscope_status,
             storage_used_gb: self.supervised.measure_storage(),
             storage_max_gb: preset.storage.max_gb,
@@ -194,7 +207,6 @@ mod tests {
     fn make_budget() -> ProcessBudget {
         ProcessBudget {
             pid: None,
-            max_memory_mb: 256,
             health_url: "http://127.0.0.1:9999/health".into(),
             health_interval_ms: 2000,
             max_health_failures: 3,
@@ -269,7 +281,7 @@ mod tests {
         assert_eq!(snap.cpu_total, 4);
         assert_eq!(snap.invoke_total, 6);
         assert_eq!(snap.batch_interval_ms, 16);
-        assert_eq!(snap.agentscope_max_mb, 1024);
+        assert_eq!(snap.app_total_mb, 2048);
     }
 
     #[test]
@@ -318,7 +330,7 @@ mod tests {
     fn a008_registry_backward_compat_agentscope_fields() {
         let reg = BudgetRegistry::with_preset_name(PresetName::Balanced);
         let snap = reg.snapshot();
-        assert_eq!(snap.agentscope_max_mb, 1024);
+        assert_eq!(snap.app_total_mb, 2048);
         assert!(snap.agentscope_rss_mb.is_none());
         assert!(matches!(
             snap.agentscope_status,
@@ -389,11 +401,11 @@ mod tests {
             on_battery: false,
         };
         let reg = BudgetRegistry::with_preset(build_preset(PresetName::Battery, &hw));
-        assert_eq!(reg.snapshot().agentscope_max_mb, 512);
+        assert_eq!(reg.snapshot().app_total_mb, 1024);
 
         let perf = build_preset(PresetName::Performance, &hw);
         reg.swap_preset(perf);
 
-        assert!(reg.snapshot().agentscope_max_mb > 512);
+        assert!(reg.snapshot().app_total_mb > 1024);
     }
 }

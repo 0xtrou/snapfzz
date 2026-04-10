@@ -66,7 +66,6 @@ mod tests {
             name,
             ProcessBudget {
                 pid: None,
-                max_memory_mb: 512,
                 health_url,
                 health_interval_ms: 50,
                 max_health_failures: 3,

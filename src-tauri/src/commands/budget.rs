@@ -46,13 +46,7 @@ pub(crate) fn apply_preset_with_device(
     let name = preset_name_from_str(preset_name)?;
 
     let new_preset = budget::preset::build_preset(name, &hw);
-
-    let new_agentscope_max_mb = new_preset.memory.agentscope_max_mb;
     registry.swap_preset(new_preset);
-
-    if let Some(mut entry) = registry.supervised.processes.get_mut("agentscope") {
-        entry.max_memory_mb = new_agentscope_max_mb;
-    }
 
     Ok(())
 }
@@ -152,12 +146,11 @@ mod tests {
         Manager,
     };
 
-    fn register_process(registry: &Arc<BudgetRegistry>, name: &str, max_memory_mb: u64) {
+    fn register_process(registry: &Arc<BudgetRegistry>, name: &str) {
         registry.register_process(
             name,
             ProcessBudget {
                 pid: None,
-                max_memory_mb,
                 health_url: "http://127.0.0.1:1/health".to_string(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
@@ -238,24 +231,19 @@ mod tests {
     #[test]
     fn a008_commands_budget_apply_preset_updates_registry_and_agentscope_budget() {
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
-        register_process(&registry, "agentscope", 1);
+        register_process(&registry, "agentscope");
 
         apply_preset(&registry, "performance").expect("apply preset");
 
         let snapshot = registry.snapshot();
         assert_eq!(snapshot.preset_name, "performance");
-        let entry = registry
-            .supervised
-            .processes
-            .get("agentscope")
-            .expect("agentscope process");
-        assert_eq!(entry.max_memory_mb, snapshot.agentscope_max_mb);
+        assert!(snapshot.app_total_mb > 0);
     }
 
     #[test]
     fn a008_commands_budget_apply_preset_with_device_uses_device_derived_hardware() {
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
-        register_process(&registry, "agentscope", 1);
+        register_process(&registry, "agentscope");
         let device = DeviceInfo {
             os: "linux".to_string(),
             arch: "x86_64".to_string(),
