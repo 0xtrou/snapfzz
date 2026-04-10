@@ -2,14 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use snapfzz_kernel::budget::{metrics::ProcessStatus, BudgetRegistry};
-use snapfzz_kernel::process::{ProcessFactoryRegistry, ProcessManager};
+use snapfzz_kernel::process::ProcessFactoryRegistry;
 use tauri::Emitter;
 
 use crate::helpers;
 
 pub async fn run_metrics_loop(
     registry: Arc<BudgetRegistry>,
-    _process_mgr: Arc<ProcessManager>,
     factory_registry: Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>,
     handle: tauri::AppHandle,
 ) {

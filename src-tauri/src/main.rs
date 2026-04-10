@@ -40,21 +40,19 @@ fn main() {
     };
     let registry = result.registry.clone();
     let device = Arc::new(result.context.device().clone());
-    let process_mgr = Arc::new(ProcessManager::with_parts(
-        Arc::new(tokio::sync::Mutex::new(
-            process::runtime::RuntimeState::new(),
-        )),
-        Arc::new(process::logs::ProcessLogs::with_max_lines(
-            data_dir.clone(),
-            1000,
-        )),
-    ));
     let settings_mgr = Arc::new(SettingsManager::new(data_dir.clone()));
     let platform = detect_platform().expect("unsupported platform");
     let runtime_dir = data_dir.join("runtime");
     let python_dir = runtime_dir.join("python");
     let python_bin_dir = python_dir.join("bin");
     let uv_bin = python_bin_dir.join(format!("uv{}", platform.exe_suffix));
+    
+    // A037/SingleProcessManager: Create ONE ProcessManager shared by all
+    let process_mgr = Arc::new(ProcessManager::with_parts(
+        Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
+        Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
+    ));
+    
     let cef_runtime_downloader = Arc::new(CefDownloader::new(
         runtime_dir.join("cef"),
         device.platform.clone(),
@@ -78,11 +76,11 @@ fn main() {
     component_registry.register(cef_runtime_downloader);
     let component_registry = Arc::new(component_registry);
 
-    // A037/ProcessFactoryRegistry: Create registry for managed process lifecycle
+    // A037/ProcessFactoryRegistry: Single source of truth for process lifecycle
     let python_runtime = Arc::new(PythonRuntime::new(runtime_dir, platform));
     let mut factory_registry = ProcessFactoryRegistry::new(
         registry.clone(),
-        Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
+        process_mgr.clone(),
         settings_mgr.clone(),
         python_runtime,
     );
@@ -90,10 +88,8 @@ fn main() {
     factory_registry.register(Arc::new(factories::LiteLLMFactory::new()));
     let factory_registry = Arc::new(tokio::sync::Mutex::new(factory_registry));
 
-    let (setup_registry, setup_process_mgr, run_process_mgr, setup_factory_registry) = (
+    let (setup_registry, setup_factory_registry) = (
         registry.clone(),
-        process_mgr.clone(),
-        process_mgr.clone(),
         factory_registry.clone(),
     );
 
@@ -106,7 +102,7 @@ fn main() {
         .manage(component_registry)
         .manage(device)
         .manage(result.phase_timings_dto())
-        .manage(factory_registry)
+        .manage(factory_registry.clone())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -215,9 +211,8 @@ fn main() {
             });
             
             tauri::async_runtime::spawn(metrics::run_metrics_loop(
-                setup_registry.clone(),
-                setup_process_mgr.clone(),
-                setup_factory_registry.clone(),
+                setup_registry,
+                setup_factory_registry,
                 app.handle().clone(),
             ));
             Ok(())
@@ -226,10 +221,13 @@ fn main() {
         .expect("error while running snapfzz")
         .run(move |_app_handle, event| {
             if let RunEvent::ExitRequested { .. } = event {
-                let mgr = run_process_mgr.clone();
+                let factory_registry = factory_registry.clone();
                 tauri::async_runtime::block_on(async move {
-                    let _ = mgr.shutdown("agentscope").await;
-                    let _ = mgr.shutdown("litellm").await;
+                    let registry = factory_registry.lock().await;
+                    let process_mgr = registry.process_manager();
+                    drop(registry);
+                    let _ = process_mgr.shutdown("agentscope").await;
+                    let _ = process_mgr.shutdown("litellm").await;
                 });
             }
         });

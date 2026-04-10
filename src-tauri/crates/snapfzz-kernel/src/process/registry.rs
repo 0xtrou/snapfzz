@@ -7,7 +7,6 @@ use crate::budget::metrics::ProcessSnapshot;
 use crate::budget::BudgetRegistry;
 use crate::process::budgeted::BudgetedProcess;
 use crate::process::logs::ProcessLogs;
-use crate::process::runtime::RuntimeState;
 use crate::process::{ProcessError, ProcessFactory, ProcessManager};
 use crate::settings::SettingsManager;
 
@@ -25,15 +24,12 @@ impl ProcessFactoryRegistry {
     // A037/registry: Maintain process factories and lifecycle instances in one orchestration entrypoint.
     pub fn new(
         registry: Arc<BudgetRegistry>,
-        logs: Arc<ProcessLogs>,
+        process_mgr: Arc<ProcessManager>,
         settings_mgr: Arc<SettingsManager>,
         python_runtime: Arc<PythonRuntime>,
     ) -> Self {
-        let process_mgr = Arc::new(ProcessManager::with_parts(
-            Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
-            logs.clone(),
-        ));
-
+        let logs = process_mgr.logs.clone();
+        
         Self {
             factories: HashMap::new(),
             processes: HashMap::new(),
@@ -43,6 +39,10 @@ impl ProcessFactoryRegistry {
             python_runtime,
             process_mgr,
         }
+    }
+    
+    pub fn process_manager(&self) -> Arc<ProcessManager> {
+        self.process_mgr.clone()
     }
 
     pub fn register(&mut self, factory: Arc<dyn ProcessFactory>) {
@@ -163,7 +163,8 @@ mod tests {
     use crate::budget::BudgetRegistry;
     use crate::process::factory::ProcessFactory;
     use crate::process::logs::ProcessLogs;
-    use crate::process::SpawnConfig;
+    use crate::process::runtime::RuntimeState;
+    use crate::process::{ProcessManager, SpawnConfig};
     use crate::settings::{Settings, SettingsManager};
 
     use super::ProcessFactoryRegistry;
@@ -219,9 +220,14 @@ mod tests {
 
     fn make_registry() -> ProcessFactoryRegistry {
         let data_dir = tempfile::tempdir().expect("tempdir");
+        let logs = Arc::new(ProcessLogs::with_max_lines(data_dir.path().to_path_buf(), 100));
+        let process_mgr = Arc::new(ProcessManager::with_parts(
+            Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
+            logs,
+        ));
         ProcessFactoryRegistry::new(
             Arc::new(BudgetRegistry::from_hardware()),
-            Arc::new(ProcessLogs::with_max_lines(data_dir.path().to_path_buf(), 100)),
+            process_mgr,
             Arc::new(SettingsManager::new(data_dir.path().to_path_buf())),
             make_runtime(),
         )

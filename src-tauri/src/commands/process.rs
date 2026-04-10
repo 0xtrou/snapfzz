@@ -152,10 +152,14 @@ mod tests {
         let settings_mgr = Arc::new(SettingsManager::new(data_dir.to_path_buf()));
         let platform = detect_platform().expect("platform");
         let python_runtime = Arc::new(PythonRuntime::new(data_dir.join("runtime"), platform));
+        let process_mgr = Arc::new(ProcessManager::with_parts(
+            Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
+            logs,
+        ));
 
         let mut registry = ProcessFactoryRegistry::new(
             budget_registry,
-            logs,
+            process_mgr,
             settings_mgr,
             python_runtime,
         );
