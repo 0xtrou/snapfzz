@@ -150,6 +150,7 @@ fn main() {
             commands::llm::llm_list_provider_keys,
             commands::llm::llm_save_config,
             commands::llm::llm_get_config_path,
+            commands::llm::llm_get_base_url,
             commands::llm::llm_generate_key,
             commands::llm::llm_list_keys,
             commands::llm::llm_delete_key,
@@ -172,6 +173,12 @@ fn main() {
                 setup_process_mgr.clone(),
                 setup_settings_mgr.clone(),
             ));
+            tauri::async_runtime::spawn(helpers::spawn_litellm(
+                app.handle().clone(),
+                setup_registry.clone(),
+                setup_process_mgr.clone(),
+                setup_settings_mgr.clone(),
+            ));
             tauri::async_runtime::spawn(metrics::run_metrics_loop(
                 setup_registry.clone(),
                 app.handle().clone(),
@@ -185,6 +192,7 @@ fn main() {
                 let mgr = run_process_mgr.clone();
                 tauri::async_runtime::block_on(async move {
                     let _ = mgr.shutdown("agentscope").await;
+                    let _ = mgr.shutdown("litellm").await;
                 });
             }
         });

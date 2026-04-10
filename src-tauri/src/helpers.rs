@@ -105,12 +105,20 @@ pub fn resolve_spawn_config(settings_mgr: &SettingsManager) -> Result<SpawnConfi
 
 pub fn resolve_litellm_spawn_config(settings_mgr: &SettingsManager) -> Result<SpawnConfig, String> {
     let settings = settings_mgr.load().unwrap_or_default();
-    let host = if settings.agentscope_host.is_empty() {
-        "127.0.0.1".to_string()
+    let host = if settings.litellm_host.is_empty() {
+        if settings.agentscope_host.is_empty() {
+            "127.0.0.1".to_string()
+        } else {
+            settings.agentscope_host
+        }
     } else {
-        settings.agentscope_host
+        settings.litellm_host
     };
-    let port = find_available_port()?;
+    let port = if settings.litellm_port.is_empty() {
+        find_available_port()?
+    } else {
+        settings.litellm_port.parse().map_err(|_| "Invalid litellm_port")?
+    };
 
     Ok(SpawnConfig {
         host,
@@ -301,6 +309,14 @@ pub async fn spawn_litellm<R: tauri::Runtime>(
             .spawn_process("litellm", &mut command, budget, &registry, 120)
             .await
             .map_err(|e| e.to_string())?;
+
+        // A013/PersistPort: Save LiteLLM port to settings for frontend retrieval
+        {
+            let mut settings = settings_mgr.load().unwrap_or_default();
+            settings.litellm_host = config.host.clone();
+            settings.litellm_port = config.port.to_string();
+            let _ = settings_mgr.save(&settings);
+        }
 
         Ok::<(), String>(())
     }

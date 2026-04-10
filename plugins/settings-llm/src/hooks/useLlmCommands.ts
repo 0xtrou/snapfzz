@@ -115,6 +115,12 @@ export interface ModelListResponse {
   data: ModelInfo[];
 }
 
+// A013/Config: Get LiteLLM base URL from backend settings
+
+export async function getBaseUrl(): Promise<string> {
+  return bridge.invoke<string>('llm_get_base_url', {});
+}
+
 // A013/Vault: Provider key management hooks
 
 export async function storeProviderKey(

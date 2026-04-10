@@ -5,6 +5,7 @@ import {
   Form,
   Input,
   InputNumber,
+  message,
   Modal,
   Select,
   Skeleton,
@@ -19,13 +20,12 @@ import { AppButton, ConfirmAction } from '@snapfzz/shared';
 import {
   listKeys,
   deleteKey,
+  getBaseUrl,
   type KeyInfo,
   type KeyGenerateParams,
 } from '../hooks/useLlmCommands';
 
 const { Text } = Typography;
-
-const DEFAULT_BASE_URL = 'http://127.0.0.1:4000';
 
 const BUDGET_DURATIONS = [
   { value: '1d', label: '1 Day' },
@@ -39,6 +39,7 @@ function maskKey(key: string): string {
 }
 
 export default function ApiKeysTab() {
+  const [baseUrl, setBaseUrl] = useState<string>('');
   const [keys, setKeys] = useState<KeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -47,15 +48,22 @@ export default function ApiKeysTab() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
+    if (!baseUrl) return;
     setLoading(true);
     try {
-      const response = await listKeys(DEFAULT_BASE_URL);
+      const response = await listKeys(baseUrl);
       setKeys(response.keys || []);
     } catch {
       setKeys([]);
     } finally {
       setLoading(false);
     }
+  }, [baseUrl]);
+
+  useEffect(() => {
+    getBaseUrl()
+      .then(setBaseUrl)
+      .catch(() => message.error('Failed to get LiteLLM URL'));
   }, []);
 
   useEffect(() => {
@@ -111,7 +119,8 @@ export default function ApiKeysTab() {
           title={`Delete key ${maskKey(record.key)}?`}
           description="This permanently removes the virtual key."
           onConfirm={async () => {
-            await deleteKey(DEFAULT_BASE_URL, record.key);
+            if (!baseUrl) return;
+            await deleteKey(baseUrl, record.key);
             await loadKeys();
           }}
           okText="Delete"
@@ -132,6 +141,10 @@ export default function ApiKeysTab() {
     max_budget: number;
     budget_duration: string;
   }) {
+    if (!baseUrl) {
+      message.error('LiteLLM URL not configured');
+      return;
+    }
     setSubmitting(true);
     try {
       const { generateKey } = await import('../hooks/useLlmCommands');
@@ -141,9 +154,11 @@ export default function ApiKeysTab() {
         budget_duration: values.budget_duration || '30d',
         metadata: {},
       };
-      const result = await generateKey(DEFAULT_BASE_URL, params);
+      const result = await generateKey(baseUrl, params);
       setGeneratedKey(result.key);
       await loadKeys();
+    } catch (err) {
+      message.error(`Failed to create key: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSubmitting(false);
     }

@@ -37,6 +37,13 @@ pub struct Settings {
         deserialize_with = "deserialize_string_or_number"
     )]
     pub agentscope_port: String,
+    #[serde(default = "default_litellm_host")]
+    pub litellm_host: String,
+    #[serde(
+        default = "default_litellm_port",
+        deserialize_with = "deserialize_string_or_number_litellm"
+    )]
+    pub litellm_port: String,
 }
 
 fn default_model() -> String {
@@ -83,6 +90,14 @@ fn default_agentscope_port() -> String {
     AGENTSCOPE_PORT.to_string()
 }
 
+fn default_litellm_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_litellm_port() -> String {
+    "4000".to_string()
+}
+
 fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -92,6 +107,18 @@ where
         serde_json::Value::String(value) => Ok(value),
         serde_json::Value::Number(value) => Ok(value.to_string()),
         _ => Ok(default_agentscope_port()),
+    }
+}
+
+fn deserialize_string_or_number_litellm<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(value) => Ok(value),
+        serde_json::Value::Number(value) => Ok(value.to_string()),
+        _ => Ok(default_litellm_port()),
     }
 }
 
@@ -111,6 +138,8 @@ impl Default for Settings {
             preset: default_preset(),
             agentscope_host: default_agentscope_host(),
             agentscope_port: default_agentscope_port(),
+            litellm_host: default_litellm_host(),
+            litellm_port: default_litellm_port(),
         }
     }
 }

@@ -25,6 +25,7 @@ fn python_pack_specs() -> Vec<String> {
         package_spec("agentscope", versions::AGENTSCOPE),
         package_spec("agentscope-runtime", versions::AGENTSCOPE_RUNTIME),
         package_spec("litellm", versions::LITELLM),
+        "greenlet".to_string(), // A013/SQLAlchemy: Required for SQLAlchemy asyncio
     ]
 }
 
@@ -202,16 +203,17 @@ impl PythonRuntime {
         }
 
         let specs = python_pack_specs();
-        let output = self.run_uv([
-            "pip",
-            "install",
-            "--python",
-            self.venv_python().to_string_lossy().as_ref(),
-            "--prerelease=allow",
-            specs[0].as_str(),
-            specs[1].as_str(),
-            specs[2].as_str(),
-        ])?;
+        let python_path = self.venv_python();
+        let python_str = python_path.to_string_lossy();
+        let args: Vec<&str> = std::iter::once("pip")
+            .chain(std::iter::once("install"))
+            .chain(std::iter::once("--python"))
+            .chain(std::iter::once(python_str.as_ref()))
+            .chain(std::iter::once("--prerelease=allow"))
+            .chain(specs.iter().map(|s| s.as_str()))
+            .collect();
+
+        let output = self.run_uv(args)?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())

@@ -49,6 +49,14 @@ describe('A013/Hooks: useLlmCommands', () => {
   });
 
   describe('A013/Config: Config management', () => {
+    it('gets base URL from backend settings', async () => {
+      mockInvoke.mockResolvedValue('http://127.0.0.1:4000');
+      const { getBaseUrl } = await import('../../hooks/useLlmCommands');
+      const result = await getBaseUrl();
+      expect(result).toBe('http://127.0.0.1:4000');
+      expect(mockInvoke).toHaveBeenCalledWith('llm_get_base_url', {});
+    });
+
     it('saves config with correct parameters', async () => {
       mockInvoke.mockResolvedValue(undefined);
       const { saveConfig } = await import('../../hooks/useLlmCommands');

@@ -1,40 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  DatePicker,
-  Empty,
-  Select,
-  Skeleton,
-  Table,
-  Typography,
-} from 'antd';
+import { Empty, message, Select, Skeleton, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { getSpendLogs, type SpendLog } from '../hooks/useLlmCommands';
+import { getSpendLogs, getBaseUrl, type SpendLog } from '../hooks/useLlmCommands';
 
 const { Text } = Typography;
 
-const { RangePicker } = DatePicker;
-
-const DEFAULT_BASE_URL = 'http://127.0.0.1:4000';
-
 export default function AuditLogTab() {
+  const [baseUrl, setBaseUrl] = useState<string>('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
+  const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [modelFilter, setModelFilter] = useState<string | undefined>();
 
   const loadLogs = useCallback(async () => {
+    if (!baseUrl) return;
     setLoading(true);
     try {
-      const result = await getSpendLogs(DEFAULT_BASE_URL, {
-        model: modelFilter,
-        size: 100,
-      });
-      setLogs(result || []);
+      const result = await getSpendLogs(baseUrl, {});
+      setLogs(result);
     } catch {
       setLogs([]);
     } finally {
       setLoading(false);
     }
-  }, [modelFilter]);
+  }, [baseUrl]);
+
+  useEffect(() => {
+    getBaseUrl()
+      .then(setBaseUrl)
+      .catch(() => message.error('Failed to get LiteLLM URL'));
+  }, []);
 
   useEffect(() => {
     void loadLogs();
@@ -121,7 +115,7 @@ export default function AuditLogTab() {
         <Table<SpendLog>
           rowKey="request_id"
           columns={columns}
-          dataSource={logs}
+          dataSource={modelFilter ? logs.filter((log) => log.model === modelFilter) : logs}
           pagination={{ pageSize: 20, showSizeChanger: false }}
         />
       )}

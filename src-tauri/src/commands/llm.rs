@@ -1,5 +1,6 @@
 // A013/Commands: Tauri commands for LLM Gateway operations
 
+use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_llm::{
     config, keys, spend, vault,
     GeneratedKey, GatewayConfig, KeyGenerateParams, KeyInfo, KeyListResponse,
@@ -8,6 +9,26 @@ use snapfzz_llm::{
 use snapfzz_vault::SecretVault;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+// A013/Config: Base URL command - returns LiteLLM gateway URL from settings
+
+#[tauri::command]
+pub async fn llm_get_base_url(
+    settings_mgr: tauri::State<'_, Arc<SettingsManager>>,
+) -> Result<String, String> {
+    let settings = settings_mgr.load().unwrap_or_default();
+    let host = if settings.litellm_host.is_empty() {
+        "127.0.0.1".to_string()
+    } else {
+        settings.litellm_host
+    };
+    let port: u16 = if settings.litellm_port.is_empty() {
+        4000
+    } else {
+        settings.litellm_port.parse().unwrap_or(4000)
+    };
+    Ok(format!("http://{}:{}", host, port))
+}
 
 // A013/Vault: Provider key management commands
 
