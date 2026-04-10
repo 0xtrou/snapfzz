@@ -21,9 +21,9 @@ describe('A013/Hooks: useLlmCommands', () => {
       const { storeProviderKey } = await import('../../hooks/useLlmCommands');
       await storeProviderKey('openai', 'key_1', 'sk-test');
       expect(mockInvoke).toHaveBeenCalledWith('llm_store_provider_key', {
-        provider_id: 'openai',
-        key_name: 'key_1',
-        key_value: 'sk-test',
+        providerId: 'openai',
+        keyName: 'key_1',
+        keyValue: 'sk-test',
       });
     });
 
@@ -32,8 +32,8 @@ describe('A013/Hooks: useLlmCommands', () => {
       const { deleteProviderKey } = await import('../../hooks/useLlmCommands');
       await deleteProviderKey('anthropic', 'prod');
       expect(mockInvoke).toHaveBeenCalledWith('llm_delete_provider_key', {
-        provider_id: 'anthropic',
-        key_name: 'prod',
+        providerId: 'anthropic',
+        keyName: 'prod',
       });
     });
 
@@ -43,7 +43,7 @@ describe('A013/Hooks: useLlmCommands', () => {
       const result = await listProviderKeys('openai');
       expect(result).toEqual(['key_1', 'key_2']);
       expect(mockInvoke).toHaveBeenCalledWith('llm_list_provider_keys', {
-        provider_id: 'openai',
+        providerId: 'openai',
       });
     });
   });

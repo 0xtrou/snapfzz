@@ -129,9 +129,9 @@ export async function storeProviderKey(
   keyValue: string,
 ): Promise<void> {
   await bridge.invoke<void>('llm_store_provider_key', {
-    provider_id: providerId,
-    key_name: keyName,
-    key_value: keyValue,
+    providerId,
+    keyName,
+    keyValue,
   });
 }
 
@@ -140,14 +140,14 @@ export async function deleteProviderKey(
   keyName: string,
 ): Promise<void> {
   await bridge.invoke<void>('llm_delete_provider_key', {
-    provider_id: providerId,
-    key_name: keyName,
+    providerId,
+    keyName,
   });
 }
 
 export async function listProviderKeys(providerId: string): Promise<string[]> {
   return bridge.invoke<string[]>('llm_list_provider_keys', {
-    provider_id: providerId,
+    providerId,
   });
 }
 
@@ -159,13 +159,13 @@ export async function saveConfig(
 ): Promise<void> {
   await bridge.invoke<void>('llm_save_config', {
     config,
-    data_dir: dataDir,
+    dataDir,
   });
 }
 
 export async function getConfigPath(dataDir: string): Promise<string> {
   return bridge.invoke<string>('llm_get_config_path', {
-    data_dir: dataDir,
+    dataDir,
   });
 }
 
@@ -176,7 +176,7 @@ export async function generateKey(
   params: KeyGenerateParams,
 ): Promise<GeneratedKey> {
   return bridge.invoke<GeneratedKey>('llm_generate_key', {
-    base_url: baseUrl,
+    baseUrl,
     params,
   });
 }
@@ -187,7 +187,7 @@ export async function listKeys(
   size?: number,
 ): Promise<KeyListResponse> {
   return bridge.invoke<KeyListResponse>('llm_list_keys', {
-    base_url: baseUrl,
+    baseUrl,
     page,
     size,
   });
@@ -195,14 +195,14 @@ export async function listKeys(
 
 export async function deleteKey(baseUrl: string, key: string): Promise<boolean> {
   return bridge.invoke<boolean>('llm_delete_key', {
-    base_url: baseUrl,
+    baseUrl,
     key,
   });
 }
 
 export async function getKeyInfo(baseUrl: string, key: string): Promise<KeyInfo> {
   return bridge.invoke<KeyInfo>('llm_get_key_info', {
-    base_url: baseUrl,
+    baseUrl,
     key,
   });
 }
@@ -213,7 +213,7 @@ export async function updateKey(
   params: KeyUpdateParams,
 ): Promise<KeyInfo> {
   return bridge.invoke<KeyInfo>('llm_update_key', {
-    base_url: baseUrl,
+    baseUrl,
     key,
     params,
   });
@@ -226,7 +226,7 @@ export async function getSpendLogs(
   filters: SpendFilters,
 ): Promise<SpendLog[]> {
   return bridge.invoke<SpendLog[]>('llm_get_spend_logs', {
-    base_url: baseUrl,
+    baseUrl,
     filters,
   });
 }
@@ -236,19 +236,19 @@ export async function getKeySpend(
   key: string,
 ): Promise<KeySpend> {
   return bridge.invoke<KeySpend>('llm_get_key_spend', {
-    base_url: baseUrl,
+    baseUrl,
     key,
   });
 }
 
 export async function getGlobalSpend(baseUrl: string): Promise<GlobalSpend> {
   return bridge.invoke<GlobalSpend>('llm_get_global_spend', {
-    base_url: baseUrl,
+    baseUrl,
   });
 }
 
 export async function getModels(baseUrl: string): Promise<ModelListResponse> {
   return bridge.invoke<ModelListResponse>('llm_get_models', {
-    base_url: baseUrl,
+    baseUrl,
   });
 }

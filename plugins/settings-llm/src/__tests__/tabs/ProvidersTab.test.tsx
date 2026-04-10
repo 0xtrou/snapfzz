@@ -84,9 +84,9 @@ describe('A013/UI/ProvidersTab', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('llm_store_provider_key', {
-        provider_id: 'openai',
-        key_name: 'prod',
-        key_value: 'sk-prod-value',
+        providerId: 'openai',
+        keyName: 'prod',
+        keyValue: 'sk-prod-value',
       });
     });
   });
