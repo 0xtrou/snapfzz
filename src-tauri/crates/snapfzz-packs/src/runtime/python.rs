@@ -392,3 +392,222 @@ impl PythonRuntime {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_platform() -> PlatformInfo {
+        PlatformInfo {
+            os: "macos",
+            arch: "aarch64",
+            platform: "macos-arm64".to_string(),
+            display: "macOS (Apple Silicon)",
+            exe_suffix: "",
+            archive_ext: ".tar.gz",
+        }
+    }
+
+    #[test]
+    fn t32_python_normalize_package_name_strips_version_and_extras() {
+        assert_eq!(normalize_package_name("agentscope"), "agentscope");
+        assert_eq!(normalize_package_name("agentscope==0.1.0"), "agentscope");
+        assert_eq!(normalize_package_name("package[extra]"), "package");
+        assert_eq!(normalize_package_name("some-pkg==2.0"), "some_pkg");
+    }
+
+    #[test]
+    fn t32_python_package_spec_creates_equality_spec() {
+        assert_eq!(package_spec("agentscope", "0.1.0"), "agentscope==0.1.0");
+        assert_eq!(package_spec("litellm", "1.0.0"), "litellm==1.0.0");
+    }
+
+    #[test]
+    fn t32_python_pack_specs_returns_all_required_packages() {
+        let specs = python_pack_specs();
+        assert_eq!(specs.len(), 3);
+        assert!(specs[0].starts_with("agentscope=="));
+        assert!(specs[1].starts_with("agentscope-runtime=="));
+        assert!(specs[2].starts_with("litellm=="));
+    }
+
+    #[test]
+    fn t32_python_runtime_new_creates_instance_with_paths() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        assert_eq!(runtime.runtime_dir(), temp.path());
+        assert!(runtime.bin_dir().ends_with("python/bin"));
+        assert!(runtime.uv_binary().ends_with("bin/uv"));
+        assert!(runtime.python_install_dir().ends_with("bin/python"));
+        assert!(runtime.venv_dir().ends_with("python/venv"));
+        assert!(runtime.venv_python().ends_with("venv/bin/python3"));
+    }
+
+    #[test]
+    fn t32_python_runtime_bin_dir_includes_exe_suffix_on_windows() {
+        let platform = PlatformInfo {
+            os: "windows",
+            arch: "x86_64",
+            platform: "windows-x64".to_string(),
+            display: "Windows (x64)",
+            exe_suffix: ".exe",
+            archive_ext: ".zip",
+        };
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        assert!(runtime.uv_binary().ends_with("uv.exe"));
+    }
+
+    #[test]
+    fn t32_python_runtime_is_runtime_ready_checks_all_components() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        assert!(!runtime.is_runtime_ready());
+
+        let bin_dir = runtime.bin_dir();
+        std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+        std::fs::write(runtime.uv_binary(), "").expect("create uv binary");
+
+        let install_dir = runtime.python_install_dir();
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), "")
+            .expect("create python binary");
+
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(runtime.venv_python(), "").expect("create venv python");
+
+        assert!(runtime.is_runtime_ready());
+    }
+
+    #[test]
+    fn t32_python_runtime_is_python_installed_checks_binary() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        assert!(!runtime.is_python_installed());
+
+        let install_dir = runtime.python_install_dir();
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), "")
+            .expect("create python binary");
+
+        assert!(runtime.is_python_installed());
+    }
+
+    #[test]
+    fn t32_python_runtime_is_venv_created_checks_python_binary() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        assert!(!runtime.is_venv_created());
+
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(runtime.venv_python(), "").expect("create venv python");
+
+        assert!(runtime.is_venv_created());
+    }
+
+    #[test]
+    fn t32_python_runtime_find_python_binary_searches_cpython_dirs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("bin").join("python");
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+
+        assert!(PythonRuntime::find_python_binary(&install_dir).is_none());
+
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), "").expect("create python3.12");
+
+        let found = PythonRuntime::find_python_binary(&install_dir);
+        assert!(found.is_some());
+        assert!(found.unwrap().ends_with("python3.12"));
+    }
+
+    #[test]
+    fn t32_python_runtime_find_python_binary_prefers_exact_version() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("bin").join("python");
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3"), "").expect("create python3");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), "").expect("create python3.12");
+
+        let found = PythonRuntime::find_python_binary(&install_dir);
+        assert!(found.unwrap().ends_with("python3.12"));
+    }
+
+    #[test]
+    fn t32_python_runtime_package_version_from_list_finds_normalized_match() {
+        let packages = vec![
+            ("AgentScope".to_string(), "0.1.0".to_string()),
+            ("litellm".to_string(), "1.0.0".to_string()),
+        ];
+
+        let version = PythonRuntime::package_version_from_list("agentscope", &packages);
+        assert_eq!(version, Some("0.1.0".to_string()));
+
+        let version = PythonRuntime::package_version_from_list("litellm", &packages);
+        assert_eq!(version, Some("1.0.0".to_string()));
+
+        let version = PythonRuntime::package_version_from_list("missing", &packages);
+        assert_eq!(version, None);
+    }
+
+    #[test]
+    fn t32_python_runtime_status_returns_complete_info() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        let status = runtime.status();
+
+        assert!(!status.python_installed);
+        assert!(status.python_version.is_none());
+        assert!(status.python_path.is_none());
+        assert!(!status.uv_installed);
+        assert!(status.uv_version.is_none());
+        assert!(!status.venv_exists);
+        assert!(status.installed_packages.is_empty());
+        assert!(!status.agentscope.is_installed);
+        assert!(!status.agentscope_runtime.is_installed);
+        assert!(!status.litellm.is_installed);
+        assert_eq!(status.install_steps.len(), 6);
+    }
+
+    #[test]
+    fn t32_python_runtime_uninstall_all_removes_python_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        let python_dir = temp.path().join("python");
+        std::fs::create_dir_all(&python_dir).expect("create python dir");
+        std::fs::write(python_dir.join("test.txt"), "data").expect("create file");
+
+        assert!(python_dir.exists());
+        runtime.uninstall_all().expect("uninstall all");
+        assert!(!python_dir.exists());
+    }
+
+    #[test]
+    fn t32_python_runtime_uninstall_all_handles_missing_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        let result = runtime.uninstall_all();
+        assert!(result.is_ok());
+    }
+}

@@ -73,11 +73,15 @@ impl ProcessManager {
         Self { state, logs }
     }
 
-    pub async fn spawn(
+    /// Spawns a process with a pre-built command and budget configuration.
+    /// A033/ProcessManager: Lower-level spawn that accepts any command
+    pub async fn spawn_process(
         &self,
         name: &str,
-        config: &SpawnConfig,
+        command: &mut tokio::process::Command,
+        budget: ProcessBudget,
         registry: &BudgetRegistry,
+        health_timeout_secs: u64,
     ) -> Result<u32, ProcessError> {
         if self.state.lock().await.children.contains_key(name) {
             return Err(ProcessError::SpawnFailed(format!(
@@ -87,21 +91,6 @@ impl ProcessManager {
 
         cleanup_stale_pid(self.logs.data_dir(), name);
 
-        let mut command = tokio::process::Command::new(runtime_command_binary());
-        command
-            .args(["run", "python", "app.py"])
-            .current_dir(&config.working_dir)
-            .env("SNAPFZZ_HOST", &config.host)
-            .env("SNAPFZZ_PORT", config.port.to_string())
-            .stdout(piped_stdio())
-            .stderr(piped_stdio())
-            .kill_on_drop(true);
-
-        #[cfg(unix)]
-        {
-            command.process_group(0);
-        }
-
         let mut child = command
             .spawn()
             .map_err(|error| ProcessError::SpawnFailed(error.to_string()))?;
@@ -109,6 +98,7 @@ impl ProcessManager {
         let child_pid = child.id().unwrap_or(0);
         write_pid_file(self.logs.data_dir(), name, child_pid);
 
+        // Capture stdout
         if let Some(stdout) = child.stdout.take() {
             let logs = self.logs.clone();
             let process_name = name.to_string();
@@ -120,6 +110,7 @@ impl ProcessManager {
             });
         }
 
+        // Capture stderr
         if let Some(stderr) = child.stderr.take() {
             let logs = self.logs.clone();
             let process_name = name.to_string();
@@ -138,6 +129,36 @@ impl ProcessManager {
                 .insert(name.to_string(), ChildState { child, pid: child_pid });
         }
 
+        registry.register_process(name, budget);
+
+        wait_until_healthy(registry, name, health_timeout_secs as u32, Duration::from_secs(1)).await?;
+        Ok(child_pid)
+    }
+
+    /// Spawns a process using the legacy uv-based command.
+    /// A033/ProcessManager: Legacy spawn using hardcoded uv command (deprecated)
+    #[deprecated(note = "Use spawn_process with ManagedService instead")]
+    pub async fn spawn(
+        &self,
+        name: &str,
+        config: &SpawnConfig,
+        registry: &BudgetRegistry,
+    ) -> Result<u32, ProcessError> {
+        let mut command = tokio::process::Command::new(runtime_command_binary());
+        command
+            .args(["run", "python", "app.py"])
+            .current_dir(&config.working_dir)
+            .env("SNAPFZZ_HOST", &config.host)
+            .env("SNAPFZZ_PORT", config.port.to_string())
+            .stdout(piped_stdio())
+            .stderr(piped_stdio())
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
+
         let prev = registry.supervised.processes.get(name);
         let prev_restart_count = prev.as_ref().map(|proc| proc.restart_count).unwrap_or(0);
         let is_restart = prev.is_some();
@@ -154,26 +175,22 @@ impl ProcessManager {
             .unwrap_or(preset_agentscope_max_mb);
         drop(prev);
 
-        registry.register_process(
-            name,
-            ProcessBudget {
-                pid: Some(child_pid),
-                max_memory_mb: prev_max_memory,
-                health_url: format!("http://{}:{}/health", config.host, config.port),
-                health_interval_ms: 2000,
-                max_health_failures: 3,
-                max_restarts: preset_max_restarts,
-                location: ProcessLocation::Local,
-                consecutive_failures: 0,
-                restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
-                status: ProcessStatus::Starting,
-                started_at: Some(Instant::now()),
-                owner: "system".to_string(),
-            },
-        );
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: prev_max_memory,
+            health_url: format!("http://{}:{}/health", config.host, config.port),
+            health_interval_ms: 2000,
+            max_health_failures: 3,
+            max_restarts: preset_max_restarts,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: if is_restart { prev_restart_count + 1 } else { 0 },
+            status: ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
 
-        wait_until_healthy(registry, name, 120, Duration::from_secs(1)).await?;
-        Ok(child_pid)
+        self.spawn_process(name, &mut command, budget, registry, 120).await
     }
 
     pub async fn shutdown(&self, name: &str) -> Result<(), ProcessError> {
@@ -207,12 +224,16 @@ impl ProcessManager {
         Ok(())
     }
 
+    /// Restarts a process using the legacy spawn pattern.
+    /// A033/ProcessManager: Deprecated - use service-specific restart logic
+    #[deprecated(note = "Use ManagedService restart with spawn_process instead")]
     pub async fn restart(
         &self,
         name: &str,
         config: &SpawnConfig,
         registry: &BudgetRegistry,
     ) -> Result<(), ProcessError> {
+        #[allow(deprecated)]
         restart_runtime(self, name, config, registry).await
     }
 
@@ -354,6 +375,7 @@ mod tests {
         cleanup_stale_pid, pid_file_path, remove_pid_file, write_pid_file, ProcessError, ProcessManager,
         SpawnConfig,
     };
+    use crate::process::runtime::piped_stdio;
 
     fn make_registry() -> BudgetRegistry {
         BudgetRegistry::with_preset_name(PresetName::Performance)
@@ -644,5 +666,237 @@ mod tests {
 
         let render = ProcessError::SpawnFailed("spawn failed".to_string()).to_string();
         assert_eq!(render, "spawn failed");
+    }
+
+    #[tokio::test]
+    async fn a033_process_spawn_process_creates_process_and_writes_pid() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+        let registry = make_registry();
+
+        let health_port = spawn_health_server().await;
+        let health_url = format!("http://127.0.0.1:{}/health", health_port);
+
+        let mut command = tokio::process::Command::new("sh");
+        command
+            .arg("-c")
+            .arg("sleep 30")
+            .stdout(piped_stdio())
+            .stderr(piped_stdio())
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
+
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: 512,
+            health_url: health_url.clone(),
+            health_interval_ms: 1000,
+            max_health_failures: 3,
+            max_restarts: 3,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
+
+        let pid = manager
+            .spawn_process("test-process", &mut command, budget, &registry, 5)
+            .await
+            .expect("spawn_process should succeed");
+
+        assert!(pid > 0);
+
+        let pid_path = pid_file_path(temp.path(), "test-process");
+        assert!(pid_path.exists());
+        let pid_content = std::fs::read_to_string(&pid_path).expect("read pid file");
+        assert_eq!(pid_content, pid.to_string());
+
+        {
+            let state = manager.state.lock().await;
+            assert!(state.children.contains_key("test-process"));
+        }
+
+        manager
+            .shutdown("test-process")
+            .await
+            .expect("shutdown test process");
+    }
+
+    #[tokio::test]
+    async fn a033_process_spawn_process_errors_when_already_running() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+        let registry = make_registry();
+
+        let health_port = spawn_health_server().await;
+        let health_url = format!("http://127.0.0.1:{}/health", health_port);
+
+        let mut command1 = tokio::process::Command::new("sh");
+        command1
+            .arg("-c")
+            .arg("sleep 30")
+            .stdout(piped_stdio())
+            .stderr(piped_stdio())
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            command1.process_group(0);
+        }
+
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: 512,
+            health_url: health_url.clone(),
+            health_interval_ms: 1000,
+            max_health_failures: 3,
+            max_restarts: 3,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
+
+        let _pid = manager
+            .spawn_process("duplicate", &mut command1, budget.clone(), &registry, 5)
+            .await
+            .expect("first spawn should succeed");
+
+        let mut command2 = tokio::process::Command::new("sh");
+        command2.arg("-c").arg("sleep 30");
+
+        let error = manager
+            .spawn_process("duplicate", &mut command2, budget, &registry, 5)
+            .await
+            .expect_err("duplicate spawn should fail");
+
+        match error {
+            ProcessError::SpawnFailed(msg) => {
+                assert!(msg.contains("already running"));
+            }
+            other => panic!("unexpected error: {:?}", other),
+        }
+
+        manager.shutdown("duplicate").await.expect("cleanup");
+    }
+
+    #[tokio::test]
+    async fn a033_process_spawn_process_health_timeout_errors() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+        let registry = make_registry();
+
+        let mut command = tokio::process::Command::new("sh");
+        command
+            .arg("-c")
+            .arg("sleep 30")
+            .stdout(piped_stdio())
+            .stderr(piped_stdio())
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
+
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: 512,
+            health_url: "http://127.0.0.1:1/health".to_string(),
+            health_interval_ms: 100,
+            max_health_failures: 3,
+            max_restarts: 3,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
+
+        let error = manager
+            .spawn_process("timeout-process", &mut command, budget, &registry, 1)
+            .await
+            .expect_err("should timeout on health check");
+
+        match error {
+            ProcessError::HealthTimeout { name, timeout_ms } => {
+                assert_eq!(name, "timeout-process");
+                assert_eq!(timeout_ms, 1000);
+            }
+            other => panic!("unexpected error: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn a033_process_spawn_process_captures_stdout_and_stderr() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 100)),
+        );
+        let registry = make_registry();
+
+        let health_port = spawn_health_server().await;
+        let health_url = format!("http://127.0.0.1:{}/health", health_port);
+
+        let mut command = tokio::process::Command::new("sh");
+        command
+            .arg("-c")
+            .arg("echo 'stdout line 1' && echo 'stdout line 2' >&2 && echo 'stdout line 3' && sleep 30")
+            .stdout(piped_stdio())
+            .stderr(piped_stdio())
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
+
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: 512,
+            health_url: health_url.clone(),
+            health_interval_ms: 1000,
+            max_health_failures: 3,
+            max_restarts: 3,
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
+
+        let _pid = manager
+            .spawn_process("log-test", &mut command, budget, &registry, 5)
+            .await
+            .expect("spawn_process should succeed");
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+        let logs = manager.logs.tail("log-test", 10);
+        assert!(logs.iter().any(|l| l.contains("stdout line 1")));
+        assert!(logs.iter().any(|l| l.contains("stdout line 3")));
+        assert!(logs.iter().any(|l| l.contains("[stderr]") && l.contains("stdout line 2")));
+
+        manager.shutdown("log-test").await.expect("cleanup");
     }
 }

@@ -3,6 +3,9 @@ use std::time::Duration;
 use crate::budget::{metrics::ProcessStatus, BudgetRegistry};
 use crate::process::{ProcessError, ProcessManager, SpawnConfig};
 
+/// Restarts a runtime process using the legacy spawn pattern.
+/// A033/supervisor: Deprecated - use service-specific restart logic instead
+#[deprecated(note = "Use spawn_agentscope with shutdown for service-specific restart")]
 pub async fn restart_runtime(
     manager: &ProcessManager,
     name: &str,
@@ -10,6 +13,7 @@ pub async fn restart_runtime(
     registry: &BudgetRegistry,
 ) -> Result<(), ProcessError> {
     manager.shutdown(name).await?;
+    #[allow(deprecated)]
     manager.spawn(name, config, registry).await?;
     Ok(())
 }
