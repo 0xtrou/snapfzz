@@ -185,7 +185,6 @@ impl SecretVault {
     }
 
     pub fn list(&mut self) -> Result<Vec<String>, VaultError> {
-        self.check_rate_limit()?;
         let mut keys: Vec<String> = self.entries.keys().cloned().collect();
         keys.sort();
         Ok(keys)
