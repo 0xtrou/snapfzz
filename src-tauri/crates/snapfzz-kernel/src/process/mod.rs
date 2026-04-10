@@ -12,10 +12,17 @@ use crate::process::logs::ProcessLogs;
 use crate::process::runtime::{ChildState, RuntimeState};
 use crate::process::supervisor::wait_for_shutdown;
 
+pub mod budgeted;
+pub mod factory;
 pub mod health;
 pub mod logs;
+pub mod registry;
 pub mod runtime;
 pub mod supervisor;
+
+pub use budgeted::BudgetedProcess;
+pub use factory::ProcessFactory;
+pub use registry::ProcessFactoryRegistry;
 
 #[derive(Debug)]
 pub enum ProcessError {

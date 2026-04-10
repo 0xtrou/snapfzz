@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod factories;
 mod fonts;
 mod helpers;
 mod menus;
@@ -9,10 +10,11 @@ mod metrics;
 use snapfzz_cef::download::CefDownloader;
 use snapfzz_cef::runtime::CefRuntime;
 use snapfzz_kernel::boot::PreflightService;
-use snapfzz_kernel::process::{self, ProcessManager};
+use snapfzz_kernel::process::{self, ProcessFactoryRegistry, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::{
-    constants, detect_platform, ComponentRegistry, PythonDownloader, UvDownloader,
+    constants, detect_platform, runtime::python::PythonRuntime, ComponentRegistry, PythonDownloader,
+    UvDownloader,
 };
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
 use std::sync::{Arc, Mutex};
@@ -76,6 +78,18 @@ fn main() {
     component_registry.register(cef_runtime_downloader);
     let component_registry = Arc::new(component_registry);
 
+    // A037/ProcessFactoryRegistry: Create registry for managed process lifecycle
+    let python_runtime = Arc::new(PythonRuntime::new(runtime_dir, platform));
+    let mut factory_registry = ProcessFactoryRegistry::new(
+        registry.clone(),
+        Arc::new(process::logs::ProcessLogs::with_max_lines(data_dir.clone(), 1000)),
+        settings_mgr.clone(),
+        python_runtime,
+    );
+    factory_registry.register(Arc::new(factories::AgentScopeFactory::new()));
+    factory_registry.register(Arc::new(factories::LiteLLMFactory::new()));
+    let factory_registry = Arc::new(tokio::sync::Mutex::new(factory_registry));
+
     let (setup_registry, setup_process_mgr, run_process_mgr, setup_settings_mgr) = (
         registry.clone(),
         process_mgr.clone(),
@@ -92,6 +106,7 @@ fn main() {
         .manage(component_registry)
         .manage(device)
         .manage(result.phase_timings_dto())
+        .manage(factory_registry.clone())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
             commands::settings::save_settings,
