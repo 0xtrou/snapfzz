@@ -38,6 +38,15 @@ pub trait ProcessFactory: Send + Sync {
 
     fn can_start(&self, runtime: &PythonRuntime) -> bool;
 
+    // A037/pre_run_setup: Synchronous pre-spawn setup hook (default no-op).
+    fn pre_run_setup(
+        &self,
+        _config: &SpawnConfig,
+        _runtime: &PythonRuntime,
+    ) -> Result<(), ServiceError> {
+        Ok(())
+    }
+
     fn build_command(
         &self,
         config: &SpawnConfig,
@@ -83,6 +92,14 @@ mod tests {
 
         fn can_start(&self, _runtime: &PythonRuntime) -> bool {
             true
+        }
+
+        fn pre_run_setup(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<(), snapfzz_packs::service::ServiceError> {
+            Ok(())
         }
 
         fn build_command(

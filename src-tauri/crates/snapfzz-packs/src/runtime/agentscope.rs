@@ -76,10 +76,12 @@ impl ManagedService for AgentScopeService {
         &self.data_dir
     }
 
+    // A033/AgentScopeService: Disabled until agent source file strategy is resolved.
+    // `agentscope run` requires a SOURCE argument (agent .py file), which is not yet
+    // bundled into the runtime data directory. The factory stays registered so the
+    // generic spawn flow remains intact, but can_start() returns false to skip gracefully.
     fn can_start(&self) -> bool {
-        self.runtime.is_runtime_ready()
-            && self.runtime.package_version("agentscope").is_some()
-            && self.runtime.package_version("agentscope-runtime").is_some()
+        false
     }
 }
 
@@ -153,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn t33_agentscope_service_can_start_false_without_venv() {
+    fn t33_agentscope_service_can_start_disabled_pending_source_strategy() {
         let temp = tempfile::tempdir().expect("tempdir");
         let service = make_service(temp.path());
         assert!(!service.can_start());

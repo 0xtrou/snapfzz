@@ -101,6 +101,10 @@ impl BudgetedProcess {
             )));
         }
 
+        self.factory
+            .pre_run_setup(&self.config, &self.python_runtime)
+            .map_err(|err| ProcessError::SpawnFailed(err.to_string()))?;
+
         let mut command = self
             .factory
             .build_command(&self.config, &self.python_runtime)
@@ -331,6 +335,14 @@ mod tests {
 
         fn can_start(&self, _runtime: &PythonRuntime) -> bool {
             true
+        }
+
+        fn pre_run_setup(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<(), ServiceError> {
+            Ok(())
         }
 
         fn build_command(

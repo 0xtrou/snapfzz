@@ -194,6 +194,14 @@ mod tests {
             true
         }
 
+        fn pre_run_setup(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<(), ServiceError> {
+            Ok(())
+        }
+
         fn build_command(
             &self,
             _config: &SpawnConfig,
