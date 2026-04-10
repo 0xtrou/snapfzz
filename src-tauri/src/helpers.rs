@@ -1,10 +1,14 @@
 use serde::Serialize;
 use snapfzz_kernel::boot::{OnPreflightReady, PreflightContext, PreflightError};
-use snapfzz_kernel::budget::{BudgetRegistry, supervised::{ProcessBudget, ProcessLocation}};
+use snapfzz_kernel::budget::{
+    supervised::{ProcessBudget, ProcessLocation},
+    BudgetRegistry,
+};
 use snapfzz_kernel::process::{ProcessManager, SpawnConfig};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::platform::detect_platform;
 use snapfzz_packs::runtime::agentscope::AgentScopeService;
+use snapfzz_packs::runtime::litellm::LiteLLMService;
 use snapfzz_packs::runtime::python::PythonRuntime;
 use snapfzz_packs::service::{ManagedService, ServiceConfig, ServiceError};
 use std::fs;
@@ -13,7 +17,14 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::Emitter;
 
-const AGENTSCOPE_PORT: u16 = 8090;
+// A034/ports: Auto-allocate random available ports for managed processes
+fn find_available_port() -> Result<u16, String> {
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    drop(listener);
+    Ok(port)
+}
 
 fn snapfzz_home() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".snapfzz")
@@ -50,7 +61,11 @@ pub fn agentscope_base_url(settings_mgr: &SettingsManager) -> String {
     } else {
         settings.agentscope_host
     };
-    let port: u16 = settings.agentscope_port.parse().unwrap_or(AGENTSCOPE_PORT);
+    let port: u16 = if settings.agentscope_port.is_empty() {
+        8090
+    } else {
+        settings.agentscope_port.parse().unwrap_or(8090)
+    };
     format!("http://{host}:{port}")
 }
 
@@ -75,10 +90,31 @@ pub fn resolve_spawn_config(settings_mgr: &SettingsManager) -> Result<SpawnConfi
     } else {
         settings.agentscope_host
     };
+    let port = if settings.agentscope_port.is_empty() {
+        find_available_port()?
+    } else {
+        settings.agentscope_port.parse().map_err(|_| "Invalid agentscope_port")?
+    };
 
     Ok(SpawnConfig {
         host,
-        port: settings.agentscope_port.parse().unwrap_or(AGENTSCOPE_PORT),
+        port,
+        working_dir: resolve_intelligence_dir()?,
+    })
+}
+
+pub fn resolve_litellm_spawn_config(settings_mgr: &SettingsManager) -> Result<SpawnConfig, String> {
+    let settings = settings_mgr.load().unwrap_or_default();
+    let host = if settings.agentscope_host.is_empty() {
+        "127.0.0.1".to_string()
+    } else {
+        settings.agentscope_host
+    };
+    let port = find_available_port()?;
+
+    Ok(SpawnConfig {
+        host,
+        port,
         working_dir: resolve_intelligence_dir()?,
     })
 }
@@ -124,6 +160,10 @@ fn spawn_failure(err: impl ToString) -> String {
     format!("Failed to start AgentScope Runtime: {}", err.to_string())
 }
 
+fn spawn_litellm_failure(err: impl ToString) -> String {
+    format!("Failed to start LiteLLM Gateway: {}", err.to_string())
+}
+
 pub async fn spawn_agentscope<R: tauri::Runtime>(
     handle: tauri::AppHandle<R>,
     registry: Arc<BudgetRegistry>,
@@ -134,30 +174,34 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
     let result = async {
         let config = resolve_spawn_config(&settings_mgr)?;
         let data_dir = resolve_data_dir();
-        
+
         let platform = detect_platform().map_err(|e| e.to_string())?;
         let runtime = Arc::new(PythonRuntime::new(data_dir, platform));
         let service = AgentScopeService::new(runtime);
-        
+
         if !service.can_start() {
             return Err("AgentScope dependencies not installed".to_string());
         }
-        
+
         let service_config = ServiceConfig {
             host: config.host.clone(),
             port: config.port,
             working_dir: config.working_dir.clone(),
         };
-        
-        let mut command = service.spawn_command(&service_config)
+
+        let mut command = service
+            .spawn_command(&service_config)
             .map_err(|e: ServiceError| e.to_string())?;
-        
+
         let limits = service.resource_limits();
         let (preset_max_memory, preset_max_restarts) = {
             let preset = registry.preset.read().unwrap();
-            (preset.memory.agentscope_max_mb, preset.reliability.max_restarts)
+            (
+                preset.memory.agentscope_max_mb,
+                preset.reliability.max_restarts,
+            )
         };
-        
+
         let budget = ProcessBudget {
             pid: None,
             max_memory_mb: limits.max_memory_mb.min(preset_max_memory),
@@ -172,15 +216,16 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
             started_at: Some(Instant::now()),
             owner: "system".to_string(),
         };
-        
+
         process_mgr
             .spawn_process("agentscope", &mut command, budget, &registry, 120)
             .await
             .map_err(|e| e.to_string())?;
-        
+
         Ok::<(), String>(())
-    }.await;
-    
+    }
+    .await;
+
     match result {
         Ok(_) => {
             let _ = handle.emit("agent-status", "online");
@@ -194,6 +239,85 @@ pub async fn spawn_agentscope<R: tauri::Runtime>(
         Err(err) => {
             let msg = spawn_failure(err);
             emit_supervisor(&handle, "error", "agentscope", msg);
+        }
+    }
+}
+
+pub async fn spawn_litellm<R: tauri::Runtime>(
+    handle: tauri::AppHandle<R>,
+    registry: Arc<BudgetRegistry>,
+    process_mgr: Arc<ProcessManager>,
+    settings_mgr: Arc<SettingsManager>,
+) {
+    // A033/spawn_litellm: Use LiteLLMService with spawn_process
+    // A013/ProcessLifecycle: LiteLLM gateway runs as a managed child process
+    let result = async {
+        let config = resolve_litellm_spawn_config(&settings_mgr)?;
+        let data_dir = resolve_data_dir();
+
+        let platform = detect_platform().map_err(|e| e.to_string())?;
+        let runtime = Arc::new(PythonRuntime::new(data_dir, platform));
+        let service = LiteLLMService::new(runtime);
+
+        if !service.can_start() {
+            return Err("LiteLLM dependencies not installed".to_string());
+        }
+
+        let service_config = ServiceConfig {
+            host: config.host.clone(),
+            port: config.port,
+            working_dir: config.working_dir.clone(),
+        };
+
+        let mut command = service
+            .spawn_command(&service_config)
+            .map_err(|e: ServiceError| e.to_string())?;
+
+        let limits = service.resource_limits();
+        let (preset_max_memory, preset_max_restarts) = {
+            let preset = registry.preset.read().unwrap();
+            (
+                preset.memory.agentscope_max_mb,
+                preset.reliability.max_restarts,
+            )
+        };
+
+        let budget = ProcessBudget {
+            pid: None,
+            max_memory_mb: limits.max_memory_mb.min(preset_max_memory),
+            health_url: format!("http://{}:{}/health", config.host, config.port),
+            health_interval_ms: 2000,
+            max_health_failures: 3,
+            max_restarts: limits.max_restarts.min(preset_max_restarts),
+            location: ProcessLocation::Local,
+            consecutive_failures: 0,
+            restart_count: 0,
+            status: snapfzz_kernel::budget::metrics::ProcessStatus::Starting,
+            started_at: Some(Instant::now()),
+            owner: "system".to_string(),
+        };
+
+        process_mgr
+            .spawn_process("litellm", &mut command, budget, &registry, 120)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok::<(), String>(())
+    }
+    .await;
+
+    match result {
+        Ok(_) => {
+            emit_supervisor(
+                &handle,
+                "success",
+                "litellm",
+                "LiteLLM Gateway started successfully".into(),
+            );
+        }
+        Err(err) => {
+            let msg = spawn_litellm_failure(err);
+            emit_supervisor(&handle, "error", "litellm", msg);
         }
     }
 }
@@ -247,7 +371,8 @@ mod tests {
         fs::create_dir_all(&custom).unwrap();
         fs::write(
             home.join("pointer.json"),
-            serde_json::to_string(&serde_json::json!({"dataDir": custom.to_str().unwrap()})).unwrap(),
+            serde_json::to_string(&serde_json::json!({"dataDir": custom.to_str().unwrap()}))
+                .unwrap(),
         )
         .unwrap();
         assert_eq!(resolve_data_dir_from(home), custom);
@@ -313,7 +438,9 @@ mod tests {
 
     #[test]
     fn a014_helpers_resolve_spawn_config_reads_settings_and_detects_repo_root_layout() {
-        let _guard = cwd_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+        let _guard = cwd_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         let original_cwd = std::env::current_dir().unwrap();
 
         let result = (|| {
@@ -322,8 +449,11 @@ mod tests {
             let intelligence_dir = fixture.path().join("intelligence");
             std::fs::create_dir_all(&project_dir).unwrap();
             std::fs::create_dir_all(&intelligence_dir).unwrap();
-            std::fs::write(intelligence_dir.join("pyproject.toml"), "[project]\nname='intelligence'\n")
-                .unwrap();
+            std::fs::write(
+                intelligence_dir.join("pyproject.toml"),
+                "[project]\nname='intelligence'\n",
+            )
+            .unwrap();
             std::env::set_current_dir(&project_dir).unwrap();
 
             let settings_dir = tempfile::tempdir().unwrap();
@@ -346,7 +476,9 @@ mod tests {
 
     #[test]
     fn a014_helpers_resolve_spawn_config_errors_when_intelligence_dir_missing() {
-        let _guard = cwd_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+        let _guard = cwd_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         let original_cwd = std::env::current_dir().unwrap();
 
         let result = (|| {
@@ -361,11 +493,9 @@ mod tests {
         std::env::set_current_dir(&original_cwd).unwrap();
 
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Unable to find intelligence/ directory")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("Unable to find intelligence/ directory"));
     }
 
     #[test]
@@ -384,7 +514,8 @@ mod tests {
 
         std::fs::write(
             snapfzz_home.join("pointer.json"),
-            serde_json::to_string(&serde_json::json!({"dataDir": custom.to_string_lossy()})).unwrap(),
+            serde_json::to_string(&serde_json::json!({"dataDir": custom.to_string_lossy()}))
+                .unwrap(),
         )
         .unwrap();
 
@@ -453,10 +584,7 @@ mod tests {
         let value = serde_json::to_value(&event).expect("serialize event");
         assert_eq!(value["eventType"], "success");
         assert_eq!(value["process"], "agentscope");
-        assert_eq!(
-            value["message"],
-            "AgentScope Runtime started successfully"
-        );
+        assert_eq!(value["message"], "AgentScope Runtime started successfully");
         assert!(value["timestamp"].as_u64().unwrap_or_default() > 0);
     }
 
@@ -467,8 +595,29 @@ mod tests {
     }
 
     #[test]
-    fn a014_helpers_resolve_spawn_config_uses_default_host_and_port_when_settings_empty() {
-        let _guard = cwd_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+    fn t34_spawn_litellm_failure_wraps_message() {
+        let message = super::spawn_litellm_failure("boom");
+        assert_eq!(message, "Failed to start LiteLLM Gateway: boom");
+    }
+
+    #[test]
+    fn t34_find_available_port_returns_valid_port() {
+        let port = super::find_available_port().expect("find available port");
+        assert!(port > 0, "port should be greater than 0");
+    }
+
+    #[test]
+    fn t34_find_available_port_returns_different_ports() {
+        let port1 = super::find_available_port().expect("find port 1");
+        let port2 = super::find_available_port().expect("find port 2");
+        assert_ne!(port1, port2, "consecutive calls should return different ports");
+    }
+
+    #[test]
+    fn t34_spawn_litellm_resolve_spawn_config_uses_default_host_and_auto_port() {
+        let _guard = cwd_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         let original_cwd = std::env::current_dir().unwrap();
 
         let result = (|| {
@@ -477,20 +626,56 @@ mod tests {
             let intelligence_dir = fixture.path().join("intelligence");
             std::fs::create_dir_all(&project_dir).unwrap();
             std::fs::create_dir_all(&intelligence_dir).unwrap();
-            std::fs::write(intelligence_dir.join("pyproject.toml"), "[project]\nname='intelligence'\n")
-                .unwrap();
+            std::fs::write(
+                intelligence_dir.join("pyproject.toml"),
+                "[project]\nname='intelligence'\n",
+            )
+            .unwrap();
             std::env::set_current_dir(&project_dir).unwrap();
 
             let settings_dir = tempfile::tempdir().unwrap();
             let mgr = SettingsManager::new(settings_dir.path().to_path_buf());
-            resolve_spawn_config(&mgr)
+            super::resolve_litellm_spawn_config(&mgr)
+        })();
+
+        std::env::set_current_dir(&original_cwd).unwrap();
+
+        let config = result.expect("resolve litellm spawn config with defaults");
+        assert_eq!(config.host, "127.0.0.1");
+        assert!(config.port > 0, "port should be auto-assigned");
+        assert!(config.working_dir.ends_with("intelligence"));
+    }
+
+    #[test]
+    fn a014_helpers_resolve_spawn_config_uses_default_host_and_auto_port() {
+        let _guard = cwd_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let original_cwd = std::env::current_dir().unwrap();
+
+        let result = (|| {
+            let fixture = tempfile::tempdir().unwrap();
+            let project_dir = fixture.path().join("project");
+            let intelligence_dir = fixture.path().join("intelligence");
+            std::fs::create_dir_all(&project_dir).unwrap();
+            std::fs::create_dir_all(&intelligence_dir).unwrap();
+            std::fs::write(
+                intelligence_dir.join("pyproject.toml"),
+                "[project]\nname='intelligence'\n",
+            )
+            .unwrap();
+            std::env::set_current_dir(&project_dir).unwrap();
+
+            let settings_dir = tempfile::tempdir().unwrap();
+            let mgr = SettingsManager::new(settings_dir.path().to_path_buf());
+            super::resolve_spawn_config(&mgr)
         })();
 
         std::env::set_current_dir(&original_cwd).unwrap();
 
         let config = result.expect("resolve spawn config with defaults");
         assert_eq!(config.host, "127.0.0.1");
-        assert_eq!(config.port, 8090);
+        assert!(config.port > 0, "port should be auto-assigned");
     }
 
     #[test]
@@ -507,7 +692,9 @@ mod tests {
 
     #[test]
     fn a014_helpers_spawn_agentscope_emits_error_when_intelligence_missing() {
-        let _guard = cwd_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+        let _guard = cwd_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         let fallback_cwd = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let original_cwd = std::env::current_dir().unwrap_or_else(|_| fallback_cwd.clone());
         let temp = tempfile::tempdir().unwrap();
@@ -526,6 +713,40 @@ mod tests {
             .expect("build app");
 
         tauri::async_runtime::block_on(spawn_agentscope(
+            app.handle().clone(),
+            registry,
+            process_mgr,
+            settings_mgr,
+        ));
+
+        std::env::set_current_dir(&original_cwd)
+            .or_else(|_| std::env::set_current_dir(&fallback_cwd))
+            .expect("restore cwd");
+    }
+
+    #[test]
+    fn t34_spawn_litellm_emits_error_when_intelligence_missing() {
+        let _guard = cwd_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let fallback_cwd = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let original_cwd = std::env::current_dir().unwrap_or_else(|_| fallback_cwd.clone());
+        let temp = tempfile::tempdir().unwrap();
+        std::env::set_current_dir(temp.path()).unwrap();
+
+        let settings_dir = tempfile::tempdir().unwrap();
+        let settings_mgr = Arc::new(SettingsManager::new(settings_dir.path().to_path_buf()));
+        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Balanced));
+        let process_mgr = Arc::new(ProcessManager::new());
+
+        let app = tauri::test::mock_builder()
+            .manage(registry.clone())
+            .manage(process_mgr.clone())
+            .manage(settings_mgr.clone())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("build app");
+
+        tauri::async_runtime::block_on(spawn_litellm(
             app.handle().clone(),
             registry,
             process_mgr,
