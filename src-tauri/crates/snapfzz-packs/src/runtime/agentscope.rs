@@ -1,4 +1,5 @@
 // A033/AgentScopeService: AgentScope runtime as a managed service
+use crate::data::DataDir;
 use crate::runtime::python::PythonRuntime;
 use crate::service::{HealthConfig, ManagedService, ResourceLimits, ServiceConfig, ServiceError};
 use std::sync::Arc;
@@ -6,11 +7,12 @@ use std::sync::Arc;
 // A033/AgentScopeService: Wraps PythonRuntime to provide spawnable AgentScope service
 pub struct AgentScopeService {
     runtime: Arc<PythonRuntime>,
+    data_dir: DataDir,
 }
 
 impl AgentScopeService {
-    pub fn new(runtime: Arc<PythonRuntime>) -> Self {
-        Self { runtime }
+    pub fn new(runtime: Arc<PythonRuntime>, data_dir: DataDir) -> Self {
+        Self { runtime, data_dir }
     }
 }
 
@@ -70,6 +72,10 @@ impl ManagedService for AgentScopeService {
         }
     }
 
+    fn data_dir(&self) -> &DataDir {
+        &self.data_dir
+    }
+
     fn can_start(&self) -> bool {
         self.runtime.is_runtime_ready()
             && self.runtime.package_version("agentscope").is_some()
@@ -80,8 +86,9 @@ impl ManagedService for AgentScopeService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::DataDir;
     use crate::platform::detect_platform;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn make_runtime() -> Arc<PythonRuntime> {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -89,18 +96,22 @@ mod tests {
         Arc::new(PythonRuntime::new(temp.path().to_path_buf(), platform))
     }
 
+    fn make_service(base_dir: &Path) -> AgentScopeService {
+        AgentScopeService::new(make_runtime(), DataDir::new(base_dir))
+    }
+
     #[test]
     fn t33_agentscope_service_id_and_name() {
-        let runtime = make_runtime();
-        let service = AgentScopeService::new(runtime);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
         assert_eq!(service.id(), "agentscope");
         assert_eq!(service.name(), "AgentScope Runtime");
     }
 
     #[test]
     fn t33_agentscope_service_dependencies() {
-        let runtime = make_runtime();
-        let service = AgentScopeService::new(runtime);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
         let deps = service.dependencies();
         assert!(deps.contains(&"uv"));
         assert!(deps.contains(&"python"));
@@ -110,8 +121,8 @@ mod tests {
 
     #[test]
     fn t33_agentscope_service_health_config() {
-        let runtime = make_runtime();
-        let service = AgentScopeService::new(runtime);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
         let config = ServiceConfig {
             host: "0.0.0.0".to_string(),
             port: 9000,
@@ -125,24 +136,33 @@ mod tests {
 
     #[test]
     fn t33_agentscope_service_resource_limits() {
-        let runtime = make_runtime();
-        let service = AgentScopeService::new(runtime);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
         let limits = service.resource_limits();
         assert_eq!(limits.max_memory_mb, 512);
         assert_eq!(limits.max_restarts, 10);
     }
 
     #[test]
+    fn t33_agentscope_service_working_dir_uses_runtime_data_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
+        let working_dir = service.working_dir().expect("working dir");
+        assert_eq!(working_dir, temp.path().join("data").join("agentscope"));
+        assert!(working_dir.exists());
+    }
+
+    #[test]
     fn t33_agentscope_service_can_start_false_without_venv() {
-        let runtime = make_runtime();
-        let service = AgentScopeService::new(runtime);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
         assert!(!service.can_start());
     }
 
     #[test]
     fn t33_agentscope_service_spawn_command_fails_without_venv() {
-        let runtime = make_runtime();
-        let service = AgentScopeService::new(runtime);
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
         let config = ServiceConfig {
             host: "127.0.0.1".to_string(),
             port: 8090,

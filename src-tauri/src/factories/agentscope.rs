@@ -3,21 +3,20 @@ use std::sync::Arc;
 
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig};
 use snapfzz_kernel::settings::Settings;
+use snapfzz_packs::data::DataDir;
 use snapfzz_packs::runtime::agentscope::AgentScopeService;
 use snapfzz_packs::runtime::python::PythonRuntime;
 use snapfzz_packs::service::{ManagedService, ResourceLimits, ServiceConfig, ServiceError};
 
-pub struct AgentScopeFactory;
-
-impl AgentScopeFactory {
-    pub fn new() -> Self {
-        Self
-    }
+pub struct AgentScopeFactory {
+    service: AgentScopeService,
 }
 
-impl Default for AgentScopeFactory {
-    fn default() -> Self {
-        Self::new()
+impl AgentScopeFactory {
+    pub fn new(runtime: Arc<PythonRuntime>, base_data_dir: PathBuf) -> Self {
+        Self {
+            service: AgentScopeService::new(runtime, DataDir::new(&base_data_dir)),
+        }
     }
 }
 
@@ -35,29 +34,19 @@ impl ProcessFactory for AgentScopeFactory {
     }
 
     fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
-        let cwd = std::env::current_dir().ok()?;
-        [
-            cwd.join("intelligence"),
-            cwd.join("..").join("intelligence"),
-            cwd.join("../..").join("intelligence"),
-        ]
-        .into_iter()
-        .find(|candidate| candidate.join("pyproject.toml").exists())
-        .and_then(|p| std::fs::canonicalize(&p).ok())
+        self.service.working_dir().ok()
     }
 
-    fn can_start(&self, runtime: &PythonRuntime) -> bool {
-        let service = AgentScopeService::new(Arc::new(runtime.clone()));
-        service.can_start()
+    fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+        self.service.can_start()
     }
 
     fn build_command(
         &self,
         config: &SpawnConfig,
-        runtime: &PythonRuntime,
+        _runtime: &PythonRuntime,
     ) -> Result<tokio::process::Command, ServiceError> {
-        let service = AgentScopeService::new(Arc::new(runtime.clone()));
-        service.spawn_command(&ServiceConfig {
+        self.service.spawn_command(&ServiceConfig {
             host: config.host.clone(),
             port: config.port,
             working_dir: config.working_dir.clone(),
@@ -65,10 +54,7 @@ impl ProcessFactory for AgentScopeFactory {
     }
 
     fn resource_limits(&self) -> ResourceLimits {
-        ResourceLimits {
-            max_memory_mb: 512,
-            max_restarts: 10,
-        }
+        self.service.resource_limits()
     }
 }
 
@@ -80,28 +66,29 @@ mod tests {
     use snapfzz_packs::detect_platform;
     use snapfzz_packs::runtime::python::PythonRuntime;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Arc;
 
-    fn cwd_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    fn runtime() -> PythonRuntime {
+    fn runtime() -> Arc<PythonRuntime> {
         let temp = tempfile::tempdir().expect("tempdir");
         let platform = detect_platform().expect("platform");
-        PythonRuntime::new(temp.path().to_path_buf(), platform)
+        Arc::new(PythonRuntime::new(temp.path().to_path_buf(), platform))
+    }
+
+    fn make_factory(data_dir: &std::path::Path) -> AgentScopeFactory {
+        AgentScopeFactory::new(runtime(), data_dir.to_path_buf())
     }
 
     #[test]
     fn t37_agentscope_factory_health_path_is_health() {
-        let factory = AgentScopeFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         assert_eq!(factory.health_path(), "/health");
     }
 
     #[test]
     fn t37_agentscope_factory_port_settings_keys_match_settings_contract() {
-        let factory = AgentScopeFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         assert_eq!(
             factory.port_settings_keys(),
             ("agentscopeHost", "agentscopePort")
@@ -109,14 +96,17 @@ mod tests {
     }
 
     #[test]
-    fn t37_agentscope_factory_can_start_checks_python_runtime() {
-        let factory = AgentScopeFactory::new();
-        assert!(!factory.can_start(&runtime()));
+    fn t37_agentscope_factory_can_start_uses_service_runtime() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let empty_runtime = runtime();
+        assert!(!factory.can_start(&empty_runtime));
     }
 
     #[test]
     fn t37_agentscope_factory_build_command_creates_python_module_command() {
-        let factory = AgentScopeFactory::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
         let config = SpawnConfig {
             host: "127.0.0.1".to_string(),
             port: 8090,
@@ -129,27 +119,33 @@ mod tests {
     }
 
     #[test]
-    fn t37_agentscope_factory_working_dir_finds_intelligence_project() {
-        let _guard = cwd_lock().lock().unwrap();
-        let original = std::env::current_dir().expect("cwd");
-        let fixture = tempfile::tempdir().expect("tempdir");
-        let project = fixture.path().join("project");
-        let intelligence = fixture.path().join("intelligence");
-        std::fs::create_dir_all(&project).expect("project dir");
-        std::fs::create_dir_all(&intelligence).expect("intelligence dir");
-        std::fs::write(
-            intelligence.join("pyproject.toml"),
-            "[project]\nname='intelligence'\n",
-        )
-        .expect("pyproject");
-        std::env::set_current_dir(&project).expect("set cwd");
+    fn t37_agentscope_factory_working_dir_ignores_legacy_settings_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let mut settings = Settings::default();
+        settings.agentscope_working_dir = temp.path().join("legacy-source").display().to_string();
 
-        let working_dir = AgentScopeFactory::new()
+        let working_dir = factory.working_dir(&settings).expect("working dir");
+        assert_eq!(working_dir, temp.path().join("data").join("agentscope"));
+        assert!(working_dir.exists());
+    }
+
+    #[test]
+    fn t37_agentscope_factory_working_dir_falls_back_to_data_dir_source() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let working_dir = factory
             .working_dir(&Settings::default())
             .expect("working dir");
+        assert_eq!(working_dir, temp.path().join("data").join("agentscope"));
+    }
 
-        std::env::set_current_dir(original).expect("restore cwd");
-        let expected = std::fs::canonicalize(&intelligence).expect("canonicalize expected");
-        assert_eq!(working_dir, expected);
+    #[test]
+    fn t37_agentscope_factory_working_dir_returns_none_when_not_found() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let non_dir_path = temp.path().join("not-a-directory");
+        std::fs::write(&non_dir_path, "x").expect("file");
+        let factory = make_factory(&non_dir_path);
+        assert!(factory.working_dir(&Settings::default()).is_none());
     }
 }

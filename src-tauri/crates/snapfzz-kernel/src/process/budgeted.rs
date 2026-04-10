@@ -94,6 +94,7 @@ impl BudgetedProcess {
 
     pub async fn spawn(&mut self) -> Result<(), ProcessError> {
         if !self.factory.can_start(&self.python_runtime) {
+            eprintln!("[process] can_start() returned false for '{}'", self.name);
             return Err(ProcessError::SpawnFailed(format!(
                 "dependencies not installed for '{}'",
                 self.name
@@ -234,6 +235,8 @@ impl BudgetedProcess {
         };
 
         let working_dir = factory.working_dir(settings).ok_or_else(|| {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            eprintln!("[process] factory '{}' working_dir() returned None — cwd={}", factory.name(), cwd.display());
             ProcessError::SpawnFailed(format!("factory '{}' missing working directory", factory.name()))
         })?;
 

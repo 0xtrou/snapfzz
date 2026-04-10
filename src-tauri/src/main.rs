@@ -82,10 +82,14 @@ fn main() {
         registry.clone(),
         process_mgr.clone(),
         settings_mgr.clone(),
-        python_runtime,
+        python_runtime.clone(),
     );
-    factory_registry.register(Arc::new(factories::AgentScopeFactory::new()));
+    factory_registry.register(Arc::new(factories::AgentScopeFactory::new(
+        python_runtime.clone(),
+        data_dir.clone(),
+    )));
     factory_registry.register(Arc::new(factories::LiteLLMFactory::new(
+        python_runtime.clone(),
         vault.clone(),
         data_dir.clone(),
     )));
@@ -194,6 +198,7 @@ fn main() {
                 for (name, result) in results {
                     match result {
                         Ok(()) => {
+                            eprintln!("[process] {} started successfully", name);
                             helpers::emit_supervisor(
                                 &app_handle,
                                 "success",
@@ -202,6 +207,7 @@ fn main() {
                             );
                         }
                         Err(e) => {
+                            eprintln!("[process] FAILED to start {}: {}", name, e);
                             helpers::emit_supervisor(
                                 &app_handle,
                                 "error",
