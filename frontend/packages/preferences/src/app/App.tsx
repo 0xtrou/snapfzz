@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect, useCallback, useMemo, type ComponentType } from 'react';
+import { useState, useRef, lazy, Suspense, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { WindowShell, AntIcon } from '@snapfzz/shared';
 import {
   PluginHost,
@@ -61,6 +61,10 @@ export function App() {
   );
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  // Per A003/PersistentMount: Track which sections have been visited so they stay
+  // mounted (hidden via display:none) instead of being unmounted on tab switch.
+  // This preserves component state and avoids re-fetching on every tab switch.
+  const mountedSectionsRef = useRef(new Set<string>());
 
   const handleCrash = useCallback((sectionId: string, _error: Error) => {
     host.reportCrash(sectionId);
@@ -71,6 +75,11 @@ export function App() {
       setActiveSectionId(sections[0].id);
     }
   }, [activeSectionId, sections]);
+
+  // Track visited sections so they stay mounted
+  if (activeSectionId) {
+    mountedSectionsRef.current.add(activeSectionId);
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute('data-app-ready', 'true');
@@ -88,8 +97,6 @@ export function App() {
       void host.activateByEvent('onStartupFinished');
     });
   }, []);
-
-  const activeSection = sections.find((s) => s.id === activeSectionId);
 
   return (
     <PluginHostProvider host={host}>
@@ -128,13 +135,18 @@ export function App() {
           </aside>
 
           <main className="flex-1 overflow-auto bg-[var(--bg-primary)]" style={{ contain: 'layout paint' }}>
-            {activeSection ? (
-              <LazySection loader={activeSection.component} sectionId={activeSection.id} onCrash={handleCrash} />
-            ) : (
+            {sections.length === 0 && (
               <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-                {sections.length === 0 ? 'No settings available — install plugins to configure' : 'Select a section'}
+                No settings available — install plugins to configure
               </div>
             )}
+            {/* Per A003/PersistentMount: Render all visited sections, hide inactive ones
+                with display:none. Components stay mounted — no re-fetch on tab switch. */}
+            {sections.filter(s => mountedSectionsRef.current.has(s.id)).map(section => (
+              <div key={section.id} style={{ display: section.id === activeSectionId ? 'block' : 'none', height: '100%' }}>
+                <LazySection loader={section.component} sectionId={section.id} onCrash={handleCrash} />
+              </div>
+            ))}
           </main>
         </div>
       </WindowShell>
