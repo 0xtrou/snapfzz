@@ -1,5 +1,7 @@
 # A018: Packs Crate Refactoring — Download → Kernel, Packs → Runtime Readiness
 
+> See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
+
 ## Status: Draft
 
 ## Problem
