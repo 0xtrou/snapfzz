@@ -783,17 +783,25 @@ function AvailableModels({
     return ['all', ...ordered];
   }, [filteredModels, catalogLookup]);
 
+  // Count real types with models (excluding 'all')
+  const hasMultipleTypes = useMemo(() => {
+    return modelTypes.filter((t) => t !== 'all').filter((t) =>
+      filteredModels.some((m) => (catalogLookup[m.id]?.mode || 'chat') === t)
+    ).length >= 2;
+  }, [modelTypes, filteredModels, catalogLookup]);
+
   const displayModels = useMemo(() => {
-    const typed = modelTypeFilter === 'all'
-      ? filteredModels
-      : filteredModels.filter((m) => {
-          const info = catalogLookup[m.id];
-          const mode = info?.mode || 'chat';
-          return mode === modelTypeFilter;
-        });
-    // Sort by name length (shortest = flagship/latest, e.g., gpt-4o before gpt-4o-2024-08-06)
+    // If filter is hidden (single type or no types), show all
+    if (!hasMultipleTypes || modelTypeFilter === 'all') {
+      return [...filteredModels].sort((a, b) => a.id.length - b.id.length);
+    }
+    const typed = filteredModels.filter((m) => {
+      const info = catalogLookup[m.id];
+      const mode = info?.mode || 'chat';
+      return mode === modelTypeFilter;
+    });
     return [...typed].sort((a, b) => a.id.length - b.id.length);
-  }, [filteredModels, modelTypeFilter, catalogLookup]);
+  }, [filteredModels, modelTypeFilter, catalogLookup, hasMultipleTypes]);
 
   const unimportedCount = displayModels.filter((m) => !importedIds.has(m.id)).length;
 
@@ -883,6 +891,10 @@ function AvailableModels({
         </div>
       </div>
 
+      {/* Only show type filter when there are 2+ distinct types with models */}
+      {modelTypes.filter((t) => t !== 'all').filter((t) => {
+        return filteredModels.some((m) => (catalogLookup[m.id]?.mode || 'chat') === t);
+      }).length >= 2 && (
       <div style={{ marginBottom: 12, overflowX: 'auto' }}>
         <Radio.Group
           value={modelTypeFilter}
@@ -892,7 +904,8 @@ function AvailableModels({
           {modelTypes.map((type) => {
             const count = type === 'all'
               ? filteredModels.length
-              : filteredModels.filter((m) => (catalogLookup[m.id]?.mode || m.owned_by || 'chat') === type).length;
+              : filteredModels.filter((m) => (catalogLookup[m.id]?.mode || 'chat') === type).length;
+            if (type !== 'all' && count === 0) return null;
             return (
               <Radio.Button key={type} value={type}>
                 {type === 'all' ? 'All' : type.replace(/_/g, ' ')} ({count})
@@ -901,6 +914,7 @@ function AvailableModels({
           })}
         </Radio.Group>
       </div>
+      )}
 
       {error ? (
         <div
