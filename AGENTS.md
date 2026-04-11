@@ -53,10 +53,6 @@ Both serve the specs. Disagreement = the spec wins.
 
 ---
 
-## Structure
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete system architecture, crate responsibilities, boot sequence, IPC pattern, and spec index.
-
 ## Commands
 
 ```bash
