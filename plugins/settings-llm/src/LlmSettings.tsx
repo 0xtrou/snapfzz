@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Tabs } from 'antd';
-import { ApiOutlined, KeyOutlined, SwapOutlined, FileTextOutlined } from '@ant-design/icons';
+import { ApiOutlined, KeyOutlined, SwapOutlined, FileTextOutlined, BarChartOutlined } from '@ant-design/icons';
 import { SettingsHeader } from '@snapfzz/shared';
 import ProvidersTab from './tabs/ProvidersTab';
 import ApiKeysTab from './tabs/ApiKeysTab';
 import RoutingTab from './tabs/RoutingTab';
 import AuditLogTab from './tabs/AuditLogTab';
+import AnalyticsTab from './tabs/AnalyticsTab';
 
 export default function LlmSettings() {
   const [activeKey, setActiveKey] = useState('providers');
@@ -60,6 +61,16 @@ export default function LlmSettings() {
                 </span>
               ),
               children: <AuditLogTab />,
+            },
+            {
+              key: 'analytics',
+              label: (
+                <span>
+                  <BarChartOutlined />
+                  Analytics
+                </span>
+              ),
+              children: <AnalyticsTab />,
             },
           ]}
         />

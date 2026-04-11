@@ -38,6 +38,7 @@ describe('A013/UI: LlmSettings', () => {
     expect(screen.getByText('API Keys')).toBeInTheDocument();
     expect(screen.getByText('Routing')).toBeInTheDocument();
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
+    expect(screen.getByText('Analytics')).toBeInTheDocument();
   });
 
   it('switches between tabs', async () => {

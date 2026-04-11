@@ -103,6 +103,11 @@ export interface SpendLog {
   model: string;
   spend: number;
   timestamp: string;
+  // A013/Analytics: Token breakdown fields returned by LiteLLM spend/logs
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  startTime?: string;
 }
 
 export interface KeySpend {
