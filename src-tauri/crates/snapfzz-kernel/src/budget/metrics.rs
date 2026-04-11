@@ -47,6 +47,30 @@ impl ProcessSnapshot {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{ProcessSnapshot, ProcessStatus};
+
+    #[test]
+    fn t37_metrics_stopped_constructor_sets_all_fields() {
+        // A037/list_snapshots: ProcessSnapshot::stopped must populate every field with
+        // correct defaults so the UI can render an unspawned service without panicking.
+        let snap = ProcessSnapshot::stopped("litellm", "snapfzz");
+
+        assert_eq!(snap.name, "litellm");
+        assert_eq!(snap.owner, "snapfzz");
+        assert!(snap.pid.is_none());
+        assert!(snap.rss_mb.is_none());
+        assert!(snap.cpu_pct.is_none());
+        assert_eq!(snap.restart_count, 0);
+        assert_eq!(snap.consecutive_failures, 0);
+        assert_eq!(snap.uptime_secs, 0);
+        assert_eq!(snap.location, "local");
+        assert_eq!(snap.health_url, "");
+        assert!(matches!(snap.status, ProcessStatus::Stopped));
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetMetrics {

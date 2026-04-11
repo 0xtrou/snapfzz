@@ -146,6 +146,60 @@ mod tests {
         assert_eq!(factory.health_interval_ms(), 2000);
     }
 
+    struct SnapfzzFactory;
+
+    impl ProcessFactory for SnapfzzFactory {
+        fn name(&self) -> &'static str {
+            "snapfzz-service"
+        }
+
+        // A037/factory_trait: Override owner() to return a non-default value,
+        // verifying that factories may identify themselves as "snapfzz" (or any
+        // plugin ID) rather than the built-in "system" default.
+        fn owner(&self) -> &'static str {
+            "snapfzz"
+        }
+
+        fn health_path(&self) -> &'static str {
+            "/health"
+        }
+
+        fn port_settings_keys(&self) -> (&'static str, &'static str) {
+            ("agentscopeHost", "agentscopePort")
+        }
+
+        fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
+            Some(PathBuf::from("/tmp"))
+        }
+
+        fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+            true
+        }
+
+        fn build_command(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<tokio::process::Command, snapfzz_packs::service::ServiceError> {
+            Ok(tokio::process::Command::new("sh"))
+        }
+
+        fn resource_limits(&self) -> ResourceLimits {
+            ResourceLimits {
+                max_memory_mb: 128,
+                max_restarts: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn t37_factory_owner_override_returns_custom_identifier() {
+        // A037/factory_trait: owner() default is "system"; factories that override it
+        // must return their declared identifier so list_snapshots() tags them correctly.
+        let factory = SnapfzzFactory;
+        assert_eq!(factory.owner(), "snapfzz");
+    }
+
     #[test]
     fn t37_factory_build_command_and_resource_limits_are_callable() {
         let factory = TestFactory;

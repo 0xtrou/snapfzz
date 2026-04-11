@@ -490,4 +490,29 @@ mod tests {
         process.set_consecutive_failures(0);
         assert!(!process.check_health().await);
     }
+
+    #[test]
+    fn t38_budgeted_process_database_url_propagates_into_config() {
+        // A038/budgeted_process: When a database_url is supplied to BudgetedProcess::new
+        // it must be forwarded to SpawnConfig so build_command() receives it for injection
+        // into the child process environment (e.g. LiteLLM Prisma DATABASE_URL).
+        let registry = Arc::new(BudgetRegistry::from_hardware());
+
+        let process = BudgetedProcess::new(
+            Arc::new(TestFactory { name: "agentscope" }),
+            registry,
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            Some("postgres://localhost:5432/snapfzz".to_string()),
+        )
+        .expect("process");
+
+        assert_eq!(
+            process.config.database_url.as_deref(),
+            Some("postgres://localhost:5432/snapfzz"),
+            "database_url must be preserved in SpawnConfig after BudgetedProcess::new"
+        );
+    }
 }

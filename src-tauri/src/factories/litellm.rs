@@ -304,4 +304,65 @@ mod tests {
             .expect_err("database URL required");
         assert!(err.to_string().contains("PostgreSQL URL not available"));
     }
+
+    #[test]
+    fn t38_litellm_factory_owner_returns_system() {
+        // A038/owner: LiteLLMFactory inherits the default owner "system" from ProcessFactory trait
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        assert_eq!(factory.owner(), "system");
+    }
+
+    #[test]
+    fn t38_litellm_factory_build_command_with_database_url_set_fails_on_missing_cli_not_url() {
+        // A038/DATABASE_URL: When database_url is provided, build_command propagates the URL into
+        // the command env and only fails because the litellm binary is absent, not because the
+        // URL itself is rejected.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 4000,
+            working_dir: PathBuf::from("/tmp"),
+            database_url: Some("postgresql://localhost:5432/litellm".to_string()),
+        };
+
+        let err = factory
+            .build_command(&config, &runtime(temp.path()))
+            .expect_err("litellm CLI missing");
+        assert!(
+            err.to_string().contains("litellm CLI"),
+            "expected CLI-not-found error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn t38_litellm_factory_pre_run_setup_with_database_url_fails_on_missing_prisma_not_url() {
+        // A038/pre_run_setup: When database_url is provided but no venv is installed, the error
+        // is about the missing prisma binary — not a missing URL — confirming the URL gate passed.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 4000,
+            working_dir: PathBuf::from("/tmp"),
+            database_url: Some("postgresql://localhost:5432/litellm".to_string()),
+        };
+
+        let err = factory
+            .pre_run_setup(&config, &runtime(temp.path()))
+            .expect_err("prisma binary missing");
+        assert!(
+            err.to_string().contains("prisma CLI not found"),
+            "expected prisma-not-found error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn t38_litellm_factory_name_is_litellm() {
+        // A038/name: Factory name must match the registry key used to look up this service
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        assert_eq!(factory.name(), "litellm");
+    }
 }

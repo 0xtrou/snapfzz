@@ -153,4 +153,156 @@ mod tests {
         let runtime = PostgresRuntime::new(temp.path().to_path_buf());
         assert_eq!(runtime.connection_url("litellm"), None);
     }
+
+    // ── read_postmaster_pid ──────────────────────────────────────────────────
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_valid() {
+        // A038/read_postmaster_pid: Returns parsed PID when first line is a positive integer.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("postmaster.pid");
+        std::fs::write(&pid_file, "12345\n").expect("write");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), Some(12345));
+    }
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_multiline_uses_first_line() {
+        // A038/read_postmaster_pid: Only the first line is parsed; subsequent lines are ignored.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("postmaster.pid");
+        std::fs::write(&pid_file, "42\nsomething else\n").expect("write");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), Some(42));
+    }
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_empty_file() {
+        // A038/read_postmaster_pid: Returns None for an empty file (no lines to parse).
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("postmaster.pid");
+        std::fs::write(&pid_file, "").expect("write");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), None);
+    }
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_non_numeric() {
+        // A038/read_postmaster_pid: Returns None when first line cannot be parsed as u32.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("postmaster.pid");
+        std::fs::write(&pid_file, "not-a-pid\n").expect("write");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), None);
+    }
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_zero_rejected() {
+        // A038/read_postmaster_pid: Returns None when PID is 0 — PID 0 is never a valid process.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("postmaster.pid");
+        std::fs::write(&pid_file, "0\n").expect("write");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), None);
+    }
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_missing_file() {
+        // A038/read_postmaster_pid: Returns None when the file does not exist.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("nonexistent.pid");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), None);
+    }
+
+    #[test]
+    fn t38_postgres_read_postmaster_pid_whitespace_trimmed() {
+        // A038/read_postmaster_pid: Trims surrounding whitespace before parsing.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pid_file = temp.path().join("postmaster.pid");
+        std::fs::write(&pid_file, "  7890  \n").expect("write");
+        assert_eq!(PostgresRuntime::read_postmaster_pid(&pid_file), Some(7890));
+    }
+
+    // ── cleanup_stale_postmaster ─────────────────────────────────────────────
+
+    #[test]
+    fn t38_postgres_cleanup_stale_postmaster_no_file_is_noop() {
+        // A038/cleanup_stale_postmaster: No-op when postmaster.pid does not exist — does not panic.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        // Must not panic even though the data dir hierarchy does not exist.
+        runtime.cleanup_stale_postmaster();
+    }
+
+    #[test]
+    fn t38_postgres_cleanup_stale_postmaster_dead_pid_removes_file() {
+        // A038/cleanup_stale_postmaster: PID file with a surely-dead PID is removed after cleanup.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pg_data = temp.path().join("data").join("postgres");
+        std::fs::create_dir_all(&pg_data).expect("mkdir");
+        let pid_file = pg_data.join("postmaster.pid");
+        // PID 99999999 is guaranteed not to be a live process on any supported system.
+        std::fs::write(&pid_file, "99999999\n").expect("write pid file");
+        assert!(pid_file.exists(), "precondition: file must exist before cleanup");
+
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        runtime.cleanup_stale_postmaster();
+
+        assert!(!pid_file.exists(), "postmaster.pid must be removed after cleanup of dead PID");
+    }
+
+    #[test]
+    fn t38_postgres_cleanup_stale_postmaster_invalid_pid_leaves_file() {
+        // A038/cleanup_stale_postmaster: File with non-numeric content is not parseable so no removal occurs.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pg_data = temp.path().join("data").join("postgres");
+        std::fs::create_dir_all(&pg_data).expect("mkdir");
+        let pid_file = pg_data.join("postmaster.pid");
+        std::fs::write(&pid_file, "garbage\n").expect("write pid file");
+
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        runtime.cleanup_stale_postmaster();
+
+        // No valid PID parsed — file should remain untouched.
+        assert!(pid_file.exists(), "file with unparseable content must not be removed");
+    }
+
+    // ── kill_if_alive ────────────────────────────────────────────────────────
+
+    #[test]
+    fn t38_postgres_kill_if_alive_dead_pid_is_noop() {
+        // A038/kill_if_alive: Calling with a surely-dead PID neither panics nor errors.
+        // PID 99999999 is virtually guaranteed to not exist on any supported platform.
+        PostgresRuntime::kill_if_alive(99999999);
+    }
+
+    // ── stop (pg = None) ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn t38_postgres_stop_when_pg_none_is_noop() {
+        // A038/stop: stop() returns Ok immediately when no PostgreSQL instance has been set up.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        let result = runtime.stop().await;
+        assert!(result.is_ok(), "stop() with pg=None must succeed");
+    }
+
+    // ── start (pg = None) ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn t38_postgres_start_when_pg_none_runs_cleanup_only() {
+        // A038/start: start() with pg=None runs cleanup_stale_postmaster but skips pg.start().
+        // Verified by confirming no panic and Ok return without a live PostgreSQL.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        let result = runtime.start().await;
+        assert!(result.is_ok(), "start() with pg=None must succeed without a live pg instance");
+        assert!(!runtime.is_ready(), "pg handle must remain None after start() without setup()");
+    }
+
+    // ── create_database (pg = None) ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn t38_postgres_create_database_when_pg_none_is_noop() {
+        // A038/create_database: Returns Ok immediately when no PostgreSQL instance has been set up.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        let result = runtime.create_database("mydb").await;
+        assert!(result.is_ok(), "create_database() with pg=None must succeed");
+    }
 }

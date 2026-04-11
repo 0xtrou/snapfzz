@@ -319,16 +319,69 @@ mod tests {
 
     #[test]
     fn t37_registry_list_snapshots_aggregates_process_snapshots() {
+        // A037/list_snapshots: After the A037 change, registered-but-unspawned factories
+        // appear as Stopped snapshots. An empty `processes` map with one registered factory
+        // must yield exactly one Stopped snapshot, not an empty list.
+        use crate::budget::metrics::ProcessStatus;
+
         let mut registry = make_registry();
         registry.register(Arc::new(TestFactory { name: "agentscope" }));
 
         let snapshots = registry.list_snapshots();
-        assert!(snapshots.is_empty());
+        assert_eq!(snapshots.len(), 1, "one unspawned factory should produce one snapshot");
+        assert!(matches!(snapshots[0].status, ProcessStatus::Stopped));
+        assert_eq!(snapshots[0].name, "agentscope");
     }
 
     #[test]
     fn t37_registry_total_rss_mb_sums_across_processes() {
         let registry = make_registry();
         assert!(registry.total_rss_mb() >= 0.0);
+    }
+
+    #[test]
+    fn t37_registry_set_database_url_stores_url() {
+        // A037/registry: set_database_url must persist the URL so that subsequent
+        // spawn() calls forward it to BudgetedProcess::new via database_url field.
+        let mut registry = make_registry();
+        assert!(registry.database_url.is_none());
+
+        registry.set_database_url("postgres://localhost:5432/snapfzz".to_string());
+
+        assert_eq!(
+            registry.database_url.as_deref(),
+            Some("postgres://localhost:5432/snapfzz")
+        );
+    }
+
+    #[test]
+    fn t37_registry_list_snapshots_includes_unspawned_factories_as_stopped() {
+        // A037/list_snapshots: Factories that have never been spawned must appear in
+        // list_snapshots() as Stopped so the UI always shows every registered service.
+        use crate::budget::metrics::ProcessStatus;
+
+        let mut registry = make_registry();
+        registry.register(Arc::new(TestFactory { name: "litellm" }));
+        registry.register(Arc::new(TestFactory { name: "agentscope" }));
+
+        // No spawn calls — both factories are unspawned.
+        let snapshots = registry.list_snapshots();
+
+        assert_eq!(snapshots.len(), 2, "both unspawned factories must appear");
+
+        for snap in &snapshots {
+            assert!(
+                matches!(snap.status, ProcessStatus::Stopped),
+                "expected Stopped for unspawned factory '{}', got {:?}",
+                snap.name,
+                snap.status
+            );
+            assert!(snap.pid.is_none());
+            assert_eq!(snap.location, "local");
+        }
+
+        let names: Vec<&str> = snapshots.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"litellm"), "litellm must be in snapshots");
+        assert!(names.contains(&"agentscope"), "agentscope must be in snapshots");
     }
 }
