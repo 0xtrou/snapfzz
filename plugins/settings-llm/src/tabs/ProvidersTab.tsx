@@ -1613,8 +1613,8 @@ export default function ProvidersTab() {
             </Radio.Group>
           </div>
           {(() => {
-            // Group providers into rows of 4 for PretextList virtualization
             const COLS = 4;
+            const ROW_HEIGHT = 180;
             const rows: (typeof filteredProviders)[] = [];
             for (let i = 0; i < filteredProviders.length; i += COLS) {
               rows.push(filteredProviders.slice(i, i + COLS));
@@ -1622,10 +1622,10 @@ export default function ProvidersTab() {
             return (
               <PretextList
                 items={rows}
-                estimateHeight={() => 140}
+                estimateHeight={() => ROW_HEIGHT}
                 keyExtractor={(row) => row.map((p) => p.id).join('-')}
                 renderItem={(row) => (
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 16, padding: '8px 0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 12, paddingBottom: 12 }}>
                     {row.map((provider) => (
                       <ProviderCard
                         key={provider.id}
@@ -1641,7 +1641,7 @@ export default function ProvidersTab() {
                     ))}
                   </div>
                 )}
-                style={{ height: Math.min(rows.length * 140, 600) }}
+                style={{ height: Math.min(rows.length * ROW_HEIGHT, 720) }}
               />
             );
           })()}
