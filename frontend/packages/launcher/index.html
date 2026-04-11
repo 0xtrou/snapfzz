@@ -4,25 +4,62 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Snapfzz Startup Launcher</title>
+    <!-- Per A003/Skeleton: full viewport, matches app layout -->
     <!-- Per A003/InstantLoading: skeleton renders before JS, visible at 0ms -->
     <style>
       /* Per A001/Performance: skeleton uses only transform/opacity for fade-out */
       *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body, #root, #skeleton { height: 100%; width: 100%; }
+      html, body { height: 100%; width: 100%; overflow: hidden; }
+      #root { height: 100%; width: 100%; }
       body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; }
 
       #skeleton {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
         background: #09090b;
         transition: opacity 150ms ease-out;
       }
       #skeleton.fade-out { opacity: 0; pointer-events: none; }
-      #skeleton .logo { width: 128px; height: 128px; }
-      #skeleton .title { margin-top: 32px; color: #a1a1aa; font-size: 14px; font-weight: 500; }
-      #skeleton .subtitle { margin-top: 6px; color: #52525b; font-size: 12px; }
+
+      #skeleton .sk-header {
+        height: 48px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        border-bottom: 1px solid #27272a;
+      }
+      #skeleton .sk-header-dot {
+        width: 64px;
+        height: 14px;
+        border-radius: 4px;
+        background: #27272a;
+      }
+      #skeleton .sk-main {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #skeleton .sk-logo { width: 80px; height: 80px; opacity: 0.6; }
+      #skeleton .sk-statusbar {
+        height: 28px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        border-top: 1px solid #27272a;
+      }
+      #skeleton .sk-statusbar-dot {
+        width: 48px;
+        height: 10px;
+        border-radius: 3px;
+        background: #27272a;
+      }
 
       /* Hide skeleton once React hydrates */
       html[data-app-ready="true"] #skeleton { display: none; }
@@ -39,41 +76,43 @@
   <body>
     <!-- Per A003/InstantLoading: static skeleton visible at 0ms, replaced when React hydrates -->
     <div id="skeleton">
-      <svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapfzz logo">
-        <defs>
-          <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#222222" />
-            <stop offset="100%" stop-color="#0a0a0a" />
-          </linearGradient>
-          <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#ff9900" />
-            <stop offset="100%" stop-color="#e65c00" />
-          </linearGradient>
-        </defs>
-        <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bgGrad)" />
-        <g stroke="#ff7300" stroke-width="4" opacity="0.5" stroke-linecap="round">
-          <line x1="280" y1="180" x2="380" y2="150" />
-          <line x1="380" y1="150" x2="420" y2="240" />
-          <line x1="280" y1="180" x2="420" y2="240" />
-          <line x1="360" y1="280" x2="420" y2="240" />
-          <line x1="160" y1="360" x2="280" y2="420" />
-          <line x1="280" y1="420" x2="380" y2="360" />
-          <line x1="280" y1="300" x2="380" y2="360" />
-        </g>
-        <g fill="#ff9900">
-          <circle cx="380" cy="150" r="8" />
-          <circle cx="420" cy="240" r="10" />
-          <circle cx="280" cy="180" r="6" />
-          <circle cx="360" cy="280" r="7" />
-          <circle cx="160" cy="360" r="8" />
-          <circle cx="280" cy="420" r="12" />
-          <circle cx="380" cy="360" r="8" />
-          <circle cx="280" cy="300" r="6" />
-        </g>
-        <path d="M 290 110 L 150 270 L 250 270 L 210 430 L 370 230 L 260 230 Z" fill="url(#boltGrad)" />
-      </svg>
-      <p class="title">Snapfzz</p>
-      <p class="subtitle">Your startup bootstrapping intelligence</p>
+      <div class="sk-header"><div class="sk-header-dot"></div></div>
+      <div class="sk-main">
+        <svg class="sk-logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapfzz logo">
+          <defs>
+            <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#222222" />
+              <stop offset="100%" stop-color="#0a0a0a" />
+            </linearGradient>
+            <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ff9900" />
+              <stop offset="100%" stop-color="#e65c00" />
+            </linearGradient>
+          </defs>
+          <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bgGrad)" />
+          <g stroke="#ff7300" stroke-width="4" opacity="0.5" stroke-linecap="round">
+            <line x1="280" y1="180" x2="380" y2="150" />
+            <line x1="380" y1="150" x2="420" y2="240" />
+            <line x1="280" y1="180" x2="420" y2="240" />
+            <line x1="360" y1="280" x2="420" y2="240" />
+            <line x1="160" y1="360" x2="280" y2="420" />
+            <line x1="280" y1="420" x2="380" y2="360" />
+            <line x1="280" y1="300" x2="380" y2="360" />
+          </g>
+          <g fill="#ff9900">
+            <circle cx="380" cy="150" r="8" />
+            <circle cx="420" cy="240" r="10" />
+            <circle cx="280" cy="180" r="6" />
+            <circle cx="360" cy="280" r="7" />
+            <circle cx="160" cy="360" r="8" />
+            <circle cx="280" cy="420" r="12" />
+            <circle cx="380" cy="360" r="8" />
+            <circle cx="280" cy="300" r="6" />
+          </g>
+          <path d="M 290 110 L 150 270 L 250 270 L 210 430 L 370 230 L 260 230 Z" fill="url(#boltGrad)" />
+        </svg>
+      </div>
+      <div class="sk-statusbar"><div class="sk-statusbar-dot"></div></div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

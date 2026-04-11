@@ -4,15 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Snapfzz — Project</title>
+    <!-- Per A003/Skeleton: full viewport, matches app layout -->
     <style>
       *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body, #root, #skeleton { height: 100%; width: 100%; }
+      html, body { height: 100%; width: 100%; overflow: hidden; }
+      #root { height: 100%; width: 100%; }
       body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #09090b; }
-      #skeleton { display: flex; flex-direction: column; transition: opacity 150ms ease-out; }
+      #skeleton { display: flex; flex-direction: column; width: 100vw; height: 100vh; overflow: hidden; transition: opacity 150ms ease-out; }
       #skeleton.fade-out { opacity: 0; pointer-events: none; }
       #skeleton .header { height: 40px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #27272a; }
       #skeleton .header span { color: #a1a1aa; font-size: 14px; font-weight: 600; }
-      #skeleton .body { flex: 1; display: flex; }
+      #skeleton .body { flex: 1; min-height: 0; display: flex; }
       #skeleton .left { width: 40%; border-right: 1px solid #27272a; }
       #skeleton .right { width: 60%; }
       #skeleton .bottom { height: 192px; border-top: 1px solid #27272a; }
