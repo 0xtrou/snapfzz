@@ -169,7 +169,9 @@ interface ProviderKeyCounts {
 }
 
 // Per A013/UI: state for provider enable/disable toggles (visual-only for now)
-interface ToggleState {
+// Removed: ToggleState was used for provider card toggles (now removed).
+// Keep this line to avoid git conflicts with nearby code.
+interface _ToggleState_Removed {
   [providerId: string]: boolean;
 }
 
@@ -239,15 +241,11 @@ function ProviderCard({
   provider,
   keyCount,
   catalogModelCount,
-  enabled,
-  onToggle,
   onClick,
 }: {
   provider: (typeof PROVIDERS)[number];
   keyCount: number;
   catalogModelCount: number;
-  enabled: boolean;
-  onToggle: (checked: boolean) => void;
   onClick: () => void;
 }) {
   return (
@@ -322,15 +320,6 @@ function ProviderCard({
           )}
         </div>
 
-        <Switch
-          size="small"
-          checked={enabled}
-          onClick={(checked, e) => {
-            e.stopPropagation();
-            onToggle(checked);
-          }}
-          aria-label={`Toggle ${provider.label}`}
-        />
       </div>
     </div>
   );
@@ -341,15 +330,11 @@ function ProviderCard({
 function CustomProviderCard({
   provider,
   keyCount,
-  enabled,
-  onToggle,
   onClick,
   onDelete,
 }: {
   provider: CustomProvider;
   keyCount: number;
-  enabled: boolean;
-  onToggle: (checked: boolean) => void;
   onClick: () => void;
   onDelete: () => void;
 }) {
@@ -450,16 +435,6 @@ function CustomProviderCard({
         >
           {keyCount > 0 ? `● ${keyCount} key${keyCount !== 1 ? 's' : ''}` : '○ No keys'}
         </Text>
-
-        <Switch
-          size="small"
-          checked={enabled}
-          onClick={(checked, e) => {
-            e.stopPropagation();
-            onToggle(checked);
-          }}
-          aria-label={`Toggle ${provider.name}`}
-        />
       </div>
     </div>
   );
@@ -1474,11 +1449,19 @@ export default function ProvidersTab() {
   }, [loadKeyCounts]);
 
   const filteredProviders = useMemo(() => {
+    let list: typeof PROVIDERS;
     switch (providerFilter) {
-      case 'popular': return PROVIDERS.filter((p) => POPULAR_PROVIDER_IDS.has(p.id));
-      case 'connected': return PROVIDERS.filter((p) => (keyCounts[p.id]?.length ?? 0) > 0);
-      case 'all': return PROVIDERS;
+      case 'popular': list = PROVIDERS.filter((p) => POPULAR_PROVIDER_IDS.has(p.id)); break;
+      case 'connected': list = PROVIDERS.filter((p) => (keyCounts[p.id]?.length ?? 0) > 0); break;
+      case 'all': list = [...PROVIDERS]; break;
     }
+    // Sort: connected (has keys) first, then alphabetical
+    return list.sort((a, b) => {
+      const aConnected = (keyCounts[a.id]?.length ?? 0) > 0 ? 0 : 1;
+      const bConnected = (keyCounts[b.id]?.length ?? 0) > 0 ? 0 : 1;
+      if (aConnected !== bConnected) return aConnected - bConnected;
+      return a.label.localeCompare(b.label);
+    });
   }, [providerFilter, keyCounts]);
 
   // Reload counts when navigating back from detail
@@ -1638,10 +1621,6 @@ export default function ProvidersTab() {
                     key={cpKey}
                     provider={cp}
                     keyCount={keyCounts[cpKey]?.length ?? 0}
-                    enabled={toggleState[cpKey] ?? false}
-                    onToggle={(checked) =>
-                      setToggleState((prev) => ({ ...prev, [cpKey]: checked }))
-                    }
                     onClick={() => setSelectedProvider(cpKey)}
                     onDelete={() => void handleDeleteCustomProvider(cp.id)}
                   />
@@ -1705,10 +1684,6 @@ export default function ProvidersTab() {
                 provider={provider}
                 keyCount={keyCounts[provider.id]?.length ?? 0}
                 catalogModelCount={getProviderInfo(provider.id).modelCount}
-                enabled={toggleState[provider.id] ?? false}
-                onToggle={(checked) =>
-                  setToggleState((prev) => ({ ...prev, [provider.id]: checked }))
-                }
                 onClick={() => setSelectedProvider(provider.id)}
               />
             ))}
