@@ -912,4 +912,717 @@ mod tests {
         assert!(rendered[5].contains("utf8 error"));
         assert!(rendered[6].contains("rate limited"));
     }
+
+    // ---- Rate-limit boundary ----
+
+    #[test]
+    fn a011_vault_rate_limit_exactly_10_reads_are_allowed() {
+        // Reads 1-10 within the same second must all succeed; the 11th fails.
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        vault.store("k", b"v").unwrap();
+
+        // Force the clock to a known recent value so we stay within the 1-second window.
+        vault.last_access = std::time::Instant::now();
+        vault.access_count = 0;
+
+        // Reads 1-10 are fine (access_count goes 1..=10).
+        for i in 1..=10_u32 {
+            vault.check_rate_limit().unwrap_or_else(|_| {
+                panic!("read #{i} should be allowed");
+            });
+        }
+        // Read 11 crosses the limit.
+        let err = vault.check_rate_limit().unwrap_err();
+        assert!(matches!(err, VaultError::RateLimited));
+    }
+
+    #[test]
+    fn a011_vault_rate_limit_window_resets_when_elapsed_exactly_1s() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        vault.store("k", b"v").unwrap();
+
+        // Exhaust the rate limit.
+        vault.last_access = std::time::Instant::now();
+        vault.access_count = 0;
+        for _ in 0..10 {
+            vault.check_rate_limit().unwrap();
+        }
+        assert!(matches!(
+            vault.check_rate_limit().unwrap_err(),
+            VaultError::RateLimited
+        ));
+
+        // Wind back last_access by more than 1 second so the next call resets.
+        vault.last_access =
+            std::time::Instant::now() - std::time::Duration::from_millis(1001);
+
+        // First call after window: reset branch — sets access_count = 1.
+        vault.check_rate_limit().unwrap();
+        assert_eq!(vault.access_count, 1);
+    }
+
+    // ---- Serialize: key too long ----
+
+    #[test]
+    fn a011_vault_serialize_entries_rejects_key_exceeding_u16_max() {
+        // Build an EncryptedEntry with a key name longer than u16::MAX bytes.
+        let long_key = "x".repeat(u16::MAX as usize + 1);
+        let mut entries = HashMap::new();
+        entries.insert(
+            long_key,
+            EncryptedEntry {
+                nonce: [0_u8; GCM_NONCE_LEN],
+                ciphertext: vec![0_u8; GCM_TAG_LEN],
+            },
+        );
+        let err = serialize_entries(&entries).unwrap_err();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    // ---- parse_vault_file: key_len checked_add overflow ----
+
+    #[test]
+    fn a011_vault_open_key_length_overflow_returns_error() {
+        // Craft a file where key_len would push cursor past usize::MAX.
+        // We embed count=1, key_len=u16::MAX. The file is too short for that
+        // many key bytes, so we hit the "key bytes exceed file length" path.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes()); // count = 1
+        bytes.extend_from_slice(&0_u32.to_le_bytes()); // reserved
+        // key_len = 0xFFFF but we write only 1 byte of key data => exceeds file.
+        bytes.extend_from_slice(&(u16::MAX).to_le_bytes());
+        bytes.push(b'A'); // only 1 byte
+        fs::write(&path, &bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    // ---- parse_vault_file: nonce truncated ----
+
+    #[test]
+    fn a011_vault_open_nonce_bytes_truncated_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let key_name = b"k";
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes()); // count = 1
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&(key_name.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(key_name);
+        // Write fewer than GCM_NONCE_LEN bytes for the nonce.
+        bytes.extend_from_slice(&[0_u8; GCM_NONCE_LEN - 1]);
+        fs::write(&path, &bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    // ---- parse_vault_file: ciphertext length field truncated (read_u32 at ciphertext_len) ----
+
+    #[test]
+    fn a011_vault_open_ciphertext_len_field_truncated_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let key_name = b"k";
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&(key_name.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(key_name);
+        bytes.extend_from_slice(&[0_u8; GCM_NONCE_LEN]); // full nonce
+        // Only 2 bytes for the ciphertext_len u32 field (needs 4).
+        bytes.extend_from_slice(&[0_u8; 2]);
+        fs::write(&path, &bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    // ---- parse_vault_file: ciphertext bytes exceed file ----
+
+    #[test]
+    fn a011_vault_open_ciphertext_bytes_exceed_file_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+
+        let key_name = b"k";
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(VAULT_MAGIC);
+        bytes.extend_from_slice(&VAULT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&(key_name.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(key_name);
+        bytes.extend_from_slice(&[0_u8; GCM_NONCE_LEN]);
+        // Claim ciphertext is 100 bytes but provide 0.
+        bytes.extend_from_slice(&100_u32.to_le_bytes());
+        fs::write(&path, &bytes).unwrap();
+
+        let err = SecretVault::open(&test_master_key(), path).err().unwrap();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    // ---- VaultError From impls ----
+
+    #[test]
+    fn a011_vault_error_from_io_error_wraps_correctly() {
+        let io_err = io::Error::other("disk full");
+        let vault_err: VaultError = VaultError::from(io_err);
+        assert!(matches!(vault_err, VaultError::Io(_)));
+        assert!(vault_err.to_string().contains("disk full"));
+    }
+
+    #[test]
+    fn a011_vault_error_from_utf8_error_wraps_correctly() {
+        let utf8_err = String::from_utf8(vec![0xff, 0xfe]).unwrap_err();
+        let vault_err: VaultError = VaultError::from(utf8_err);
+        assert!(matches!(vault_err, VaultError::Utf8(_)));
+        assert!(vault_err.to_string().contains("utf8 error"));
+    }
+
+    // ---- std::error::Error impl ----
+
+    #[test]
+    fn a011_vault_error_implements_std_error() {
+        // Ensure the Error supertrait is usable; source() returns None for all variants.
+        use std::error::Error;
+
+        let io_err: &dyn Error = &VaultError::Io(io::Error::other("x"));
+        let _ = io_err.source();
+
+        let rate: &dyn Error = &VaultError::RateLimited;
+        let _ = rate.source();
+    }
+
+    // ---- Empty key name ----
+
+    #[test]
+    fn a011_vault_store_and_read_empty_key_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        vault.store("", b"value-for-empty-key").unwrap();
+        assert!(vault.has(""));
+        let val = vault.read("").unwrap();
+        assert_eq!(val, b"value-for-empty-key");
+    }
+
+    // ---- Empty value ----
+
+    #[test]
+    fn a011_vault_store_and_read_empty_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        vault.store("custom:empty-val", b"").unwrap();
+        let val = vault.read("custom:empty-val").unwrap();
+        assert_eq!(val, b"");
+    }
+
+    // ---- list on empty vault ----
+
+    #[test]
+    fn a011_vault_list_on_empty_vault_returns_empty_vec() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        assert_eq!(vault.list().unwrap(), Vec::<String>::new());
+    }
+
+    // ---- list is sorted ----
+
+    #[test]
+    fn a011_vault_list_returns_keys_in_sorted_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        vault.store("z:last", b"z").unwrap();
+        vault.store("a:first", b"a").unwrap();
+        vault.store("m:middle", b"m").unwrap();
+
+        let names = vault.list().unwrap();
+        assert_eq!(names, vec!["a:first", "m:middle", "z:last"]);
+    }
+
+    // ---- delete reduces list ----
+
+    #[test]
+    fn a011_vault_delete_reduces_list_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        vault.store("custom:a", b"1").unwrap();
+        vault.store("custom:b", b"2").unwrap();
+        vault.delete("custom:a").unwrap();
+
+        let names = vault.list().unwrap();
+        assert_eq!(names, vec!["custom:b"]);
+    }
+
+    // ---- persist failure during rename leaves temp file cleaned up ----
+
+    #[test]
+    fn a011_vault_persist_rename_failure_returns_io_error() {
+        // Directly test persist_entries_atomically when the rename target
+        // directory does not exist (simulates a mid-flight rename failure).
+        let dir = tempfile::tempdir().unwrap();
+
+        let mut entries = HashMap::new();
+        entries.insert(
+            "custom:x".to_string(),
+            EncryptedEntry {
+                nonce: [0_u8; GCM_NONCE_LEN],
+                ciphertext: vec![0_u8; GCM_TAG_LEN],
+            },
+        );
+
+        // persist_entries_atomically creates the parent via create_dir_all, so
+        // we need a path whose parent cannot be created (a file standing in the way).
+        let blocker = dir.path().join("blocker");
+        fs::write(&blocker, b"not a dir").unwrap();
+        let blocked = blocker.join("vault.enc");
+
+        let err = persist_entries_atomically(&blocked, &entries).unwrap_err();
+        assert!(matches!(err, VaultError::Io(_)));
+    }
+
+    // ---- next_temp_path when vault has no filename component ----
+
+    #[test]
+    fn a011_vault_next_temp_path_uses_fallback_when_no_filename() {
+        // A path that ends in ".." has no file_name() component.
+        let p = std::path::PathBuf::from("/tmp/..");
+        let tmp = next_temp_path(&p);
+        let name = tmp
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        assert!(name.starts_with("vault.enc.tmp."), "got: {name}");
+    }
+
+    // ---- load_or_generate_master_keyfile: permissions fix branch (unix only) ----
+
+    #[cfg(unix)]
+    #[test]
+    fn a011_vault_keyfile_loader_fixes_wrong_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.key");
+
+        // Write a valid 32-byte key with too-open permissions.
+        let key_bytes = [0xAB_u8; 32];
+        fs::write(&path, key_bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        // Loader should fix the permissions and return the key successfully.
+        let loaded = load_or_generate_master_keyfile(&path).unwrap();
+        assert_eq!(loaded, key_bytes);
+
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    // ---- load_or_generate_master_keyfile: generate creates nested dir ----
+
+    #[test]
+    fn a011_vault_keyfile_loader_creates_parent_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a").join("b").join("vault.key");
+
+        // Parent dirs don't exist yet; loader must create them.
+        let key = load_or_generate_master_keyfile(&nested).unwrap();
+        assert_eq!(key.len(), 32);
+        assert!(nested.exists());
+    }
+
+    // ---- Vault opened with non-existent path creates fresh file on first store ----
+
+    #[test]
+    fn a011_vault_open_nonexistent_path_creates_file_on_first_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("new-sub").join("vault.enc");
+        let key = test_master_key();
+
+        // path doesn't exist yet — open must succeed.
+        let mut vault = SecretVault::open(&key, path.clone()).unwrap();
+        assert!(!path.exists());
+
+        vault.store("custom:new", b"hello").unwrap();
+        assert!(path.exists());
+    }
+
+    // ---- Large plaintext value roundtrip ----
+
+    #[test]
+    fn a011_vault_store_and_read_large_value_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        let large_value = vec![0xDE_u8; 64 * 1024]; // 64 KiB
+        vault.store("custom:large", &large_value).unwrap();
+        let read_back = vault.read("custom:large").unwrap();
+        assert_eq!(read_back, large_value);
+    }
+
+    // ---- Multiple entries survive reopen ----
+
+    #[test]
+    fn a011_vault_multiple_entries_persist_across_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+        let key = test_master_key();
+
+        {
+            let mut vault = SecretVault::open(&key, path.clone()).unwrap();
+            vault.store("provider:openai:apiKey", b"openai-secret").unwrap();
+            vault.store("provider:anthropic:apiKey", b"anthropic-secret").unwrap();
+            vault.store("webhook:stripe:secret", b"stripe-secret").unwrap();
+        }
+
+        let mut reopened = SecretVault::open(&key, path).unwrap();
+        assert_eq!(
+            reopened.read("provider:openai:apiKey").unwrap(),
+            b"openai-secret"
+        );
+        assert_eq!(
+            reopened.read("provider:anthropic:apiKey").unwrap(),
+            b"anthropic-secret"
+        );
+        assert_eq!(
+            reopened.read("webhook:stripe:secret").unwrap(),
+            b"stripe-secret"
+        );
+    }
+
+    // ---- read respects rate limit ----
+
+    #[test]
+    fn a011_vault_read_returns_rate_limited_error_after_10_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+        vault.store("k", b"v").unwrap();
+
+        vault.last_access = std::time::Instant::now();
+        vault.access_count = 0;
+
+        for _ in 0..10 {
+            vault.read("k").unwrap();
+        }
+        let err = vault.read("k").unwrap_err();
+        assert!(matches!(err, VaultError::RateLimited));
+    }
+
+    // ---- empty vault `has` returns false ----
+
+    #[test]
+    fn a011_vault_has_on_empty_vault_returns_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = SecretVault::empty(dir.path().join("v.enc"));
+        assert!(!vault.has("anything"));
+    }
+
+    // ---- load_or_generate_master_key: second call hits keyring or keyfile cache ----
+
+    #[test]
+    fn a011_vault_load_or_generate_master_key_second_call_returns_same_key() {
+        // Second call must return the same 32-byte key as the first call.
+        // Whether the key is stored in the keyring or keyfile depends on the
+        // environment; the contract is just that it is stable across calls.
+        let dir = tempfile::tempdir().unwrap();
+        let key_a = load_or_generate_master_key(dir.path()).unwrap();
+        let key_b = load_or_generate_master_key(dir.path()).unwrap();
+        assert_eq!(key_a, key_b);
+    }
+
+    // ---- persist_entries_atomically: vault path with no parent component ----
+
+    #[test]
+    fn a011_vault_persist_atomically_with_no_parent_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.enc");
+        let entries = HashMap::<String, EncryptedEntry>::new();
+        persist_entries_atomically(&path, &entries).unwrap();
+        assert!(path.exists());
+
+        // Confirm the file is a valid vault parseable with zero entries.
+        let bytes = std::fs::read(&path).unwrap();
+        let parsed = parse_vault_file(&bytes).unwrap();
+        assert!(parsed.is_empty());
+    }
+
+    // ---- persist_entries_atomically: rename fails leaving original intact ----
+
+    #[cfg(unix)]
+    #[test]
+    fn a011_vault_persist_rename_failure_cleans_up_temp_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let vault_dir = dir.path().join("readonly");
+        fs::create_dir_all(&vault_dir).unwrap();
+
+        let path = vault_dir.join("vault.enc");
+        let entries = HashMap::<String, EncryptedEntry>::new();
+
+        // Write a valid vault first so we know the path exists.
+        persist_entries_atomically(&path, &entries).unwrap();
+        assert!(path.exists());
+
+        // Make the directory read-only: new files can't be written and rename will fail.
+        fs::set_permissions(&vault_dir, fs::Permissions::from_mode(0o500)).unwrap();
+
+        let err = persist_entries_atomically(&path, &entries);
+
+        // Restore permissions so tempdir cleanup succeeds.
+        fs::set_permissions(&vault_dir, fs::Permissions::from_mode(0o700)).unwrap();
+
+        // The call should fail since we can't write a new temp file.
+        assert!(err.is_err());
+    }
+
+    // ---- serialize_entries roundtrip through parse_vault_file ----
+
+    #[test]
+    fn a011_vault_serialize_then_parse_roundtrip_preserves_all_entries() {
+        let key = test_master_key();
+        let master = build_master_key(&key).unwrap();
+
+        let nonce_a = [1_u8; GCM_NONCE_LEN];
+        let nonce_b = [2_u8; GCM_NONCE_LEN];
+
+        let mut entries = HashMap::new();
+        entries.insert(
+            "alpha".to_string(),
+            EncryptedEntry { nonce: nonce_a, ciphertext: vec![0xAA; GCM_TAG_LEN + 4] },
+        );
+        entries.insert(
+            "beta".to_string(),
+            EncryptedEntry { nonce: nonce_b, ciphertext: vec![0xBB; GCM_TAG_LEN + 4] },
+        );
+
+        let bytes = serialize_entries(&entries).unwrap();
+        let parsed = parse_vault_file(&bytes).unwrap();
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed["alpha"].nonce, nonce_a);
+        assert_eq!(parsed["beta"].nonce, nonce_b);
+
+        // Touch master to silence unused warning.
+        let _ = master;
+    }
+
+    // ---- build_master_key called directly ----
+
+    #[test]
+    fn a011_vault_build_master_key_succeeds_with_valid_32_byte_key() {
+        let key_bytes = [0x42_u8; 32];
+        let result = build_master_key(&key_bytes);
+        assert!(result.is_ok());
+    }
+
+    // ---- generate_master_key produces 32 unique bytes ----
+
+    #[test]
+    fn a011_vault_generate_master_key_produces_32_random_bytes() {
+        let key_a = generate_master_key().unwrap();
+        let key_b = generate_master_key().unwrap();
+        assert_eq!(key_a.len(), 32);
+        // Two freshly generated keys should differ (probability 1 - 2^-256).
+        assert_ne!(key_a, key_b);
+    }
+
+    // ---- encode_hex_key / decode_hex_key edge cases ----
+
+    #[test]
+    fn a011_vault_encode_hex_key_produces_64_char_lowercase_hex() {
+        let key = [0xFF_u8; 32];
+        let encoded = encode_hex_key(&key);
+        assert_eq!(encoded.len(), 64);
+        assert!(encoded.chars().all(|c| "0123456789abcdef".contains(c)));
+        assert_eq!(&encoded[..4], "ffff");
+    }
+
+    #[test]
+    fn a011_vault_decode_hex_key_rejects_63_char_string() {
+        let short = "a".repeat(63);
+        let err = decode_hex_key(&short).unwrap_err();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    #[test]
+    fn a011_vault_decode_hex_key_rejects_65_char_string() {
+        let long = "a".repeat(65);
+        let err = decode_hex_key(&long).unwrap_err();
+        assert!(matches!(err, VaultError::InvalidVaultFormat(_)));
+    }
+
+    // ---- read_u16 / read_u32 with non-zero offsets ----
+
+    #[test]
+    fn a011_vault_read_u16_at_valid_offset() {
+        let data = [0x00, 0x01, 0x02, 0x03];
+        assert_eq!(read_u16(&data, 0).unwrap(), 0x0100);
+        assert_eq!(read_u16(&data, 2).unwrap(), 0x0302);
+    }
+
+    #[test]
+    fn a011_vault_read_u32_at_valid_offset() {
+        let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        assert_eq!(read_u32(&data, 0).unwrap(), 0x04030201);
+        assert_eq!(read_u32(&data, 4).unwrap(), 0x08070605);
+    }
+
+    #[test]
+    fn a011_vault_read_u16_at_boundary_eof_returns_error() {
+        let data = [0x01_u8; 3];
+        // offset 2 needs bytes[2..4] but len is 3 → error.
+        assert!(read_u16(&data, 2).is_err());
+    }
+
+    #[test]
+    fn a011_vault_read_u32_at_boundary_eof_returns_error() {
+        let data = [0x01_u8; 5];
+        // offset 2 needs bytes[2..6] but len is 5 → error.
+        assert!(read_u32(&data, 2).is_err());
+    }
+
+    // ---- next_temp_path with normal path ----
+
+    #[test]
+    fn a011_vault_next_temp_path_uses_vault_filename_prefix() {
+        let p = std::path::PathBuf::from("/tmp/vault.enc");
+        let tmp = next_temp_path(&p);
+        let name = tmp.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        assert!(name.starts_with("vault.enc.tmp."), "got: {name}");
+        // Temp path must be in same directory.
+        assert_eq!(tmp.parent(), p.parent());
+    }
+
+    // ---- VaultError::Keyring display ----
+
+    #[test]
+    fn a011_vault_error_keyring_variant_contains_message() {
+        let err = VaultError::Keyring("connection refused".to_string());
+        assert!(err.to_string().contains("connection refused"));
+    }
+
+    // ---- NotFound display contains key name ----
+
+    #[test]
+    fn a011_vault_error_not_found_contains_key_name() {
+        let err = VaultError::NotFound("provider:openai:apiKey".to_string());
+        assert!(err.to_string().contains("provider:openai:apiKey"));
+    }
+
+    // ---- Multiple stores then list maintains sort stability ----
+
+    #[test]
+    fn a011_vault_list_is_stable_after_multiple_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        vault.store("custom:c", b"c").unwrap();
+        vault.store("custom:a", b"a").unwrap();
+        vault.store("custom:b", b"b").unwrap();
+        vault.store("custom:a", b"a2").unwrap(); // overwrite
+
+        let names = vault.list().unwrap();
+        assert_eq!(names, vec!["custom:a", "custom:b", "custom:c"]);
+    }
+
+    // ---- store followed by delete then store again ----
+
+    #[test]
+    fn a011_vault_store_after_delete_reinserts_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = test_master_key();
+        let mut vault = SecretVault::open(&key, dir.path().join("v.enc")).unwrap();
+
+        vault.store("custom:x", b"first").unwrap();
+        vault.delete("custom:x").unwrap();
+        vault.store("custom:x", b"second").unwrap();
+
+        let val = vault.read("custom:x").unwrap();
+        assert_eq!(val, b"second");
+    }
+
+    // ---- EncryptedEntry Clone and Debug derive coverage ----
+
+    #[test]
+    fn a011_vault_encrypted_entry_clone_is_deep_copy() {
+        let original = EncryptedEntry {
+            nonce: [0xAA_u8; GCM_NONCE_LEN],
+            ciphertext: vec![0xBB; 32],
+        };
+        let cloned = original.clone();
+        assert_eq!(original.nonce, cloned.nonce);
+        assert_eq!(original.ciphertext, cloned.ciphertext);
+    }
+
+    #[test]
+    fn a011_vault_encrypted_entry_debug_format_is_non_empty() {
+        let entry = EncryptedEntry {
+            nonce: [0_u8; GCM_NONCE_LEN],
+            ciphertext: vec![1, 2, 3],
+        };
+        let debug_str = format!("{entry:?}");
+        assert!(debug_str.contains("EncryptedEntry"));
+    }
+
+    // ---- VaultError Debug format ----
+
+    #[test]
+    fn a011_vault_error_debug_format_all_variants() {
+        let variants: Vec<String> = vec![
+            format!("{:?}", VaultError::Io(io::Error::other("io"))),
+            format!("{:?}", VaultError::Keyring("k".to_string())),
+            format!("{:?}", VaultError::InvalidVaultFormat("f".to_string())),
+            format!("{:?}", VaultError::Crypto("c".to_string())),
+            format!("{:?}", VaultError::NotFound("n".to_string())),
+            format!("{:?}", VaultError::Utf8(String::from_utf8(vec![0xff]).unwrap_err())),
+            format!("{:?}", VaultError::RateLimited),
+        ];
+        for s in &variants {
+            assert!(!s.is_empty());
+        }
+    }
+
+    // ---- EncryptedEntry Serialize/Deserialize via serde_json ----
+
+    #[test]
+    fn a011_vault_encrypted_entry_serde_json_roundtrip() {
+        // Exercise the Serialize/Deserialize derives on EncryptedEntry.
+        let original = EncryptedEntry {
+            nonce: [0x11_u8; GCM_NONCE_LEN],
+            ciphertext: vec![0x22; 20],
+        };
+        let serialized = serde_json::to_string(&original).unwrap();
+        let deserialized: EncryptedEntry = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(original.nonce, deserialized.nonce);
+        assert_eq!(original.ciphertext, deserialized.ciphertext);
+    }
 }

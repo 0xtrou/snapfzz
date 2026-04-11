@@ -69,4 +69,64 @@ mod tests {
             )),
         }
     }
+
+    // ── PlatformInfo: struct construction and field access ────────────────────
+
+    #[test]
+    fn t32_platform_info_fields_are_accessible() {
+        let info = PlatformInfo {
+            os: "linux",
+            arch: "x86_64",
+            platform: "linux-x64".to_string(),
+            display: "Linux (x86_64)",
+            exe_suffix: "",
+            archive_ext: ".tar.gz",
+        };
+
+        assert_eq!(info.os, "linux");
+        assert_eq!(info.arch, "x86_64");
+        assert_eq!(info.platform, "linux-x64");
+        assert_eq!(info.display, "Linux (x86_64)");
+        assert_eq!(info.exe_suffix, "");
+        assert_eq!(info.archive_ext, ".tar.gz");
+    }
+
+    #[test]
+    fn t32_platform_info_clone_produces_equal_fields() {
+        let info = PlatformInfo {
+            os: "macos",
+            arch: "aarch64",
+            platform: "macos-arm64".to_string(),
+            display: "macOS (Apple Silicon)",
+            exe_suffix: "",
+            archive_ext: ".tar.gz",
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.os, info.os);
+        assert_eq!(cloned.platform, info.platform);
+    }
+
+    #[test]
+    fn t32_platform_info_debug_contains_platform() {
+        let info = PlatformInfo {
+            os: "windows",
+            arch: "x86_64",
+            platform: "windows-x64".to_string(),
+            display: "Windows (x64)",
+            exe_suffix: ".exe",
+            archive_ext: ".zip",
+        };
+        let debug_str = format!("{info:?}");
+        assert!(debug_str.contains("windows-x64"));
+    }
+
+    #[test]
+    fn t32_platform_detect_returns_err_for_unsupported_platform_message() {
+        // We cannot override env::consts at runtime, but we can verify the error type
+        // and message format on the current host indirectly via an artificial match.
+        // Here we just confirm the error variant carries the platform string.
+        let err = ComponentError::UnsupportedPlatform("riscv-riscv64".to_string());
+        assert!(err.to_string().contains("riscv-riscv64"));
+        assert!(matches!(err, ComponentError::UnsupportedPlatform(_)));
+    }
 }

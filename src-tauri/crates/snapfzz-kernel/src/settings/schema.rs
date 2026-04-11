@@ -146,3 +146,202 @@ impl Default for Settings {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+
+    // --- Default values ---
+
+    #[test]
+    fn a014_settings_schema_default_model_is_gpt4o() {
+        let s = Settings::default();
+        assert_eq!(s.model, "gpt-4o");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_api_url_is_openai() {
+        let s = Settings::default();
+        assert_eq!(s.api_url, "https://api.openai.com/v1");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_theme_is_system() {
+        let s = Settings::default();
+        assert_eq!(s.theme, "system");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_open_last_project_is_true() {
+        let s = Settings::default();
+        assert!(s.open_last_project);
+    }
+
+    #[test]
+    fn a014_settings_schema_default_language_is_en() {
+        let s = Settings::default();
+        assert_eq!(s.language, "en");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_font_family_is_inter() {
+        let s = Settings::default();
+        assert_eq!(s.font_family, "Inter");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_font_size_is_13() {
+        let s = Settings::default();
+        assert_eq!(s.font_size, "13");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_fps_counter_is_true() {
+        let s = Settings::default();
+        assert!(s.fps_counter);
+    }
+
+    #[test]
+    fn a014_settings_schema_default_log_level_is_info() {
+        let s = Settings::default();
+        assert_eq!(s.log_level, "info");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_preset_is_auto() {
+        let s = Settings::default();
+        assert_eq!(s.preset, "auto");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_agentscope_host_is_loopback() {
+        let s = Settings::default();
+        assert_eq!(s.agentscope_host, "127.0.0.1");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_agentscope_port_is_8090() {
+        let s = Settings::default();
+        assert_eq!(s.agentscope_port, "8090");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_litellm_host_is_loopback() {
+        let s = Settings::default();
+        assert_eq!(s.litellm_host, "127.0.0.1");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_litellm_port_is_4000() {
+        let s = Settings::default();
+        assert_eq!(s.litellm_port, "4000");
+    }
+
+    #[test]
+    fn a014_settings_schema_default_api_key_is_empty() {
+        let s = Settings::default();
+        assert!(s.api_key.is_empty());
+    }
+
+    #[test]
+    fn a014_settings_schema_default_agentscope_working_dir_is_empty() {
+        let s = Settings::default();
+        assert!(s.agentscope_working_dir.is_empty());
+    }
+
+    // --- Deserialization: string port values ---
+
+    #[test]
+    fn a014_settings_schema_agentscope_port_deserializes_string() {
+        let json = r#"{"agentscopePort": "9090"}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize string port");
+        assert_eq!(s.agentscope_port, "9090");
+    }
+
+    #[test]
+    fn a014_settings_schema_litellm_port_deserializes_string() {
+        let json = r#"{"litellmPort": "5000"}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize litellm string port");
+        assert_eq!(s.litellm_port, "5000");
+    }
+
+    // --- Deserialization: numeric port values ---
+
+    #[test]
+    fn a014_settings_schema_agentscope_port_deserializes_number() {
+        let json = r#"{"agentscopePort": 8091}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize numeric port");
+        assert_eq!(s.agentscope_port, "8091");
+    }
+
+    #[test]
+    fn a014_settings_schema_litellm_port_deserializes_number() {
+        let json = r#"{"litellmPort": 4001}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize litellm numeric port");
+        assert_eq!(s.litellm_port, "4001");
+    }
+
+    // --- Deserialization: null/invalid port falls back to defaults ---
+
+    #[test]
+    fn a014_settings_schema_agentscope_port_falls_back_on_null() {
+        let json = r#"{"agentscopePort": null}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize null port");
+        assert_eq!(s.agentscope_port, "8090");
+    }
+
+    #[test]
+    fn a014_settings_schema_litellm_port_falls_back_on_null() {
+        let json = r#"{"litellmPort": null}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize null litellm port");
+        assert_eq!(s.litellm_port, "4000");
+    }
+
+    // --- Deserialization: snake_case aliases ---
+
+    #[test]
+    fn a014_settings_schema_api_key_alias_snake_case_deserializes() {
+        let json = r#"{"api_key": "sk-abc123"}"#;
+        let s: Settings = serde_json::from_str(json).expect("deserialize api_key alias");
+        assert_eq!(s.api_key, "sk-abc123");
+    }
+
+    // --- Missing fields fall back to defaults ---
+
+    #[test]
+    fn a014_settings_schema_empty_json_uses_all_defaults() {
+        let s: Settings = serde_json::from_str("{}").expect("deserialize empty object");
+        assert_eq!(s, Settings::default());
+    }
+
+    // --- Round-trip ---
+
+    #[test]
+    fn a014_settings_schema_round_trip_preserves_all_fields() {
+        let mut original = Settings::default();
+        original.api_key = "sk-test".to_string();
+        original.model = "gpt-4-turbo".to_string();
+        original.theme = "dark".to_string();
+        original.agentscope_port = "9001".to_string();
+        original.litellm_port = "5001".to_string();
+        original.agentscope_working_dir = "/tmp/work".to_string();
+
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: Settings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored, original);
+    }
+
+    // --- PartialEq ---
+
+    #[test]
+    fn a014_settings_schema_two_defaults_are_equal() {
+        assert_eq!(Settings::default(), Settings::default());
+    }
+
+    #[test]
+    fn a014_settings_schema_modified_settings_not_equal_to_default() {
+        let mut s = Settings::default();
+        s.theme = "dark".to_string();
+        assert_ne!(s, Settings::default());
+    }
+}

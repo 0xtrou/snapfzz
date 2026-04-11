@@ -614,4 +614,312 @@ mod tests {
         let result = runtime.uninstall_all();
         assert!(result.is_ok());
     }
+
+    // ── find_python_binary: fallback order ───────────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_find_python_binary_falls_back_to_python3_then_python() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path();
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create bin");
+
+        // Only python3 present (no versioned binary)
+        std::fs::write(cpython_dir.join("bin").join("python3"), "").expect("write python3");
+        let found = PythonRuntime::find_python_binary(install_dir);
+        assert!(found.is_some());
+        assert!(found.unwrap().ends_with("python3"));
+
+        // Remove python3, leave only python
+        std::fs::remove_file(cpython_dir.join("bin").join("python3")).expect("remove");
+        std::fs::write(cpython_dir.join("bin").join("python"), "").expect("write python");
+        let found = PythonRuntime::find_python_binary(install_dir);
+        assert!(found.is_some());
+        assert!(found.unwrap().ends_with("python"));
+    }
+
+    #[test]
+    fn t32_python_runtime_find_python_binary_ignores_non_cpython_dirs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path();
+
+        // dir that does NOT start with "cpython-"
+        let other_dir = install_dir.join("pypy-3.12.0");
+        std::fs::create_dir_all(other_dir.join("bin")).expect("create bin");
+        std::fs::write(other_dir.join("bin").join("python3"), "").expect("write");
+
+        let found = PythonRuntime::find_python_binary(install_dir);
+        assert!(found.is_none());
+    }
+
+    // ── create_venv: venv already exists ─────────────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_create_venv_skips_when_venv_already_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // Pre-create the venv directory so create_venv sees it exists
+        std::fs::create_dir_all(runtime.venv_dir()).expect("create venv dir");
+
+        let result = runtime.create_venv();
+        assert!(result.is_ok(), "create_venv should succeed when venv already exists");
+    }
+
+    // ── create_venv: python not found ────────────────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_create_venv_errors_when_python_not_installed() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // No venv dir, no python binary → should fail with Internal error
+        let err = runtime.create_venv().expect_err("should fail");
+        assert!(matches!(err, ComponentError::Internal(_)));
+    }
+
+    // ── install_package: uv binary missing → Io error ────────────────────────
+
+    #[test]
+    fn t32_python_runtime_install_package_errors_when_uv_missing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // uv binary doesn't exist → Command::new will fail with Io error
+        let err = runtime.install_package("requests").expect_err("should fail");
+        assert!(matches!(err, ComponentError::Io(_)));
+    }
+
+    // ── uninstall_package: uv binary missing → Io error ──────────────────────
+
+    #[test]
+    fn t32_python_runtime_uninstall_package_errors_when_uv_missing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        let err = runtime.uninstall_package("requests").expect_err("should fail");
+        assert!(matches!(err, ComponentError::Io(_)));
+    }
+
+    // ── install_all_packages: guards ─────────────────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_install_all_packages_errors_when_uv_not_ready() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        let err = runtime.install_all_packages().expect_err("should fail");
+        assert!(matches!(err, ComponentError::Internal(_)));
+        assert!(err.to_string().contains("uv"));
+    }
+
+    #[test]
+    fn t32_python_runtime_install_all_packages_errors_when_python_not_installed() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // Create uv binary so uv check passes
+        std::fs::create_dir_all(runtime.bin_dir()).expect("create bin dir");
+        std::fs::write(runtime.uv_binary(), "").expect("create fake uv");
+
+        let err = runtime.install_all_packages().expect_err("should fail");
+        assert!(matches!(err, ComponentError::Internal(_)));
+        assert!(err.to_string().contains("Python"));
+    }
+
+    // ── status: uv binary present, python absent ──────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_status_reports_uv_installed_when_binary_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // Place a real binary that will be invoked with --version
+        // We use `true` (unix) or just an empty file — either way uv_installed = true
+        std::fs::create_dir_all(runtime.bin_dir()).expect("create bin dir");
+        // Write a shell stub that exits 0 and prints a version string
+        let uv_path = runtime.uv_binary();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&uv_path, b"#!/bin/sh\necho 'uv 0.1.0'\n").expect("write stub");
+            std::fs::set_permissions(&uv_path, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::write(&uv_path, b"").expect("write stub");
+        }
+
+        let status = runtime.status();
+        assert!(status.uv_installed);
+        // uv_version may or may not be populated depending on platform; just ensure no panic
+    }
+
+    // ── list_venv_packages: uv/venv absent → empty list ──────────────────────
+
+    #[test]
+    fn t32_python_runtime_list_venv_packages_returns_empty_when_uv_absent() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // is_uv_ready = false → list_venv_packages returns vec![]
+        // status() calls list_venv_packages internally
+        let status = runtime.status();
+        assert!(status.installed_packages.is_empty());
+    }
+
+    // ── package_version_from_list: hyphen/underscore normalization ────────────
+
+    #[test]
+    fn t32_python_runtime_package_version_from_list_normalizes_hyphens() {
+        let packages = vec![
+            ("agentscope_runtime".to_string(), "0.2.0".to_string()),
+        ];
+
+        let v = PythonRuntime::package_version_from_list("agentscope-runtime", &packages);
+        assert_eq!(v, Some("0.2.0".to_string()));
+    }
+
+    // ── package_version: delegates to list_venv_packages ─────────────────────
+
+    #[test]
+    fn t32_python_runtime_package_version_returns_none_when_venv_absent() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        let v = runtime.package_version("agentscope");
+        assert!(v.is_none());
+    }
+
+    // ── is_uv_ready ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_is_uv_ready_returns_true_when_binary_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        assert!(!runtime.is_uv_ready());
+        std::fs::create_dir_all(runtime.bin_dir()).expect("create bin dir");
+        std::fs::write(runtime.uv_binary(), b"").expect("write");
+        assert!(runtime.is_uv_ready());
+    }
+
+    // ── install_all_packages: venv exists → uv command executes (fails w/ bad binary) ──
+
+    #[test]
+    fn t32_python_runtime_install_all_packages_errors_with_uv_and_python_ready_but_bad_binary() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // Satisfy uv check
+        std::fs::create_dir_all(runtime.bin_dir()).expect("create bin dir");
+        std::fs::write(runtime.uv_binary(), b"").expect("create fake uv");
+
+        // Satisfy python check
+        let install_dir = runtime.python_install_dir();
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), b"").expect("create python binary");
+
+        // Create venv dir so the venv check passes
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(runtime.venv_python(), b"").expect("create venv python");
+
+        // uv binary is empty (not executable) → Command execution should produce Io error
+        let err = runtime.install_all_packages().expect_err("should fail");
+        // On macOS an empty file yields Io (exec format) or os-level error
+        assert!(
+            matches!(err, ComponentError::Io(_)) || matches!(err, ComponentError::Internal(_)),
+            "unexpected error: {err}"
+        );
+    }
+
+    // ── create_venv: python binary found but uv binary bad → Io error ────────
+
+    #[test]
+    fn t32_python_runtime_create_venv_errors_when_uv_binary_is_invalid() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // Set up a python binary (so ok_or_else doesn't fire)
+        let install_dir = runtime.python_install_dir();
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), b"").expect("create python binary");
+
+        // Put an empty (non-executable) uv binary in place
+        std::fs::create_dir_all(runtime.bin_dir()).expect("create bin dir");
+        std::fs::write(runtime.uv_binary(), b"").expect("create invalid uv");
+
+        // venv dir does NOT exist → create_venv will try to run uv
+        let err = runtime.create_venv().expect_err("should fail");
+        // Empty binary → Io error (exec format error)
+        assert!(
+            matches!(err, ComponentError::Io(_)) || matches!(err, ComponentError::Internal(_)),
+            "unexpected error: {err}"
+        );
+    }
+
+    // ── status: both uv and python ready (stubs) ──────────────────────────────
+
+    #[test]
+    fn t32_python_runtime_status_with_uv_and_python_stubs_reports_installed() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let platform = make_platform();
+        let runtime = PythonRuntime::new(temp.path().to_path_buf(), platform);
+
+        // Set up stub uv binary (executable shell script)
+        std::fs::create_dir_all(runtime.bin_dir()).expect("create bin dir");
+        let uv_path = runtime.uv_binary();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&uv_path, b"#!/bin/sh\necho 'uv 0.5.0'\n").expect("write uv stub");
+            std::fs::set_permissions(&uv_path, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod uv");
+        }
+        #[cfg(not(unix))]
+        std::fs::write(&uv_path, b"").expect("write uv stub");
+
+        // Set up python binary (non-executable placeholder)
+        let install_dir = runtime.python_install_dir();
+        let cpython_dir = install_dir.join("cpython-3.12.0");
+        std::fs::create_dir_all(cpython_dir.join("bin")).expect("create python dir");
+        std::fs::write(cpython_dir.join("bin").join("python3.12"), b"not-a-real-binary")
+            .expect("create python binary");
+
+        let status = runtime.status();
+
+        assert!(status.uv_installed);
+        assert!(status.python_installed);
+        assert!(!status.venv_exists);
+        assert_eq!(status.install_steps.len(), 6);
+        assert!(status.install_steps.iter().any(|s| s.id == "uv" && s.is_installed));
+        assert!(status.install_steps.iter().any(|s| s.id == "python" && s.is_installed));
+        assert!(status.install_steps.iter().any(|s| s.id == "venv" && !s.is_installed));
+    }
+
+    // ── python_pack_specs: verify litellm proxy spec ──────────────────────────
+
+    #[test]
+    fn t32_python_runtime_pack_specs_has_litellm_proxy_and_prisma() {
+        let specs = python_pack_specs();
+        assert!(specs.iter().any(|s| s.contains("litellm[proxy]==")));
+        assert!(specs.iter().any(|s| s == "prisma"));
+        assert!(specs.iter().any(|s| s == "greenlet"));
+    }
 }

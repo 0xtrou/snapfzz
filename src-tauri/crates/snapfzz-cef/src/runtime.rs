@@ -435,4 +435,213 @@ mod tests {
         let window = runtime.window("miniapp-1").expect("window exists");
         assert!(!window.is_loading());
     }
+
+    #[tokio::test]
+    async fn a015_runtime_window_and_window_mut_return_none_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        assert!(runtime.window("ghost").is_none());
+        assert!(runtime.window_mut("ghost").is_none());
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_create_window_fails_when_not_initialized() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+
+        let error = runtime
+            .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
+            .expect_err("uninitialized runtime should reject create_window");
+
+        assert!(matches!(error, CefError::InvalidState(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_close_window_removes_it_from_registry() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+        runtime
+            .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
+            .expect("window");
+
+        runtime.close_window("miniapp-1").expect("close");
+
+        assert!(runtime.window("miniapp-1").is_none());
+        assert!(!runtime.cdp_server().expect("cdp server").has_session("miniapp-1"));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_close_window_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .close_window("ghost")
+            .expect_err("missing window should return not found");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_navigate_window_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .navigate_window("ghost", "http://example.com")
+            .expect_err("navigate on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_go_back_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .go_back("ghost")
+            .expect_err("go_back on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_reload_window_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .reload_window("ghost")
+            .expect_err("reload on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_set_devtools_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .set_devtools("ghost", true)
+            .expect_err("set_devtools on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_capture_screenshot_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .capture_screenshot("ghost")
+            .expect_err("screenshot on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_record_console_message_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .record_console_message(
+                "ghost",
+                ConsoleMessage {
+                    level: "log".to_string(),
+                    message: "hello".to_string(),
+                    source: None,
+                    line: None,
+                },
+            )
+            .expect_err("record on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_console_messages_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .console_messages("ghost")
+            .expect_err("console_messages on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_clear_console_messages_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .clear_console_messages("ghost")
+            .expect_err("clear on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_stop_window_returns_not_found_for_missing_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+
+        let error = runtime
+            .stop_window("ghost")
+            .expect_err("stop on missing window should fail");
+
+        assert!(matches!(error, CefError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn a015_runtime_cef_dir_returns_configured_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = CefRuntime::new(temp.path());
+
+        let expected = temp.path().join("runtime").join("cef");
+        assert_eq!(runtime.cef_dir(), expected.as_path());
+
+        // Also verify window_mut returns mutable reference correctly
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
+        runtime
+            .create_window("win", "http://localhost", WindowConfig::default())
+            .expect("window");
+        let win = runtime.window_mut("win").expect("mutable ref");
+        win.navigate("http://updated.example.com");
+        assert_eq!(
+            runtime.window("win").expect("window").current_url(),
+            "http://updated.example.com"
+        );
+    }
 }

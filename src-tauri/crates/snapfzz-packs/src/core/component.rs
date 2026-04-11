@@ -189,4 +189,76 @@ mod tests {
         let platform = ComponentError::UnsupportedPlatform("riscv".into());
         assert!(platform.to_string().contains("riscv"));
     }
+
+    // ── SystemComponent default methods ──────────────────────────────────────
+
+    struct MinimalComponent {
+        dir: std::path::PathBuf,
+    }
+
+    #[async_trait::async_trait]
+    impl SystemComponent for MinimalComponent {
+        fn id(&self) -> &str { "minimal" }
+        fn name(&self) -> &str { "Minimal" }
+        fn install_dir(&self) -> &Path { &self.dir }
+        fn is_installed(&self) -> bool { false }
+        async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
+            Err(ComponentError::internal("not implemented"))
+        }
+        async fn download(&self) -> Result<Vec<DownloadProgress>, ComponentError> {
+            Err(ComponentError::internal("not implemented"))
+        }
+        fn cancel(&self) {}
+        fn clear_cancel(&self) {}
+        async fn verify(&self) -> Result<String, ComponentError> {
+            Err(ComponentError::internal("not implemented"))
+        }
+        async fn extract(&self) -> Result<(), ComponentError> {
+            Err(ComponentError::internal("not implemented"))
+        }
+    }
+
+    #[test]
+    fn a014_components_system_component_default_urls_are_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let c = MinimalComponent { dir: temp.path().to_path_buf() };
+        assert_eq!(c.repository_url(), "");
+        assert_eq!(c.website_url(), "");
+    }
+
+    #[test]
+    fn a014_components_system_component_visible_in_components_list_defaults_true() {
+        let temp = tempfile::tempdir().unwrap();
+        let c = MinimalComponent { dir: temp.path().to_path_buf() };
+        assert!(c.visible_in_components_list());
+    }
+
+    #[test]
+    fn a014_components_system_component_status_path_defaults_to_install_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let c = MinimalComponent { dir: temp.path().to_path_buf() };
+        assert_eq!(c.status_path(), temp.path().to_path_buf());
+    }
+
+    #[tokio::test]
+    async fn a014_components_system_component_uninstall_removes_existing_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let install_dir = temp.path().join("component");
+        std::fs::create_dir_all(&install_dir).unwrap();
+        std::fs::write(install_dir.join("file.txt"), b"data").unwrap();
+
+        let c = MinimalComponent { dir: install_dir.clone() };
+        c.uninstall().await.expect("uninstall should succeed");
+        assert!(!install_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn a014_components_system_component_uninstall_is_ok_when_dir_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let install_dir = temp.path().join("nonexistent");
+
+        let c = MinimalComponent { dir: install_dir };
+        let result = c.uninstall().await;
+        assert!(result.is_ok());
+    }
 }

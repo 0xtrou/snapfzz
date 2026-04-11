@@ -71,4 +71,50 @@ mod tests {
         let _ = crate::cdp::CdpServer::new;
         let _ = crate::types::WindowConfig::default;
     }
+
+    #[test]
+    fn a015_lib_build_platform_info_populates_all_fields() {
+        let info = crate::build_platform_info(
+            "linux",
+            "x86_64",
+            "linux-x64",
+            "Linux (x86-64)",
+            "https://example.com/cef.tar.gz".to_string(),
+            "/home/user/.local/cef".to_string(),
+            false,
+        );
+
+        assert_eq!(info.os, "linux");
+        assert_eq!(info.arch, "x86_64");
+        assert_eq!(info.platform, "linux-x64");
+        assert_eq!(info.platform_display, "Linux (x86-64)");
+        assert_eq!(info.download_url, "https://example.com/cef.tar.gz");
+        assert_eq!(info.install_path, "/home/user/.local/cef");
+        assert!(!info.is_installed);
+    }
+
+    #[test]
+    fn a015_lib_cef_install_check_arc_delegates_to_inner() {
+        struct AlwaysInstalled;
+
+        impl crate::CefInstallCheck for AlwaysInstalled {
+            fn is_installed(&self) -> bool {
+                true
+            }
+        }
+
+        struct NeverInstalled;
+
+        impl crate::CefInstallCheck for NeverInstalled {
+            fn is_installed(&self) -> bool {
+                false
+            }
+        }
+
+        let arc_yes = std::sync::Arc::new(AlwaysInstalled);
+        let arc_no = std::sync::Arc::new(NeverInstalled);
+
+        assert!(crate::CefInstallCheck::is_installed(&arc_yes));
+        assert!(!crate::CefInstallCheck::is_installed(&arc_no));
+    }
 }

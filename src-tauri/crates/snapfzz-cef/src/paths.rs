@@ -97,4 +97,48 @@ mod tests {
             assert_eq!(base, home.join(".local").join("share"));
         }
     }
+
+    #[test]
+    fn a015_paths_cef_data_dir_contains_snapfzz_runtime_cef_suffix() {
+        let dir = cef_data_dir().expect("cef data dir must resolve");
+        let rendered = dir.to_string_lossy();
+        assert!(
+            rendered.contains("snapfzz") && rendered.contains("cef"),
+            "expected path to contain 'snapfzz' and 'cef', got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn a015_paths_cef_binary_path_ends_with_cef_binary() {
+        let path = cef_binary_path().expect("binary path must resolve");
+        assert_eq!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some("cef_binary"),
+            "binary path should end with cef_binary, got: {}",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn a015_paths_cef_cache_path_ends_with_cache() {
+        let path = cef_cache_path().expect("cache path must resolve");
+        assert_eq!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some("cache"),
+            "cache path should end with cache, got: {}",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn a015_paths_runtime_cef_dir_is_three_levels_deep() {
+        let base = PathBuf::from("/snapfzz-test-root");
+        let result = super::runtime_cef_dir(base);
+        // Expect exactly: /snapfzz-test-root/snapfzz/runtime/cef
+        assert_eq!(
+            result.components().count(),
+            // root "/" + "snapfzz-test-root" + "snapfzz" + "runtime" + "cef" = 5
+            5
+        );
+    }
 }

@@ -408,4 +408,177 @@ mod tests {
 
         assert!(reg.snapshot().app_total_mb > 1024);
     }
+
+    // --- from_hardware constructor ---
+
+    #[test]
+    fn a008_registry_from_hardware_creates_valid_registry() {
+        let reg = BudgetRegistry::from_hardware();
+        // Should produce a positive batch interval based on detected hardware
+        assert!(reg.batch_interval() > 0);
+        let snap = reg.snapshot();
+        assert!(!snap.preset_name.is_empty());
+        assert!(snap.cpu_total > 0);
+    }
+
+    // --- enforce_loop: runs one tick and invokes callback, then task is aborted ---
+
+    #[tokio::test]
+    async fn a008_registry_enforce_loop_invokes_callback_on_each_tick() {
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+        let reg = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        let counter_clone = counter.clone();
+        let reg_clone = reg.clone();
+
+        // Run enforce_loop with a very short interval and abort after the first callback.
+        let handle = tokio::spawn(async move {
+            reg_clone
+                .enforce_loop(1, |_metrics| {
+                    counter_clone.fetch_add(1, Ordering::SeqCst);
+                })
+                .await;
+        });
+
+        // Give the loop time to fire at least once.
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        handle.abort();
+        let _ = handle.await;
+
+        assert!(counter.load(Ordering::SeqCst) >= 1, "enforce_loop callback must be called at least once");
+    }
+
+    // --- enforce_loop: triggers memory-exceeded log path ---
+
+    #[tokio::test]
+    async fn a008_registry_enforce_loop_memory_exceeded_path_runs_without_panic() {
+        use std::sync::Arc;
+
+        let hw = HardwareInfo { cores: 8, ram_gb: 16, on_battery: false };
+        let mut preset = build_preset(PresetName::Performance, &hw);
+        preset.memory.app_total_mb = 0; // Force budget to 0 so any RSS exceeds it
+        let reg = Arc::new(BudgetRegistry::with_preset(preset));
+
+        // Register a local process so total_rss check runs
+        reg.register_process(
+            "test-mem",
+            ProcessBudget {
+                pid: Some(std::process::id()),
+                health_url: "http://127.0.0.1:1/health".into(),
+                health_interval_ms: 1000,
+                max_health_failures: 3,
+                max_restarts: 3,
+                location: crate::budget::supervised::ProcessLocation::Local,
+                consecutive_failures: 0,
+                restart_count: 0,
+                status: crate::budget::metrics::ProcessStatus::Online,
+                started_at: None,
+                owner: "system".into(),
+            },
+        );
+
+        let reg_clone = reg.clone();
+        let handle = tokio::spawn(async move {
+            reg_clone.enforce_loop(1, |_| {}).await;
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        handle.abort();
+        let _ = handle.await;
+    }
+
+    // --- enforce_loop: storage-exceeded log path ---
+
+    #[tokio::test]
+    async fn a008_registry_enforce_loop_storage_exceeded_path_runs_without_panic() {
+        use std::sync::Arc;
+        use crate::budget::supervised::{StorageState, SupervisedBudgets};
+        use crate::budget::controlled::ControlledBudgets;
+        use std::time::Instant;
+
+        let hw = HardwareInfo { cores: 4, ram_gb: 8, on_battery: false };
+        let preset = build_preset(PresetName::Battery, &hw);
+
+        // Build a registry with a storage budget of 0 GB to trigger is_storage_exceeded.
+        let controlled = ControlledBudgets::from_preset(&preset);
+        let supervised = SupervisedBudgets::new(StorageState {
+            max_gb: 0,
+            paths: vec![],
+            cleanup_threshold_pct: 90,
+        });
+
+        let reg = Arc::new(BudgetRegistry {
+            preset: std::sync::RwLock::new(preset),
+            controlled: std::sync::RwLock::new(controlled),
+            supervised,
+            boot_time: Instant::now(),
+        });
+
+        let reg_clone = reg.clone();
+        let handle = tokio::spawn(async move {
+            reg_clone.enforce_loop(1, |_| {}).await;
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        handle.abort();
+        let _ = handle.await;
+    }
+
+    // --- snapshot: agentscope entry when registered ---
+
+    #[test]
+    fn a008_registry_snapshot_agentscope_status_comes_from_registered_process() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        reg.register_process(
+            "agentscope",
+            ProcessBudget {
+                pid: None,
+                health_url: "http://127.0.0.1:8090/health".into(),
+                health_interval_ms: 2000,
+                max_health_failures: 3,
+                max_restarts: 5,
+                location: crate::budget::supervised::ProcessLocation::Local,
+                consecutive_failures: 0,
+                restart_count: 0,
+                status: crate::budget::metrics::ProcessStatus::Online,
+                started_at: None,
+                owner: "system".into(),
+            },
+        );
+        let snap = reg.snapshot();
+        assert!(matches!(snap.agentscope_status, crate::budget::metrics::ProcessStatus::Online));
+    }
+
+    // --- snapshot: total_rss_mb is non-negative ---
+
+    #[test]
+    fn a008_registry_snapshot_total_rss_mb_is_non_negative() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        let snap = reg.snapshot();
+        assert!(snap.total_rss_mb >= 0.0);
+    }
+
+    // --- snapshot: uptime_secs increases over time ---
+
+    #[test]
+    fn a008_registry_snapshot_uptime_secs_is_non_negative() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        let snap = reg.snapshot();
+        assert!(snap.uptime_secs < 60, "uptime should be fresh in test");
+    }
+
+    // --- disabled_plugins list appears in snapshot ---
+
+    #[test]
+    fn a008_registry_snapshot_disabled_plugins_appears_when_struck_out() {
+        let reg = BudgetRegistry::with_preset_name(PresetName::Performance);
+        reg.record_strike("plugin-x");
+        reg.record_strike("plugin-x");
+        reg.record_strike("plugin-x");
+
+        let snap = reg.snapshot();
+        assert!(snap.disabled_plugins.contains(&"plugin-x".to_string()));
+    }
 }

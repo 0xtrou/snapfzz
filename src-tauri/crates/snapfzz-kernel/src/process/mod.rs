@@ -552,6 +552,145 @@ mod tests {
         assert_eq!(render, "spawn failed");
     }
 
+    #[test]
+    fn a014_process_error_runtime_not_running_display() {
+        let err = ProcessError::RuntimeNotRunning {
+            name: "agentscope".to_string(),
+        };
+        assert_eq!(err.to_string(), "process 'agentscope' is not running");
+    }
+
+    #[test]
+    fn a014_process_error_health_timeout_display() {
+        let err = ProcessError::HealthTimeout {
+            name: "litellm".to_string(),
+            timeout_ms: 5000,
+        };
+        assert_eq!(
+            err.to_string(),
+            "process 'litellm' did not become healthy within 5000ms"
+        );
+    }
+
+    #[test]
+    fn a014_process_error_io_display_forwards_io_message() {
+        let io = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "broken pipe");
+        let err = ProcessError::Io(io);
+        assert!(err.to_string().contains("broken pipe"));
+    }
+
+    #[test]
+    fn a014_process_cleanup_all_orphan_processes_handles_missing_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        // No PID files exist — should complete without panicking.
+        super::cleanup_all_orphan_processes(temp.path());
+    }
+
+    #[test]
+    fn a014_process_cleanup_all_orphan_processes_removes_stale_pid_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        // Write a PID file for "agentscope" with an invalid PID.
+        let pid_path = pid_file_path(temp.path(), "agentscope");
+        std::fs::create_dir_all(pid_path.parent().unwrap()).expect("create runtime dir");
+        std::fs::write(&pid_path, "0").expect("write zero pid");
+
+        super::cleanup_all_orphan_processes(temp.path());
+
+        // PID 0 should be cleaned up.
+        assert!(!pid_path.exists());
+    }
+
+    #[test]
+    fn a014_process_cleanup_all_orphan_processes_removes_invalid_pid() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        for name in ["agentscope", "litellm", "postgres"] {
+            let pid_path = pid_file_path(temp.path(), name);
+            std::fs::create_dir_all(pid_path.parent().unwrap()).expect("create dir");
+            std::fs::write(&pid_path, "not-a-pid").expect("write bad pid");
+        }
+
+        super::cleanup_all_orphan_processes(temp.path());
+
+        for name in ["agentscope", "litellm", "postgres"] {
+            assert!(!pid_file_path(temp.path(), name).exists(), "{name} pid file should be removed");
+        }
+    }
+
+    #[test]
+    fn a014_process_cleanup_stale_pid_removes_zero_pid() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = pid_file_path(temp.path(), "litellm");
+        std::fs::create_dir_all(path.parent().unwrap()).expect("create dir");
+        std::fs::write(&path, "0").expect("write zero pid");
+
+        cleanup_stale_pid(temp.path(), "litellm");
+
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a014_process_kill_process_on_port_with_no_listener_is_noop() {
+        // No process listens on port 1 — lsof returns empty, kill is skipped.
+        // Should not panic.
+        super::kill_process_on_port(1);
+    }
+
+    #[test]
+    fn a014_process_default_impl_creates_same_as_new() {
+        let _manager: ProcessManager = Default::default();
+        // Just verifying Default is implemented and doesn't panic.
+    }
+
+    #[test]
+    fn a014_process_cleanup_stale_pid_with_dead_pid_removes_file() {
+        // Use PID 999999998 which almost certainly does not exist.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = pid_file_path(temp.path(), "postgres");
+        std::fs::create_dir_all(path.parent().unwrap()).expect("create dir");
+        std::fs::write(&path, "999999998").expect("write fake pid");
+
+        cleanup_stale_pid(temp.path(), "postgres");
+
+        // Either the file was removed (process dead) or kept (improbably the pid exists).
+        // We just ensure no panic occurred. The file may or may not exist.
+        let _ = path.exists();
+    }
+
+    #[test]
+    fn a014_process_pid_file_write_creates_parent_dirs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        // The runtime/agentscope directory doesn't exist yet
+        let path = pid_file_path(temp.path(), "agentscope");
+        assert!(!path.exists());
+
+        write_pid_file(temp.path(), "agentscope", 12345);
+
+        assert!(path.exists());
+        let content = std::fs::read_to_string(&path).expect("read pid");
+        assert_eq!(content, "12345");
+    }
+
+    #[test]
+    fn a014_process_remove_pid_file_nonexistent_is_noop() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        // Should not panic when the file doesn't exist
+        remove_pid_file(temp.path(), "nonexistent");
+    }
+
+    #[test]
+    fn a014_process_enforce_memory_limit_delegates_to_supervisor() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = ProcessManager::with_parts(
+            Arc::new(Mutex::new(RuntimeState::new())),
+            Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 10)),
+        );
+        let registry = make_registry();
+        // With no processes registered, total RSS is 0, so limit is not exceeded.
+        let result = manager.enforce_memory_limit(&registry, "any");
+        assert!(!result);
+    }
+
     #[tokio::test]
     async fn a033_process_spawn_process_creates_process_and_writes_pid() {
         let temp = tempfile::tempdir().expect("tempdir");

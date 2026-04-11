@@ -260,4 +260,107 @@ mod tests {
 
         assert!(window.is_closed());
     }
+
+    #[test]
+    fn a015_window_back_at_history_start_is_a_no_op() {
+        let mut window = CefWindow::new(
+            "window-1".to_string(),
+            "http://localhost:3000".to_string(),
+            WindowConfig::default(),
+        );
+
+        // At index 0, can_go_back is false — back() should not change url or set loading
+        assert!(!window.can_go_back());
+        window.back();
+
+        assert_eq!(window.current_url(), "http://localhost:3000");
+        assert!(!window.is_loading());
+    }
+
+    #[test]
+    fn a015_window_forward_at_history_end_is_a_no_op() {
+        let mut window = CefWindow::new(
+            "window-1".to_string(),
+            "http://localhost:3000".to_string(),
+            WindowConfig::default(),
+        );
+        window.navigate("http://localhost:3000/page2");
+        // Now at the end of history — forward should be a no-op
+        assert!(!window.can_go_forward());
+        window.forward();
+
+        assert_eq!(window.current_url(), "http://localhost:3000/page2");
+        assert!(window.is_loading()); // loading was set by navigate, not by forward
+    }
+
+    #[test]
+    fn a015_window_push_console_message_appends_to_local_buffer() {
+        let mut window = CefWindow::new(
+            "window-1".to_string(),
+            "http://localhost:3000".to_string(),
+            WindowConfig::default(),
+        );
+
+        window.push_console_message(ConsoleMessage {
+            level: "error".to_string(),
+            message: "uncaught exception".to_string(),
+            source: Some("app.js".to_string()),
+            line: Some(42),
+        });
+        window.push_console_message(ConsoleMessage {
+            level: "warn".to_string(),
+            message: "deprecation warning".to_string(),
+            source: None,
+            line: None,
+        });
+
+        assert_eq!(window.console_messages().len(), 2);
+        assert_eq!(window.console_messages()[0].message, "uncaught exception");
+        assert_eq!(window.console_messages()[1].message, "deprecation warning");
+    }
+
+    #[test]
+    fn a015_window_id_returns_construction_id() {
+        let window = CefWindow::new(
+            "my-miniapp".to_string(),
+            "http://localhost:3000".to_string(),
+            WindowConfig::default(),
+        );
+
+        assert_eq!(window.id(), "my-miniapp");
+    }
+
+    #[test]
+    fn a015_window_navigate_truncates_forward_history_on_branch() {
+        let mut window = CefWindow::new(
+            "window-1".to_string(),
+            "http://localhost:3000".to_string(),
+            WindowConfig::default(),
+        );
+        window.navigate("http://localhost:3000/page2");
+        window.navigate("http://localhost:3000/page3");
+        window.back();
+        window.back();
+        // Now at page 0 (original url), go forward history exists
+        assert!(window.can_go_forward());
+
+        // Navigate from middle — should truncate forward stack
+        window.navigate("http://localhost:3000/branch");
+
+        assert!(!window.can_go_forward());
+        assert_eq!(window.current_url(), "http://localhost:3000/branch");
+    }
+
+    #[test]
+    fn a015_window_attach_cdp_port_and_cdp_port_round_trip() {
+        let mut window = CefWindow::new(
+            "window-1".to_string(),
+            "http://localhost:3000".to_string(),
+            WindowConfig::default(),
+        );
+
+        assert!(window.cdp_port().is_none());
+        window.attach_cdp_port(9333);
+        assert_eq!(window.cdp_port(), Some(9333));
+    }
 }

@@ -147,4 +147,67 @@ mod tests {
         assert_eq!(cdp.console_messages("miniapp-1")[0].message, "ready");
         assert!(cdp.console_messages("miniapp-2").is_empty());
     }
+
+    #[test]
+    fn a015_cdp_detach_removes_session_and_clears_console() {
+        let mut cdp = CdpServer::new(9222);
+        cdp.attach("miniapp-1");
+        cdp.on_console_message(
+            "miniapp-1",
+            ConsoleMessage {
+                level: "log".to_string(),
+                message: "alive".to_string(),
+                source: None,
+                line: None,
+            },
+        );
+        cdp.route("miniapp-1", "Page.reload", serde_json::json!({}))
+            .expect("route before detach");
+
+        cdp.detach("miniapp-1");
+
+        assert!(!cdp.has_session("miniapp-1"));
+        assert!(cdp.console_messages("miniapp-1").is_empty());
+        assert!(cdp.last_method("miniapp-1").is_none());
+    }
+
+    #[test]
+    fn a015_cdp_route_generic_method_records_last_method_and_returns_json() {
+        let mut cdp = CdpServer::new(9222);
+        cdp.attach("miniapp-1");
+
+        let response = cdp
+            .route("miniapp-1", "Page.reload", serde_json::json!({}))
+            .expect("route should succeed");
+
+        assert_eq!(cdp.last_method("miniapp-1"), Some("Page.reload"));
+        assert_eq!(
+            response.get("method").and_then(|v| v.as_str()),
+            Some("Page.reload")
+        );
+        // No "data" key for non-screenshot methods
+        assert!(response.get("data").is_none());
+    }
+
+    #[test]
+    fn a015_cdp_last_method_returns_none_for_window_with_no_routes() {
+        let mut cdp = CdpServer::new(9222);
+        cdp.attach("miniapp-1");
+
+        assert!(cdp.last_method("miniapp-1").is_none());
+    }
+
+    #[test]
+    fn a015_cdp_port_returns_configured_value() {
+        let cdp = CdpServer::new(9333);
+        assert_eq!(cdp.port(), 9333);
+    }
+
+    #[test]
+    fn a015_cdp_console_messages_empty_for_window_with_no_messages() {
+        let mut cdp = CdpServer::new(9222);
+        cdp.attach("miniapp-1");
+
+        assert!(cdp.console_messages("miniapp-1").is_empty());
+    }
 }

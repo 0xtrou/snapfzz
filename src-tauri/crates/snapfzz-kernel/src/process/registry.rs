@@ -439,4 +439,54 @@ mod tests {
         assert!(names.contains(&"litellm"), "litellm must be in snapshots");
         assert!(names.contains(&"agentscope"), "agentscope must be in snapshots");
     }
+
+    #[test]
+    fn t37_registry_logs_tail_returns_empty_for_unspawned_process() {
+        let registry = make_registry();
+        // No processes spawned — fallback to process logs which returns empty.
+        let lines = registry.logs_tail("agentscope", 10);
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn t37_registry_logs_clear_for_unspawned_process_is_noop() {
+        let registry = make_registry();
+        // Should not panic for unknown process name.
+        registry.logs_clear("agentscope");
+    }
+
+    #[test]
+    fn t37_registry_get_returns_none_for_unregistered() {
+        let registry = make_registry();
+        assert!(registry.get("no-such-process").is_none());
+    }
+
+    #[test]
+    fn t37_registry_get_mut_returns_none_for_unregistered() {
+        let mut registry = make_registry();
+        assert!(registry.get_mut("no-such-process").is_none());
+    }
+
+    #[test]
+    fn t37_registry_process_manager_returns_shared_instance() {
+        let registry = make_registry();
+        let pm1 = registry.process_manager();
+        let pm2 = registry.process_manager();
+        assert!(Arc::ptr_eq(&pm1, &pm2));
+    }
+
+    #[tokio::test]
+    async fn t37_registry_kill_unknown_process_returns_not_running() {
+        let mut registry = make_registry();
+        let err = registry.kill("no-such").await.expect_err("kill unknown should fail");
+        assert!(matches!(err, crate::process::ProcessError::RuntimeNotRunning { .. }));
+    }
+
+    #[tokio::test]
+    async fn t37_registry_restart_unknown_process_delegates_to_spawn() {
+        // restart() on an unknown process name calls spawn() which fails with unknown factory
+        let mut registry = make_registry();
+        let err = registry.restart("no-factory").await.expect_err("restart without factory should fail");
+        assert!(err.to_string().contains("unknown process factory"));
+    }
 }

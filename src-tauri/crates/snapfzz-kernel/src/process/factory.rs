@@ -223,4 +223,109 @@ mod tests {
         assert_eq!(limits.max_memory_mb, 256);
         assert_eq!(limits.max_restarts, 3);
     }
+
+    // --- Default trait method coverage ---
+
+    /// A factory that only implements the required methods, leaving all defaults in place.
+    struct MinimalFactory;
+
+    impl ProcessFactory for MinimalFactory {
+        fn name(&self) -> &'static str {
+            "minimal"
+        }
+
+        fn health_path(&self) -> &'static str {
+            "/health"
+        }
+
+        fn port_settings_keys(&self) -> (&'static str, &'static str) {
+            ("minimalHost", "minimalPort")
+        }
+
+        fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
+            None
+        }
+
+        fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+            false
+        }
+
+        fn build_command(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<tokio::process::Command, snapfzz_packs::service::ServiceError> {
+            Ok(tokio::process::Command::new("sh"))
+        }
+
+        fn resource_limits(&self) -> ResourceLimits {
+            ResourceLimits {
+                max_memory_mb: 64,
+                max_restarts: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn t37_factory_default_health_interval_ms_is_2000() {
+        assert_eq!(MinimalFactory.health_interval_ms(), 2000);
+    }
+
+    #[test]
+    fn t37_factory_default_owner_is_system() {
+        assert_eq!(MinimalFactory.owner(), "system");
+    }
+
+    #[test]
+    fn t37_factory_default_default_port_is_none() {
+        assert!(MinimalFactory.default_port().is_none());
+    }
+
+    #[test]
+    fn t37_factory_default_config_path_is_none() {
+        let data_dir = PathBuf::from("/tmp/snapfzz");
+        assert!(MinimalFactory.config_path(&data_dir).is_none());
+    }
+
+    #[test]
+    fn t37_factory_default_pre_run_setup_returns_ok() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            working_dir: PathBuf::from("/tmp"),
+            database_url: None,
+        };
+        MinimalFactory.pre_run_setup(&config, &runtime).expect("default pre_run_setup should return Ok");
+    }
+
+    #[test]
+    fn t37_factory_working_dir_none_for_minimal() {
+        let settings = Settings::default();
+        assert!(MinimalFactory.working_dir(&settings).is_none());
+    }
+
+    #[test]
+    fn t37_factory_can_start_false_for_minimal() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        assert!(!MinimalFactory.can_start(&runtime));
+    }
+
+    #[test]
+    fn t37_factory_spawn_secrets_default_is_empty_env() {
+        let secrets = super::SpawnSecrets::default();
+        assert!(secrets.env.is_empty());
+    }
+
+    #[test]
+    fn t37_factory_spawn_secrets_clone_preserves_entries() {
+        let mut secrets = super::SpawnSecrets::default();
+        secrets.env.insert("API_KEY".to_string(), "sk-test".to_string());
+        let cloned = secrets.clone();
+        assert_eq!(cloned.env.get("API_KEY"), Some(&"sk-test".to_string()));
+    }
 }

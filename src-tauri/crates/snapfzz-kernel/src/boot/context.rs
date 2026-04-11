@@ -102,4 +102,43 @@ mod tests {
         assert_eq!(ctx.device().ram_gb, device.ram_gb);
         assert_eq!(ctx.device().on_battery, device.on_battery);
     }
+
+    #[test]
+    fn a012_context_settings_round_trip() {
+        use crate::boot::PreflightSettings;
+
+        let mut ctx = PreflightContext::new(std::path::PathBuf::from("/tmp/snapfzz"));
+        let settings = PreflightSettings::default();
+
+        ctx.set_settings(settings.clone());
+        // settings() should return the stored value without panicking.
+        assert_eq!(ctx.settings().api_key, settings.api_key);
+        assert_eq!(ctx.settings().model, settings.model);
+    }
+
+    #[test]
+    fn a012_context_registry_round_trip() {
+        use std::sync::Arc;
+        use crate::budget::{BudgetRegistry, preset::PresetName};
+
+        let mut ctx = PreflightContext::new(std::path::PathBuf::from("/tmp/snapfzz"));
+        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
+
+        ctx.set_registry(registry.clone());
+        let returned = ctx.registry();
+        assert_eq!(returned.batch_interval(), 33);
+    }
+
+    #[test]
+    fn a012_context_clone_preserves_data_dir() {
+        let ctx = PreflightContext::new(std::path::PathBuf::from("/tmp/snapfzz-clone"));
+        let cloned = ctx.clone();
+        assert_eq!(cloned.data_dir, std::path::PathBuf::from("/tmp/snapfzz-clone"));
+    }
+
+    #[test]
+    fn a012_context_new_data_dir_is_stored() {
+        let ctx = PreflightContext::new(std::path::PathBuf::from("/home/user/.snapfzz"));
+        assert_eq!(ctx.data_dir, std::path::PathBuf::from("/home/user/.snapfzz"));
+    }
 }

@@ -314,4 +314,92 @@ mod tests {
         assert_eq!(events[0].status, DownloadStatus::Cancelled);
         assert_eq!(events[0].component_id, "test");
     }
+
+    // ── extract_tar_gz: missing archive ──────────────────────────────────────
+
+    #[test]
+    fn a014_components_extract_tar_gz_returns_error_for_missing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive_path = temp.path().join("missing.tar.gz");
+        let dest_dir = temp.path().join("out");
+
+        let err = extract_tar_gz(&archive_path, &dest_dir).unwrap_err();
+
+        assert!(matches!(err, ComponentError::Io(_)));
+    }
+
+    // ── pct: boundary at 1 byte ──────────────────────────────────────────────
+
+    #[test]
+    fn a014_components_pct_one_of_one_is_100() {
+        assert_eq!(pct(1, 1), 100.0);
+    }
+
+    #[test]
+    fn a014_components_pct_zero_downloaded_is_zero() {
+        assert_eq!(pct(0, 1000), 0.0);
+    }
+
+    // ── sha1_hex: deterministic for empty bytes ───────────────────────────────
+
+    #[test]
+    fn a014_components_sha1_hex_empty_bytes_is_known_digest() {
+        // SHA1("") = da39a3ee5e6b4b0d3255bfef95601890afd80709
+        let hash = sha1_hex(b"");
+        assert_eq!(hash, "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    }
+
+    // ── verify_sha1: directory path returns Io error ──────────────────────────
+
+    #[test]
+    fn a014_components_verify_sha1_returns_io_error_for_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        // Passing a directory (not a file) to std::fs::read should return an error
+        let err = verify_sha1(temp.path(), "abc").unwrap_err();
+        assert!(matches!(err, ComponentError::Io(_)));
+    }
+
+    // ── download_file: HTTP error path ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn a014_components_download_file_returns_network_error_on_bad_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("out.bin");
+        let cancelled = AtomicBool::new(false);
+        // Use a non-routable IP to get a connection-refused or timeout error
+        let err = download_file(
+            "http://127.0.0.1:19999/nonexistent",
+            &dest,
+            0,
+            &cancelled,
+            "test-dl",
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, ComponentError::Network(_)));
+    }
+
+    // ── download_file: creates parent directories ─────────────────────────────
+
+    #[tokio::test]
+    async fn a014_components_download_file_cancelled_creates_no_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("subdir").join("deep").join("out.bin");
+        let cancelled = AtomicBool::new(true);
+        let events = download_file(
+            "https://example.com/notreal",
+            &dest,
+            500,
+            &cancelled,
+            "cmp",
+        )
+        .await
+        .unwrap();
+        // Cancelled before any network call → no file written
+        assert_eq!(events[0].status, DownloadStatus::Cancelled);
+        assert_eq!(events[0].bytes_downloaded, 0);
+        assert_eq!(events[0].bytes_total, 500);
+        assert_eq!(events[0].component_id, "cmp");
+        assert!(events[0].percent == 0.0);
+    }
 }

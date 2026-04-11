@@ -116,7 +116,7 @@ pub struct CefPlatformInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::{CefError, ConsoleMessage, DownloadProgress, DownloadStatus, WindowConfig};
+    use super::{CefError, CefPlatformInfo, ConsoleMessage, DownloadProgress, DownloadStatus, WindowConfig};
 
     #[test]
     fn a015_types_window_config_default_matches_manifest_baseline() {
@@ -186,5 +186,70 @@ mod tests {
     fn a015_types_io_error_conversion_maps_to_io_variant() {
         let error: CefError = std::io::Error::other("disk failed").into();
         assert!(matches!(error, CefError::Io(message) if message.contains("disk failed")));
+    }
+
+    #[test]
+    fn a015_types_cef_error_network_variant_is_constructible() {
+        let error = CefError::network("connection refused".to_string());
+        assert!(matches!(&error, CefError::Network(msg) if msg == "connection refused"));
+        assert!(error.to_string().contains("connection refused"));
+    }
+
+    #[test]
+    fn a015_types_cef_error_unsupported_platform_carries_message() {
+        let error = CefError::UnsupportedPlatform("arm-unknown-linux".to_string());
+        assert!(matches!(&error, CefError::UnsupportedPlatform(msg) if msg == "arm-unknown-linux"));
+        assert!(error.to_string().contains("arm-unknown-linux"));
+    }
+
+    #[test]
+    fn a015_types_cef_error_checksum_mismatch_carries_expected_and_actual() {
+        let error = CefError::ChecksumMismatch {
+            expected: "abc123".to_string(),
+            actual: "def456".to_string(),
+        };
+        let message = error.to_string();
+        assert!(message.contains("abc123"));
+        assert!(message.contains("def456"));
+    }
+
+    #[test]
+    fn a015_types_cef_platform_info_fields_are_preserved() {
+        let info = CefPlatformInfo {
+            os: "macos".to_string(),
+            arch: "aarch64".to_string(),
+            platform: "macos-arm64".to_string(),
+            platform_display: "macOS (Apple Silicon)".to_string(),
+            download_url: "https://example.com/cef.tar.gz".to_string(),
+            install_path: "/usr/local/cef".to_string(),
+            is_installed: true,
+        };
+
+        assert_eq!(info.os, "macos");
+        assert_eq!(info.arch, "aarch64");
+        assert_eq!(info.platform, "macos-arm64");
+        assert_eq!(info.platform_display, "macOS (Apple Silicon)");
+        assert_eq!(info.download_url, "https://example.com/cef.tar.gz");
+        assert_eq!(info.install_path, "/usr/local/cef");
+        assert!(info.is_installed);
+    }
+
+    #[test]
+    fn a015_types_download_status_all_variants_are_matchable() {
+        let variants = [
+            DownloadStatus::Downloading,
+            DownloadStatus::Extracting,
+            DownloadStatus::Verifying,
+            DownloadStatus::Ready,
+            DownloadStatus::Cancelled,
+            DownloadStatus::Failed("timeout".to_string()),
+        ];
+
+        assert!(matches!(variants[0], DownloadStatus::Downloading));
+        assert!(matches!(variants[1], DownloadStatus::Extracting));
+        assert!(matches!(variants[2], DownloadStatus::Verifying));
+        assert!(matches!(variants[3], DownloadStatus::Ready));
+        assert!(matches!(variants[4], DownloadStatus::Cancelled));
+        assert!(matches!(variants[5], DownloadStatus::Failed(_)));
     }
 }
