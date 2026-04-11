@@ -340,6 +340,241 @@ mod tests {
         assert_eq!(pct(0, 1000), 0.0);
     }
 
+    // ── download_file: mock HTTP server tests ───────────────────────────────
+
+    #[tokio::test]
+    async fn t32_download_file_success_writes_file_and_returns_progress() {
+        let mut server = mockito::Server::new_async().await;
+        let body = b"hello-download-world-payload";
+        let mock = server
+            .mock("GET", "/artifact.bin")
+            .with_status(200)
+            .with_header("content-length", &body.len().to_string())
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("artifact.bin");
+        let cancelled = AtomicBool::new(false);
+
+        let events = download_file(
+            &format!("{}/artifact.bin", server.url()),
+            &dest,
+            body.len() as u64,
+            &cancelled,
+            "test-comp",
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        assert!(dest.exists());
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert!(!events.is_empty());
+        let last = events.last().unwrap();
+        assert_eq!(last.status, DownloadStatus::Ready);
+        assert_eq!(last.percent, 100.0);
+        assert_eq!(last.component_id, "test-comp");
+        assert_eq!(last.bytes_downloaded, body.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn t32_download_file_404_returns_network_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/missing.bin")
+            .with_status(404)
+            .with_body("not found")
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("missing.bin");
+        let cancelled = AtomicBool::new(false);
+
+        let err = download_file(
+            &format!("{}/missing.bin", server.url()),
+            &dest,
+            100,
+            &cancelled,
+            "test-404",
+        )
+        .await
+        .unwrap_err();
+
+        mock.assert_async().await;
+        assert!(matches!(err, ComponentError::Network(_)));
+        assert!(err.to_string().contains("HTTP 404"));
+    }
+
+    #[tokio::test]
+    async fn t32_download_file_500_returns_network_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/error.bin")
+            .with_status(500)
+            .with_body("internal server error")
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("error.bin");
+        let cancelled = AtomicBool::new(false);
+
+        let err = download_file(
+            &format!("{}/error.bin", server.url()),
+            &dest,
+            0,
+            &cancelled,
+            "test-500",
+        )
+        .await
+        .unwrap_err();
+
+        mock.assert_async().await;
+        assert!(matches!(err, ComponentError::Network(_)));
+        assert!(err.to_string().contains("HTTP 500"));
+    }
+
+    #[tokio::test]
+    async fn t32_download_file_progress_events_increase_monotonically() {
+        let mut server = mockito::Server::new_async().await;
+        // Use a larger body to generate multiple progress events
+        let body = vec![0xABu8; 2048];
+        let mock = server
+            .mock("GET", "/large.bin")
+            .with_status(200)
+            .with_header("content-length", &body.len().to_string())
+            .with_body(&body)
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("large.bin");
+        let cancelled = AtomicBool::new(false);
+
+        let events = download_file(
+            &format!("{}/large.bin", server.url()),
+            &dest,
+            body.len() as u64,
+            &cancelled,
+            "progress-test",
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        assert!(events.len() >= 2); // at least one Downloading + final Ready
+        for window in events.windows(2) {
+            assert!(window[1].bytes_downloaded >= window[0].bytes_downloaded);
+        }
+        assert_eq!(events.last().unwrap().status, DownloadStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn t32_download_file_creates_parent_directories() {
+        let mut server = mockito::Server::new_async().await;
+        let body = b"nested-file";
+        let mock = server
+            .mock("GET", "/nested.bin")
+            .with_status(200)
+            .with_header("content-length", &body.len().to_string())
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("a").join("b").join("c").join("nested.bin");
+        let cancelled = AtomicBool::new(false);
+
+        let events = download_file(
+            &format!("{}/nested.bin", server.url()),
+            &dest,
+            body.len() as u64,
+            &cancelled,
+            "nested",
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        assert!(dest.exists());
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(events.last().unwrap().status, DownloadStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn t32_download_file_zero_expected_size_uses_content_length() {
+        let mut server = mockito::Server::new_async().await;
+        let body = b"auto-size-content";
+        let mock = server
+            .mock("GET", "/auto.bin")
+            .with_status(200)
+            .with_header("content-length", &body.len().to_string())
+            .with_body(body)
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("auto.bin");
+        let cancelled = AtomicBool::new(false);
+
+        let events = download_file(
+            &format!("{}/auto.bin", server.url()),
+            &dest,
+            0, // zero expected_size → should use content-length
+            &cancelled,
+            "auto-size",
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        let last = events.last().unwrap();
+        assert_eq!(last.status, DownloadStatus::Ready);
+        assert_eq!(last.bytes_downloaded, body.len() as u64);
+        assert_eq!(last.bytes_total, body.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn t32_download_file_206_resume_appends_to_existing() {
+        let mut server = mockito::Server::new_async().await;
+        // Server returns 206 with the remaining bytes
+        let remaining = b"remaining-data";
+        let mock = server
+            .mock("GET", "/resume.bin")
+            .match_header("Range", "bytes=5-")
+            .with_status(206)
+            .with_body(remaining)
+            .create_async()
+            .await;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("resume.bin");
+        // Pre-write 5 bytes to simulate partial download
+        std::fs::write(&dest, b"HELLO").unwrap();
+        let cancelled = AtomicBool::new(false);
+
+        let events = download_file(
+            &format!("{}/resume.bin", server.url()),
+            &dest,
+            5 + remaining.len() as u64,
+            &cancelled,
+            "resume-test",
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        let content = std::fs::read(&dest).unwrap();
+        // Append mode: original bytes + remaining
+        assert_eq!(&content[..5], b"HELLO");
+        assert_eq!(&content[5..], remaining);
+        let last = events.last().unwrap();
+        assert_eq!(last.status, DownloadStatus::Ready);
+    }
+
     // ── sha1_hex: deterministic for empty bytes ───────────────────────────────
 
     #[test]

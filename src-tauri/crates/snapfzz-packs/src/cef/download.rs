@@ -929,6 +929,146 @@ mod tests {
         assert_eq!(events[0].status, DownloadStatus::Cancelled);
     }
 
+    // ── SystemComponent trait: verify delegates to verify_checksum_cef ─────
+
+    #[tokio::test]
+    async fn a015_system_component_verify_returns_sha1_for_existing_archive() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let data = b"verify-trait-test";
+        std::fs::write(
+            install_dir.join("cef_binary_test.tar.bz2"),
+            data,
+        )
+        .expect("write");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        let hash = SystemComponent::verify(&downloader).await.expect("verify");
+        assert_eq!(hash.len(), 40);
+        assert_eq!(hash, sha1_hex(data));
+    }
+
+    #[tokio::test]
+    async fn a015_system_component_verify_returns_error_when_no_archive() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        let err = SystemComponent::verify(&downloader).await.expect_err("should fail");
+        assert!(matches!(err, ComponentError::Internal(_)));
+    }
+
+    // ── SystemComponent trait: extract delegates to extract_cef ──────────────
+
+    #[tokio::test]
+    async fn a015_system_component_extract_decompresses_archive() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let archive_path = install_dir.join("cef_binary_test.tar.bz2");
+        create_test_tar_bz2(
+            &archive_path,
+            &[("cef_binary_extract_test/readme.txt", b"extracted via trait")],
+        );
+        let downloader = CefDownloader::new(install_dir.clone(), "linux-x64".to_string());
+
+        SystemComponent::extract(&downloader).await.expect("extract");
+        assert_eq!(
+            std::fs::read_to_string(install_dir.join("cef_binary_extract_test/readme.txt")).unwrap(),
+            "extracted via trait"
+        );
+    }
+
+    #[tokio::test]
+    async fn a015_system_component_extract_returns_error_when_no_archive() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "linux-x64".to_string());
+        let err = SystemComponent::extract(&downloader).await.expect_err("should fail");
+        assert!(matches!(err, ComponentError::Internal(_)));
+    }
+
+    // ── SystemComponent trait: is_installed ──────────────────────────────────
+
+    #[test]
+    fn a015_system_component_is_installed_returns_true_with_cef_binary_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146_test")).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        // Call via the SystemComponent trait (the second impl)
+        assert!(SystemComponent::is_installed(&downloader));
+    }
+
+    #[test]
+    fn a015_system_component_is_installed_returns_false_empty_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        assert!(!SystemComponent::is_installed(&downloader));
+    }
+
+    #[test]
+    fn a015_system_component_is_installed_returns_false_nonexistent_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("no-such-dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        assert!(!SystemComponent::is_installed(&downloader));
+    }
+
+    // ── SystemComponent trait: install_dir ───────────────────────────────────
+
+    #[test]
+    fn a015_system_component_install_dir_returns_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        let downloader = CefDownloader::new(install_dir.clone(), "macos-arm64".to_string());
+        assert_eq!(SystemComponent::install_dir(&downloader), install_dir.as_path());
+    }
+
+    // ── download_cef: resolve_latest_build caching path ─────────────────────
+
+    #[tokio::test]
+    async fn a015_resolve_latest_build_caches_result_on_success() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+
+        // Pre-populate the cache manually
+        {
+            let mut cache = downloader.cached_build.lock().await;
+            *cache = Some(CefBuildInfo {
+                cef_version: "999.0.0".into(),
+                chromium_version: "999.0.0".into(),
+                filename: "cached_file.tar.bz2".into(),
+                download_url: "https://example.com/cached_file.tar.bz2".into(),
+                size: 42,
+                sha1: "abc".into(),
+            });
+        }
+
+        // Should return the cached value without making a network call
+        let build = downloader.resolve_latest_build().await.expect("cached build");
+        assert_eq!(build.cef_version, "999.0.0");
+        assert_eq!(build.size, 42);
+        assert_eq!(build.filename, "cached_file.tar.bz2");
+    }
+
+    // ── download_status with bytes_total edge cases ─────────────────────────
+
+    #[test]
+    fn a015_download_status_empty_dir_no_archive_returns_zero_bytes() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        let status = download_status(&downloader);
+        assert_eq!(status.bytes_downloaded, 0);
+        assert_eq!(status.percent, 0.0);
+    }
+
     fn create_test_tar_bz2(path: &Path, files: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).expect("create archive");
         let compressor = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());

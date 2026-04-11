@@ -30,3 +30,5 @@ real-cef = ["dep:cef-rs"]
 
 [dev-dependencies]
 tempfile = "3"
+mockito = "1"
+tokio-test = "0.4"

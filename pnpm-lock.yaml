@@ -205,6 +205,9 @@ importers:
       '@snapfzz/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      '@snapfzz/settings-llm':
+        specifier: workspace:*
+        version: link:../../../plugins/settings-llm
       '@snapfzz/shared':
         specifier: workspace:*
         version: link:../shared
