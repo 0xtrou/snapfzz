@@ -131,7 +131,7 @@ pub async fn budget_snapshot(
             consecutive_failures: 0,
             uptime_secs: pg.uptime_secs(),
             location: "local".to_string(),
-            health_url: if pg.is_ready() { "process://postgresql/healthy".to_string() } else { String::new() },
+            health_url: pg.health_url().await,
             owner: "system".to_string(),
         }
     } else {

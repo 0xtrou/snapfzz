@@ -1,6 +1,8 @@
 // A038/PostgresRuntime: Embedded PostgreSQL lifecycle managed as runtime infrastructure
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
 
 use thiserror::Error;
 
@@ -16,6 +18,8 @@ pub struct PostgresRuntime {
     pg: Option<postgresql_embedded::PostgreSQL>,
     // A039/PostgresMetrics: Track when the server was started for uptime calculation
     started_at: Option<Instant>,
+    // A039/PostgresHealth: Port of the tiny HTTP health server (None if not started)
+    health_port: Arc<TokioMutex<Option<u16>>>,
 }
 
 impl PostgresRuntime {
@@ -24,6 +28,7 @@ impl PostgresRuntime {
             data_dir,
             pg: None,
             started_at: None,
+            health_port: Arc::new(TokioMutex::new(None)),
         }
     }
 
@@ -48,13 +53,65 @@ impl PostgresRuntime {
     // A038/start: Start PostgreSQL server.
     // Cleans up stale postmaster.pid from a previous crash before attempting to start.
     // A039/PostgresMetrics: Records started_at for uptime tracking.
+    // A039/PostgresHealth: Starts a tiny HTTP health server on a random port.
     pub async fn start(&mut self) -> Result<(), PostgresError> {
         self.cleanup_stale_postmaster();
         if let Some(pg) = self.pg.as_mut() {
             pg.start().await?;
             self.started_at = Some(Instant::now());
+            self.start_health_server().await;
         }
         Ok(())
+    }
+
+    // A039/PostgresHealth: Tiny HTTP server that responds to GET /health with 200 OK
+    // when PostgreSQL is running. Used by the health monitoring system and shown in the
+    // Processes UI. Does NOT expose database credentials.
+    async fn start_health_server(&self) {
+        let health_port = self.health_port.clone();
+        let data_dir = self.data_dir.clone();
+        tokio::spawn(async move {
+            let listener = match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("[postgres/health] failed to bind: {e}");
+                    return;
+                }
+            };
+            let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
+            *health_port.lock().await = Some(port);
+            eprintln!("[postgres/health] listening on 127.0.0.1:{port}");
+
+            loop {
+                let (mut stream, _) = match listener.accept().await {
+                    Ok(conn) => conn,
+                    Err(_) => break,
+                };
+
+                let is_alive = Self::read_postmaster_pid(
+                    &data_dir.join("data").join("postgres").join("postmaster.pid"),
+                ).is_some();
+
+                let response = if is_alive {
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 22\r\n\r\n{\"status\":\"healthy\"}\r\n"
+                } else {
+                    "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 24\r\n\r\n{\"status\":\"unhealthy\"}\r\n"
+                };
+
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf).await;
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        });
+    }
+
+    // A039/PostgresHealth: Returns the health endpoint URL (http://127.0.0.1:PORT/health)
+    pub async fn health_url(&self) -> String {
+        match *self.health_port.lock().await {
+            Some(port) => format!("http://127.0.0.1:{port}/health"),
+            None => String::new(),
+        }
     }
 
     // A038/cleanup: Kill orphan PostgreSQL from a previous crash and remove its stale PID lock.
