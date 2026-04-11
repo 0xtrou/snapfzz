@@ -127,6 +127,14 @@ function buildProviderList(): { id: string; label: string }[] {
 
 const PROVIDERS = buildProviderList();
 
+// Popular providers shown by default in the filter — well-known services most
+// users will want to configure. Kept as a Set for O(1) lookup.
+const POPULAR_PROVIDER_IDS = new Set([
+  'openai', 'anthropic', 'google', 'azure', 'mistral',
+  'deepseek', 'groq', 'ollama', 'together_ai', 'openrouter',
+  'bedrock', 'vertex_ai', 'cohere', 'xai', 'zhipu',
+]);
+
 // Brand colors for provider icon circles. Hex literals are intentional —
 // these represent brand identity, not theme colors.
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
@@ -1324,6 +1332,7 @@ export default function ProvidersTab() {
   const [customModalOpen, setCustomModalOpen] = useState(false);
   const [customModalVariant, setCustomModalVariant] =
     useState<CustomProviderVariant>('openai');
+  const [providerFilter, setProviderFilter] = useState<'popular' | 'connected' | 'all'>('popular');
 
   const loadKeyCounts = useCallback(async () => {
     setLoading(true);
@@ -1371,6 +1380,14 @@ export default function ProvidersTab() {
   useEffect(() => {
     void loadKeyCounts();
   }, [loadKeyCounts]);
+
+  const filteredProviders = useMemo(() => {
+    switch (providerFilter) {
+      case 'popular': return PROVIDERS.filter((p) => POPULAR_PROVIDER_IDS.has(p.id));
+      case 'connected': return PROVIDERS.filter((p) => (keyCounts[p.id]?.length ?? 0) > 0);
+      case 'all': return PROVIDERS;
+    }
+  }, [providerFilter, keyCounts]);
 
   // Reload counts when navigating back from detail
   const handleBack = useCallback(() => {
@@ -1456,47 +1473,9 @@ export default function ProvidersTab() {
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : (
         <>
-          {/* Built-in Providers */}
-          <div style={{ marginBottom: 8 }}>
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}
-            >
-              Built-in Providers
-            </Text>
-          </div>
+          {/* Custom Providers — shown above built-ins */}
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: 16,
-              contain: 'layout paint',
-            }}
-          >
-            {PROVIDERS.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                keyCount={keyCounts[provider.id]?.length ?? 0}
-                catalogModelCount={getProviderInfo(provider.id).modelCount}
-                enabled={toggleState[provider.id] ?? false}
-                onToggle={(checked) =>
-                  setToggleState((prev) => ({ ...prev, [provider.id]: checked }))
-                }
-                onClick={() => setSelectedProvider(provider.id)}
-              />
-            ))}
-          </div>
-
-          {/* Custom Providers */}
-          <div
-            style={{
-              marginTop: 32,
               marginBottom: 8,
               display: 'flex',
               alignItems: 'center',
@@ -1578,6 +1557,68 @@ export default function ProvidersTab() {
               })}
             </div>
           )}
+
+          {/* Providers (built-in) with filter */}
+          <div
+            style={{
+              marginTop: 32,
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                flexShrink: 0,
+              }}
+            >
+              Providers
+            </Text>
+            <Radio.Group
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value as 'popular' | 'connected' | 'all')}
+              size="small"
+            >
+              <Radio.Button value="popular">
+                Popular ({PROVIDERS.filter((p) => POPULAR_PROVIDER_IDS.has(p.id)).length})
+              </Radio.Button>
+              <Radio.Button value="connected">
+                Connected ({PROVIDERS.filter((p) => (keyCounts[p.id]?.length ?? 0) > 0).length})
+              </Radio.Button>
+              <Radio.Button value="all">
+                All ({PROVIDERS.length})
+              </Radio.Button>
+            </Radio.Group>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: 16,
+              contain: 'layout paint',
+            }}
+          >
+            {filteredProviders.map((provider) => (
+              <ProviderCard
+                key={provider.id}
+                provider={provider}
+                keyCount={keyCounts[provider.id]?.length ?? 0}
+                catalogModelCount={getProviderInfo(provider.id).modelCount}
+                enabled={toggleState[provider.id] ?? false}
+                onToggle={(checked) =>
+                  setToggleState((prev) => ({ ...prev, [provider.id]: checked }))
+                }
+                onClick={() => setSelectedProvider(provider.id)}
+              />
+            ))}
+          </div>
         </>
       )}
 
