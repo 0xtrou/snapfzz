@@ -180,6 +180,7 @@ fn main() {
             commands::llm::llm_save_config,
             commands::llm::llm_get_config_path,
             commands::llm::llm_get_base_url,
+            commands::llm::llm_get_master_key,
             commands::llm::llm_generate_key,
             commands::llm::llm_list_keys,
             commands::llm::llm_delete_key,

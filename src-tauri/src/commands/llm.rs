@@ -30,6 +30,16 @@ pub async fn llm_get_base_url(
     Ok(format!("http://{}:{}", host, port))
 }
 
+// A013/Runtime: Returns the LiteLLM master key so the frontend can call LiteLLM
+// APIs directly via fetch() — no Rust proxy needed for key/spend/model endpoints.
+#[tauri::command]
+pub async fn llm_get_master_key(
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
+) -> Result<String, String> {
+    let mut guard = vault.lock().unwrap();
+    vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())
+}
+
 // A013/Vault: Provider key management commands
 
 #[tauri::command]
