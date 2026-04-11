@@ -96,6 +96,18 @@ impl ProcessFactory for LiteLLMFactory {
             .as_ref()
             .ok_or_else(|| ServiceError::SpawnFailed("PostgreSQL URL not available".to_string()))?;
 
+        // A013/ModelDB: Auto-create minimal config.yaml with store_model_in_db=true
+        // so models added via the UI persist in PostgreSQL.
+        let config_path = self.service.config_path();
+        if !config_path.exists() {
+            let config_content = "general_settings:\n  master_key: os.environ/LITELLM_MASTER_KEY\n  database_url: os.environ/DATABASE_URL\n  store_model_in_db: true\n";
+            if let Some(parent) = config_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&config_path, config_content);
+            eprintln!("[litellm] created config.yaml with store_model_in_db=true");
+        }
+
         let working_dir = self
             .service
             .working_dir()
@@ -198,8 +210,13 @@ impl ProcessFactory for LiteLLMFactory {
             working_dir: config.working_dir.clone(),
         })?;
 
-        // A013/ModelDB: All model config lives in PostgreSQL — no config.yaml needed.
-        // STORE_MODEL_IN_DB enables POST /model/new API for dynamic management from the UI.
+        // A013/ModelDB: Minimal config.yaml with store_model_in_db=true so models
+        // added via POST /model/new persist in PostgreSQL across restarts.
+        let config_path = self.service.config_path();
+        if config_path.exists() {
+            cmd.arg("--config").arg(&config_path);
+        }
+
         if let Some(ref db_url) = config.database_url {
             cmd.env("DATABASE_URL", db_url);
             cmd.env("STORE_MODEL_IN_DB", "True");
