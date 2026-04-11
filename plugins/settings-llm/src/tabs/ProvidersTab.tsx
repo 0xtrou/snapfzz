@@ -523,6 +523,7 @@ function DiscoveredModelChip({
   imported,
   importing,
   onImport,
+  onDisable,
   onCopy,
   registeredInfo,
   catalogInfo,
@@ -531,6 +532,7 @@ function DiscoveredModelChip({
   imported: boolean;
   importing: boolean;
   onImport: () => void;
+  onDisable: () => void;
   onCopy: () => void;
   registeredInfo?: ModelInfoDetails;
   catalogInfo?: CatalogModelEntry;
@@ -595,7 +597,7 @@ function DiscoveredModelChip({
             size="small"
             checked={imported}
             loading={importing}
-            onChange={() => { if (!imported) onImport(); }}
+            onChange={() => { imported ? onDisable() : onImport(); }}
             aria-label={`Enable ${model.id}`}
           />
         </div>
@@ -791,17 +793,22 @@ function AvailableModels({
   }, [modelTypes, filteredModels, catalogLookup]);
 
   const displayModels = useMemo(() => {
-    // If filter is hidden (single type or no types), show all
-    if (!hasMultipleTypes || modelTypeFilter === 'all') {
-      return [...filteredModels].sort((a, b) => a.id.length - b.id.length);
+    let list = filteredModels;
+    if (hasMultipleTypes && modelTypeFilter !== 'all') {
+      list = filteredModels.filter((m) => {
+        const info = catalogLookup[m.id];
+        const mode = info?.mode || 'chat';
+        return mode === modelTypeFilter;
+      });
     }
-    const typed = filteredModels.filter((m) => {
-      const info = catalogLookup[m.id];
-      const mode = info?.mode || 'chat';
-      return mode === modelTypeFilter;
+    // Sort: enabled (imported) first, then by name length (shortest = flagship)
+    return [...list].sort((a, b) => {
+      const aImported = importedIds.has(a.id) ? 0 : 1;
+      const bImported = importedIds.has(b.id) ? 0 : 1;
+      if (aImported !== bImported) return aImported - bImported;
+      return a.id.length - b.id.length;
     });
-    return [...typed].sort((a, b) => a.id.length - b.id.length);
-  }, [filteredModels, modelTypeFilter, catalogLookup, hasMultipleTypes]);
+  }, [filteredModels, modelTypeFilter, catalogLookup, hasMultipleTypes, importedIds]);
 
   const unimportedCount = displayModels.filter((m) => !importedIds.has(m.id)).length;
 
@@ -844,6 +851,30 @@ function AvailableModels({
     }
     setImportAllLoading(false);
   }, [providerId, baseUrl, importedIds, displayModels]);
+
+  const handleDisable = useCallback(
+    async (modelId: string) => {
+      setImportingId(modelId);
+      try {
+        const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
+        // Get the model's DB ID from model/info
+        const infoRes = await getModelInfo(url, key);
+        const entry = (infoRes.data ?? []).find((e: { model_name: string }) => e.model_name === modelId);
+        const dbId = entry?.model_info?.id;
+        if (!dbId) throw new Error('Model not found in gateway');
+        const { deleteModel } = await import('../hooks/useLlmCommands');
+        await deleteModel(url, key, dbId);
+        setImportedIds((prev) => { const next = new Set(prev); next.delete(modelId); return next; });
+        message.success(`${modelId} disabled`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        message.error(`Failed to disable ${modelId}: ${msg}`);
+      } finally {
+        setImportingId(null);
+      }
+    },
+    [],
+  );
 
   const handleCopy = useCallback(async (modelId: string) => {
     try {
@@ -993,6 +1024,7 @@ function AvailableModels({
                     imported={importedIds.has(model.id)}
                     importing={importingId === model.id}
                     onImport={() => void handleImport(model.id)}
+                    onDisable={() => void handleDisable(model.id)}
                     onCopy={() => void handleCopy(model.id)}
                     registeredInfo={registeredInfoMap[model.id]}
                     catalogInfo={catalogLookup[model.id]}

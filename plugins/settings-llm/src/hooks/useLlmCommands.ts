@@ -412,6 +412,18 @@ export async function importModel(
   });
 }
 
+// A013/ModelDelete: Remove a model from LiteLLM via POST /model/delete
+export async function deleteModel(baseUrl: string, masterKey: string, modelId: string): Promise<void> {
+  const res = await litellmFetch(`${baseUrl}/model/delete`, masterKey, {
+    method: 'POST',
+    body: JSON.stringify({ id: modelId }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to delete model: ${body}`);
+  }
+}
+
 // Custom provider config persistence via vault
 
 export async function loadCustomProviders(): Promise<CustomProvider[]> {
