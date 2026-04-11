@@ -328,4 +328,210 @@ mod tests {
         let cloned = secrets.clone();
         assert_eq!(cloned.env.get("API_KEY"), Some(&"sk-test".to_string()));
     }
+
+    // -------------------------------------------------------------------------
+    // SnapfzzFactory — exercise all non-default method implementations so
+    // every function in the struct body is entered at least once.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_factory_snapfzz_name_returns_service_identifier() {
+        assert_eq!(SnapfzzFactory.name(), "snapfzz-service");
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_health_path_returns_slash_health() {
+        assert_eq!(SnapfzzFactory.health_path(), "/health");
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_port_settings_keys_returns_agentscope_pair() {
+        assert_eq!(
+            SnapfzzFactory.port_settings_keys(),
+            ("agentscopeHost", "agentscopePort")
+        );
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_working_dir_returns_tmp() {
+        let settings = Settings::default();
+        let dir = SnapfzzFactory.working_dir(&settings);
+        assert_eq!(dir, Some(std::path::PathBuf::from("/tmp")));
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_can_start_returns_true() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        assert!(SnapfzzFactory.can_start(&runtime));
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_build_command_produces_sh_command() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            working_dir: std::path::PathBuf::from("/tmp"),
+            database_url: None,
+        };
+        let cmd = SnapfzzFactory
+            .build_command(&config, &runtime)
+            .expect("build_command should succeed");
+        assert!(format!("{cmd:?}").contains("\"sh\""));
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_resource_limits_are_128mb_and_1_restart() {
+        let limits = SnapfzzFactory.resource_limits();
+        assert_eq!(limits.max_memory_mb, 128);
+        assert_eq!(limits.max_restarts, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // MinimalFactory — build_command and resource_limits not reached by default
+    // trait tests, so call them directly here.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_factory_minimal_build_command_produces_sh_command() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            working_dir: std::path::PathBuf::from("/tmp"),
+            database_url: None,
+        };
+        let cmd = MinimalFactory
+            .build_command(&config, &runtime)
+            .expect("build_command should succeed");
+        assert!(format!("{cmd:?}").contains("\"sh\""));
+    }
+
+    #[test]
+    fn t37_factory_minimal_resource_limits_are_64mb_and_1_restart() {
+        let limits = MinimalFactory.resource_limits();
+        assert_eq!(limits.max_memory_mb, 64);
+        assert_eq!(limits.max_restarts, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // TestFactory — directly exercise methods that are not called by any of the
+    // existing tests (health_path, port_settings_keys, working_dir, can_start,
+    // pre_run_setup) so every function body in the struct is entered.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_factory_test_factory_health_path_is_slash_health() {
+        assert_eq!(TestFactory.health_path(), "/health");
+    }
+
+    #[test]
+    fn t37_factory_test_factory_port_settings_keys_returns_agentscope_pair() {
+        assert_eq!(
+            TestFactory.port_settings_keys(),
+            ("agentscopeHost", "agentscopePort")
+        );
+    }
+
+    #[test]
+    fn t37_factory_test_factory_working_dir_returns_tmp() {
+        let settings = Settings::default();
+        assert_eq!(
+            TestFactory.working_dir(&settings),
+            Some(std::path::PathBuf::from("/tmp"))
+        );
+    }
+
+    #[test]
+    fn t37_factory_test_factory_can_start_returns_true() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        assert!(TestFactory.can_start(&runtime));
+    }
+
+    #[test]
+    fn t37_factory_test_factory_pre_run_setup_returns_ok() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            working_dir: std::path::PathBuf::from("/tmp"),
+            database_url: None,
+        };
+        TestFactory
+            .pre_run_setup(&config, &runtime)
+            .expect("TestFactory::pre_run_setup should return Ok");
+    }
+
+    // -------------------------------------------------------------------------
+    // SnapfzzFactory default trait methods — health_interval_ms and default_port
+    // are inherited from the trait; each concrete type may get its own
+    // monomorphized copy, so call them directly on SnapfzzFactory to ensure
+    // those bodies are entered.
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_factory_snapfzz_health_interval_ms_is_2000() {
+        assert_eq!(SnapfzzFactory.health_interval_ms(), 2000);
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_default_port_is_none() {
+        assert!(SnapfzzFactory.default_port().is_none());
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_config_path_is_none() {
+        let data_dir = std::path::PathBuf::from("/tmp/snapfzz");
+        assert!(SnapfzzFactory.config_path(&data_dir).is_none());
+    }
+
+    #[test]
+    fn t37_factory_snapfzz_pre_run_setup_returns_ok() {
+        let runtime_dir = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = PythonRuntime::new(runtime_dir.path().to_path_buf(), platform);
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            working_dir: std::path::PathBuf::from("/tmp"),
+            database_url: None,
+        };
+        // SnapfzzFactory does not override pre_run_setup, so this calls the default.
+        // Calling it through SnapfzzFactory ensures the monomorphized copy is covered.
+        SnapfzzFactory
+            .pre_run_setup(&config, &runtime)
+            .expect("SnapfzzFactory default pre_run_setup should return Ok");
+    }
+
+    // -------------------------------------------------------------------------
+    // MinimalFactory — health_interval_ms, default_port, and config_path default
+    // trait methods called via MinimalFactory already — confirm coverage by also
+    // calling them on TestFactory (separate monomorphization for each struct).
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_factory_test_factory_health_interval_ms_is_2000() {
+        assert_eq!(TestFactory.health_interval_ms(), 2000);
+    }
+
+    #[test]
+    fn t37_factory_test_factory_default_port_is_none() {
+        assert!(TestFactory.default_port().is_none());
+    }
+
+    #[test]
+    fn t37_factory_test_factory_config_path_is_none() {
+        let data_dir = std::path::PathBuf::from("/tmp/snapfzz");
+        assert!(TestFactory.config_path(&data_dir).is_none());
+    }
 }
