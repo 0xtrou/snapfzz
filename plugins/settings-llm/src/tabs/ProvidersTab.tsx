@@ -549,8 +549,21 @@ function AvailableModels({
     await fetchModels();
   }, [fetchModels, providerId]);
 
+  // Fetch discovered models + check which are already registered in the gateway
   useEffect(() => {
     void fetchModels();
+    // Load already-enabled models from the gateway
+    (async () => {
+      try {
+        const { getBaseUrl, getMasterKey, getModels } = await import('../hooks/useLlmCommands');
+        const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
+        const response = await getModels(url, key);
+        const registered = new Set((response?.data ?? []).map((m: { id: string }) => m.id));
+        setImportedIds(registered);
+      } catch {
+        // Gateway not ready — no pre-check
+      }
+    })();
   }, [fetchModels]);
 
   const filteredModels = useMemo(() => {
@@ -567,10 +580,10 @@ function AvailableModels({
       try {
         await importModel(providerId, modelId, undefined, baseUrl);
         setImportedIds((prev) => new Set(prev).add(modelId));
-        message.success(`Imported ${modelId}`);
+        message.success(`${modelId} enabled`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        message.error(`Failed to import ${modelId}: ${msg}`);
+        message.error(`Failed to enable ${modelId}: ${msg}`);
       } finally {
         setImportingId(null);
       }
