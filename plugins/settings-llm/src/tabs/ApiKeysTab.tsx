@@ -53,7 +53,9 @@ export default function ApiKeysTab() {
     try {
       const response = await listKeys(baseUrl);
       setKeys(response.keys || []);
-    } catch {
+    } catch (err) {
+      console.error('[ApiKeysTab] Failed to load keys:', err);
+      message.error(`Failed to load keys: ${err instanceof Error ? err.message : String(err)}`);
       setKeys([]);
     } finally {
       setLoading(false);

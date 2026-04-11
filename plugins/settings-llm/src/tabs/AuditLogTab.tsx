@@ -17,7 +17,8 @@ export default function AuditLogTab() {
     try {
       const result = await getSpendLogs(baseUrl, {});
       setLogs(result);
-    } catch {
+    } catch (err) {
+      console.error('[AuditLogTab] Failed to load spend logs:', err);
       setLogs([]);
     } finally {
       setLoading(false);
