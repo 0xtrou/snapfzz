@@ -8,8 +8,8 @@ mod helpers;
 mod menus;
 mod metrics;
 
+use snapfzz_cef::CefRuntime;
 use snapfzz_packs::cef::download::CefDownloader;
-use snapfzz_packs::cef::runtime::CefRuntime;
 use snapfzz_kernel::boot::PreflightService;
 use snapfzz_kernel::process::{self, ProcessFactoryRegistry, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;

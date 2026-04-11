@@ -114,12 +114,6 @@ pub struct CefPlatformInfo {
     pub is_installed: bool,
 }
 
-impl From<reqwest::Error> for CefError {
-    fn from(value: reqwest::Error) -> Self {
-        Self::Network(value.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{CefError, ConsoleMessage, DownloadProgress, DownloadStatus, WindowConfig};

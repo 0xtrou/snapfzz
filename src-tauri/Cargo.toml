@@ -6,6 +6,7 @@ members = [
   "crates/snapfzz-kernel",
   "crates/snapfzz-vault",
   "crates/snapfzz-packs",
+  "crates/snapfzz-cef",
   "crates/snapfzz-llm",
 ]
 resolver = "2"
@@ -40,6 +41,7 @@ snapfzz-kernel = { path = "crates/snapfzz-kernel" }
 snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
 snapfzz-packs = { path = "crates/snapfzz-packs" }
+snapfzz-cef = { path = "crates/snapfzz-cef" }
 snapfzz-llm = { path = "crates/snapfzz-llm" }
 shellexpand = "3.1.2"
 

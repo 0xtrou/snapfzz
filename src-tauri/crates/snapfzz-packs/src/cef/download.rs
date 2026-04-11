@@ -9,7 +9,7 @@ use futures::StreamExt;
 use sha1::{Digest, Sha1};
 use tokio::sync::Mutex;
 
-use crate::cef::types::{CefError, DownloadProgress, DownloadStatus};
+use snapfzz_cef::types::{CefError, DownloadProgress, DownloadStatus};
 
 const CEF_INDEX_URL: &str = "https://cef-builds.spotifycdn.com/index.json";
 const CEF_CDN_BASE: &str = "https://cef-builds.spotifycdn.com";
@@ -174,7 +174,7 @@ impl CefDownloader {
         })
     }
 
-    pub async fn download_cef(&self) -> Result<Vec<crate::cef::types::DownloadProgress>, CefError> {
+    pub async fn download_cef(&self) -> Result<Vec<snapfzz_cef::types::DownloadProgress>, CefError> {
         std::fs::create_dir_all(&self.install_dir)?;
 
         if self.cancelled.load(Ordering::SeqCst) {
@@ -360,6 +360,12 @@ fn platform_display_name(platform: &str) -> &'static str {
     }
 }
 
+impl snapfzz_cef::CefInstallCheck for CefDownloader {
+    fn is_installed(&self) -> bool {
+        self.is_installed()
+    }
+}
+
 use crate::{
     ComponentError, ComponentInfo, DownloadProgress as KernelProgress, DownloadStatus as KernelStatus,
     SystemComponent,
@@ -514,15 +520,15 @@ pub fn find_archive_size(install_dir: &std::path::Path) -> u64 {
 }
 
 /// Build a [`DownloadProgress`] snapshot from the current state of a downloader.
-pub fn download_status(downloader: &CefDownloader) -> crate::cef::types::DownloadProgress {
+pub fn download_status(downloader: &CefDownloader) -> snapfzz_cef::types::DownloadProgress {
     let bytes_downloaded = find_archive_size(downloader.install_dir());
     let installed = downloader.is_installed();
     let status = if installed {
-        crate::cef::types::DownloadStatus::Ready
+        snapfzz_cef::types::DownloadStatus::Ready
     } else if bytes_downloaded > 0 {
-        crate::cef::types::DownloadStatus::Downloading
+        snapfzz_cef::types::DownloadStatus::Downloading
     } else {
-        crate::cef::types::DownloadStatus::Verifying
+        snapfzz_cef::types::DownloadStatus::Verifying
     };
 
     let bytes_total = if installed {
@@ -531,7 +537,7 @@ pub fn download_status(downloader: &CefDownloader) -> crate::cef::types::Downloa
         bytes_downloaded.saturating_add(1024).max(1)
     };
 
-    crate::cef::types::DownloadProgress {
+    snapfzz_cef::types::DownloadProgress {
         bytes_downloaded,
         bytes_total,
         percent: if installed {

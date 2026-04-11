@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::cef::cdp::CdpServer;
-use crate::cef::download::CefDownloader;
-use crate::cef::types::{CefError, ConsoleMessage, WindowConfig};
-use crate::cef::window::CefWindow;
+use crate::cdp::CdpServer;
+use crate::types::{CefError, ConsoleMessage, WindowConfig};
+use crate::window::CefWindow;
+use crate::CefInstallCheck;
 
 pub struct CefRuntime {
     initialized: bool,
@@ -25,7 +25,7 @@ impl CefRuntime {
         }
     }
 
-    pub async fn ensure_ready(&mut self, downloader: &CefDownloader) -> Result<(), CefError> {
+    pub async fn ensure_ready(&mut self, downloader: &dyn CefInstallCheck) -> Result<(), CefError> {
         if self.initialized {
             return Ok(());
         }
@@ -230,18 +230,37 @@ impl CefRuntime {
 #[cfg(test)]
 mod tests {
     use super::CefRuntime;
-    use crate::cef::download::CefDownloader;
-    use crate::cef::types::{CefError, WindowConfig};
+    use crate::types::{CefError, ConsoleMessage, WindowConfig};
+    use crate::CefInstallCheck;
+
+    struct MockInstallCheck {
+        installed: bool,
+    }
+
+    impl MockInstallCheck {
+        fn not_installed() -> Self {
+            Self { installed: false }
+        }
+
+        fn installed() -> Self {
+            Self { installed: true }
+        }
+    }
+
+    impl CefInstallCheck for MockInstallCheck {
+        fn is_installed(&self) -> bool {
+            self.installed
+        }
+    }
 
     #[tokio::test]
     async fn a015_runtime_ensure_ready_requires_preinstalled_cef() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        let checker = MockInstallCheck::not_installed();
 
         let error = runtime
-            .ensure_ready(&downloader)
+            .ensure_ready(&checker)
             .await
             .expect_err("missing install should fail");
 
@@ -252,16 +271,12 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_ensure_ready_with_cached_cef_starts_cdp_server_once() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        let checker = MockInstallCheck::installed();
 
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        runtime.ensure_ready(&checker).await.expect("ready");
         let first_port = runtime.cdp_server().expect("cdp server").port();
-        runtime.ensure_ready(&downloader).await.expect("second ensure");
+        runtime.ensure_ready(&checker).await.expect("second ensure");
 
         assert!(runtime.is_ready());
         assert_eq!(runtime.cdp_server().expect("cdp server").port(), first_port);
@@ -270,13 +285,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_create_window_attaches_cdp_session() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
 
         let window = runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
@@ -292,13 +303,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_create_window_rejects_duplicate_ids() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
         runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
             .expect("first window");
@@ -313,13 +320,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_shutdown_closes_windows_and_clears_state() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
         runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
             .expect("window");
@@ -334,13 +337,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_navigate_back_and_reload_update_window_state() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
         runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
             .expect("window");
@@ -359,13 +358,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_devtools_and_screenshot_route_through_cdp() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
         runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
             .expect("window");
@@ -388,13 +383,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_console_messages_are_exposed_per_window() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
         runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
             .expect("window");
@@ -402,7 +393,7 @@ mod tests {
         runtime
             .record_console_message(
                 "miniapp-1",
-                crate::cef::types::ConsoleMessage {
+                ConsoleMessage {
                     level: "warn".to_string(),
                     message: "slow render".to_string(),
                     source: Some("miniapp.js".to_string()),
@@ -429,13 +420,9 @@ mod tests {
     #[tokio::test]
     async fn a015_runtime_stop_window_clears_loading_state() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let install_dir = temp.path().join("cef");
-        std::fs::create_dir_all(install_dir.join("cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64"))
-            .expect("create install marker");
-
         let mut runtime = CefRuntime::new(temp.path());
-        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
-        runtime.ensure_ready(&downloader).await.expect("ready");
+        let checker = MockInstallCheck::installed();
+        runtime.ensure_ready(&checker).await.expect("ready");
         runtime
             .create_window("miniapp-1", "http://127.0.0.1:3000", WindowConfig::default())
             .expect("window");

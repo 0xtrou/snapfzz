@@ -2,7 +2,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use crate::cef::types::{CefError, ConsoleMessage};
+use crate::types::{CefError, ConsoleMessage};
 
 #[derive(Clone, Debug)]
 pub struct CdpSession {
@@ -97,7 +97,7 @@ mod tests {
     use base64::Engine;
 
     use super::CdpServer;
-    use crate::cef::types::{CefError, ConsoleMessage};
+    use crate::types::{CefError, ConsoleMessage};
 
     #[test]
     fn a015_cdp_route_rejects_unknown_window_session() {

@@ -18,6 +18,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 thiserror = "2"
 base64 = "0.22"
 dirs = "6"
+snapfzz-cef = { path = "../snapfzz-cef" }
 cef-rs = { package = "cef", git = "https://github.com/tauri-apps/cef-rs", branch = "dev", optional = true }
 postgresql_embedded = "0.20"
 sysinfo = "0.38"
