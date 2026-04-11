@@ -140,7 +140,8 @@ impl ProcessManager {
             registry.update_process_pid(name, child_pid);
         }
 
-        wait_until_healthy(registry, name, health_timeout_secs as u32, Duration::from_secs(1)).await?;
+        // A039/fast_health_poll: 250ms startup poll for faster service detection
+        wait_until_healthy(registry, name, health_timeout_secs as u32 * 4, Duration::from_millis(250)).await?;
         Ok(child_pid)
     }
 

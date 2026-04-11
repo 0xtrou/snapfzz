@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -125,6 +126,22 @@ impl ProcessFactory for LiteLLMFactory {
 
         let schema_arg = format!("--schema={}", schema_path.display());
 
+        // A039/prisma_cache: Skip prisma generate + db push when schema unchanged
+        let schema_bytes = std::fs::read(&schema_path)
+            .map_err(|err| ServiceError::SpawnFailed(format!("failed to read schema: {err}")))?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        schema_bytes.hash(&mut hasher);
+        let current_hash = hasher.finish();
+        let hash_file = working_dir.join(".prisma_hash");
+        let stored_hash: Option<u64> = std::fs::read_to_string(&hash_file)
+            .ok()
+            .and_then(|s| s.trim().parse().ok());
+
+        if stored_hash == Some(current_hash) {
+            eprintln!("[litellm] prisma schema unchanged — skipping generate + db push");
+            return Ok(());
+        }
+
         // A038/pre_run_setup: prisma-client-py generator must be on PATH for `prisma generate`
         let venv_bin = runtime.venv_dir().join("bin");
         let path_with_venv = std::env::var("PATH")
@@ -158,6 +175,9 @@ impl ProcessFactory for LiteLLMFactory {
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
+
+        // Write new hash after successful prisma run
+        let _ = std::fs::write(&hash_file, current_hash.to_string());
 
         Ok(())
     }
@@ -364,5 +384,28 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory = make_factory(temp.path());
         assert_eq!(factory.name(), "litellm");
+    }
+
+    #[test]
+    fn t39_litellm_pre_run_setup_schema_hash_path() {
+        // A039/prisma_cache: Hash file must live inside the service working_dir so it persists
+        // between boots and is co-located with the schema it represents.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory = make_factory(temp.path());
+        let working_dir = factory
+            .working_dir(&snapfzz_kernel::settings::Settings::default())
+            .expect("working dir");
+        let hash_file = working_dir.join(".prisma_hash");
+        // The hash file path is deterministic: working_dir/.prisma_hash
+        assert!(
+            hash_file.to_string_lossy().ends_with("/.prisma_hash"),
+            "expected hash file at working_dir/.prisma_hash, got: {}",
+            hash_file.display()
+        );
+        // The parent (working_dir) must already exist (created by the service)
+        assert!(
+            working_dir.exists(),
+            "working_dir must exist so the hash file can be written without extra setup"
+        );
     }
 }

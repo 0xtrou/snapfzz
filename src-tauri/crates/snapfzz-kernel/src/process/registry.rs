@@ -89,15 +89,70 @@ impl ProcessFactoryRegistry {
         result
     }
 
+    // A039/parallel_spawn: Spawn services concurrently for faster boot.
     pub async fn spawn_all(&mut self) -> Vec<(String, Result<(), ProcessError>)> {
         let names: Vec<String> = self.factories.keys().cloned().collect();
-        let mut out = Vec::with_capacity(names.len());
 
-        for name in names {
-            let result = self.spawn(&name).await;
-            out.push((name, result));
+        // Step 1: Create all BudgetedProcess entries that don't exist yet.
+        // This requires &mut self and is fast (no I/O beyond settings load).
+        for name in &names {
+            if self.processes.contains_key(name.as_str()) {
+                continue;
+            }
+            let factory = match self.factories.get(name.as_str()).cloned() {
+                Some(f) => f,
+                None => continue,
+            };
+            match BudgetedProcess::new(
+                factory,
+                self.registry.clone(),
+                self.logs.clone(),
+                self.settings_mgr.clone(),
+                self.python_runtime.clone(),
+                self.process_mgr.clone(),
+                self.database_url.clone(),
+            ) {
+                Ok(process) => {
+                    self.processes.insert(name.clone(), process);
+                }
+                Err(_) => continue,
+            }
         }
 
+        // Step 2: Take ownership of each BudgetedProcess so we can move them
+        // into independent tokio tasks and spawn concurrently.
+        let taken: Vec<(String, BudgetedProcess)> = names
+            .iter()
+            .filter_map(|name| self.processes.remove_entry(name))
+            .collect();
+
+        let process_mgr = self.process_mgr.clone();
+        let mut handles = Vec::with_capacity(taken.len());
+        for (name, mut process) in taken {
+            let pm = process_mgr.clone();
+            handles.push(tokio::spawn(async move {
+                let result = process.spawn().await;
+                if result.is_err() {
+                    let _ = pm.shutdown(&name).await;
+                }
+                (name, result, process)
+            }));
+        }
+
+        // Step 3: Collect results and reinsert processes into the map so
+        // subsequent calls to get(), restart(), kill(), etc. work normally.
+        let mut out = Vec::with_capacity(handles.len());
+        for handle in handles {
+            match handle.await {
+                Ok((name, result, process)) => {
+                    self.processes.insert(name.clone(), process);
+                    out.push((name, result));
+                }
+                Err(e) => {
+                    out.push(("unknown".to_string(), Err(ProcessError::SpawnFailed(e.to_string()))));
+                }
+            }
+        }
         out
     }
 
