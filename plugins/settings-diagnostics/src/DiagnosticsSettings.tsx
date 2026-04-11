@@ -269,7 +269,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                       {pythonRuntime.installed_packages
                         .filter(pkg => {
                           const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-                          return name.startsWith('agentscope') || name.startsWith('litellm');
+                          return (name.startsWith('agentscope') || name.startsWith('litellm')) && !name.includes('enterprise');
                         })
                         .map((pkg) => {
                         const [name, version] = pkg.split('=');
@@ -281,7 +281,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                       })}
                       {pythonRuntime.installed_packages.filter(pkg => {
                         const name = pkg.split('=')[0].split('[')[0].toLowerCase();
-                        return name.startsWith('agentscope') || name.startsWith('litellm');
+                        return (name.startsWith('agentscope') || name.startsWith('litellm')) && !name.includes('enterprise');
                       }).length === 0 && (
                         <Text type="secondary">No agent packages installed</Text>
                       )}
