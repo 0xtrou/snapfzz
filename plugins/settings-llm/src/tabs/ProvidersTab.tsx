@@ -939,20 +939,22 @@ function AvailableModels({
           ) : (
             <PretextList
               items={displayModels}
-              estimateHeight={() => 72}
+              estimateHeight={() => 80}
               keyExtractor={(model) => model.id}
               renderItem={(model) => (
-                <DiscoveredModelChip
-                  model={model}
-                  imported={importedIds.has(model.id)}
-                  importing={importingId === model.id}
-                  onImport={() => void handleImport(model.id)}
-                  onCopy={() => void handleCopy(model.id)}
-                  registeredInfo={registeredInfoMap[model.id]}
-                  catalogInfo={catalogLookup[model.id]}
-                />
+                <div style={{ padding: '4px 0' }}>
+                  <DiscoveredModelChip
+                    model={model}
+                    imported={importedIds.has(model.id)}
+                    importing={importingId === model.id}
+                    onImport={() => void handleImport(model.id)}
+                    onCopy={() => void handleCopy(model.id)}
+                    registeredInfo={registeredInfoMap[model.id]}
+                    catalogInfo={catalogLookup[model.id]}
+                  />
+                </div>
               )}
-              style={{ maxHeight: 400 }}
+              style={{ height: Math.min(displayModels.length * 80, 480) }}
             />
           )}
         </>
