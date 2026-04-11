@@ -302,6 +302,58 @@ describe('A013/Hooks: useLlmCommands', () => {
     });
   });
 
+  describe('A013/Discovery: Model discovery and import', () => {
+    it('discovers models via llm_discover_models Tauri command', async () => {
+      const response = { data: [{ id: 'gpt-4o', object: 'model', owned_by: 'openai' }] };
+      mockInvoke.mockResolvedValue(response);
+      const { discoverModels } = await import('../../hooks/useLlmCommands');
+      const result = await discoverModels('openai');
+      expect(result).toEqual(response);
+      expect(mockInvoke).toHaveBeenCalledWith('llm_discover_models', {
+        providerId: 'openai',
+        baseUrl: null,
+      });
+    });
+
+    it('discovers models with custom base URL', async () => {
+      const response = { data: [{ id: 'my-model', object: 'model' }] };
+      mockInvoke.mockResolvedValue(response);
+      const { discoverModels } = await import('../../hooks/useLlmCommands');
+      const result = await discoverModels('custom-solo', 'https://llm.solo.engineer/v1');
+      expect(result).toEqual(response);
+      expect(mockInvoke).toHaveBeenCalledWith('llm_discover_models', {
+        providerId: 'custom-solo',
+        baseUrl: 'https://llm.solo.engineer/v1',
+      });
+    });
+
+    it('imports model via llm_import_model Tauri command', async () => {
+      const response = { status: 'success' };
+      mockInvoke.mockResolvedValue(response);
+      const { importModel } = await import('../../hooks/useLlmCommands');
+      const result = await importModel('openai', 'gpt-4o');
+      expect(result).toEqual(response);
+      expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        modelName: null,
+        baseUrl: null,
+      });
+    });
+
+    it('imports model with custom name and base URL', async () => {
+      mockInvoke.mockResolvedValue({ status: 'success' });
+      const { importModel } = await import('../../hooks/useLlmCommands');
+      await importModel('custom-solo', 'my-model', 'alias-name', 'https://llm.solo.engineer/v1');
+      expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
+        providerId: 'custom-solo',
+        modelId: 'my-model',
+        modelName: 'alias-name',
+        baseUrl: 'https://llm.solo.engineer/v1',
+      });
+    });
+  });
+
   describe('A013/Custom: Custom provider persistence', () => {
     it('loads custom providers from vault', async () => {
       const providers = [

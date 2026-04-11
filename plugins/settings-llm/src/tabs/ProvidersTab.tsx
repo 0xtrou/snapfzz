@@ -17,7 +17,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   GlobalOutlined,
-  InfoCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -26,11 +25,10 @@ import { AppButton, ConfirmAction } from '@snapfzz/shared';
 import {
   type CustomProvider,
   type CustomProviderVariant,
-  type ModelInfoEntry,
+  type DiscoveredModel,
   deleteProviderKey,
-  getBaseUrl,
-  getMasterKey,
-  getModelInfo,
+  discoverModels,
+  importModel,
   listProviderKeys,
   loadCustomProviders,
   saveCustomProviders,
@@ -379,43 +377,21 @@ function CustomProviderCard({
   );
 }
 
-// ─── Model Metadata Helpers ──────────────────────────────────────────────
+// ─── Discovered Model Chip ──────────────────────────────────────────────
 
-function formatContextWindow(tokens?: number): string {
-  if (!tokens) return '?';
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M ctx`;
-  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K ctx`;
-  return `${tokens} ctx`;
-}
-
-function formatCost(costPerToken?: number): string {
-  if (!costPerToken) return '?';
-  const perMillion = costPerToken * 1000000;
-  return `$${perMillion.toFixed(2)}/M`;
-}
-
-// ─── Model Chip ──────────────────────────────────────────────────────────
-
-function ModelChip({ model, providerPrefix }: { model: ModelInfoEntry; providerPrefix: string }) {
-  const displayName = model.model_name.startsWith(`${providerPrefix}/`)
-    ? model.model_name.slice(providerPrefix.length + 1)
-    : model.model_name;
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(model.model_name);
-      message.success('Model ID copied');
-    } catch {
-      message.error('Failed to copy');
-    }
-  }, [model.model_name]);
-
-  const info = model.model_info;
-  const metaParts: string[] = [];
-  if (info?.mode) metaParts.push(info.mode);
-  metaParts.push(formatContextWindow(info?.max_tokens));
-  metaParts.push(`${formatCost(info?.input_cost_per_token)}/in`);
-
+function DiscoveredModelChip({
+  model,
+  imported,
+  importing,
+  onImport,
+  onCopy,
+}: {
+  model: DiscoveredModel;
+  imported: boolean;
+  importing: boolean;
+  onImport: () => void;
+  onCopy: () => void;
+}) {
   return (
     <div
       style={{
@@ -443,20 +419,22 @@ function ModelChip({ model, providerPrefix }: { model: ModelInfoEntry; providerP
             display: 'block',
           }}
         >
-          {displayName}
+          {model.id}
         </Text>
-        <Text
-          style={{
-            fontSize: 11,
-            color: 'var(--text-muted)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            display: 'block',
-          }}
-        >
-          {metaParts.join(' \u00B7 ')}
-        </Text>
+        {model.owned_by && (
+          <Text
+            style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              display: 'block',
+            }}
+          >
+            {model.owned_by}
+          </Text>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
@@ -464,102 +442,122 @@ function ModelChip({ model, providerPrefix }: { model: ModelInfoEntry; providerP
           type="text"
           size="small"
           icon={<CopyOutlined />}
-          onClick={handleCopy}
-          aria-label={`Copy ${displayName}`}
+          onClick={onCopy}
+          aria-label={`Copy ${model.id}`}
         />
-        <Tooltip title={model.model_name}>
+        {imported ? (
+          <Tooltip title="Imported to LiteLLM">
+            <Text style={{ color: 'var(--color-success)', fontSize: 16, lineHeight: '24px', padding: '0 4px' }}>
+              ✓
+            </Text>
+          </Tooltip>
+        ) : (
           <Button
             type="text"
             size="small"
-            icon={<InfoCircleOutlined />}
-            aria-label={`Info ${displayName}`}
+            icon={<PlusOutlined />}
+            onClick={onImport}
+            loading={importing}
+            aria-label={`Import ${model.id}`}
           />
-        </Tooltip>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Model Info Cache ────────────────────────────────────────────────────
+// ─── Discovery Cache ────────────────────────────────────────────────────
 
-const MODELS_INFO_CACHE_KEY = 'snapfzz:model_info';
-const MODELS_INFO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const DISCOVERY_CACHE_KEY = 'snapfzz:discovered_models';
+const DISCOVERY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-interface ModelInfoCache {
-  data: ModelInfoEntry[];
-  ts: number;
+interface DiscoveryCache {
+  [providerId: string]: { data: DiscoveredModel[]; ts: number };
 }
 
-function readModelInfoCache(): ModelInfoEntry[] | null {
+function readDiscoveryCache(providerId: string): DiscoveredModel[] | null {
   try {
-    const raw = localStorage.getItem(MODELS_INFO_CACHE_KEY);
+    const raw = localStorage.getItem(DISCOVERY_CACHE_KEY);
     if (!raw) return null;
-    const parsed: ModelInfoCache = JSON.parse(raw);
-    if (Date.now() - parsed.ts > MODELS_INFO_CACHE_TTL) return null;
-    return parsed.data;
+    const parsed: DiscoveryCache = JSON.parse(raw);
+    const entry = parsed[providerId];
+    if (!entry || Date.now() - entry.ts > DISCOVERY_CACHE_TTL) return null;
+    return entry.data;
   } catch {
     return null;
   }
 }
 
-function writeModelInfoCache(data: ModelInfoEntry[]): void {
+function writeDiscoveryCache(providerId: string, data: DiscoveredModel[]): void {
   try {
-    const entry: ModelInfoCache = { data, ts: Date.now() };
-    localStorage.setItem(MODELS_INFO_CACHE_KEY, JSON.stringify(entry));
+    const raw = localStorage.getItem(DISCOVERY_CACHE_KEY);
+    const parsed: DiscoveryCache = raw ? JSON.parse(raw) : {};
+    parsed[providerId] = { data, ts: Date.now() };
+    localStorage.setItem(DISCOVERY_CACHE_KEY, JSON.stringify(parsed));
   } catch {
     // localStorage may be full or unavailable; silently ignore
   }
 }
 
+function clearDiscoveryCache(providerId: string): void {
+  try {
+    const raw = localStorage.getItem(DISCOVERY_CACHE_KEY);
+    if (!raw) return;
+    const parsed: DiscoveryCache = JSON.parse(raw);
+    delete parsed[providerId];
+    localStorage.setItem(DISCOVERY_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // silently ignore
+  }
+}
+
 // ─── Available Models Section ────────────────────────────────────────────
 
-function AvailableModels({ providerId }: { providerId: string }) {
-  const [models, setModels] = useState<ModelInfoEntry[]>([]);
+function AvailableModels({
+  providerId,
+  baseUrl,
+}: {
+  providerId: string;
+  baseUrl?: string;
+}) {
+  const [models, setModels] = useState<DiscoveredModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [fetched, setFetched] = useState(false);
+  const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importAllLoading, setImportAllLoading] = useState(false);
 
   const fetchModels = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Check localStorage cache first
-      const cached = readModelInfoCache();
-      let allModels: ModelInfoEntry[];
-
+      const cached = readDiscoveryCache(providerId);
       if (cached) {
-        allModels = cached;
-      } else {
-        const [baseUrl, masterKey] = await Promise.all([getBaseUrl(), getMasterKey()]);
-        const response = await getModelInfo(baseUrl, masterKey);
-        allModels = response.data;
-        writeModelInfoCache(allModels);
+        setModels(cached);
+        setFetched(true);
+        setLoading(false);
+        return;
       }
-
-      // Filter models by provider prefix
-      const providerModels = allModels.filter(
-        (m) =>
-          m.model_name.startsWith(`${providerId}/`) ||
-          m.model_name.startsWith(`${providerId}.`) ||
-          m.model_info?.litellm_provider === providerId,
-      );
-      setModels(providerModels);
+      const response = await discoverModels(providerId, baseUrl);
+      const data = response?.data ?? [];
+      setModels(data);
+      writeDiscoveryCache(providerId, data);
       setFetched(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       setModels([]);
     } finally {
       setLoading(false);
     }
-  }, [providerId]);
+  }, [providerId, baseUrl]);
 
   const handleRefresh = useCallback(async () => {
-    // Clear cache so we get fresh data
-    localStorage.removeItem(MODELS_INFO_CACHE_KEY);
+    clearDiscoveryCache(providerId);
     await fetchModels();
-  }, [fetchModels]);
+  }, [fetchModels, providerId]);
 
   useEffect(() => {
     void fetchModels();
@@ -568,8 +566,59 @@ function AvailableModels({ providerId }: { providerId: string }) {
   const filteredModels = useMemo(() => {
     if (!filter) return models;
     const lower = filter.toLowerCase();
-    return models.filter((m) => m.model_name.toLowerCase().includes(lower));
+    return models.filter((m) => m.id.toLowerCase().includes(lower));
   }, [models, filter]);
+
+  const unimportedCount = filteredModels.filter((m) => !importedIds.has(m.id)).length;
+
+  const handleImport = useCallback(
+    async (modelId: string) => {
+      setImportingId(modelId);
+      try {
+        await importModel(providerId, modelId, undefined, baseUrl);
+        setImportedIds((prev) => new Set(prev).add(modelId));
+        message.success(`Imported ${modelId}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        message.error(`Failed to import ${modelId}: ${msg}`);
+      } finally {
+        setImportingId(null);
+      }
+    },
+    [providerId, baseUrl],
+  );
+
+  const handleImportAll = useCallback(async () => {
+    const toImport = filteredModels.filter((m) => !importedIds.has(m.id));
+    if (toImport.length === 0) return;
+    setImportAllLoading(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const model of toImport) {
+      try {
+        await importModel(providerId, model.id, undefined, baseUrl);
+        setImportedIds((prev) => new Set(prev).add(model.id));
+        succeeded++;
+      } catch {
+        failed++;
+      }
+    }
+    if (failed === 0) {
+      message.success(`Imported ${succeeded} model${succeeded !== 1 ? 's' : ''}`);
+    } else {
+      message.warning(`Imported ${succeeded}, failed ${failed}`);
+    }
+    setImportAllLoading(false);
+  }, [providerId, baseUrl, importedIds, filteredModels]);
+
+  const handleCopy = useCallback(async (modelId: string) => {
+    try {
+      await navigator.clipboard.writeText(modelId);
+      message.success('Model ID copied');
+    } catch {
+      message.error('Failed to copy');
+    }
+  }, []);
 
   return (
     <div style={{ marginTop: 24 }}>
@@ -584,14 +633,26 @@ function AvailableModels({ providerId }: { providerId: string }) {
         <Title level={5} style={{ margin: 0, color: 'var(--text-primary)' }}>
           Available Models
         </Title>
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={() => void handleRefresh()}
-          loading={loading}
-          size="small"
-        >
-          Refresh
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {models.length > 0 && unimportedCount > 0 && (
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => void handleImportAll()}
+              loading={importAllLoading}
+              size="small"
+            >
+              Import All ({unimportedCount})
+            </Button>
+          )}
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => void handleRefresh()}
+            loading={loading}
+            size="small"
+          >
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -661,7 +722,14 @@ function AvailableModels({ providerId }: { providerId: string }) {
               }}
             >
               {filteredModels.map((model) => (
-                <ModelChip key={model.model_name} model={model} providerPrefix={providerId} />
+                <DiscoveredModelChip
+                  key={model.id}
+                  model={model}
+                  imported={importedIds.has(model.id)}
+                  importing={importingId === model.id}
+                  onImport={() => void handleImport(model.id)}
+                  onCopy={() => void handleCopy(model.id)}
+                />
               ))}
             </div>
           )}
@@ -677,11 +745,13 @@ function ProviderDetail({
   providerId,
   providerLabel,
   isCustom,
+  baseUrl,
   onBack,
 }: {
   providerId: string;
   providerLabel: string;
   isCustom?: boolean;
+  baseUrl?: string;
   onBack: () => void;
 }) {
   const [keys, setKeys] = useState<ProviderKeyEntry[]>([]);
@@ -906,8 +976,8 @@ function ProviderDetail({
         ))
       )}
 
-      {/* Available Models */}
-      <AvailableModels providerId={providerId} />
+      {/* Available Models — only shown when the provider has at least one key */}
+      {keys.length > 0 && <AvailableModels providerId={providerId} baseUrl={baseUrl} />}
 
       {/* Add / Edit Key Modal */}
       <Modal
@@ -1160,6 +1230,7 @@ export default function ProvidersTab() {
           providerId={`custom-${custom.id}`}
           providerLabel={custom.name}
           isCustom
+          baseUrl={custom.baseUrl}
           onBack={handleBack}
         />
       );

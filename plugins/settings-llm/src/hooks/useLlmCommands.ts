@@ -369,6 +369,43 @@ export async function getModelInfo(
   return res.json();
 }
 
+// A013/Discovery: Discover models from a provider's native API.
+// API keys are read from the vault on the backend — the frontend never sees them.
+
+export interface DiscoveredModel {
+  id: string;
+  object?: string;
+  owned_by?: string;
+}
+
+export interface DiscoverModelsResponse {
+  data: DiscoveredModel[];
+}
+
+export async function discoverModels(
+  providerId: string,
+  baseUrl?: string,
+): Promise<DiscoverModelsResponse> {
+  return bridge.invoke<DiscoverModelsResponse>('llm_discover_models', {
+    providerId,
+    baseUrl: baseUrl ?? null,
+  });
+}
+
+export async function importModel(
+  providerId: string,
+  modelId: string,
+  modelName?: string,
+  baseUrl?: string,
+): Promise<Record<string, unknown>> {
+  return bridge.invoke<Record<string, unknown>>('llm_import_model', {
+    providerId,
+    modelId,
+    modelName: modelName ?? null,
+    baseUrl: baseUrl ?? null,
+  });
+}
+
 // Custom provider config persistence via vault
 
 export async function loadCustomProviders(): Promise<CustomProvider[]> {
