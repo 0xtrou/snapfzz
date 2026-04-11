@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Table,
   Tag,
-  Progress,
   Space,
   Typography,
   Tooltip,
@@ -88,12 +87,6 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
-function memoryPct(rss: number | null, totalMb: number): number {
-  if (rss == null) return 0;
-  if (totalMb === 0) return 0;
-  return Math.min(100, Math.round((rss / totalMb) * 100));
-}
-
 interface DetailPanelProps {
   process: ProcessSnapshot;
   appTotalMb: number;
@@ -121,7 +114,7 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
     return () => clearInterval(id);
   }, [showLogs, fetchLogs]);
 
-  const memPct = memoryPct(process.rssMb, appTotalMb);
+
 
   const handleRestart = async () => {
     try {
@@ -217,36 +210,20 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
         </div>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Memory</Text>
-          <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-            {process.rssMb != null ? Math.round(process.rssMb) : '—'} MB
-          </Text>
-        </div>
-        <Progress
-          percent={memPct}
-          strokeColor={memPct >= 90 ? 'var(--color-error)' : memPct >= 70 ? 'var(--color-warning)' : 'var(--color-success)'}
-          trailColor="var(--bg-subtle)"
-          size="small"
-          showInfo={false}
-        />
-      </div>
-
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>Memory</Text>
+          <div style={{ marginTop: 4 }}>
+            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
+              {process.rssMb != null ? Math.round(process.rssMb) : '—'} MB
+            </Text>
+          </div>
+        </div>
         <div style={{ flex: 1 }}>
           <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>App Memory Budget</Text>
           <div style={{ marginTop: 4 }}>
             <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>{Math.round(totalRssMb)} / {appTotalMb} MB</Text>
             <Text style={{ color: 'var(--text-muted)', fontSize: 11, display: 'block' }}>Unified across all processes</Text>
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Text style={{ color: 'var(--text-muted)', fontSize: 12 }}>Restart Count</Text>
-          <div style={{ marginTop: 4 }}>
-            <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
-              {process.restartCount}
-            </Text>
           </div>
         </div>
       </div>
@@ -390,23 +367,10 @@ export default function ProcessesSettings() {
       title: 'Memory',
       key: 'memory',
       render: (_: unknown, record: ProcessSnapshot) => {
-        const pct = memoryPct(record.rssMb, appTotalMb);
         return (
-          <div style={{ minWidth: 140 }}>
-            <Progress
-              percent={pct}
-              strokeColor={
-                pct >= 90
-                  ? 'var(--color-error)'
-                  : pct >= 70
-                    ? 'var(--color-warning)'
-                    : 'var(--color-success)'
-              }
-              trailColor="var(--bg-subtle)"
-              size="small"
-              format={() => `${record.rssMb != null ? Math.round(record.rssMb) : '—'} / ${appTotalMb} MB`}
-            />
-          </div>
+          <Text style={{ color: 'var(--text-primary)', fontSize: 13 }}>
+            {record.rssMb != null ? Math.round(record.rssMb) : '—'} / {appTotalMb} MB
+          </Text>
         );
       },
     },
