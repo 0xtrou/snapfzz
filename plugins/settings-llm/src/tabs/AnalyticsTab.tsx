@@ -176,10 +176,10 @@ const SHARE_COLORS = [
 function ShareBar({ pct, colorIndex }: { pct: number; colorIndex: number }) {
   const color = SHARE_COLORS[colorIndex % SHARE_COLORS.length];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
       <div
         style={{
-          width: `${pct}%`,
+          width: `${Math.max(pct, 2)}%`,
           maxWidth: 80,
           height: 6,
           borderRadius: 3,
