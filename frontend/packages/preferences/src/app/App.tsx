@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense, useEffect, useCallback, useMemo, type ComponentType } from 'react';
+import React, { useState, useRef, lazy, Suspense, useEffect, useCallback, useMemo, type ComponentType } from 'react';
 import { WindowShell, AntIcon } from '@snapfzz/shared';
 import {
   PluginHost,
@@ -33,12 +33,26 @@ function SettingsSkeleton() {
   );
 }
 
+// Per A003/PersistentMount: Cache lazy components so React.lazy() is called once
+// per section, not on every render. Without this, each render creates a new
+// component type → React unmounts the old one → skeleton flashes.
+const lazySectionCache = new Map<string, React.LazyExoticComponent<ComponentType>>();
+
+function getLazyComponent(id: string, loader: () => Promise<{ default: ComponentType }>) {
+  let cached = lazySectionCache.get(id);
+  if (!cached) {
+    cached = lazy(loader);
+    lazySectionCache.set(id, cached);
+  }
+  return cached;
+}
+
 function LazySection({ loader, sectionId, onCrash }: {
   loader: () => Promise<{ default: ComponentType }>;
   sectionId?: string;
   onCrash?: (sectionId: string, error: Error) => void;
 }) {
-  const Component = lazy(loader);
+  const Component = getLazyComponent(sectionId || 'unknown', loader);
   return (
     <Suspense fallback={<SettingsSkeleton />}>
       <PluginErrorBoundary pluginId={sectionId} onCrash={onCrash}>
