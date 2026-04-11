@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::component::SystemComponent;
+use crate::core::component::SystemComponent;
 
 pub struct ComponentRegistry {
     components: HashMap<String, Arc<dyn SystemComponent>>,
@@ -49,7 +49,7 @@ impl Default for ComponentRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::component::{
+    use crate::core::component::{
         ComponentError, ComponentInfo, DownloadProgress, DownloadStatus,
     };
     use std::path::{Path, PathBuf};

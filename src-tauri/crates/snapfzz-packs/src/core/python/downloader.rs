@@ -6,11 +6,11 @@ use std::sync::{
 };
 use tokio::sync::Mutex;
 
-use crate::component::{
+use crate::core::component::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
-use crate::constants;
-use crate::platform::PlatformInfo;
+use crate::core::constants;
+use crate::core::platform::PlatformInfo;
 
 #[derive(Debug, Clone)]
 pub struct PythonDownloader {
@@ -359,7 +359,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let d = downloader(temp.path().to_path_buf());
         let err = d.verify().await.unwrap_err();
-        assert!(matches!(err, crate::component::ComponentError::Internal(_)));
+        assert!(matches!(err, crate::core::component::ComponentError::Internal(_)));
     }
 
     // A014/extract: extract() is a no-op and always succeeds

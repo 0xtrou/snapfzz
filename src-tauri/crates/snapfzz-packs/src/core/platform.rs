@@ -1,4 +1,4 @@
-use crate::component::ComponentError;
+use crate::core::component::ComponentError;
 
 #[derive(Debug, Clone)]
 pub struct PlatformInfo {

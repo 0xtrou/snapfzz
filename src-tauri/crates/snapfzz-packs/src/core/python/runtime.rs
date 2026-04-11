@@ -1,7 +1,7 @@
-use crate::component::ComponentError;
-use crate::constants::versions;
-use crate::platform::PlatformInfo;
-use crate::status::{InstallStep, PipPackageInfo, PythonRuntimeStatus};
+use crate::core::component::ComponentError;
+use crate::core::constants::versions;
+use crate::core::platform::PlatformInfo;
+use crate::core::status::{InstallStep, PipPackageInfo, PythonRuntimeStatus};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

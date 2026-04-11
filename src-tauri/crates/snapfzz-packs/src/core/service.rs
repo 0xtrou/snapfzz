@@ -1,5 +1,5 @@
 // A033/ManagedService: Trait for spawnable services that depend on Python packages
-use crate::data::{DataDir, DataError};
+use crate::core::data::{DataDir, DataError};
 use std::path::PathBuf;
 use thiserror::Error;
 

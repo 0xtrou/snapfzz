@@ -7,12 +7,12 @@ use std::sync::{
 use tokio::sync::Mutex;
 
 use serde::Deserialize;
-use crate::component::{
+use crate::core::component::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
-use crate::download::{download_file, extract_tar_gz};
-use crate::constants;
-use crate::platform::PlatformInfo;
+use crate::core::download::{download_file, extract_tar_gz};
+use crate::core::constants;
+use crate::core::platform::PlatformInfo;
 
 const USER_AGENT: &str = "snapfzz-packs/0.1.0";
 
