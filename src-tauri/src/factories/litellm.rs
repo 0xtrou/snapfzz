@@ -190,7 +190,6 @@ impl ProcessFactory for LiteLLMFactory {
         self.service
             .working_dir()
             .map_err(|e| ServiceError::SpawnFailed(e.to_string()))?;
-        let config_path = self.service.config_path();
         let secrets = self.resolve_secrets_from_vault();
 
         let mut cmd = self.service.spawn_command(&ServiceConfig {
@@ -199,15 +198,10 @@ impl ProcessFactory for LiteLLMFactory {
             working_dir: config.working_dir.clone(),
         })?;
 
-        if config_path.exists() {
-            cmd.arg("--config").arg(&config_path);
-        }
-
-        // A038/DATABASE_URL: Use PostgreSQL URL from embedded instance
+        // A013/ModelDB: All model config lives in PostgreSQL — no config.yaml needed.
+        // STORE_MODEL_IN_DB enables POST /model/new API for dynamic management from the UI.
         if let Some(ref db_url) = config.database_url {
             cmd.env("DATABASE_URL", db_url);
-            // A013/ModelDB: Enable dynamic model management via API — models stored
-            // in PostgreSQL so they persist without config.yaml and can be added from the UI.
             cmd.env("STORE_MODEL_IN_DB", "True");
         }
 
@@ -223,7 +217,7 @@ impl ProcessFactory for LiteLLMFactory {
     }
 
     fn config_path(&self, _data_dir: &PathBuf) -> Option<PathBuf> {
-        Some(self.service.config_path())
+        None
     }
 }
 

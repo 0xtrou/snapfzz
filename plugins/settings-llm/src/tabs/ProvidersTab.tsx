@@ -7,6 +7,7 @@ import {
   Radio,
   Skeleton,
   Switch,
+  Tag,
   Typography,
   message,
 } from 'antd';
@@ -25,8 +26,12 @@ import {
   type CustomProvider,
   type CustomProviderVariant,
   type DiscoveredModel,
+  type ModelInfoDetails,
   deleteProviderKey,
   discoverModels,
+  getBaseUrl,
+  getMasterKey,
+  getModelInfo,
   importModel,
   listProviderKeys,
   loadCustomProviders,
@@ -189,15 +194,12 @@ function ProviderCard({
         flexDirection: 'column',
         gap: 12,
         cursor: 'pointer',
-        transition: 'transform 0.15s ease, border-color 0.15s ease',
-        willChange: 'transform',
+        transition: 'border-color 0.15s ease',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'scale(1.02)';
-        e.currentTarget.style.borderColor = 'var(--border-strong)';
+        e.currentTarget.style.borderColor = 'var(--color-info)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'scale(1)';
         e.currentTarget.style.borderColor = 'var(--border-default)';
       }}
     >
@@ -283,16 +285,13 @@ function CustomProviderCard({
         flexDirection: 'column',
         gap: 12,
         cursor: 'pointer',
-        transition: 'transform 0.15s ease, border-color 0.15s ease',
-        willChange: 'transform',
+        transition: 'border-color 0.15s ease',
         position: 'relative',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'scale(1.02)';
-        e.currentTarget.style.borderColor = 'var(--border-strong)';
+        e.currentTarget.style.borderColor = 'var(--color-info)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'scale(1)';
         e.currentTarget.style.borderColor = 'var(--border-default)';
       }}
     >
@@ -378,18 +377,71 @@ function CustomProviderCard({
 
 // ─── Discovered Model Chip ──────────────────────────────────────────────
 
+function ModelCapabilityTags({ info }: { info: ModelInfoDetails }) {
+  const contextTokens = info.max_input_tokens ?? info.max_tokens;
+  const contextLabel = contextTokens
+    ? contextTokens >= 1000
+      ? `${Math.round(contextTokens / 1000)}K ctx`
+      : `${contextTokens} ctx`
+    : null;
+
+  const inputCost = info.input_cost_per_token;
+  const outputCost = info.output_cost_per_token;
+  const pricingLabel =
+    inputCost != null && outputCost != null
+      ? `$${(inputCost * 1_000_000).toFixed(2)}/M in · $${(outputCost * 1_000_000).toFixed(2)}/M out`
+      : null;
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+      {info.mode && (
+        <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+          {info.mode}
+        </Tag>
+      )}
+      {info.supports_vision && (
+        <Tag color="blue" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+          Vision
+        </Tag>
+      )}
+      {info.supports_function_calling && (
+        <Tag color="green" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+          Tools
+        </Tag>
+      )}
+      {info.supports_reasoning && (
+        <Tag color="purple" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+          Reasoning
+        </Tag>
+      )}
+      {contextLabel && (
+        <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+          {contextLabel}
+        </Tag>
+      )}
+      {pricingLabel && (
+        <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+          {pricingLabel}
+        </Tag>
+      )}
+    </div>
+  );
+}
+
 function DiscoveredModelChip({
   model,
   imported,
   importing,
   onImport,
   onCopy,
+  registeredInfo,
 }: {
   model: DiscoveredModel;
   imported: boolean;
   importing: boolean;
   onImport: () => void;
   onCopy: () => void;
+  registeredInfo?: ModelInfoDetails;
 }) {
   return (
     <div
@@ -399,59 +451,62 @@ function DiscoveredModelChip({
         borderRadius: 8,
         padding: '10px 14px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 8,
+        flexDirection: 'column',
+        gap: 0,
         minWidth: 0,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Text
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            fontWeight: 500,
-            color: 'var(--text-primary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            display: 'block',
-          }}
-        >
-          {model.id}
-        </Text>
-        {model.owned_by && (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <Text
             style={{
-              fontSize: 11,
-              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 13,
+              fontWeight: 500,
+              color: 'var(--text-primary)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
               display: 'block',
             }}
           >
-            {model.owned_by}
+            {model.id}
           </Text>
-        )}
+          {model.owned_by && (
+            <Text
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'block',
+              }}
+            >
+              {model.owned_by}
+            </Text>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+          <Button
+            type="text"
+            size="small"
+            icon={<CopyOutlined />}
+            onClick={onCopy}
+            aria-label={`Copy ${model.id}`}
+          />
+          <Switch
+            size="small"
+            checked={imported}
+            loading={importing}
+            onChange={() => { if (!imported) onImport(); }}
+            aria-label={`Enable ${model.id}`}
+          />
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
-        <Button
-          type="text"
-          size="small"
-          icon={<CopyOutlined />}
-          onClick={onCopy}
-          aria-label={`Copy ${model.id}`}
-        />
-        <Switch
-          size="small"
-          checked={imported}
-          loading={importing}
-          onChange={() => { if (!imported) onImport(); }}
-          aria-label={`Enable ${model.id}`}
-        />
-      </div>
+      {imported && registeredInfo && <ModelCapabilityTags info={registeredInfo} />}
     </div>
   );
 }
@@ -518,6 +573,7 @@ function AvailableModels({
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [importingId, setImportingId] = useState<string | null>(null);
   const [importAllLoading, setImportAllLoading] = useState(false);
+  const [registeredInfoMap, setRegisteredInfoMap] = useState<Record<string, ModelInfoDetails>>({});
 
   const fetchModels = useCallback(async () => {
     setLoading(true);
@@ -552,14 +608,28 @@ function AvailableModels({
   // Fetch discovered models + check which are already registered in the gateway
   useEffect(() => {
     void fetchModels();
-    // Load already-enabled models from the gateway
+    // Load already-enabled models and their metadata from the gateway
     (async () => {
       try {
-        const { getBaseUrl, getMasterKey, getModels } = await import('../hooks/useLlmCommands');
         const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
-        const response = await getModels(url, key);
-        const registered = new Set((response?.data ?? []).map((m: { id: string }) => m.id));
+        const [modelsRes, infoRes] = await Promise.all([
+          (async () => {
+            const { getModels } = await import('../hooks/useLlmCommands');
+            return getModels(url, key);
+          })(),
+          getModelInfo(url, key).catch(() => ({ data: [] })),
+        ]);
+        const registered = new Set((modelsRes?.data ?? []).map((m: { id: string }) => m.id));
         setImportedIds(registered);
+
+        // Build a lookup from model_name → model_info for capability tags
+        const infoMap: Record<string, ModelInfoDetails> = {};
+        for (const entry of infoRes.data) {
+          if (entry.model_info) {
+            infoMap[entry.model_name] = entry.model_info;
+          }
+        }
+        setRegisteredInfoMap(infoMap);
       } catch {
         // Gateway not ready — no pre-check
       }
@@ -732,6 +802,7 @@ function AvailableModels({
                   importing={importingId === model.id}
                   onImport={() => void handleImport(model.id)}
                   onCopy={() => void handleCopy(model.id)}
+                  registeredInfo={registeredInfoMap[model.id]}
                 />
               ))}
             </div>
@@ -763,6 +834,7 @@ function ProviderDetail({
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [registeredApiBase, setRegisteredApiBase] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -785,6 +857,21 @@ function ProviderDetail({
   useEffect(() => {
     void loadKeys();
   }, [loadKeys]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
+        const infoRes = await getModelInfo(url, key);
+        const firstEntry = infoRes.data.find((e) => e.litellm_params?.api_base);
+        if (firstEntry?.litellm_params?.api_base) {
+          setRegisteredApiBase(firstEntry.litellm_params.api_base);
+        }
+      } catch {
+        // Gateway not ready or no registered models — silently skip
+      }
+    })();
+  }, []);
 
   async function handleAddOrEdit(values: { keyName: string; keyValue: string }) {
     setSubmitting(true);
@@ -860,6 +947,11 @@ function ProviderDetail({
             <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
               {keys.length} connection{keys.length !== 1 ? 's' : ''}
             </Text>
+            {registeredApiBase && (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                {registeredApiBase}
+              </Text>
+            )}
           </div>
         </div>
 

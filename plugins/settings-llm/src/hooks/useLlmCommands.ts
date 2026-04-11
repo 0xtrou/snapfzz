@@ -139,11 +139,17 @@ export interface ModelInfoDetails {
   mode?: string;
   supports_vision?: boolean;
   supports_function_calling?: boolean;
+  supports_reasoning?: boolean;
   litellm_provider?: string;
 }
 
 export interface ModelInfoEntry {
   model_name: string;
+  litellm_params?: {
+    api_base?: string;
+    model?: string;
+    api_key?: string;
+  };
   model_info: ModelInfoDetails;
 }
 
