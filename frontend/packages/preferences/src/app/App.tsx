@@ -10,15 +10,22 @@ import {
 } from '@snapfzz/plugin-host';
 import type { SettingsSectionContribution } from '@snapfzz/plugin-sdk';
 
+// Per A003/Skeleton: fills the full content area to avoid layout shift on hydrate.
 function SettingsSkeleton() {
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ height: 54, borderBottom: '1px solid var(--border-default)', marginBottom: 16 }} />
+    <div style={{ width: '100%', height: '100%', padding: 24, boxSizing: 'border-box' }}>
+      {/* Header bar placeholder */}
+      <div style={{ height: 48, borderBottom: '1px solid var(--border-default)', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 200, height: 20, borderRadius: 4, background: 'var(--bg-subtle)' }} />
+        <div style={{ flex: 1 }} />
+        <div style={{ width: 80, height: 32, borderRadius: 6, background: 'var(--bg-subtle)' }} />
+      </div>
+      {/* Form field placeholders — fill available width */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        {[180, 120, 160].map((w) => (
-          <div key={w}>
-            <div style={{ width: 80, height: 14, borderRadius: 4, background: 'var(--bg-subtle)', marginBottom: 12 }} />
-            <div style={{ width: w, height: 32, borderRadius: 6, background: 'var(--bg-subtle)' }} />
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i}>
+            <div style={{ width: 120, height: 14, borderRadius: 4, background: 'var(--bg-subtle)', marginBottom: 12 }} />
+            <div style={{ width: '100%', maxWidth: 480, height: 36, borderRadius: 6, background: 'var(--bg-subtle)' }} />
           </div>
         ))}
       </div>
