@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod boot;
 mod commands;
 mod factories;
 mod fonts;
@@ -99,13 +100,12 @@ fn main() {
         snapfzz_packs::runtime::postgres::PostgresRuntime,
     >));
 
-    let (setup_registry, setup_factory_registry, setup_postgres_runtime) = (
+    let (setup_registry, setup_factory_registry, setup_component_registry, setup_postgres_runtime) = (
         registry.clone(),
         factory_registry.clone(),
+        component_registry.clone(),
         postgres_runtime.clone(),
     );
-    let setup_python_runtime = python_runtime.clone();
-    let setup_component_registry = component_registry.clone();
 
     tauri::Builder::default()
         .manage(registry)
@@ -197,147 +197,14 @@ fn main() {
         .setup(move |app| {
             menus::setup_menus(app)?;
 
-            // A039/PhasedBoot: Three independent async phases coordinated by signals.
-            // Per A003: UI visible at 0ms, interactive at 200ms. Runtime boot is NOT part of
-            // the startup budget — it runs entirely in the background.
-            let python_ready = Arc::new(tokio::sync::Notify::new());
-            let pg_ready = Arc::new(tokio::sync::Notify::new());
-            // Per A039: PG URL flows from Phase 2 → Phase 3 via a watch channel.
-            // None = not yet ready, Some(None) = PG failed, Some(Some(url)) = PG ready with URL.
-            let (pg_url_tx, pg_url_rx) = tokio::sync::watch::channel(None::<Option<String>>);
-
-            // Phase 1: Python runtime (independent, no locks)
-            {
-                let rt = setup_python_runtime.clone();
-                let cr = setup_component_registry.clone();
-                let notify = python_ready.clone();
-                tauri::async_runtime::spawn(async move {
-                    if rt.is_runtime_ready() {
-                        eprintln!("[boot/python] runtime ready — skipping install");
-                    } else {
-                        eprintln!("[boot/python] runtime not ready — installing...");
-
-                        if !rt.is_uv_ready() {
-                            if let Some(uv) = cr.get("uv") {
-                                eprintln!("[boot/python] downloading uv...");
-                                match uv.download().await {
-                                    Ok(_) => {
-                                        if let Err(e) = uv.extract().await {
-                                            eprintln!("[boot/python] uv extract failed: {e}");
-                                        }
-                                    }
-                                    Err(e) => eprintln!("[boot/python] uv download failed: {e}"),
-                                }
-                            }
-                        }
-
-                        if !rt.is_python_installed() {
-                            if let Some(py) = cr.get("python") {
-                                eprintln!("[boot/python] downloading Python...");
-                                match py.download().await {
-                                    Ok(_) => {
-                                        if let Err(e) = py.extract().await {
-                                            eprintln!("[boot/python] python extract failed: {e}");
-                                        }
-                                    }
-                                    Err(e) => eprintln!("[boot/python] python download failed: {e}"),
-                                }
-                            }
-                        }
-
-                        if rt.is_uv_ready() && rt.is_python_installed() {
-                            eprintln!("[boot/python] installing packages...");
-                            let rt2 = rt.clone();
-                            match tokio::task::spawn_blocking(move || rt2.install_all_packages()).await {
-                                Ok(Ok(_)) => eprintln!("[boot/python] packages installed"),
-                                Ok(Err(e)) => eprintln!("[boot/python] package install failed: {e}"),
-                                Err(e) => eprintln!("[boot/python] install task panicked: {e}"),
-                            }
-                        } else {
-                            eprintln!("[boot/python] skipping packages — uv or python missing");
-                        }
-                    }
-                    notify.notify_one();
-                });
-            }
-
-            // Phase 2: PostgreSQL (independent, only locks postgres_runtime briefly to store handle)
-            {
-                let pg_data_dir = data_dir.clone();
-                let pg_runtime = setup_postgres_runtime.clone();
-                let notify = pg_ready.clone();
-                tauri::async_runtime::spawn(async move {
-                    let mut pg = snapfzz_packs::runtime::postgres::PostgresRuntime::new(pg_data_dir);
-                    let mut maybe_url = None;
-
-                    if let Err(e) = pg.setup().await {
-                        eprintln!("[boot/postgres] setup failed: {e}");
-                    } else if let Err(e) = pg.start().await {
-                        eprintln!("[boot/postgres] start failed: {e}");
-                    } else {
-                        if let Err(e) = pg.create_database("litellm").await {
-                            eprintln!("[boot/postgres] create litellm db failed: {e}");
-                        }
-                        maybe_url = pg.connection_url("litellm");
-                        if let Some(ref url) = maybe_url {
-                            eprintln!("[boot/postgres] litellm URL: {url}");
-                        } else {
-                            eprintln!("[boot/postgres] URL unavailable after startup");
-                        }
-                    }
-
-                    *pg_runtime.lock().await = Some(pg);
-                    let _ = pg_url_tx.send(Some(maybe_url));
-                    notify.notify_one();
-                });
-            }
-
-            // Phase 3: Service spawning (waits for Phase 1 + 2, brief lock per service)
-            {
-                let factory_registry = setup_factory_registry.clone();
-                let app_handle = app.handle().clone();
-                let python_ready = python_ready.clone();
-                let pg_ready = pg_ready.clone();
-                tauri::async_runtime::spawn(async move {
-                    // Wait for both runtimes — does NOT hold any lock while waiting
-                    python_ready.notified().await;
-                    pg_ready.notified().await;
-
-                    // Read PG URL from watch channel
-                    let maybe_url = pg_url_rx.borrow().clone().flatten();
-
-                    // Brief lock: set database_url + spawn each service, then release
-                    let mut registry = factory_registry.lock().await;
-                    if let Some(url) = maybe_url {
-                        registry.set_database_url(url);
-                    }
-                    let results = registry.spawn_all().await;
-                    drop(registry);
-
-                    for (name, result) in results {
-                        match result {
-                            Ok(()) => {
-                                eprintln!("[boot/spawn] {} started", name);
-                                helpers::emit_supervisor(
-                                    &app_handle,
-                                    "success",
-                                    &name,
-                                    format!("{} started successfully", name),
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("[boot/spawn] {} FAILED: {}", name, e);
-                                helpers::emit_supervisor(
-                                    &app_handle,
-                                    "error",
-                                    &name,
-                                    format!("Failed to start {}: {}", name, e),
-                                );
-                            }
-                        }
-                    }
-                });
-            }
+            boot::spawn_boot_phases(
+                data_dir.clone(),
+                python_runtime.clone(),
+                setup_component_registry,
+                setup_postgres_runtime,
+                setup_factory_registry.clone(),
+                app.handle().clone(),
+            );
 
             tauri::async_runtime::spawn(metrics::run_metrics_loop(
                 setup_registry,

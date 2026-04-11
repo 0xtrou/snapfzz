@@ -72,7 +72,8 @@ fn detect_battery_macos() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_device, platform_display_for, platform_for};
+    use super::{detect_device, platform_display_for, platform_for, DeviceInfo};
+    use serde_json::Value;
 
     #[test]
     fn a008_device_platform_helpers_map_supported_targets() {
@@ -105,5 +106,171 @@ mod tests {
         );
         assert!(device.cores >= 1);
         assert!(!device.platform.is_empty());
+    }
+
+    // --- DeviceInfo construction and PartialEq ---
+
+    #[test]
+    fn a008_device_info_construction_and_equality() {
+        // A008/device: DeviceInfo derives PartialEq — two structs with identical fields
+        // must compare equal so callers can cache and compare device fingerprints.
+        let a = DeviceInfo {
+            os: "macos".to_string(),
+            arch: "aarch64".to_string(),
+            platform: "macos-arm64".to_string(),
+            platform_display: "macOS (Apple Silicon)".to_string(),
+            cores: 10,
+            ram_gb: 16,
+            on_battery: false,
+        };
+        let b = a.clone();
+
+        assert_eq!(a, b);
+        assert_eq!(a.os, "macos");
+        assert_eq!(a.arch, "aarch64");
+        assert_eq!(a.platform, "macos-arm64");
+        assert_eq!(a.platform_display, "macOS (Apple Silicon)");
+        assert_eq!(a.cores, 10);
+        assert_eq!(a.ram_gb, 16);
+        assert!(!a.on_battery);
+    }
+
+    #[test]
+    fn a008_device_info_inequality_on_differing_fields() {
+        // A008/device: Two DeviceInfo values that differ in any field must not be equal —
+        // verifies PartialEq is field-wise and not reference-based.
+        let base = DeviceInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            platform: "linux-x64".to_string(),
+            platform_display: "Linux (x86_64)".to_string(),
+            cores: 4,
+            ram_gb: 8,
+            on_battery: false,
+        };
+        let mut different = base.clone();
+        different.ram_gb = 32;
+
+        assert_ne!(base, different);
+    }
+
+    // --- DeviceInfo serialization ---
+
+    #[test]
+    fn a008_device_info_serializes_camel_case_keys() {
+        // A008/device: DeviceInfo has #[serde(rename_all = "camelCase")] — JSON output must
+        // use camelCase key names so the frontend TypeScript interface aligns with the struct.
+        let device = DeviceInfo {
+            os: "linux".to_string(),
+            arch: "x86_64".to_string(),
+            platform: "linux-x64".to_string(),
+            platform_display: "Linux (x86_64)".to_string(),
+            cores: 4,
+            ram_gb: 8,
+            on_battery: false,
+        };
+        let v: Value = serde_json::to_value(&device).expect("serialization must not fail");
+
+        // camelCase keys must be present.
+        assert!(v.get("platformDisplay").is_some(), "expected platformDisplay key");
+        assert!(v.get("ramGb").is_some(), "expected ramGb key");
+        assert!(v.get("onBattery").is_some(), "expected onBattery key");
+
+        // snake_case must be absent.
+        assert!(v.get("platform_display").is_none(), "snake_case must not appear");
+        assert!(v.get("ram_gb").is_none(), "snake_case must not appear");
+        assert!(v.get("on_battery").is_none(), "snake_case must not appear");
+    }
+
+    #[test]
+    fn a008_device_info_serializes_correct_values() {
+        // A008/device: Serialized DeviceInfo values must exactly match the struct fields —
+        // no transformations beyond key renaming are applied.
+        let device = DeviceInfo {
+            os: "macos".to_string(),
+            arch: "aarch64".to_string(),
+            platform: "macos-arm64".to_string(),
+            platform_display: "macOS (Apple Silicon)".to_string(),
+            cores: 8,
+            ram_gb: 16,
+            on_battery: true,
+        };
+        let v: Value = serde_json::to_value(&device).expect("serialization must not fail");
+
+        assert_eq!(v["os"], Value::String("macos".into()));
+        assert_eq!(v["arch"], Value::String("aarch64".into()));
+        assert_eq!(v["platform"], Value::String("macos-arm64".into()));
+        assert_eq!(v["platformDisplay"], Value::String("macOS (Apple Silicon)".into()));
+        assert_eq!(v["cores"].as_u64().unwrap(), 8);
+        assert_eq!(v["ramGb"].as_u64().unwrap(), 16);
+        assert_eq!(v["onBattery"], Value::Bool(true));
+    }
+
+    // --- platform_for edge cases ---
+
+    #[test]
+    fn a008_device_platform_for_unrecognized_os_returns_unknown() {
+        // A008/device: platform_for must return "unknown" for any (os, arch) pair not
+        // explicitly listed — prevents a match panic on novel environments.
+        assert_eq!(platform_for("freebsd", "x86_64"), "unknown");
+        assert_eq!(platform_for("", ""), "unknown");
+        assert_eq!(platform_for("macos", "arm"), "unknown");
+        assert_eq!(platform_for("windows", "aarch64"), "unknown");
+    }
+
+    #[test]
+    fn a008_device_platform_display_for_unknown_falls_through() {
+        // A008/device: platform_display_for must return "Unknown platform" for any input
+        // that does not match a known platform string — including arbitrary garbage input.
+        assert_eq!(platform_display_for(""), "Unknown platform");
+        assert_eq!(platform_display_for("freebsd-x64"), "Unknown platform");
+        assert_eq!(platform_display_for("macos-arm64-extra"), "Unknown platform");
+    }
+
+    // --- detect_device does not panic and returns plausible values ---
+
+    #[test]
+    fn a008_device_detect_device_ram_gb_nonzero() {
+        // A008/device: detect_device must report at least 1 GB of RAM on any real machine
+        // running this test — a zero value indicates a sysinfo read failure.
+        let device = detect_device();
+        assert!(device.ram_gb >= 1, "ram_gb must be at least 1 on a real host");
+    }
+
+    #[test]
+    fn a008_device_detect_device_cores_matches_sysinfo() {
+        // A008/device: The cores field must equal the number of logical CPUs reported by
+        // sysinfo — guards against a future refactor accidentally hardcoding the value.
+        use sysinfo::System;
+        let sys = System::new_all();
+        let expected_cores = sys.cpus().len();
+
+        let device = detect_device();
+        assert_eq!(
+            device.cores, expected_cores,
+            "cores must match sysinfo CPU count"
+        );
+    }
+
+    #[test]
+    fn a008_device_detect_battery_does_not_panic() {
+        // A008/device: detect_device (and the internal detect_battery_macos on macOS) must
+        // not panic regardless of pmset output — the result is a bool, never an Err.
+        let device = detect_device();
+        // Simply asserting this completes without panic is the coverage goal.
+        let _ = device.on_battery;
+    }
+
+    #[test]
+    fn a008_device_detect_device_platform_consistent_with_helpers() {
+        // A008/device: detect_device must produce a platform string that equals the output
+        // of platform_for(os, arch) — ensures detect_device uses the same helper and hasn't
+        // diverged by copying the match inline.
+        let device = detect_device();
+        let expected = platform_for(&device.os, &device.arch);
+        assert_eq!(
+            device.platform, expected,
+            "detect_device platform must match platform_for output"
+        );
     }
 }

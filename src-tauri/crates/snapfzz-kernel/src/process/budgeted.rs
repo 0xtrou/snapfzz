@@ -316,6 +316,7 @@ mod tests {
     use snapfzz_packs::service::{ResourceLimits, ServiceError};
 
     use crate::budget::BudgetRegistry;
+    use crate::budget::metrics::ProcessStatus;
     use crate::process::logs::ProcessLogs;
     use crate::process::{factory::ProcessFactory, ProcessManager, SpawnConfig};
     use crate::settings::{Settings, SettingsManager};
@@ -373,6 +374,166 @@ mod tests {
         }
     }
 
+    // A037/test_helpers: Factory variant that always returns None from working_dir(),
+    // triggering the SpawnFailed("missing working directory") error path in resolve_config.
+    struct NoWorkingDirFactory;
+
+    impl ProcessFactory for NoWorkingDirFactory {
+        fn name(&self) -> &'static str {
+            "no-dir"
+        }
+
+        fn health_path(&self) -> &'static str {
+            "/health"
+        }
+
+        fn port_settings_keys(&self) -> (&'static str, &'static str) {
+            ("agentscopeHost", "agentscopePort")
+        }
+
+        fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
+            None
+        }
+
+        fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+            true
+        }
+
+        fn build_command(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<tokio::process::Command, ServiceError> {
+            Ok(tokio::process::Command::new("sh"))
+        }
+
+        fn resource_limits(&self) -> ResourceLimits {
+            ResourceLimits { max_memory_mb: 64, max_restarts: 1 }
+        }
+    }
+
+    // A037/test_helpers: Factory that returns false from can_start(), exercising the
+    // early-exit error path in BudgetedProcess::spawn.
+    struct CannotStartFactory;
+
+    impl ProcessFactory for CannotStartFactory {
+        fn name(&self) -> &'static str {
+            "cannot-start"
+        }
+
+        fn health_path(&self) -> &'static str {
+            "/health"
+        }
+
+        fn port_settings_keys(&self) -> (&'static str, &'static str) {
+            ("agentscopeHost", "agentscopePort")
+        }
+
+        fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
+            Some(PathBuf::from("/tmp"))
+        }
+
+        fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+            false
+        }
+
+        fn build_command(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<tokio::process::Command, ServiceError> {
+            Ok(tokio::process::Command::new("sh"))
+        }
+
+        fn resource_limits(&self) -> ResourceLimits {
+            ResourceLimits { max_memory_mb: 64, max_restarts: 1 }
+        }
+    }
+
+    // A037/test_helpers: Factory whose pre_run_setup always fails, exercising the
+    // error propagation path between pre_run_setup and spawn.
+    struct FailingSetupFactory;
+
+    impl ProcessFactory for FailingSetupFactory {
+        fn name(&self) -> &'static str {
+            "failing-setup"
+        }
+
+        fn health_path(&self) -> &'static str {
+            "/health"
+        }
+
+        fn port_settings_keys(&self) -> (&'static str, &'static str) {
+            ("agentscopeHost", "agentscopePort")
+        }
+
+        fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
+            Some(PathBuf::from("/tmp"))
+        }
+
+        fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+            true
+        }
+
+        fn pre_run_setup(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<(), ServiceError> {
+            Err(ServiceError::SpawnFailed("intentional setup failure".to_string()))
+        }
+
+        fn build_command(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<tokio::process::Command, ServiceError> {
+            Ok(tokio::process::Command::new("sh"))
+        }
+
+        fn resource_limits(&self) -> ResourceLimits {
+            ResourceLimits { max_memory_mb: 64, max_restarts: 1 }
+        }
+    }
+
+    // A037/test_helpers: Factory using the litellmPort key to exercise the agentscope_host
+    // fallback path in resolve_config when litellmPort is selected.
+    struct LitellmFactory;
+
+    impl ProcessFactory for LitellmFactory {
+        fn name(&self) -> &'static str {
+            "litellm"
+        }
+
+        fn health_path(&self) -> &'static str {
+            "/health"
+        }
+
+        fn port_settings_keys(&self) -> (&'static str, &'static str) {
+            ("litellmHost", "litellmPort")
+        }
+
+        fn working_dir(&self, _settings: &Settings) -> Option<PathBuf> {
+            Some(PathBuf::from("/tmp"))
+        }
+
+        fn can_start(&self, _runtime: &PythonRuntime) -> bool {
+            true
+        }
+
+        fn build_command(
+            &self,
+            _config: &SpawnConfig,
+            _runtime: &PythonRuntime,
+        ) -> Result<tokio::process::Command, ServiceError> {
+            Ok(tokio::process::Command::new("sh"))
+        }
+
+        fn resource_limits(&self) -> ResourceLimits {
+            ResourceLimits { max_memory_mb: 64, max_restarts: 1 }
+        }
+    }
+
     fn runtime() -> Arc<PythonRuntime> {
         let tmp = tempfile::tempdir().expect("tempdir");
         let platform = detect_platform().expect("platform");
@@ -382,6 +543,19 @@ mod tests {
     fn settings_mgr() -> Arc<SettingsManager> {
         let tmp = tempfile::tempdir().expect("tempdir");
         Arc::new(SettingsManager::new(tmp.path().to_path_buf()))
+    }
+
+    fn make_process(name: &'static str) -> BudgetedProcess {
+        BudgetedProcess::new(
+            Arc::new(TestFactory { name }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("make_process")
     }
 
     #[tokio::test]
@@ -514,5 +688,393 @@ mod tests {
             Some("postgres://localhost:5432/snapfzz"),
             "database_url must be preserved in SpawnConfig after BudgetedProcess::new"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // resolve_config() — missing working_dir
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_resolve_config_errors_when_working_dir_is_none() {
+        // A037/resolve_config: When factory.working_dir() returns None, BudgetedProcess::new
+        // must propagate a SpawnFailed error so the caller knows construction failed.
+        let result = BudgetedProcess::new(
+            Arc::new(NoWorkingDirFactory),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        );
+
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("expected SpawnFailed for missing working_dir, got Ok"),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing working directory"),
+            "error message should name the factory: got '{msg}'"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // resolve_config() — valid settings host/port resolution
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_resolve_config_uses_settings_host_and_port_when_set() {
+        // A037/resolve_config: When agentscopeHost and agentscopePort are non-empty in
+        // saved settings, resolve_config must use those values instead of defaults.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mgr = Arc::new(SettingsManager::new(tmp.path().to_path_buf()));
+        let mut settings = mgr.load().expect("load settings");
+        settings.agentscope_host = "192.168.1.1".to_string();
+        settings.agentscope_port = "9999".to_string();
+        mgr.save(&settings).expect("save settings");
+
+        let process = BudgetedProcess::new(
+            Arc::new(TestFactory { name: "agentscope" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            mgr,
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("process");
+
+        assert_eq!(process.config.host, "192.168.1.1");
+        assert_eq!(process.config.port, 9999);
+        drop(tmp);
+    }
+
+    #[test]
+    fn t37_budgeted_resolve_config_falls_back_to_default_host_when_settings_empty() {
+        // A037/resolve_config: When agentscopeHost is absent or empty, resolve_config must
+        // default to "127.0.0.1" so the process binds to localhost by default.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mgr = Arc::new(SettingsManager::new(tmp.path().to_path_buf()));
+        let mut settings = mgr.load().expect("load settings");
+        settings.agentscope_host = String::new();
+        settings.agentscope_port = String::new();
+        mgr.save(&settings).expect("save settings");
+
+        let process = BudgetedProcess::new(
+            Arc::new(TestFactory { name: "agentscope" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            mgr,
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("process");
+
+        assert_eq!(process.config.host, "127.0.0.1");
+        // port must be a valid ephemeral allocation (> 0) when settings is empty
+        assert!(process.config.port > 0);
+        drop(tmp);
+    }
+
+    #[test]
+    fn t37_budgeted_resolve_config_invalid_port_string_returns_error() {
+        // A037/resolve_config: A non-numeric agentscopePort in saved settings must cause
+        // resolve_config to return SpawnFailed with a message about the invalid value.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mgr = Arc::new(SettingsManager::new(tmp.path().to_path_buf()));
+        let mut settings = mgr.load().expect("load settings");
+        settings.agentscope_port = "not-a-number".to_string();
+        mgr.save(&settings).expect("save settings");
+
+        let result = BudgetedProcess::new(
+            Arc::new(TestFactory { name: "agentscope" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            mgr,
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        );
+
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("expected SpawnFailed for invalid port string, got Ok"),
+        };
+        assert!(
+            err.to_string().contains("agentscopePort"),
+            "error should name the offending key: got '{}'",
+            err
+        );
+        drop(tmp);
+    }
+
+    // -------------------------------------------------------------------------
+    // resolve_config() — litellm host fallback via agentscope_host
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_resolve_config_litellm_host_falls_back_to_agentscope_host() {
+        // A037/resolve_config: When the factory uses litellmPort as its port key and
+        // litellmHost is empty, resolve_config falls back to agentscope_host so LiteLLM
+        // binds to the same host as AgentScope when running remotely.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mgr = Arc::new(SettingsManager::new(tmp.path().to_path_buf()));
+        let mut settings = mgr.load().expect("load settings");
+        settings.agentscope_host = "10.0.0.5".to_string();
+        settings.litellm_host = String::new();
+        settings.litellm_port = "4000".to_string();
+        mgr.save(&settings).expect("save settings");
+
+        let process = BudgetedProcess::new(
+            Arc::new(LitellmFactory),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            mgr,
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("process");
+
+        assert_eq!(
+            process.config.host, "10.0.0.5",
+            "litellm host should fall back to agentscope_host when litellmHost is empty"
+        );
+        drop(tmp);
+    }
+
+    // -------------------------------------------------------------------------
+    // snapshot() — full field verification
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_snapshot_all_fields_correct_for_stopped_process() {
+        // A037/snapshot: A freshly constructed BudgetedProcess (never spawned) must produce
+        // a snapshot with Stopped status, no PID, zero uptime, and correct string fields.
+        let mut process = make_process("agentscope");
+        process.set_restart_count(3);
+        process.set_consecutive_failures(2);
+
+        let snap = process.snapshot();
+
+        assert_eq!(snap.name, "agentscope");
+        assert_eq!(snap.owner, "system");
+        assert_eq!(snap.location, "local");
+        assert!(snap.pid.is_none(), "no PID before spawn");
+        assert!(matches!(snap.status, ProcessStatus::Stopped));
+        assert_eq!(snap.restart_count, 3);
+        assert_eq!(snap.consecutive_failures, 2);
+        assert_eq!(snap.uptime_secs, 0, "uptime must be 0 before spawn");
+        assert!(snap.health_url.contains("agentscope") || snap.health_url.contains("/health"),
+            "health_url should contain the health path: '{}'", snap.health_url);
+    }
+
+    #[test]
+    fn t37_budgeted_snapshot_rss_is_none_without_pid() {
+        // A037/snapshot: rss_mb in the snapshot reflects measure_rss(); with no PID the
+        // registry cannot query sysinfo so it must be None.
+        let process = make_process("agentscope");
+        let snap = process.snapshot();
+        assert!(snap.rss_mb.is_none(), "rss_mb must be None when no PID is registered");
+    }
+
+    // -------------------------------------------------------------------------
+    // measure_rss() — explicit None without registered PID
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_measure_rss_returns_none_when_no_pid() {
+        // A037/measure_rss: BudgetedProcess::measure_rss delegates to the supervised budget
+        // registry. Without a registered PID the registry cannot query sysinfo, so the
+        // return value must be None.
+        let process = make_process("agentscope");
+        assert!(
+            process.measure_rss().is_none(),
+            "measure_rss must return None before a PID is registered"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // logs_tail() / logs_clear() — delegation and edge cases
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_logs_tail_zero_returns_empty_slice() {
+        // A037/logs_tail: Requesting zero lines must return an empty vec regardless of how
+        // many lines have been pushed, mirroring Vec::saturating_sub behavior.
+        let logs = Arc::new(ProcessLogs::new());
+        logs.push("agentscope", "alpha".to_string());
+        logs.push("agentscope", "beta".to_string());
+
+        let process = BudgetedProcess::new(
+            Arc::new(TestFactory { name: "agentscope" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            logs,
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("process");
+
+        assert!(
+            process.logs_tail(0).is_empty(),
+            "logs_tail(0) must return empty vec"
+        );
+    }
+
+    #[test]
+    fn t37_budgeted_logs_tail_n_greater_than_log_count_returns_all_lines() {
+        // A037/logs_tail: Requesting more lines than exist must return all available lines
+        // without panicking, verifying the saturating_sub boundary is handled.
+        let logs = Arc::new(ProcessLogs::new());
+        logs.push("agentscope", "first".to_string());
+        logs.push("agentscope", "second".to_string());
+
+        let process = BudgetedProcess::new(
+            Arc::new(TestFactory { name: "agentscope" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            logs,
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("process");
+
+        let lines = process.logs_tail(100);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "first");
+        assert_eq!(lines[1], "second");
+    }
+
+    #[test]
+    fn t37_budgeted_logs_clear_on_unknown_process_is_noop() {
+        // A037/logs_clear: Clearing logs for a process that has never pushed any lines
+        // must be a no-op (no panic, empty tail after).
+        let process = make_process("agentscope");
+        process.logs_clear();
+        assert!(process.logs_tail(10).is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // spawn() error paths
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn t37_budgeted_spawn_errors_when_can_start_returns_false() {
+        // A037/spawn: When factory.can_start() returns false, spawn must return a SpawnFailed
+        // error before attempting any OS-level process creation.
+        let mut process = BudgetedProcess::new(
+            Arc::new(CannotStartFactory),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("construction should succeed");
+
+        let err = process.spawn().await.expect_err("spawn should fail when can_start is false");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("dependencies not installed"),
+            "error message should mention dependencies: got '{msg}'"
+        );
+    }
+
+    #[tokio::test]
+    async fn t37_budgeted_spawn_errors_when_pre_run_setup_fails() {
+        // A037/spawn: When factory.pre_run_setup() returns an error, spawn must propagate it
+        // as a SpawnFailed so the caller can surface it without leaving the process in a
+        // partially-started state.
+        let mut process = BudgetedProcess::new(
+            Arc::new(FailingSetupFactory),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("construction should succeed");
+
+        let err = process.spawn().await.expect_err("spawn should fail when pre_run_setup errors");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("intentional setup failure"),
+            "error message should surface setup failure text: got '{msg}'"
+        );
+    }
+
+    #[tokio::test]
+    async fn t37_budgeted_spawn_resets_status_to_stopped_on_failure() {
+        // A037/spawn: After a spawn failure the status field must revert to Stopped so that
+        // list_snapshots() does not report a phantom Starting/Online state.
+        let mut process = BudgetedProcess::new(
+            Arc::new(CannotStartFactory),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("construction should succeed");
+
+        let _ = process.spawn().await;
+        let snap = process.snapshot();
+        assert!(
+            matches!(snap.status, ProcessStatus::Stopped),
+            "status must be Stopped after failed spawn, got {:?}", snap.status
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // check_memory_exceeded()
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_check_memory_exceeded_returns_false_when_no_pid() {
+        // A037/check_memory_exceeded: Without a registered PID, measure_rss() returns None
+        // and the method must conservatively return false rather than panicking.
+        let process = make_process("agentscope");
+        assert!(
+            !process.check_memory_exceeded(1),
+            "check_memory_exceeded must return false when rss is None"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // name() accessor
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn t37_budgeted_name_returns_factory_name() {
+        // A037/budgeted_process: name() must return the same identifier supplied by the
+        // factory, used for log key lookups and registry entries.
+        let process = make_process("agentscope");
+        assert_eq!(process.name(), "agentscope");
+    }
+
+    #[test]
+    fn t37_budgeted_name_reflects_different_factory_names() {
+        // A037/budgeted_process: Verify name() is factory-specific, not hardcoded, by
+        // constructing with a different name and confirming the accessor matches.
+        let process = BudgetedProcess::new(
+            Arc::new(LitellmFactory),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            settings_mgr(),
+            runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("process");
+
+        assert_eq!(process.name(), "litellm");
     }
 }

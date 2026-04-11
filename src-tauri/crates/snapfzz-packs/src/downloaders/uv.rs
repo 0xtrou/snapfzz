@@ -615,4 +615,105 @@ mod tests {
         let missing = PathBuf::from("/definitely/does/not/exist/snapfzz");
         assert!(find_file_recursive(&missing, "uv").is_none());
     }
+
+    // A014/find-file: find_file_recursive locates a file nested several levels deep
+    #[test]
+    fn t32_uv_find_file_recursive_finds_file_in_nested_dirs() {
+        let temp = tempfile::tempdir().unwrap();
+        let nested = temp.path().join("a").join("b").join("c");
+        std::fs::create_dir_all(&nested).unwrap();
+        let target = nested.join("uv");
+        std::fs::write(&target, b"binary").unwrap();
+
+        let found = find_file_recursive(temp.path(), "uv");
+        assert_eq!(found, Some(target));
+    }
+
+    // A014/find-file: find_file_recursive returns None when the named file is absent
+    #[test]
+    fn t32_uv_find_file_recursive_returns_none_when_file_absent() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("sub")).unwrap();
+        std::fs::write(temp.path().join("sub").join("other"), b"x").unwrap();
+
+        assert!(find_file_recursive(temp.path(), "uv").is_none());
+    }
+
+    // A014/binary-path: binary_path() appends the platform exe_suffix to install_dir
+    #[test]
+    fn t32_uv_binary_path_uses_exe_suffix() {
+        let temp = tempfile::tempdir().unwrap();
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("windows-x64", ".zip", ".exe"));
+        let bp = component.binary_path();
+        assert_eq!(bp, temp.path().join("uv.exe"));
+    }
+
+    // A014/binary-path: binary_path() on Unix has no suffix
+    #[test]
+    fn t32_uv_binary_path_no_suffix_on_unix() {
+        let temp = tempfile::tempdir().unwrap();
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let bp = component.binary_path();
+        assert_eq!(bp, temp.path().join("uv"));
+    }
+
+    // A014/cleanup: cleanup_extracted_artifacts removes a file and empty parent dirs up to install_dir
+    #[test]
+    fn t32_uv_cleanup_extracted_artifacts_removes_file_and_empty_parents() {
+        let temp = tempfile::tempdir().unwrap();
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let sub = temp.path().join("sub").join("inner");
+        std::fs::create_dir_all(&sub).unwrap();
+        let artifact = sub.join("uv-old");
+        std::fs::write(&artifact, b"old binary").unwrap();
+
+        component.cleanup_extracted_artifacts(&artifact).unwrap();
+
+        // The artifact file and its now-empty parent dirs should be gone
+        assert!(!artifact.exists());
+        assert!(!sub.exists());
+        assert!(!temp.path().join("sub").exists());
+    }
+
+    // A014/cleanup: cleanup_extracted_artifacts is a no-op when the extracted path equals binary_path()
+    #[test]
+    fn t32_uv_cleanup_extracted_artifacts_noop_when_path_is_binary() {
+        let temp = tempfile::tempdir().unwrap();
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let binary = component.binary_path();
+        std::fs::write(&binary, b"binary").unwrap();
+
+        // Should succeed without removing the binary
+        component.cleanup_extracted_artifacts(&binary).unwrap();
+        assert!(binary.exists());
+    }
+
+    // A014/cleanup: cleanup_extracted_artifacts succeeds even when file does not exist
+    #[test]
+    fn t32_uv_cleanup_extracted_artifacts_tolerates_missing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let component = UvDownloader::new(temp.path().to_path_buf(), platform("linux-x64", ".tar.gz", ""));
+        let phantom = temp.path().join("ghost").join("file");
+        // No file or dir created — should not panic or error
+        let result = component.cleanup_extracted_artifacts(&phantom);
+        assert!(result.is_ok());
+    }
+
+    // A014/executable: ensure_executable sets mode 0o755 on the target file (Unix only)
+    #[test]
+    #[cfg(unix)]
+    fn t32_uv_ensure_executable_sets_executable_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("uv");
+        std::fs::write(&file, b"binary").unwrap();
+        // Start with no execute bits
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        ensure_executable(&file).unwrap();
+
+        let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+        // 0o755 mask: owner execute + group execute + other execute
+        assert_eq!(mode & 0o111, 0o111, "executable bits not set: {mode:o}");
+    }
 }
