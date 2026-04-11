@@ -26,16 +26,17 @@ import { AppButton, ConfirmAction } from '@snapfzz/shared';
 import {
   type CustomProvider,
   type CustomProviderVariant,
-  type ModelInfo,
+  type ModelInfoEntry,
   deleteProviderKey,
   getBaseUrl,
   getMasterKey,
-  getModels,
+  getModelInfo,
   listProviderKeys,
   loadCustomProviders,
   saveCustomProviders,
   storeProviderKey,
 } from '../hooks/useLlmCommands';
+import { PROVIDER_ICONS } from '../provider-icons';
 
 const { Text, Title } = Typography;
 
@@ -50,6 +51,13 @@ const PROVIDERS = [
   { id: 'ollama', label: 'Ollama' },
   { id: 'groq', label: 'Groq' },
   { id: 'deepseek', label: 'DeepSeek' },
+  { id: 'together_ai', label: 'Together AI' },
+  { id: 'fireworks_ai', label: 'Fireworks AI' },
+  { id: 'bedrock', label: 'AWS Bedrock' },
+  { id: 'vertex_ai', label: 'Google Vertex AI' },
+  { id: 'replicate', label: 'Replicate' },
+  { id: 'huggingface', label: 'Hugging Face' },
+  { id: 'openrouter', label: 'OpenRouter' },
 ];
 
 // Brand colors for provider icon circles. Hex literals are intentional —
@@ -64,6 +72,13 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   ollama: '#FFFFFF',
   groq: '#F55036',
   deepseek: '#4D6BFE',
+  together_ai: '#0F6FFF',
+  fireworks_ai: '#FF6E1A',
+  bedrock: '#FF9900',
+  vertex_ai: '#1A73E8',
+  replicate: '#262626',
+  huggingface: '#FFD21E',
+  openrouter: '#6366F1',
 };
 
 interface ProviderKeyEntry {
@@ -81,9 +96,9 @@ interface ToggleState {
 }
 
 /**
- * Branded circle avatar for a provider. Uses the provider's brand color as
- * the background and renders the first letter of the label. No external
- * image dependencies — works offline and never 404s.
+ * Branded avatar for a provider. Renders the real SVG logo when one exists
+ * in PROVIDER_ICONS; otherwise falls back to a colored circle with the
+ * first letter of the label.
  */
 function ProviderIcon({
   providerId,
@@ -94,9 +109,26 @@ function ProviderIcon({
   label: string;
   size?: number;
 }) {
+  const iconUrl = PROVIDER_ICONS[providerId];
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt={`${label} icon`}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
   const bg = PROVIDER_BRAND_COLORS[providerId] ?? 'var(--bg-subtle)';
-  // Ollama uses a white background — use a dark letter so it reads on light bg.
-  const color = bg === '#FFFFFF' ? 'var(--text-primary)' : '#ffffff';
+  // Providers with very light brand colors need a dark letter to stay readable.
+  const lightBgs = new Set(['#FFFFFF', '#FFD21E']);
+  const color = lightBgs.has(bg) ? 'var(--text-primary)' : '#ffffff';
   const fontSize = Math.round(size * 0.45);
 
   return (
@@ -107,7 +139,7 @@ function ProviderIcon({
         height: size,
         borderRadius: '50%',
         background: bg,
-        border: bg === '#FFFFFF' ? '1px solid var(--border-default)' : 'none',
+        border: lightBgs.has(bg) ? '1px solid var(--border-default)' : 'none',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -347,21 +379,42 @@ function CustomProviderCard({
   );
 }
 
+// ─── Model Metadata Helpers ──────────────────────────────────────────────
+
+function formatContextWindow(tokens?: number): string {
+  if (!tokens) return '?';
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M ctx`;
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K ctx`;
+  return `${tokens} ctx`;
+}
+
+function formatCost(costPerToken?: number): string {
+  if (!costPerToken) return '?';
+  const perMillion = costPerToken * 1000000;
+  return `$${perMillion.toFixed(2)}/M`;
+}
+
 // ─── Model Chip ──────────────────────────────────────────────────────────
 
-function ModelChip({ model, providerPrefix }: { model: ModelInfo; providerPrefix: string }) {
-  const displayName = model.id.startsWith(`${providerPrefix}/`)
-    ? model.id.slice(providerPrefix.length + 1)
-    : model.id;
+function ModelChip({ model, providerPrefix }: { model: ModelInfoEntry; providerPrefix: string }) {
+  const displayName = model.model_name.startsWith(`${providerPrefix}/`)
+    ? model.model_name.slice(providerPrefix.length + 1)
+    : model.model_name;
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(model.id);
+      await navigator.clipboard.writeText(model.model_name);
       message.success('Model ID copied');
     } catch {
       message.error('Failed to copy');
     }
-  }, [model.id]);
+  }, [model.model_name]);
+
+  const info = model.model_info;
+  const metaParts: string[] = [];
+  if (info?.mode) metaParts.push(info.mode);
+  metaParts.push(formatContextWindow(info?.max_tokens));
+  metaParts.push(`${formatCost(info?.input_cost_per_token)}/in`);
 
   return (
     <div
@@ -377,20 +430,34 @@ function ModelChip({ model, providerPrefix }: { model: ModelInfo; providerPrefix
         minWidth: 0,
       }}
     >
-      <Text
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 13,
-          fontWeight: 500,
-          color: 'var(--text-primary)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          flex: 1,
-        }}
-      >
-        {displayName}
-      </Text>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 13,
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            display: 'block',
+          }}
+        >
+          {displayName}
+        </Text>
+        <Text
+          style={{
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            display: 'block',
+          }}
+        >
+          {metaParts.join(' \u00B7 ')}
+        </Text>
+      </div>
 
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
         <Button
@@ -400,7 +467,7 @@ function ModelChip({ model, providerPrefix }: { model: ModelInfo; providerPrefix
           onClick={handleCopy}
           aria-label={`Copy ${displayName}`}
         />
-        <Tooltip title={model.id}>
+        <Tooltip title={model.model_name}>
           <Button
             type="text"
             size="small"
@@ -413,10 +480,41 @@ function ModelChip({ model, providerPrefix }: { model: ModelInfo; providerPrefix
   );
 }
 
+// ─── Model Info Cache ────────────────────────────────────────────────────
+
+const MODELS_INFO_CACHE_KEY = 'snapfzz:model_info';
+const MODELS_INFO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface ModelInfoCache {
+  data: ModelInfoEntry[];
+  ts: number;
+}
+
+function readModelInfoCache(): ModelInfoEntry[] | null {
+  try {
+    const raw = localStorage.getItem(MODELS_INFO_CACHE_KEY);
+    if (!raw) return null;
+    const parsed: ModelInfoCache = JSON.parse(raw);
+    if (Date.now() - parsed.ts > MODELS_INFO_CACHE_TTL) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeModelInfoCache(data: ModelInfoEntry[]): void {
+  try {
+    const entry: ModelInfoCache = { data, ts: Date.now() };
+    localStorage.setItem(MODELS_INFO_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    // localStorage may be full or unavailable; silently ignore
+  }
+}
+
 // ─── Available Models Section ────────────────────────────────────────────
 
 function AvailableModels({ providerId }: { providerId: string }) {
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [models, setModels] = useState<ModelInfoEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
@@ -426,11 +524,25 @@ function AvailableModels({ providerId }: { providerId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const [baseUrl, masterKey] = await Promise.all([getBaseUrl(), getMasterKey()]);
-      const response = await getModels(baseUrl, masterKey);
+      // Check localStorage cache first
+      const cached = readModelInfoCache();
+      let allModels: ModelInfoEntry[];
+
+      if (cached) {
+        allModels = cached;
+      } else {
+        const [baseUrl, masterKey] = await Promise.all([getBaseUrl(), getMasterKey()]);
+        const response = await getModelInfo(baseUrl, masterKey);
+        allModels = response.data;
+        writeModelInfoCache(allModels);
+      }
+
       // Filter models by provider prefix
-      const providerModels = response.data.filter(
-        (m) => m.id.startsWith(`${providerId}/`) || m.id.startsWith(`${providerId}.`),
+      const providerModels = allModels.filter(
+        (m) =>
+          m.model_name.startsWith(`${providerId}/`) ||
+          m.model_name.startsWith(`${providerId}.`) ||
+          m.model_info?.litellm_provider === providerId,
       );
       setModels(providerModels);
       setFetched(true);
@@ -443,6 +555,12 @@ function AvailableModels({ providerId }: { providerId: string }) {
     }
   }, [providerId]);
 
+  const handleRefresh = useCallback(async () => {
+    // Clear cache so we get fresh data
+    localStorage.removeItem(MODELS_INFO_CACHE_KEY);
+    await fetchModels();
+  }, [fetchModels]);
+
   useEffect(() => {
     void fetchModels();
   }, [fetchModels]);
@@ -450,7 +568,7 @@ function AvailableModels({ providerId }: { providerId: string }) {
   const filteredModels = useMemo(() => {
     if (!filter) return models;
     const lower = filter.toLowerCase();
-    return models.filter((m) => m.id.toLowerCase().includes(lower));
+    return models.filter((m) => m.model_name.toLowerCase().includes(lower));
   }, [models, filter]);
 
   return (
@@ -468,7 +586,7 @@ function AvailableModels({ providerId }: { providerId: string }) {
         </Title>
         <Button
           icon={<ReloadOutlined />}
-          onClick={() => void fetchModels()}
+          onClick={() => void handleRefresh()}
           loading={loading}
           size="small"
         >
@@ -488,7 +606,7 @@ function AvailableModels({ providerId }: { providerId: string }) {
           <Text style={{ color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
             Unable to fetch models
           </Text>
-          <Button size="small" onClick={() => void fetchModels()}>
+          <Button size="small" onClick={() => void handleRefresh()}>
             Retry
           </Button>
         </div>
@@ -538,12 +656,12 @@ function AvailableModels({ providerId }: { providerId: string }) {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
                 gap: 8,
               }}
             >
               {filteredModels.map((model) => (
-                <ModelChip key={model.id} model={model} providerPrefix={providerId} />
+                <ModelChip key={model.model_name} model={model} providerPrefix={providerId} />
               ))}
             </div>
           )}

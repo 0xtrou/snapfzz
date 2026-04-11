@@ -266,6 +266,40 @@ describe('A013/Hooks: useLlmCommands', () => {
       const result = await getModels('http://localhost:4000', 'sk-master');
       expect(result.data).toHaveLength(1);
     });
+
+    it('gets model info via GET /v1/model/info', async () => {
+      const modelData = {
+        data: [
+          {
+            model_name: 'gpt-4o',
+            model_info: {
+              max_tokens: 128000,
+              input_cost_per_token: 0.000005,
+              output_cost_per_token: 0.000015,
+              mode: 'chat',
+              supports_vision: true,
+            },
+          },
+        ],
+      };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(modelData),
+      });
+      const { getModelInfo } = await import('../../hooks/useLlmCommands');
+      const result = await getModelInfo('http://localhost:4000', 'sk-master');
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].model_name).toBe('gpt-4o');
+      expect(result.data[0].model_info.max_tokens).toBe(128000);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/v1/model/info',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer sk-master',
+          }),
+        }),
+      );
+    });
   });
 
   describe('A013/Custom: Custom provider persistence', () => {

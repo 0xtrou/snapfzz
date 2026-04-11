@@ -129,6 +129,28 @@ export interface ModelListResponse {
   data: ModelInfo[];
 }
 
+// Rich model metadata returned by /v1/model/info
+export interface ModelInfoDetails {
+  max_tokens?: number;
+  max_input_tokens?: number;
+  max_output_tokens?: number;
+  input_cost_per_token?: number;
+  output_cost_per_token?: number;
+  mode?: string;
+  supports_vision?: boolean;
+  supports_function_calling?: boolean;
+  litellm_provider?: string;
+}
+
+export interface ModelInfoEntry {
+  model_name: string;
+  model_info: ModelInfoDetails;
+}
+
+export interface ModelInfoResponse {
+  data: ModelInfoEntry[];
+}
+
 // Custom provider metadata stored in vault as JSON blob
 export type CustomProviderVariant = 'openai' | 'anthropic';
 
@@ -336,6 +358,14 @@ export async function getModels(
   masterKey: string,
 ): Promise<ModelListResponse> {
   const res = await litellmFetch(`${baseUrl}/v1/models`, masterKey);
+  return res.json();
+}
+
+export async function getModelInfo(
+  baseUrl: string,
+  masterKey: string,
+): Promise<ModelInfoResponse> {
+  const res = await litellmFetch(`${baseUrl}/v1/model/info`, masterKey);
   return res.json();
 }
 

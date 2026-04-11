@@ -51,12 +51,15 @@ describe('A013/UI/ProvidersTab', () => {
       return undefined;
     });
 
-    // Default: /v1/models returns empty
+    // Default: /v1/model/info returns empty
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ data: [] }),
       text: () => Promise.resolve('{}'),
     });
+
+    // Clear model info cache before each test
+    localStorage.removeItem('snapfzz:model_info');
   });
 
   afterEach(() => {
@@ -93,7 +96,7 @@ describe('A013/UI/ProvidersTab', () => {
       await screen.findByText('OpenAI');
 
       const toggles = screen.getAllByRole('switch');
-      expect(toggles.length).toBe(9);
+      expect(toggles.length).toBe(16);
     });
 
     it('A013/Grid: toggle can be clicked without navigating to detail', async () => {
@@ -367,15 +370,15 @@ describe('A013/UI/ProvidersTab', () => {
       expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument();
     });
 
-    it('A013/Detail: shows model chips from LiteLLM /v1/models', async () => {
+    it('A013/Detail: shows model chips from LiteLLM /v1/model/info', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () =>
           Promise.resolve({
             data: [
-              { id: 'openai/gpt-4o' },
-              { id: 'openai/gpt-4o-mini' },
-              { id: 'anthropic/claude-3' },
+              { model_name: 'openai/gpt-4o', model_info: { max_tokens: 128000, mode: 'chat', input_cost_per_token: 0.000005 } },
+              { model_name: 'openai/gpt-4o-mini', model_info: { max_tokens: 128000, mode: 'chat' } },
+              { model_name: 'anthropic/claude-3', model_info: { max_tokens: 200000, mode: 'chat' } },
             ],
           }),
         text: () => Promise.resolve(''),
@@ -396,9 +399,9 @@ describe('A013/UI/ProvidersTab', () => {
         json: () =>
           Promise.resolve({
             data: [
-              { id: 'openai/gpt-4o' },
-              { id: 'openai/gpt-4o-mini' },
-              { id: 'openai/gpt-3.5-turbo' },
+              { model_name: 'openai/gpt-4o', model_info: { mode: 'chat' } },
+              { model_name: 'openai/gpt-4o-mini', model_info: { mode: 'chat' } },
+              { model_name: 'openai/gpt-3.5-turbo', model_info: { mode: 'chat' } },
             ],
           }),
         text: () => Promise.resolve(''),
@@ -435,7 +438,7 @@ describe('A013/UI/ProvidersTab', () => {
         ok: true,
         json: () =>
           Promise.resolve({
-            data: [{ id: 'openai/gpt-4o' }],
+            data: [{ model_name: 'openai/gpt-4o', model_info: { mode: 'chat' } }],
           }),
         text: () => Promise.resolve(''),
       });
