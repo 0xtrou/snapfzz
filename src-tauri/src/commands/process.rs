@@ -132,10 +132,14 @@ pub async fn restart_process<R: tauri::Runtime>(
     postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<(), String> {
     // A039/PostgresRestart: PostgreSQL is managed outside the factory registry.
+    // Tolerates being called after kill — stop() errors are ignored since PG may already be down.
     if name == "postgresql" {
         let mut pg_guard = postgres_runtime.lock().await;
         if let Some(ref mut pg) = *pg_guard {
-            pg.stop().await.map_err(|e| e.to_string())?;
+            // Stop gracefully — ignore errors (PG may already be stopped after kill)
+            if let Err(e) = pg.stop().await {
+                eprintln!("[postgres] stop on restart (ignored): {e}");
+            }
             pg.start().await.map_err(|e| e.to_string())?;
             if let Err(e) = pg.create_database("litellm").await {
                 eprintln!("[postgres] create litellm db on restart: {e}");
@@ -171,7 +175,9 @@ pub async fn kill_process<R: tauri::Runtime>(
     if name == "postgresql" {
         let mut pg_guard = postgres_runtime.lock().await;
         if let Some(ref mut pg) = *pg_guard {
-            pg.stop().await.map_err(|e| e.to_string())?;
+            if let Err(e) = pg.stop().await {
+                eprintln!("[postgres] stop on kill (ignored): {e}");
+            }
             emit_supervisor(&app, "success", &name, "postgresql killed".into());
             return Ok(());
         }
