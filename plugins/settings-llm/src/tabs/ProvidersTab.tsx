@@ -845,14 +845,7 @@ function AvailableModels({
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <Title level={5} style={{ margin: 0, color: 'var(--text-primary)' }}>
             Available Models
@@ -864,22 +857,6 @@ function AvailableModels({
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Radio.Group
-            value={modelTypeFilter}
-            onChange={(e) => setModelTypeFilter(e.target.value as string)}
-            size="small"
-          >
-            {modelTypes.map((type) => {
-              const count = type === 'all'
-                ? filteredModels.length
-                : filteredModels.filter((m) => (catalogLookup[m.id]?.mode || m.owned_by || 'chat') === type).length;
-              return (
-                <Radio.Button key={type} value={type}>
-                  {type === 'all' ? 'All' : type.replace(/_/g, ' ')} ({count})
-                </Radio.Button>
-              );
-            })}
-          </Radio.Group>
           {models.length > 0 && unimportedCount > 0 && !usingCatalog && (
             <Button
               icon={<PlusOutlined />}
@@ -901,6 +878,25 @@ function AvailableModels({
             </Button>
           )}
         </div>
+      </div>
+
+      <div style={{ marginBottom: 12, overflowX: 'auto' }}>
+        <Radio.Group
+          value={modelTypeFilter}
+          onChange={(e) => setModelTypeFilter(e.target.value as string)}
+          size="small"
+        >
+          {modelTypes.map((type) => {
+            const count = type === 'all'
+              ? filteredModels.length
+              : filteredModels.filter((m) => (catalogLookup[m.id]?.mode || m.owned_by || 'chat') === type).length;
+            return (
+              <Radio.Button key={type} value={type}>
+                {type === 'all' ? 'All' : type.replace(/_/g, ' ')} ({count})
+              </Radio.Button>
+            );
+          })}
+        </Radio.Group>
       </div>
 
       {error ? (
