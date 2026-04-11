@@ -48,6 +48,11 @@ The Snapfzz source code itself is licensed under the [Snapfzz Community License 
 - **URL:** https://github.com/GuillaumeGomez/sysinfo
 - **Used for:** Hardware detection (CPU cores, RAM, battery status) for budget presets
 
+### postgresql_embedded
+- **License:** Apache 2.0 / MIT
+- **URL:** https://github.com/theseus-rs/postgresql-embedded
+- **Used for:** Embedded PostgreSQL server lifecycle (download, initdb, start, stop, database provisioning) for LiteLLM's Prisma database backend
+
 ### dashmap
 - **License:** MIT
 - **URL:** https://github.com/xacrimon/dashmap
@@ -118,6 +123,12 @@ The Snapfzz source code itself is licensed under the [Snapfzz Community License 
 - **PyPI:** https://pypi.org/project/litellm/
 - **Used for:** Unified LLM gateway proxy — routes requests to 100+ providers (OpenAI, Anthropic, Ollama, Azure, Bedrock, etc.), virtual API key management, per-key budget enforcement, model routing/combos, spend tracking, request logging
 - **Note:** Only the MIT-licensed core is used (`pip install litellm[proxy]`). Code under the `enterprise/` directory of the LiteLLM repository is under a separate enterprise license and is NOT used by Snapfzz.
+
+### Prisma (prisma-client-py)
+- **License:** Apache 2.0
+- **URL:** https://github.com/RobertCraiworthy/prisma-client-py
+- **PyPI:** https://pypi.org/project/prisma/
+- **Used for:** Database schema management and ORM for LiteLLM's PostgreSQL backend (`prisma generate`, `prisma db push`)
 
 ### AgentScope
 - **License:** Apache 2.0
