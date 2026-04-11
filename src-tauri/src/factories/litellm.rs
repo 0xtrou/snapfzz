@@ -215,7 +215,7 @@ impl ProcessFactory for LiteLLMFactory {
     fn build_command(
         &self,
         config: &SpawnConfig,
-        _runtime: &PythonRuntime,
+        runtime: &PythonRuntime,
     ) -> Result<tokio::process::Command, ServiceError> {
         self.service
             .working_dir()
@@ -228,7 +228,14 @@ impl ProcessFactory for LiteLLMFactory {
             working_dir: config.working_dir.clone(),
         })?;
 
-        // A013/ModelDB: Minimal config.yaml with store_model_in_db=true so models
+        // A013/Prisma: LiteLLM needs prisma on PATH at runtime for DB connection.
+        let venv_bin = runtime.venv_dir().join("bin");
+        let path_with_venv = std::env::var("PATH")
+            .map(|p| format!("{}:{p}", venv_bin.display()))
+            .unwrap_or_else(|_| venv_bin.display().to_string());
+        cmd.env("PATH", &path_with_venv);
+
+        // A013/ModelDB: Minimal config.yaml with store_model_in_db=True so models
         // added via POST /model/new persist in PostgreSQL across restarts.
         let config_path = self.service.config_path();
         if config_path.exists() {
