@@ -908,6 +908,178 @@ describe('A005/lifecycle: additional branch coverage', () => {
   });
 });
 
+describe('A005/lifecycle: uncovered branch coverage', () => {
+  it('A005/lifecycle: activate context callback triggers activateByEvent via bus.emit', async () => {
+    const host = new PluginHost(new ContributionStore());
+    let capturedContext: PluginContext | null = null;
+
+    host.register(
+      defineTestPlugin({
+        id: 'ctx-event-trigger',
+        activationEvents: ['onStartupFinished'],
+        activate: async (ctx) => {
+          capturedContext = ctx;
+          return {};
+        },
+      }),
+    );
+
+    // Register a target plugin that activates on the event emitted by bus.emit
+    // bus.emit calls onActivationEvent(`onEvent:ctx-event-trigger:my-signal`)
+    const onEventTarget = vi.fn().mockResolvedValue({});
+    host.register(
+      defineTestPlugin({
+        id: 'ctx-event-target',
+        activationEvents: ['onEvent:ctx-event-trigger:my-signal'],
+        activate: onEventTarget,
+      }),
+    );
+
+    await host.activate('ctx-event-trigger');
+    expect(capturedContext).toBeTruthy();
+
+    // bus.emit calls onActivationEvent (line 230) which calls this.activateByEvent
+    (capturedContext as PluginContext).bus.emit('my-signal', {});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(onEventTarget).toHaveBeenCalled();
+  });
+
+  it('A005/lifecycle: activate logs warn when elapsed exceeds activationTimeoutMs', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    // Make Date.now() jump forward so elapsed > activationTimeoutMs
+    let callCount = 0;
+    const dateSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
+      callCount++;
+      // First call: startedAt = 0; subsequent calls return a large value
+      return callCount === 1 ? 0 : 99999;
+    });
+
+    try {
+      const host = new PluginHost(new ContributionStore());
+
+      host.register(
+        defineTestPlugin({
+          id: 'just-slow',
+          activate: async () => ({}),
+        }),
+      );
+
+      // Override startupBudget so activationTimeoutMs is well within real time but below mocked elapsed
+      (host as unknown as { startupBudget: { startupBudgetMs: number; activationTimeoutMs: number } }).startupBudget =
+        { startupBudgetMs: 200, activationTimeoutMs: 5000 };
+
+      await host.activate('just-slow');
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('activation took'));
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  it('A005/lifecycle: fetchStartupBudget returns values from bridge when response is valid', async () => {
+    const shared = await import('@snapfzz/shared');
+    const bridgeWithBudget = {
+      isAvailable: true,
+      invoke: vi.fn().mockResolvedValue({ visible_ms: 300, activation_timeout_ms: 8000 }),
+      listen: vi.fn().mockResolvedValue(() => {}),
+    };
+
+    const spy = vi.spyOn(shared, 'createTauriBridge').mockReturnValue(bridgeWithBudget);
+
+    try {
+      const host = new PluginHost(new ContributionStore());
+      type HostInternal = { startupBudget: null; fetchStartupBudget(): Promise<{ startupBudgetMs: number; activationTimeoutMs: number }> };
+      const internal = host as unknown as HostInternal;
+      internal.startupBudget = null;
+
+      const result = await internal.fetchStartupBudget();
+
+      expect(result.startupBudgetMs).toBe(300);
+      expect(result.activationTimeoutMs).toBe(8000);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('A003/StartupBudget: fetchStartupBudget falls back to defaults when visible_ms is not a number', async () => {
+    const shared = await import('@snapfzz/shared');
+    const bridgeWithInvalidVisibleMs = {
+      isAvailable: true,
+      invoke: vi.fn().mockResolvedValue({ visible_ms: 'not-a-number', activation_timeout_ms: 8000 }),
+      listen: vi.fn().mockResolvedValue(() => {}),
+    };
+
+    const spy = vi.spyOn(shared, 'createTauriBridge').mockReturnValue(bridgeWithInvalidVisibleMs);
+
+    try {
+      const host = new PluginHost(new ContributionStore());
+      type HostInternal = { fetchStartupBudget(): Promise<{ startupBudgetMs: number; activationTimeoutMs: number }> };
+      const internal = host as unknown as HostInternal;
+
+      const result = await internal.fetchStartupBudget();
+
+      // When visible_ms is not a number, must fall back to compile-time defaults.
+      expect(typeof result.startupBudgetMs).toBe('number');
+      expect(typeof result.activationTimeoutMs).toBe('number');
+      expect(result.startupBudgetMs).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('A003/StartupBudget: fetchStartupBudget falls back to defaults when activation_timeout_ms is not a number', async () => {
+    const shared = await import('@snapfzz/shared');
+    const bridgeWithInvalidTimeout = {
+      isAvailable: true,
+      invoke: vi.fn().mockResolvedValue({ visible_ms: 300, activation_timeout_ms: null }),
+      listen: vi.fn().mockResolvedValue(() => {}),
+    };
+
+    const spy = vi.spyOn(shared, 'createTauriBridge').mockReturnValue(bridgeWithInvalidTimeout);
+
+    try {
+      const host = new PluginHost(new ContributionStore());
+      type HostInternal = { fetchStartupBudget(): Promise<{ startupBudgetMs: number; activationTimeoutMs: number }> };
+      const internal = host as unknown as HostInternal;
+
+      const result = await internal.fetchStartupBudget();
+
+      // When activation_timeout_ms is not a number, must fall back to compile-time defaults.
+      expect(typeof result.startupBudgetMs).toBe('number');
+      expect(typeof result.activationTimeoutMs).toBe('number');
+      expect(result.activationTimeoutMs).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('A003/StartupBudget: fetchStartupBudget falls back to defaults when bridge returns null response', async () => {
+    const shared = await import('@snapfzz/shared');
+    const bridgeWithNullResponse = {
+      isAvailable: true,
+      invoke: vi.fn().mockResolvedValue(null),
+      listen: vi.fn().mockResolvedValue(() => {}),
+    };
+
+    const spy = vi.spyOn(shared, 'createTauriBridge').mockReturnValue(bridgeWithNullResponse);
+
+    try {
+      const host = new PluginHost(new ContributionStore());
+      type HostInternal = { fetchStartupBudget(): Promise<{ startupBudgetMs: number; activationTimeoutMs: number }> };
+      const internal = host as unknown as HostInternal;
+
+      const result = await internal.fetchStartupBudget();
+
+      expect(typeof result.startupBudgetMs).toBe('number');
+      expect(typeof result.activationTimeoutMs).toBe('number');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe('A002/zones: PluginHost Zone 2 purity', () => {
   it('A002/zones: PluginHost has no direct DOM/window/localStorage dependencies', () => {
     const srcDir = dirname(new URL(import.meta.url).pathname);

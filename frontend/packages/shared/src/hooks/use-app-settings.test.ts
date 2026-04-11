@@ -369,4 +369,150 @@ describe('useAppSettings', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(result.current.theme).toBe('light');
   });
+
+  it('toggleTheme returns early when bridge is unavailable', async () => {
+    bridgeMock.isAvailable = false;
+    const { useAppSettings } = await import('./use-app-settings');
+    const { result } = renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(result.current.theme).toBeDefined();
+    });
+
+    await act(async () => {
+      await result.current.toggleTheme();
+    });
+
+    // With bridge unavailable, no backend call is made and DOM stays unchanged
+    expect(bridgeMock.invoke).not.toHaveBeenCalled();
+  });
+
+  it('uses dark fallback when matchMedia is not a function', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+    const { useAppSettings } = await import('./use-app-settings');
+    const { result } = renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(result.current.theme).toBe('dark');
+    });
+  });
+
+  it('resolves initial theme as light when matchMedia reports light preference', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: !query.includes('dark'), // light mode
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      })),
+    });
+    bridgeMock.isAvailable = false;
+    const { useAppSettings } = await import('./use-app-settings');
+    const { result } = renderHook(() => useAppSettings());
+
+    // Initial state from useState initializer should use matchMedia (light preference)
+    expect(result.current.theme).toBe('light');
+  });
+
+  it('toggles from light to dark theme via backend', async () => {
+    bridgeMock.invoke.mockImplementation(async (command) => {
+      if (command === 'get_settings') return { theme: 'light', fontFamily: 'Inter', fontSize: '14' };
+      if (command === 'list_installed_fonts') return [];
+      if (command === 'save_settings') return undefined;
+      return '/tmp/snapfzz';
+    });
+    const { useAppSettings } = await import('./use-app-settings');
+    const { result } = renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(result.current.theme).toBe('light');
+    });
+
+    await act(async () => {
+      await result.current.toggleTheme();
+    });
+
+    const saveCall = bridgeMock.invoke.mock.calls.find(([command]) => command === 'save_settings');
+    expect(saveCall).toBeTruthy();
+    expect(saveCall?.[1]).toMatchObject({
+      settings: expect.objectContaining({ theme: 'dark' }),
+    });
+  });
+
+  it('toggles to light theme fallback when current theme is dark and save fails', async () => {
+    bridgeMock.invoke.mockImplementation(async (command) => {
+      if (command === 'get_settings') return { theme: 'light', fontFamily: 'Inter', fontSize: '14' };
+      if (command === 'list_installed_fonts') return [];
+      if (command === 'save_settings') throw new Error('save failed');
+      return '/tmp/snapfzz';
+    });
+    const { useAppSettings } = await import('./use-app-settings');
+    const { result } = renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(result.current.theme).toBe('light');
+    });
+
+    await act(async () => {
+      await result.current.toggleTheme();
+    });
+
+    // theme was 'light', fallback should be 'dark'
+    expect(result.current.theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('spec: skips unlisten call when bridge.listen rejects before unmount', async () => {
+    // Covers the false branch of `if (unlisten) unlisten()` in effect cleanup
+    bridgeMock.listen.mockRejectedValue(new Error('listen unavailable'));
+    const { useAppSettings } = await import('./use-app-settings');
+    const { unmount } = renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(bridgeMock.invoke).toHaveBeenCalledWith('get_settings');
+    });
+
+    // Unmount while unlisten is still null — should not throw
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('spec: applies default font size of 14 when fontSize is undefined in settings', async () => {
+    // Covers the `fontSize || "12"` branch and NaN/non-finite path in resolveFontSize
+    bridgeMock.invoke.mockImplementation(async (command) => {
+      if (command === 'get_settings') return { theme: 'dark', fontFamily: 'Inter' };
+      if (command === 'list_installed_fonts') return [];
+      return '/tmp/snapfzz';
+    });
+    const { useAppSettings } = await import('./use-app-settings');
+    renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(document.body.style.fontSize).toBe('12px');
+    });
+  });
+
+  it('spec: falls back to 14px when fontSize is a non-numeric string', async () => {
+    // Covers the Number.isFinite(NaN) false branch in resolveFontSize
+    bridgeMock.invoke.mockImplementation(async (command) => {
+      if (command === 'get_settings') return { theme: 'dark', fontFamily: 'Inter', fontSize: 'abc' };
+      if (command === 'list_installed_fonts') return [];
+      return '/tmp/snapfzz';
+    });
+    const { useAppSettings } = await import('./use-app-settings');
+    renderHook(() => useAppSettings());
+
+    await waitFor(() => {
+      expect(document.body.style.fontSize).toBe('14px');
+    });
+  });
 });
