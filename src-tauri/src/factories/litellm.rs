@@ -40,6 +40,24 @@ impl LiteLLMFactory {
             env.insert("LITELLM_MASTER_KEY".to_string(), master_key);
         }
 
+        // A013/SaltKey: Stable encryption key for DB model persistence.
+        // Without this, LiteLLM generates a random salt per restart and can't
+        // decrypt previously stored models → they're silently lost.
+        let salt_key = match guard.read("litellm:salt_key") {
+            Ok(existing) => String::from_utf8(existing).unwrap_or_default(),
+            Err(_) => {
+                let generated = format!("sk-salt-{:x}", std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos());
+                let _ = guard.store("litellm:salt_key", generated.as_bytes());
+                generated
+            }
+        };
+        if !salt_key.is_empty() {
+            env.insert("LITELLM_SALT_KEY".to_string(), salt_key);
+        }
+
         for provider in &[
             "openai",
             "anthropic",
