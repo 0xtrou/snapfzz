@@ -45,20 +45,44 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 
 ---
 
+## Two-Layer Architecture
+
+Every managed service has two layers — **runtime management** (how to run it) and **domain logic** (what it does):
+
+```
+RUNTIME MANAGEMENT (snapfzz-packs)     DOMAIN LOGIC (standalone crates)
+┌─────────────────────────────┐        ┌─────────────────────────────┐
+│ core/                       │        │                             │
+│   SystemComponent trait     │        │ snapfzz-llm                │
+│   ManagedService trait      │        │   config gen, key mgmt,    │
+│   Python toolchain          │        │   spend tracking           │
+│   PostgreSQL infra          │        │                             │
+│                             │        │ snapfzz-cef                │
+│ litellm/  → how to spawn   │        │   CefRuntime, CefWindow,   │
+│ agentscope/ → how to spawn  │        │   CDP server, screenshots  │
+│ cef/      → how to download │        │                             │
+└─────────────────────────────┘        │ snapfzz-stream             │
+                                       │   SSE parsing, batching    │
+                                       │                             │
+                                       │ snapfzz-vault              │
+                                       │   encryption, keychain     │
+                                       └─────────────────────────────┘
+```
+
 ## Crate Responsibilities
 
-| Crate | Owns | Does NOT own |
-|---|---|---|
-| **snapfzz-kernel** | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save), shared types | Tauri commands, runtime lifecycle, window management |
-| **snapfzz-packs** | Service pack architecture: `core/` (traits, DTOs, Python toolchain, PostgreSQL infra), `litellm/` (LiteLLM service), `agentscope/` (AgentScope service). Implements SystemComponent + ManagedService traits. | Process spawning, budget gating, Tauri commands |
-| **snapfzz-stream** | SSE consumer, token batching at `batch_interval_ms`, Channel callback | Tauri Channel type, HTTP client config |
-| **snapfzz-vault** | AES-256-GCM encryption, master key (keychain/keyfile), vault file I/O, rate limiting | Tauri commands, plugin access policy |
-| **snapfzz-llm** | LiteLLM config.yaml generation, virtual key management (/key/* proxy), spend tracking (/spend/* proxy) | LiteLLM process lifecycle |
-| **snapfzz-cef** | CEF binary download, runtime lifecycle, window management, CDP automation | Tauri commands |
-| **snapfzz-plugin-bridge** | Schema validation, capability checking, typed command routing (Beta) | Plugin discovery, plugin UI rendering |
-| **main.rs + commands/** | Tauri command handlers, event emission (`app.emit`), window management, orchestration flow | Domain logic — always delegates to crates |
+| Crate | Layer | Owns | Does NOT own |
+|---|---|---|---|
+| **snapfzz-kernel** | Orchestration | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save) | Tauri commands, domain logic, runtime lifecycle |
+| **snapfzz-packs** | Runtime mgmt | Service pack architecture: `core/` (traits, DTOs, Python toolchain, PostgreSQL infra), `litellm/` (spawn config), `agentscope/` (spawn config), `cef/` (download + install). Implements SystemComponent + ManagedService traits. | Domain logic, process spawning, Tauri commands |
+| **snapfzz-cef** | Domain logic | CEF runtime lifecycle, window management (navigate, screenshot, devtools), CDP automation, CefInstallCheck trait | CEF binary download (that's in packs/cef), Tauri commands |
+| **snapfzz-llm** | Domain logic | LiteLLM config.yaml generation, virtual key management (/key/* proxy), spend tracking (/spend/* proxy) | LiteLLM process lifecycle (that's in packs/litellm) |
+| **snapfzz-stream** | Domain logic | SSE consumer, token batching at `batch_interval_ms`, Channel callback | Tauri Channel type, HTTP client config |
+| **snapfzz-vault** | Domain logic | AES-256-GCM encryption, master key (keychain/keyfile), vault file I/O, rate limiting | Tauri commands, plugin access policy |
+| **snapfzz-plugin-bridge** | Domain logic | Schema validation, capability checking, typed command routing (Beta) | Plugin discovery, plugin UI rendering |
+| **main.rs + commands/** | Orchestration | Tauri command handlers (thin), event emission, window management | Domain logic — always delegates to crates |
 
-### The Rule
+### The Rules
 
 **main.rs is the orchestrator. Crates do the work.**
 
@@ -66,24 +90,30 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 - Domain logic NEVER lives in commands/
 - If a command is >10 lines, the logic should move to a crate
 
+**Runtime management and domain logic are separate crates.**
+
+- `snapfzz-packs/{service}/` = how to run it (download, spawn, health check)
+- `snapfzz-{name}/` = what it does (config, keys, windows, protocols)
+- Domain crates have zero dependency on snapfzz-packs
+
 ### Dependency Graph (no cycles)
 
 ```
-snapfzz-kernel ← snapfzz-packs (uses PythonRuntime, ManagedService)
-snapfzz-kernel (standalone — no deps on packs, llm, cef, vault)
-snapfzz-packs  (standalone — no deps on kernel, llm, cef, vault)
-snapfzz-llm    (standalone — no inter-crate deps)
-snapfzz-stream (standalone — no inter-crate deps)
-snapfzz-vault  (standalone — no inter-crate deps)
-snapfzz-cef    (standalone — no inter-crate deps)
+snapfzz-kernel  ← snapfzz-packs (uses PythonRuntime, ManagedService)
+snapfzz-packs   ← snapfzz-cef   (uses CefInstallCheck trait in download.rs)
 
-main.rs imports ALL crates; crates never import each other
-(except kernel ← packs for PythonRuntime type)
+snapfzz-kernel  (standalone — no deps on llm, cef, vault, stream)
+snapfzz-cef     (standalone — no deps on packs, kernel)
+snapfzz-llm     (standalone — no inter-crate deps)
+snapfzz-stream  (standalone — no inter-crate deps)
+snapfzz-vault   (standalone — no inter-crate deps)
+
+main.rs imports ALL crates; domain crates never depend on packs
 ```
 
 ---
 
-## snapfzz-packs — Vertical Domain Slices
+## snapfzz-packs — Runtime Management (Vertical Slices)
 
 ```
 snapfzz-packs/src/
@@ -103,21 +133,26 @@ snapfzz-packs/src/
 │   └── postgresql/              ← PostgreSQL infrastructure
 │       └── runtime.rs              PostgresRuntime (embedded PG lifecycle)
 │
-├── litellm/                     ← LiteLLM service pack
+├── litellm/                     ← LiteLLM runtime pack (how to spawn)
 │   └── service.rs                 LiteLLMService (implements ManagedService)
 │
-├── agentscope/                  ← AgentScope service pack
+├── agentscope/                  ← AgentScope runtime pack (how to spawn)
 │   └── service.rs                 AgentScopeService (implements ManagedService)
+│
+├── cef/                         ← CEF runtime pack (how to download + install)
+│   ├── download.rs                CefDownloader (SystemComponent), download_status
+│   └── mod.rs                     re-exports
 │
 └── lib.rs                       ← re-exports + backward-compat shim modules
 ```
 
-**Adding a new service pack:**
-1. Create `snapfzz-packs/src/{name}/`
-2. Implement `core::ManagedService`
-3. Register in `lib.rs`
+**Adding a new service:**
+1. Create `snapfzz-packs/src/{name}/` — runtime pack (how to run it)
+2. Implement `core::ManagedService` or `core::SystemComponent`
+3. Create `snapfzz-{name}/` — domain crate (what it does)
+4. Register both in respective `lib.rs`
 
-Core defines contracts; service packs implement them. Dependency flows one way: packs → core, never core → pack.
+Core defines contracts; service packs implement them. Domain crates are standalone.
 
 ---
 
