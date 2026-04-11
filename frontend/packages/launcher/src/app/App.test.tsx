@@ -135,7 +135,8 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     vi.restoreAllMocks();
   });
 
-  it('A003/BootComplete: sets data-app-ready only after boot-complete event', async () => {
+  it('A003/BootComplete: sets data-app-ready only after boot-complete event + 3s splash delay', async () => {
+    vi.useFakeTimers();
     render(createElement(App));
     // Before boot-complete fires, data-app-ready must not be set.
     expect(document.documentElement.getAttribute('data-app-ready')).toBeNull();
@@ -145,10 +146,18 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
       for (const handler of bootCompleteHandlers) handler();
     });
 
+    // Still null — 3s splash delay hasn't elapsed.
+    expect(document.documentElement.getAttribute('data-app-ready')).toBeNull();
+
+    // Advance past the 3s splash delay.
+    await act(async () => { vi.advanceTimersByTime(3000); });
+
     expect(document.documentElement.getAttribute('data-app-ready')).toBe('true');
+    vi.useRealTimers();
   });
 
-  it('A003/BootComplete: adds fade-out class to skeleton only after boot-complete event', async () => {
+  it('A003/BootComplete: adds fade-out class to skeleton only after boot-complete + 3s splash', async () => {
+    vi.useFakeTimers();
     const skeleton = document.createElement('div');
     skeleton.id = 'skeleton';
     document.body.appendChild(skeleton);
@@ -162,9 +171,14 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
       for (const handler of bootCompleteHandlers) handler();
     });
 
-    await waitFor(() => {
-      expect(skeleton.classList.contains('fade-out')).toBe(true);
-    });
+    // Still no fade-out — 3s splash delay hasn't elapsed.
+    expect(skeleton.classList.contains('fade-out')).toBe(false);
+
+    // Advance past the 3s splash delay.
+    await act(async () => { vi.advanceTimersByTime(3000); });
+
+    expect(skeleton.classList.contains('fade-out')).toBe(true);
+    vi.useRealTimers();
   });
 
   it('A006/shell: renders plugin host provider wrapper', () => {

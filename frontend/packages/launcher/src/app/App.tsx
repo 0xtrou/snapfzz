@@ -81,7 +81,8 @@ export function App() {
     let unlisten: (() => void) | null = null;
 
     bridge.listen('boot-complete', () => {
-      setBootComplete(true);
+      // Per A003/Splash: minimum 3s splash so branding is visible on fast boots.
+      setTimeout(() => setBootComplete(true), 3000);
     }).then((fn) => { unlisten = fn; });
 
     const timeout = setTimeout(() => setBootComplete(true), 30000);
