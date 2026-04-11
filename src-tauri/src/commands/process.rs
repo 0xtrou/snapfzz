@@ -61,7 +61,7 @@ pub async fn list_processes(
             consecutive_failures: 0,
             uptime_secs: pg.uptime_secs(),
             location: "local".to_string(),
-            health_url: pg.connection_url("litellm").unwrap_or_default(),
+            health_url: if pg.is_ready() { "process://postgresql/healthy".to_string() } else { String::new() },
             owner: "system".to_string(),
         }
     } else {
@@ -95,11 +95,25 @@ pub async fn restart_process<R: tauri::Runtime>(
     name: String,
     app: tauri::AppHandle<R>,
     factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
+    postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<(), String> {
-    // A037/restart_process: Use ProcessFactoryRegistry for generic dispatch
+    // A039/PostgresRestart: PostgreSQL is managed outside the factory registry.
+    if name == "postgresql" {
+        let mut pg_guard = postgres_runtime.lock().await;
+        if let Some(ref mut pg) = *pg_guard {
+            pg.stop().await.map_err(|e| e.to_string())?;
+            pg.start().await.map_err(|e| e.to_string())?;
+            if let Err(e) = pg.create_database("litellm").await {
+                eprintln!("[postgres] create litellm db on restart: {e}");
+            }
+            emit_supervisor(&app, "success", &name, "postgresql restarted successfully".into());
+            return Ok(());
+        }
+        return Err("postgresql is not running".into());
+    }
+
     let mut registry = factory_registry.lock().await;
     let result = registry.restart(&name).await;
-
     match result {
         Ok(()) => {
             emit_supervisor(&app, "success", &name, format!("{} restarted successfully", name));
@@ -112,17 +126,26 @@ pub async fn restart_process<R: tauri::Runtime>(
     }
 }
 
-// A037/kill_process: Route through ProcessFactoryRegistry so registry state
-// (processes map, budget supervisor) is cleaned up alongside the OS process.
 #[tauri::command]
 pub async fn kill_process<R: tauri::Runtime>(
     name: String,
     app: tauri::AppHandle<R>,
     factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
+    postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<(), String> {
+    // A039/PostgresKill: PostgreSQL is managed outside the factory registry.
+    if name == "postgresql" {
+        let mut pg_guard = postgres_runtime.lock().await;
+        if let Some(ref mut pg) = *pg_guard {
+            pg.stop().await.map_err(|e| e.to_string())?;
+            emit_supervisor(&app, "success", &name, "postgresql killed".into());
+            return Ok(());
+        }
+        return Err("postgresql is not running".into());
+    }
+
     let mut registry = factory_registry.lock().await;
     let result = registry.kill(&name).await;
-
     match result {
         Ok(()) => {
             emit_supervisor(&app, "success", &name, format!("{} killed", name));
@@ -272,9 +295,12 @@ mod tests {
     fn a014_commands_process_kill_process_command_propagates_missing_runtime_error() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory_registry = make_factory_registry(temp.path());
+        let postgres_runtime: Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
 
         let app = mock_builder()
             .manage(factory_registry)
+            .manage(postgres_runtime)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
@@ -282,6 +308,7 @@ mod tests {
             "missing".to_string(),
             app.handle().clone(),
             app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
+            app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>(),
         ))
         .expect_err("missing runtime should fail");
         assert!(err.contains("not running"));
@@ -321,9 +348,12 @@ mod tests {
     fn t37_restart_process_returns_error_for_unknown_service() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory_registry = make_factory_registry(temp.path());
+        let postgres_runtime: Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
 
         let app = mock_builder()
             .manage(factory_registry)
+            .manage(postgres_runtime)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
@@ -331,6 +361,7 @@ mod tests {
             "unknown".to_string(),
             app.handle().clone(),
             app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
+            app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>(),
         ))
         .expect_err("unknown service should fail");
 
