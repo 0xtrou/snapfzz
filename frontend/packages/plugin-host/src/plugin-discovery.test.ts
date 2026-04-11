@@ -40,6 +40,10 @@ vi.mock('@snapfzz/settings-diagnostics', () => ({
   default: fakeManifest('settings.diagnostics'),
 }));
 
+vi.mock('@snapfzz/settings-llm', () => ({
+  default: fakeManifest('snapfzz.settings.llm'),
+}));
+
 vi.mock('@snapfzz/settings-advanced', () => {
   throw new Error('settings advanced failed to load');
 });
@@ -65,7 +69,7 @@ describe('A006/boot: discoverPlugins', () => {
   it('A006/boot: discoverPlugins returns array for preferences surface', async () => {
     const result = await discoverPlugins('preferences');
     expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(7);
+    expect(result).toHaveLength(8);
     expect(result.map((item) => item.manifest.id)).toEqual([
       'settings.general',
       'settings.performance',
@@ -74,6 +78,7 @@ describe('A006/boot: discoverPlugins', () => {
       'settings.plugins',
       'settings.components',
       'settings.diagnostics',
+      'snapfzz.settings.llm',
     ]);
   });
 
@@ -91,7 +96,7 @@ describe('A006/boot: discoverPlugins', () => {
 
     const result = await discoverPlugins('preferences');
 
-    expect(result).toHaveLength(7);
+    expect(result).toHaveLength(8);
     expect(errorSpy).toHaveBeenCalled();
   });
 });
@@ -122,7 +127,7 @@ describe('A006/boot: registerDiscoveredPlugins', () => {
 
     await registerDiscoveredPlugins(host, 'preferences');
 
-    expect(registerSpy).toHaveBeenCalledTimes(7);
+    expect(registerSpy).toHaveBeenCalledTimes(8);
     expect(registerSpy.mock.calls.map(([manifest]) => manifest.id)).toEqual([
       'settings.general',
       'settings.performance',
@@ -131,6 +136,7 @@ describe('A006/boot: registerDiscoveredPlugins', () => {
       'settings.plugins',
       'settings.components',
       'settings.diagnostics',
+      'snapfzz.settings.llm',
     ]);
   });
 });
