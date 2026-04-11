@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use snapfzz_kernel::budget::{self, device::DeviceInfo, preset::PresetName, BudgetRegistry};
+use snapfzz_kernel::budget::{self, device::DeviceInfo, metrics::{ProcessSnapshot, ProcessStatus}, preset::PresetName, BudgetRegistry};
 use snapfzz_kernel::process::ProcessFactoryRegistry;
 use std::sync::Arc;
 
@@ -110,11 +110,36 @@ pub async fn budget_report_violation(
 pub async fn budget_snapshot(
     registry: tauri::State<'_, Arc<BudgetRegistry>>,
     factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
+    postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<Value, String> {
+    // A039/PostgresSnapshot: Surface PostgreSQL in process list
     let mut metrics = registry.snapshot();
     // A037/budget_snapshot: Override processes with ProcessFactoryRegistry so all known
     // services appear (including Stopped/not-yet-spawned), not just ones in supervised domain.
-    metrics.processes = factory_registry.lock().await.list_snapshots();
+    let mut processes = factory_registry.lock().await.list_snapshots();
+
+    // A039/PostgresSnapshot: Append PostgreSQL snapshot — managed outside ProcessFactoryRegistry.
+    let pg = postgres_runtime.lock().await;
+    let pg_snapshot = if let Some(ref pg) = *pg {
+        ProcessSnapshot {
+            name: "postgresql".to_string(),
+            pid: None,
+            status: if pg.is_ready() { ProcessStatus::Online } else { ProcessStatus::Stopped },
+            rss_mb: None,
+            cpu_pct: None,
+            restart_count: 0,
+            consecutive_failures: 0,
+            uptime_secs: 0,
+            location: "local".to_string(),
+            health_url: String::new(),
+            owner: "system".to_string(),
+        }
+    } else {
+        ProcessSnapshot::stopped("postgresql", "system")
+    };
+    processes.push(pg_snapshot);
+
+    metrics.processes = processes;
     serde_json::to_value(metrics).map_err(|e| e.to_string())
 }
 
@@ -150,6 +175,10 @@ mod tests {
         test::{mock_builder, mock_context, noop_assets},
         Manager,
     };
+
+    fn empty_postgres_runtime() -> Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>> {
+        Arc::new(tokio::sync::Mutex::new(None))
+    }
 
     fn empty_factory_registry(data_dir: &std::path::Path) -> Arc<tokio::sync::Mutex<ProcessFactoryRegistry>> {
         let logs = Arc::new(ProcessLogs::with_max_lines(data_dir.to_path_buf(), 100));
@@ -304,9 +333,11 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Balanced));
         let factory_registry = empty_factory_registry(temp.path());
+        let postgres_runtime = empty_postgres_runtime();
         let app = mock_builder()
             .manage(registry.clone())
             .manage(factory_registry)
+            .manage(postgres_runtime)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
@@ -325,6 +356,7 @@ mod tests {
         let snapshot = tauri::async_runtime::block_on(budget_snapshot(
             app.state::<Arc<BudgetRegistry>>(),
             app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
+            app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>(),
         ))
         .expect("budget snapshot");
         assert_eq!(snapshot["presetName"], "balanced");

@@ -1,5 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
+use snapfzz_kernel::budget::metrics::{ProcessSnapshot, ProcessStatus};
 use snapfzz_kernel::process::{ProcessFactoryRegistry, ProcessManager};
 use std::sync::Arc;
 use tauri::Emitter;
@@ -40,11 +41,35 @@ pub(crate) fn emit_supervisor<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn list_processes(
     factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
+    postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<Value, String> {
+    // A039/PostgresSnapshot: Surface PostgreSQL in process list
     // A037/list_processes: Read from ProcessFactoryRegistry so all known services appear,
     // including those that are Stopped or failed to start — not just running ones.
-    let registry = factory_registry.lock().await;
-    serde_json::to_value(registry.list_snapshots()).map_err(|e| e.to_string())
+    let mut processes = factory_registry.lock().await.list_snapshots();
+
+    // A039/PostgresSnapshot: Append PostgreSQL snapshot — managed outside ProcessFactoryRegistry.
+    let pg = postgres_runtime.lock().await;
+    let pg_snapshot = if let Some(ref pg) = *pg {
+        ProcessSnapshot {
+            name: "postgresql".to_string(),
+            pid: None,
+            status: if pg.is_ready() { ProcessStatus::Online } else { ProcessStatus::Stopped },
+            rss_mb: None,
+            cpu_pct: None,
+            restart_count: 0,
+            consecutive_failures: 0,
+            uptime_secs: 0,
+            location: "local".to_string(),
+            health_url: String::new(),
+            owner: "system".to_string(),
+        }
+    } else {
+        ProcessSnapshot::stopped("postgresql", "system")
+    };
+    processes.push(pg_snapshot);
+
+    serde_json::to_value(processes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -169,14 +194,18 @@ mod tests {
     fn a014_process_list_processes_returns_registered_snapshots() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory_registry = make_factory_registry(temp.path());
+        let postgres_runtime: Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
 
         let app = mock_builder()
             .manage(factory_registry)
+            .manage(postgres_runtime)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
         let result = tauri::async_runtime::block_on(super::list_processes(
             app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
+            app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>(),
         ))
         .expect("list processes");
 
