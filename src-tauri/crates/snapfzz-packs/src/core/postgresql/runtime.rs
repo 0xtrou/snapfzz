@@ -221,8 +221,12 @@ impl PostgresRuntime {
     pub async fn stop(&mut self) -> Result<(), PostgresError> {
         if let Some(pg) = self.pg.as_ref() {
             pg.stop().await?;
-            self.started_at = None;
         }
+        self.started_at = None;
+        // A039/PostgresHealth: Clear health port so the health URL reports empty
+        // and is_ready() returns false. The spawned health server will exit on its
+        // own since postmaster.pid is gone (responds 503 until the task is dropped).
+        *self.health_port.lock().await = None;
         Ok(())
     }
 
@@ -277,7 +281,9 @@ impl PostgresRuntime {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.pg.is_some()
+        // A039/PostgresMetrics: Ready = pg instance exists AND server was started (started_at set).
+        // After stop(), started_at is None so is_ready returns false even though pg is Some.
+        self.pg.is_some() && self.started_at.is_some()
     }
 }
 
