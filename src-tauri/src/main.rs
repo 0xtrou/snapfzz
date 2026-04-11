@@ -181,6 +181,7 @@ fn main() {
             commands::llm::llm_get_config_path,
             commands::llm::llm_get_base_url,
             commands::llm::llm_get_master_key,
+            commands::llm::llm_get_model_catalog,
             commands::llm::llm_get_provider_base_url,
             commands::llm::llm_discover_models,
             commands::llm::llm_import_model,

@@ -1,6 +1,23 @@
 // A013/Commands: Tauri commands for LLM Gateway operations
 
 use serde_json::Value;
+use std::sync::OnceLock;
+
+// A013/ModelCatalog: Bundled at compile time — 2656 models, 108 providers.
+// Served once, frontend caches in memory. No repeated file I/O.
+static MODEL_CATALOG: OnceLock<Value> = OnceLock::new();
+
+fn get_model_catalog() -> &'static Value {
+    MODEL_CATALOG.get_or_init(|| {
+        let bytes = include_bytes!("../../model-catalog.json");
+        serde_json::from_slice(bytes).unwrap_or(Value::Object(Default::default()))
+    })
+}
+
+#[tauri::command]
+pub fn llm_get_model_catalog() -> Value {
+    get_model_catalog().clone()
+}
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_llm::{
     config, vault,
