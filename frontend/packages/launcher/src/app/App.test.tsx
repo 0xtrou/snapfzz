@@ -22,7 +22,7 @@ const emptySnapshot = {
 let snapshot = { ...emptySnapshot };
 let crashingPluginIds = new Set<string>();
 
-const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvokeMock, bootCompleteHandlers } = vi.hoisted(() => {
+const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvokeMock, bootCompleteHandlers, supervisorEventHandlers } = vi.hoisted(() => {
   class MockPerformanceObserver {
     private readonly callback: (list: { getEntries: () => Array<{ startTime?: number; duration?: number }> }) => void;
 
@@ -43,6 +43,8 @@ const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvok
   const invokeMock = vi.fn().mockResolvedValue(undefined);
   // Per A003/BootComplete: capture boot-complete handlers so tests can fire them.
   const handlers: Array<() => void> = [];
+  // Per A003/BootComplete: capture supervisor-event handlers so tests can fire them.
+  const supervisorHandlers: Array<(event: { process: string; message: string }) => void> = [];
 
   return {
     useAppSettingsMock: vi.fn(),
@@ -50,6 +52,7 @@ const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvok
     PerformanceObserverMock: MockPerformanceObserver,
     bridgeInvokeMock: invokeMock,
     bootCompleteHandlers: handlers,
+    supervisorEventHandlers: supervisorHandlers,
   };
 });
 
@@ -59,10 +62,13 @@ vi.mock('@snapfzz/shared', () => ({
   lightTheme: { algorithm: undefined, token: {} },
   createTauriBridge: () => ({
     invoke: bridgeInvokeMock,
-    // Per A003/BootComplete: listen returns a Promise so .then() works; captures boot-complete handler.
-    listen: vi.fn().mockImplementation((event: string, handler: () => void) => {
+    // Per A003/BootComplete: listen returns a Promise so .then() works; captures boot-complete and supervisor-event handlers.
+    listen: vi.fn().mockImplementation((event: string, handler: (payload?: unknown) => void) => {
       if (event === 'boot-complete') {
-        bootCompleteHandlers.push(handler);
+        bootCompleteHandlers.push(handler as () => void);
+      }
+      if (event === 'supervisor-event') {
+        supervisorEventHandlers.push(handler as (event: { process: string; message: string }) => void);
       }
       return Promise.resolve(vi.fn());
     }),
@@ -117,6 +123,7 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     snapshot = { ...emptySnapshot };
     crashingPluginIds = new Set<string>();
     bootCompleteHandlers.length = 0;
+    supervisorEventHandlers.length = 0;
 
     useAppSettingsMock.mockReset();
     useAppSettingsMock.mockReturnValue({ theme: 'dark', toggleTheme: vi.fn(), customFonts: [] });
@@ -263,6 +270,41 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
       metric: 'longtask',
       actual_ms: 67,
     });
+  });
+
+  it('A003/BootComplete: supervisor-event updates skeleton-status text when element exists', async () => {
+    const statusEl = document.createElement('div');
+    statusEl.id = 'skeleton-status';
+    document.body.appendChild(statusEl);
+
+    render(createElement(App));
+
+    await act(async () => {
+      for (const handler of supervisorEventHandlers) {
+        handler({ process: 'litellm', message: 'Starting LiteLLM...' });
+      }
+    });
+
+    expect(statusEl.textContent).toBe('Starting LiteLLM...');
+
+    statusEl.remove();
+  });
+
+  it('A003/BootComplete: supervisor-event does not throw when skeleton-status element is absent', async () => {
+    // Ensure no skeleton-status element is present.
+    const existing = document.getElementById('skeleton-status');
+    if (existing) existing.remove();
+
+    render(createElement(App));
+
+    await act(async () => {
+      for (const handler of supervisorEventHandlers) {
+        handler({ process: 'litellm', message: 'Starting LiteLLM...' });
+      }
+    });
+
+    // No element to update — should complete without error.
+    expect(document.getElementById('skeleton-status')).toBeNull();
   });
 
   it('A005/isolation: routes component crashes to plugin boundary fallback', async () => {

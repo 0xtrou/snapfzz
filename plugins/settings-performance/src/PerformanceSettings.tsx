@@ -83,10 +83,10 @@ function buildBudgetRows(metrics: BudgetMetrics): BudgetRow[] {
       key: 'memory',
       name: 'Memory',
       icon: 'DatabaseOutlined',
-      current: `${Math.round(metrics.totalRssMb)} MB`,
+      current: metrics.totalRssMb != null ? `${Math.round(metrics.totalRssMb)} MB` : '— MB',
       limit: `${metrics.appTotalMb} MB`,
       percent:
-        metrics.appTotalMb > 0
+        metrics.appTotalMb > 0 && metrics.totalRssMb != null
           ? Math.round((metrics.totalRssMb / metrics.appTotalMb) * 100)
           : 0,
       description: 'Unified memory budget shared by all processes (agentscope, litellm). Monitored every 2s. If total exceeds the limit, the enforcing loop logs a warning. Example: with 16GB limit, all processes combined must stay under 16GB.',

@@ -30,8 +30,8 @@ function makeMetrics(overrides: Record<string, unknown> = {}) {
     invokeTotal: 3,
     batchIntervalMs: 16,
     batchRateMs: 16,
-    agentscopeRssMb: 128,
-    agentscopeMaxMb: 512,
+    totalRssMb: 128,
+    appTotalMb: 512,
     agentscopeStatus: 'online',
     storageUsedGb: 0.5,
     storageMaxGb: 10,
@@ -372,7 +372,7 @@ describe('A008/settings-performance: budget table values', () => {
   });
 
   it('A008/settings-performance: Memory row shows used MB', async () => {
-    setupMocks({ metrics: makeMetrics({ agentscopeRssMb: 128, agentscopeMaxMb: 512 }) });
+    setupMocks({ metrics: makeMetrics({ totalRssMb: 128, appTotalMb: 512 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('128 MB')).toBeInTheDocument();
@@ -381,8 +381,8 @@ describe('A008/settings-performance: budget table values', () => {
     });
   });
 
-  it('A008/settings-performance: Memory row shows — when agentscopeRssMb is null', async () => {
-    setupMocks({ metrics: makeMetrics({ agentscopeRssMb: null, agentscopeMaxMb: 512 }) });
+  it('A008/settings-performance: Memory row shows — when totalRssMb is null', async () => {
+    setupMocks({ metrics: makeMetrics({ totalRssMb: null, appTotalMb: 512 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('— MB')).toBeInTheDocument();
@@ -447,7 +447,7 @@ describe('A008/settings-performance: budget table usage bars', () => {
   });
 
   it('A008/settings-performance: progress bars shown for CPU, Memory, Network, Storage', async () => {
-    setupMocks({ metrics: makeMetrics({ cpuUsed: 1, cpuTotal: 4, agentscopeRssMb: 100, agentscopeMaxMb: 512, invokeUsed: 1, invokeTotal: 3, storageUsedGb: 1, storageMaxGb: 10 }) });
+    setupMocks({ metrics: makeMetrics({ cpuUsed: 1, cpuTotal: 4, totalRssMb: 100, appTotalMb: 512, invokeUsed: 1, invokeTotal: 3, storageUsedGb: 1, storageMaxGb: 10 }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       const bars = document.querySelectorAll('.ant-progress');
@@ -496,7 +496,7 @@ describe('A007/settings-performance: budget metrics display (API compat)', () =>
   });
 
   it('A008/settings-performance: shows uptime in preset info line', async () => {
-    setupMocks({ metrics: makeMetrics({ uptimeSecs: 180, cpuTotal: 4, agentscopeMaxMb: 512, presetName: 'Balanced' }) });
+    setupMocks({ metrics: makeMetrics({ uptimeSecs: 180, cpuTotal: 4, appTotalMb: 512, presetName: 'Balanced' }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       const bodyText = document.body.textContent ?? '';
@@ -629,8 +629,8 @@ describe('A007/settings-performance: save and discard', () => {
 });
 
 describe('A007/settings-performance: GB display', () => {
-  it('A007/settings-performance: shows GB for agentscopeMaxMb >= 1024', async () => {
-    setupMocks({ metrics: makeMetrics({ agentscopeMaxMb: 1024, presetName: 'performance' }) });
+  it('A007/settings-performance: shows GB for appTotalMb >= 1024', async () => {
+    setupMocks({ metrics: makeMetrics({ appTotalMb: 1024, presetName: 'performance' }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(document.body.textContent).toContain('1GB');
@@ -647,8 +647,8 @@ describe('A007/settings-performance: GB display', () => {
     });
   });
 
-  it('A007/settings-performance: shows memory as — when agentscopeRssMb is null', async () => {
-    setupMocks({ metrics: makeMetrics({ agentscopeRssMb: null }) });
+  it('A007/settings-performance: shows memory as — when totalRssMb is null', async () => {
+    setupMocks({ metrics: makeMetrics({ totalRssMb: null }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('— MB')).toBeInTheDocument();

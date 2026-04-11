@@ -816,22 +816,6 @@ importers:
         specifier: ^4.1.2
         version: 4.1.2(@types/node@22.19.15)(jsdom@26.1.0)(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7))
 
-  plugins/test-plugin:
-    dependencies:
-      '@snapfzz/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../frontend/packages/plugin-sdk
-      react:
-        specifier: ^19.0.0
-        version: 19.2.4
-    devDependencies:
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.14
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-
 packages:
 
   '@adobe/css-tools@4.4.4':
