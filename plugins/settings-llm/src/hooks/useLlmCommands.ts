@@ -65,12 +65,20 @@ export interface GeneratedKey {
   key_alias?: string;
 }
 
+// A013/Keys: LiteLLM returns varying field names across versions.
+// `token` is the key hash, `key` may or may not exist separately.
 export interface KeyInfo {
-  key: string;
-  models: string[];
+  key?: string;
+  token?: string;
+  key_name?: string;
+  key_alias?: string;
+  models?: string[];
   spend?: number;
   max_budget?: number;
   budget_duration?: string;
+  expires?: string;
+  user_id?: string;
+  team_id?: string;
   metadata?: Record<string, string>;
 }
 
@@ -223,7 +231,12 @@ export async function listKeys(
   const qs = query.toString();
   const url = `${baseUrl}/key/list${qs ? `?${qs}` : ''}`;
   const res = await litellmFetch(url, masterKey);
-  return res.json();
+  const data = await res.json();
+  // A013/Keys: LiteLLM returns either {keys: [...]} or a flat array — handle both
+  if (Array.isArray(data)) {
+    return { keys: data, total_count: data.length };
+  }
+  return { keys: data.keys ?? [], total_count: data.total_count };
 }
 
 export async function deleteKey(

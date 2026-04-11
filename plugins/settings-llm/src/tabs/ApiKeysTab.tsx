@@ -34,8 +34,13 @@ const BUDGET_DURATIONS = [
   { value: '30d', label: '30 Days' },
 ];
 
+// A013/Keys: LiteLLM uses `token` or `key` — helper resolves either.
+function resolveKey(record: KeyInfo): string {
+  return record.key || record.token || record.key_alias || record.key_name || '(unknown)';
+}
+
 function maskKey(key: string): string {
-  if (key.length <= 8) return '•'.repeat(key.length);
+  if (!key || key.length <= 8) return '•'.repeat(key?.length || 4);
   return `${key.slice(0, 4)}${'•'.repeat(key.length - 8)}${key.slice(-4)}`;
 }
 
@@ -80,11 +85,10 @@ export default function ApiKeysTab() {
   const columns: TableColumnsType<KeyInfo> = [
     {
       title: 'Key',
-      dataIndex: 'key',
       key: 'key',
-      render: (key: string) => (
+      render: (_: unknown, record: KeyInfo) => (
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm, 13px)' }}>
-          {maskKey(key)}
+          {maskKey(resolveKey(record))}
         </Text>
       ),
     },
@@ -92,9 +96,9 @@ export default function ApiKeysTab() {
       title: 'Models',
       dataIndex: 'models',
       key: 'models',
-      render: (models: string[]) => (
+      render: (models: string[] | undefined) => (
         <Space size={4} wrap>
-          {models?.map((m) => <Tag key={m}>{m}</Tag>)}
+          {(models || []).map((m) => <Tag key={m}>{m}</Tag>)}
         </Space>
       ),
     },
@@ -123,18 +127,18 @@ export default function ApiKeysTab() {
       align: 'right',
       render: (_value, record) => (
         <ConfirmAction
-          title={`Delete key ${maskKey(record.key)}?`}
+          title={`Delete key ${maskKey(resolveKey(record))}?`}
           description="This permanently removes the virtual key."
           onConfirm={async () => {
             if (!baseUrl || !masterKey) return;
-            await deleteKey(baseUrl, masterKey, record.key);
+            await deleteKey(baseUrl, masterKey, resolveKey(record));
             await loadKeys();
           }}
           okText="Delete"
           danger
         >
           <AppButton
-            aria-label={`Delete key ${maskKey(record.key)}`}
+            aria-label={`Delete key ${maskKey(resolveKey(record))}`}
             variant="danger"
             icon={<DeleteOutlined />}
           />
@@ -189,7 +193,7 @@ export default function ApiKeysTab() {
         ) : keys.length === 0 ? (
           <Empty description="No virtual keys created" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
-          <Table<KeyInfo> rowKey="key" columns={columns} dataSource={keys} pagination={false} />
+          <Table<KeyInfo> rowKey={(r) => resolveKey(r)} columns={columns} dataSource={keys} pagination={false} />
         )}
       </Space>
 
