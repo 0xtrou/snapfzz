@@ -774,10 +774,13 @@ function AvailableModels({
     const types = new Set<string>();
     for (const m of filteredModels) {
       const info = catalogLookup[m.id];
-      const mode = info?.mode || m.owned_by || 'chat';
+      const mode = info?.mode || 'chat';
       types.add(mode);
     }
-    return ['all', ...Array.from(types).sort()];
+    const sorted = Array.from(types).sort();
+    // Put 'chat' first if it exists, then the rest
+    const ordered = sorted.filter((t) => t === 'chat').concat(sorted.filter((t) => t !== 'chat'));
+    return ['all', ...ordered];
   }, [filteredModels, catalogLookup]);
 
   const displayModels = useMemo(() => {
@@ -785,7 +788,7 @@ function AvailableModels({
       ? filteredModels
       : filteredModels.filter((m) => {
           const info = catalogLookup[m.id];
-          const mode = info?.mode || m.owned_by || 'chat';
+          const mode = info?.mode || 'chat';
           return mode === modelTypeFilter;
         });
     // Sort by name length (shortest = flagship/latest, e.g., gpt-4o before gpt-4o-2024-08-06)
