@@ -60,6 +60,8 @@ const PROVIDERS = [
   { id: 'replicate', label: 'Replicate' },
   { id: 'huggingface', label: 'Hugging Face' },
   { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'zhipu', label: 'Z.AI (Zhipu)' },
+  { id: 'xai', label: 'xAI (Grok)' },
 ];
 
 // Brand colors for provider icon circles. Hex literals are intentional —
@@ -81,6 +83,8 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   replicate: '#262626',
   huggingface: '#FFD21E',
   openrouter: '#6366F1',
+  zhipu: '#4C83FF',
+  xai: '#000000',
 };
 
 interface ProviderKeyEntry {
@@ -858,20 +862,23 @@ function ProviderDetail({
     void loadKeys();
   }, [loadKeys]);
 
+  // A013/ProviderBaseUrl: Resolve base URL from backend mapping (built-in) or custom config.
   useEffect(() => {
+    if (isCustom && baseUrl) {
+      setRegisteredApiBase(baseUrl);
+      return;
+    }
     (async () => {
       try {
-        const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
-        const infoRes = await getModelInfo(url, key);
-        const firstEntry = infoRes.data.find((e) => e.litellm_params?.api_base);
-        if (firstEntry?.litellm_params?.api_base) {
-          setRegisteredApiBase(firstEntry.litellm_params.api_base);
-        }
+        const { createTauriBridge } = await import('@snapfzz/shared');
+        const bridge = createTauriBridge();
+        const url = await bridge.invoke<string>('llm_get_provider_base_url', { providerId });
+        setRegisteredApiBase(url);
       } catch {
-        // Gateway not ready or no registered models — silently skip
+        // Unknown provider — no base URL to show
       }
     })();
-  }, []);
+  }, [providerId, isCustom, baseUrl]);
 
   async function handleAddOrEdit(values: { keyName: string; keyValue: string }) {
     setSubmitting(true);

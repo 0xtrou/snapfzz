@@ -118,6 +118,14 @@ pub async fn llm_get_config_path(data_dir: String) -> Result<String, String> {
 // A013/Discovery: Discover models from a provider's own API using vault-stored keys.
 // The frontend cannot call provider APIs directly because API keys live in the vault.
 
+// A013/ProviderBaseUrl: Returns the known API base URL for a built-in provider.
+#[tauri::command]
+pub async fn llm_get_provider_base_url(provider_id: String) -> Result<String, String> {
+    resolve_provider_base_url(&provider_id)
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("Unknown provider: {provider_id}"))
+}
+
 fn resolve_provider_base_url(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "openai" => Some("https://api.openai.com"),
@@ -129,6 +137,8 @@ fn resolve_provider_base_url(provider_id: &str) -> Option<&'static str> {
         "together_ai" => Some("https://api.together.xyz"),
         "fireworks_ai" => Some("https://api.fireworks.ai/inference"),
         "openrouter" => Some("https://openrouter.ai/api"),
+        "zhipu" => Some("https://open.bigmodel.cn/api/paas"),
+        "xai" => Some("https://api.x.ai"),
         _ => None,
     }
 }
