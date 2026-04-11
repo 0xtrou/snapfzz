@@ -7,6 +7,36 @@ pub mod runtime;
 pub mod types;
 pub mod window;
 
+use crate::cef::download::CefDownloader;
+use crate::cef::types::CefPlatformInfo;
+
+/// Build a [`CefPlatformInfo`] snapshot for the UI.
+///
+/// Accepts raw device strings so this function does not depend on `snapfzz-kernel`.
+pub async fn build_platform_info(
+    os: &str,
+    arch: &str,
+    platform: &str,
+    platform_display: &str,
+    downloader: &CefDownloader,
+) -> CefPlatformInfo {
+    let download_url = downloader
+        .resolve_latest_build()
+        .await
+        .map(|build| build.download_url)
+        .unwrap_or_else(|_| downloader.download_url());
+
+    CefPlatformInfo {
+        os: os.to_string(),
+        arch: arch.to_string(),
+        platform: platform.to_string(),
+        platform_display: platform_display.to_string(),
+        download_url,
+        install_path: downloader.install_dir().to_string_lossy().to_string(),
+        is_installed: downloader.is_installed(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Spec: docs/plans/T29-snapfzz-cef-crate-plan.md

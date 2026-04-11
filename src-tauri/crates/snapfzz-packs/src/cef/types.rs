@@ -101,6 +101,19 @@ impl From<std::io::Error> for CefError {
     }
 }
 
+/// Platform metadata for the CEF runtime, surfaced to the UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CefPlatformInfo {
+    pub os: String,
+    pub arch: String,
+    pub platform: String,
+    pub platform_display: String,
+    pub download_url: String,
+    pub install_path: String,
+    pub is_installed: bool,
+}
+
 impl From<reqwest::Error> for CefError {
     fn from(value: reqwest::Error) -> Self {
         Self::Network(value.to_string())

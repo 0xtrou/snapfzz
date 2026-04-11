@@ -498,6 +498,53 @@ pub fn detect_platform() -> Result<&'static str, CefError> {
     }
 }
 
+/// Scan `install_dir` for a `.tar.bz2` archive and return its size in bytes
+/// (0 when no archive is found or the directory does not exist).
+pub fn find_archive_size(install_dir: &std::path::Path) -> u64 {
+    std::fs::read_dir(install_dir)
+        .ok()
+        .and_then(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .find(|e| e.file_name().to_string_lossy().ends_with(".tar.bz2"))
+                .and_then(|e| e.metadata().ok())
+                .map(|m| m.len())
+        })
+        .unwrap_or(0)
+}
+
+/// Build a [`DownloadProgress`] snapshot from the current state of a downloader.
+pub fn download_status(downloader: &CefDownloader) -> crate::cef::types::DownloadProgress {
+    let bytes_downloaded = find_archive_size(downloader.install_dir());
+    let installed = downloader.is_installed();
+    let status = if installed {
+        crate::cef::types::DownloadStatus::Ready
+    } else if bytes_downloaded > 0 {
+        crate::cef::types::DownloadStatus::Downloading
+    } else {
+        crate::cef::types::DownloadStatus::Verifying
+    };
+
+    let bytes_total = if installed {
+        bytes_downloaded.max(1)
+    } else {
+        bytes_downloaded.saturating_add(1024).max(1)
+    };
+
+    crate::cef::types::DownloadProgress {
+        bytes_downloaded,
+        bytes_total,
+        percent: if installed {
+            100.0
+        } else if bytes_total == 0 {
+            0.0
+        } else {
+            ((bytes_downloaded as f32 / bytes_total as f32) * 100.0).min(100.0)
+        },
+        status,
+    }
+}
+
 fn pct(downloaded: u64, total: u64) -> f32 {
     if total == 0 {
         0.0

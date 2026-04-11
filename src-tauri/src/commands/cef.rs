@@ -1,8 +1,7 @@
 use snapfzz_packs::cef::download::{CefBuildInfo, CefDownloader};
 use snapfzz_packs::cef::runtime::CefRuntime;
-use snapfzz_packs::cef::types::{ConsoleMessage, DownloadProgress, DownloadStatus, WindowConfig};
+use snapfzz_packs::cef::types::{CefPlatformInfo, ConsoleMessage, DownloadProgress, WindowConfig};
 use snapfzz_kernel::budget::device::DeviceInfo;
-use std::path::Path;
 use std::sync::Arc;
 use tauri::async_runtime::Mutex;
 
@@ -13,176 +12,25 @@ pub struct CefState {
     pub device: Arc<DeviceInfo>,
 }
 
-pub(crate) async fn do_cef_download_start(
-    downloader: &CefDownloader,
-) -> Result<Vec<DownloadProgress>, String> {
-    downloader.download_events().await.map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_download_status(downloader: &CefDownloader) -> DownloadProgress {
-    let bytes_downloaded = do_find_archive_size(downloader.install_dir());
-    let installed = downloader.is_installed();
-    let status = if installed {
-        DownloadStatus::Ready
-    } else if bytes_downloaded > 0 {
-        DownloadStatus::Downloading
-    } else {
-        DownloadStatus::Verifying
-    };
-
-    let bytes_total = if installed {
-        bytes_downloaded.max(1)
-    } else {
-        bytes_downloaded.saturating_add(1024).max(1)
-    };
-
-    DownloadProgress {
-        bytes_downloaded,
-        bytes_total,
-        percent: if installed {
-            100.0
-        } else if bytes_total == 0 {
-            0.0
-        } else {
-            ((bytes_downloaded as f32 / bytes_total as f32) * 100.0).min(100.0)
-        },
-        status,
-    }
-}
-
-pub(crate) fn do_cef_download_cancel(downloader: &CefDownloader) {
-    downloader.cancel_download();
-}
-
-pub(crate) async fn do_cef_resolve_build(downloader: &CefDownloader) -> Result<CefBuildInfo, String> {
-    downloader
-        .resolve_latest_build()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_is_ready(runtime: &CefRuntime) -> bool {
-    runtime.is_ready()
-}
-
-pub(crate) async fn do_cef_open_window(
-    runtime: &mut CefRuntime,
-    downloader: &CefDownloader,
-    id: &str,
-    url: &str,
-    config: Option<WindowConfig>,
-) -> Result<(), String> {
-    runtime
-        .ensure_ready(downloader)
-        .await
-        .map_err(|e| e.to_string())?;
-    runtime
-        .create_window(id, url, config.unwrap_or_default())
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub(crate) fn do_cef_close_window(runtime: &mut CefRuntime, id: &str) -> Result<(), String> {
-    runtime.close_window(id).map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_navigate(runtime: &mut CefRuntime, id: &str, url: &str) -> Result<(), String> {
-    runtime.navigate_window(id, url).map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_go_back(runtime: &mut CefRuntime, id: &str) -> Result<(), String> {
-    runtime.go_back(id).map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_reload(runtime: &mut CefRuntime, id: &str) -> Result<(), String> {
-    runtime.reload_window(id).map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_devtools(runtime: &mut CefRuntime, id: &str, open: bool) -> Result<(), String> {
-    runtime.set_devtools(id, open).map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_screenshot(runtime: &mut CefRuntime, id: &str) -> Result<Vec<u8>, String> {
-    runtime.capture_screenshot(id).map_err(|e| e.to_string())
-}
-
-pub(crate) fn do_cef_console_messages(
-    runtime: &mut CefRuntime,
-    id: &str,
-    clear_after_read: Option<bool>,
-) -> Result<Vec<ConsoleMessage>, String> {
-    let messages = runtime.console_messages(id).map_err(|e| e.to_string())?;
-    if clear_after_read.unwrap_or(false) {
-        runtime.clear_console_messages(id).map_err(|e| e.to_string())?;
-    }
-    Ok(messages)
-}
-
-pub(crate) fn do_find_archive_size(install_dir: &Path) -> u64 {
-    std::fs::read_dir(install_dir)
-        .ok()
-        .and_then(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .find(|e| e.file_name().to_string_lossy().ends_with(".tar.bz2"))
-                .and_then(|e| e.metadata().ok())
-                .map(|m| m.len())
-        })
-        .unwrap_or(0)
-}
-
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CefPlatformInfo {
-    pub os: String,
-    pub arch: String,
-    pub platform: String,
-    pub platform_display: String,
-    pub download_url: String,
-    pub install_path: String,
-    pub is_installed: bool,
-}
-
-pub(crate) async fn build_cef_platform_info(
-    device: &DeviceInfo,
-    downloader: &CefDownloader,
-) -> CefPlatformInfo {
-    let download_url = downloader
-        .resolve_latest_build()
-        .await
-        .map(|build| build.download_url)
-        .unwrap_or_else(|_| downloader.download_url());
-
-    CefPlatformInfo {
-        os: device.os.clone(),
-        arch: device.arch.clone(),
-        platform: device.platform.clone(),
-        platform_display: device.platform_display.clone(),
-        download_url,
-        install_path: downloader.install_dir().to_string_lossy().to_string(),
-        is_installed: downloader.is_installed(),
-    }
-}
-
 #[tauri::command]
 pub async fn cef_download_start(
     state: tauri::State<'_, CefState>,
 ) -> Result<Vec<DownloadProgress>, String> {
-    do_cef_download_start(&state.downloader).await
+    state.downloader.download_events().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cef_download_status(
     state: tauri::State<'_, CefState>,
 ) -> Result<DownloadProgress, String> {
-    Ok(do_cef_download_status(&state.downloader))
+    Ok(snapfzz_packs::cef::download::download_status(&state.downloader))
 }
 
 #[tauri::command]
 pub async fn cef_download_cancel(
     state: tauri::State<'_, CefState>,
 ) -> Result<(), String> {
-    do_cef_download_cancel(&state.downloader);
+    state.downloader.cancel_download();
     Ok(())
 }
 
@@ -190,13 +38,13 @@ pub async fn cef_download_cancel(
 pub async fn cef_resolve_build(
     state: tauri::State<'_, CefState>,
 ) -> Result<CefBuildInfo, String> {
-    do_cef_resolve_build(&state.downloader).await
+    state.downloader.resolve_latest_build().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cef_is_ready(state: tauri::State<'_, CefState>) -> Result<bool, String> {
     let runtime = state.runtime.lock().await;
-    Ok(do_cef_is_ready(&runtime))
+    Ok(runtime.is_ready())
 }
 
 #[tauri::command]
@@ -207,13 +55,20 @@ pub async fn cef_open_window(
     state: tauri::State<'_, CefState>,
 ) -> Result<(), String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_open_window(&mut runtime, &state.downloader, &id, &url, config).await
+    runtime
+        .ensure_ready(&state.downloader)
+        .await
+        .map_err(|e| e.to_string())?;
+    runtime
+        .create_window(&id, &url, config.unwrap_or_default())
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cef_close_window(id: String, state: tauri::State<'_, CefState>) -> Result<(), String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_close_window(&mut runtime, &id)
+    runtime.close_window(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -223,19 +78,19 @@ pub async fn cef_navigate(
     state: tauri::State<'_, CefState>,
 ) -> Result<(), String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_navigate(&mut runtime, &id, &url)
+    runtime.navigate_window(&id, &url).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cef_go_back(id: String, state: tauri::State<'_, CefState>) -> Result<(), String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_go_back(&mut runtime, &id)
+    runtime.go_back(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cef_reload(id: String, state: tauri::State<'_, CefState>) -> Result<(), String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_reload(&mut runtime, &id)
+    runtime.reload_window(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -245,13 +100,13 @@ pub async fn cef_devtools(
     state: tauri::State<'_, CefState>,
 ) -> Result<(), String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_devtools(&mut runtime, &id, open)
+    runtime.set_devtools(&id, open).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cef_screenshot(id: String, state: tauri::State<'_, CefState>) -> Result<Vec<u8>, String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_screenshot(&mut runtime, &id)
+    runtime.capture_screenshot(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -261,14 +116,25 @@ pub async fn cef_console_messages(
     state: tauri::State<'_, CefState>,
 ) -> Result<Vec<ConsoleMessage>, String> {
     let mut runtime = state.runtime.lock().await;
-    do_cef_console_messages(&mut runtime, &id, clear_after_read)
+    let messages = runtime.console_messages(&id).map_err(|e| e.to_string())?;
+    if clear_after_read.unwrap_or(false) {
+        runtime.clear_console_messages(&id).map_err(|e| e.to_string())?;
+    }
+    Ok(messages)
 }
 
 #[tauri::command]
 pub async fn cef_platform_info(
     state: tauri::State<'_, CefState>,
 ) -> Result<CefPlatformInfo, String> {
-    Ok(build_cef_platform_info(&state.device, &state.downloader).await)
+    Ok(snapfzz_packs::cef::build_platform_info(
+        &state.device.os,
+        &state.device.arch,
+        &state.device.platform,
+        &state.device.platform_display,
+        &state.downloader,
+    )
+    .await)
 }
 
 #[cfg(test)]
@@ -361,7 +227,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let downloader = CefDownloader::new(temp.path().join("cef"), "macos-arm64".to_string());
 
-        let progress = super::do_cef_download_status(&downloader);
+        let progress = snapfzz_packs::cef::download::download_status(&downloader);
 
         assert!(matches!(progress.status, DownloadStatus::Verifying));
         assert_eq!(progress.bytes_downloaded, 0);
@@ -376,7 +242,7 @@ mod tests {
         std::fs::write(install_dir.join("cef_binary.tar.bz2"), vec![7_u8; 256]).expect("write archive");
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
 
-        let progress = super::do_cef_download_status(&downloader);
+        let progress = snapfzz_packs::cef::download::download_status(&downloader);
 
         assert!(matches!(progress.status, DownloadStatus::Downloading));
         assert_eq!(progress.bytes_downloaded, 256);
@@ -396,7 +262,7 @@ mod tests {
         let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
         downloader.extract_cef().await.expect("real extraction");
 
-        let progress = super::do_cef_download_status(&downloader);
+        let progress = snapfzz_packs::cef::download::download_status(&downloader);
 
         assert!(matches!(progress.status, DownloadStatus::Ready));
         assert_eq!(progress.percent, 100.0);
@@ -525,4 +391,3 @@ mod tests {
         assert_eq!(events.last().map(|event| &event.status), Some(&DownloadStatus::Ready));
     }
 }
-
