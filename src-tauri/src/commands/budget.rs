@@ -118,20 +118,20 @@ pub async fn budget_snapshot(
     // services appear (including Stopped/not-yet-spawned), not just ones in supervised domain.
     let mut processes = factory_registry.lock().await.list_snapshots();
 
-    // A039/PostgresSnapshot: Append PostgreSQL snapshot — managed outside ProcessFactoryRegistry.
+    // A039/PostgresMetrics: Append PostgreSQL snapshot with real PID, memory, uptime, and health URL.
     let pg = postgres_runtime.lock().await;
     let pg_snapshot = if let Some(ref pg) = *pg {
         ProcessSnapshot {
             name: "postgresql".to_string(),
-            pid: None,
+            pid: pg.pid(),
             status: if pg.is_ready() { ProcessStatus::Online } else { ProcessStatus::Stopped },
-            rss_mb: None,
+            rss_mb: pg.rss_mb(),
             cpu_pct: None,
             restart_count: 0,
             consecutive_failures: 0,
-            uptime_secs: 0,
+            uptime_secs: pg.uptime_secs(),
             location: "local".to_string(),
-            health_url: String::new(),
+            health_url: pg.connection_url("litellm").unwrap_or_default(),
             owner: "system".to_string(),
         }
     } else {

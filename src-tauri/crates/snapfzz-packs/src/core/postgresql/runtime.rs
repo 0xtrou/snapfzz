@@ -1,5 +1,6 @@
 // A038/PostgresRuntime: Embedded PostgreSQL lifecycle managed as runtime infrastructure
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use thiserror::Error;
 
@@ -13,11 +14,17 @@ pub enum PostgresError {
 pub struct PostgresRuntime {
     data_dir: PathBuf,
     pg: Option<postgresql_embedded::PostgreSQL>,
+    // A039/PostgresMetrics: Track when the server was started for uptime calculation
+    started_at: Option<Instant>,
 }
 
 impl PostgresRuntime {
     pub fn new(data_dir: PathBuf) -> Self {
-        Self { data_dir, pg: None }
+        Self {
+            data_dir,
+            pg: None,
+            started_at: None,
+        }
     }
 
     // A038/setup: Download binaries + initdb (idempotent, cached after first download)
@@ -40,10 +47,12 @@ impl PostgresRuntime {
 
     // A038/start: Start PostgreSQL server.
     // Cleans up stale postmaster.pid from a previous crash before attempting to start.
+    // A039/PostgresMetrics: Records started_at for uptime tracking.
     pub async fn start(&mut self) -> Result<(), PostgresError> {
         self.cleanup_stale_postmaster();
         if let Some(pg) = self.pg.as_mut() {
             pg.start().await?;
+            self.started_at = Some(Instant::now());
         }
         Ok(())
     }
@@ -96,9 +105,11 @@ impl PostgresRuntime {
     }
 
     // A038/stop: Stop PostgreSQL server
-    pub async fn stop(&self) -> Result<(), PostgresError> {
+    // A039/PostgresMetrics: Clears started_at so uptime resets to 0.
+    pub async fn stop(&mut self) -> Result<(), PostgresError> {
         if let Some(pg) = self.pg.as_ref() {
             pg.stop().await?;
+            self.started_at = None;
         }
         Ok(())
     }
@@ -113,6 +124,38 @@ impl PostgresRuntime {
             }
         }
         Ok(())
+    }
+
+    // A039/PostgresMetrics: Read PID from the live postmaster.pid file.
+    // The first line of data_dir/data/postgres/postmaster.pid is the server PID.
+    // Returns None when the server is not running or the file is absent.
+    pub fn pid(&self) -> Option<u32> {
+        let postmaster_pid = self.data_dir.join("data").join("postgres").join("postmaster.pid");
+        Self::read_postmaster_pid(&postmaster_pid)
+    }
+
+    // A039/PostgresMetrics: Elapsed seconds since the server was started.
+    // Returns 0 when the server has not been started or was stopped.
+    pub fn uptime_secs(&self) -> u64 {
+        self.started_at
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(0)
+    }
+
+    // A039/PostgresMetrics: Resident-set size in MB for the postgres server process.
+    // Uses sysinfo to query the OS for memory usage via the live PID.
+    // Returns None when the PID is unavailable or sysinfo cannot find the process.
+    pub fn rss_mb(&self) -> Option<f64> {
+        let pid = self.pid()?;
+        let sysinfo_pid = sysinfo::Pid::from_u32(pid);
+        let mut system = sysinfo::System::new();
+        system.refresh_processes(
+            sysinfo::ProcessesToUpdate::Some(&[sysinfo_pid]),
+            true,
+        );
+        system
+            .process(sysinfo_pid)
+            .map(|p| p.memory() as f64 / (1024.0 * 1024.0))
     }
 
     // A038/connection_url: Get postgres:// URL for a specific database
@@ -277,7 +320,7 @@ mod tests {
     async fn t38_postgres_stop_when_pg_none_is_noop() {
         // A038/stop: stop() returns Ok immediately when no PostgreSQL instance has been set up.
         let temp = tempfile::tempdir().expect("tempdir");
-        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        let mut runtime = PostgresRuntime::new(temp.path().to_path_buf());
         let result = runtime.stop().await;
         assert!(result.is_ok(), "stop() with pg=None must succeed");
     }
@@ -304,5 +347,88 @@ mod tests {
         let runtime = PostgresRuntime::new(temp.path().to_path_buf());
         let result = runtime.create_database("mydb").await;
         assert!(result.is_ok(), "create_database() with pg=None must succeed");
+    }
+
+    // ── pid (A039/PostgresMetrics) ──────────────────────────────────────────
+
+    #[test]
+    fn t39_postgres_pid_returns_none_before_start() {
+        // A039/PostgresMetrics: PID is unavailable when no postmaster.pid exists.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        assert_eq!(runtime.pid(), None);
+    }
+
+    #[test]
+    fn t39_postgres_pid_reads_from_postmaster_pid_file() {
+        // A039/PostgresMetrics: PID is read from data/postgres/postmaster.pid when the file exists.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pg_data = temp.path().join("data").join("postgres");
+        std::fs::create_dir_all(&pg_data).expect("mkdir");
+        std::fs::write(pg_data.join("postmaster.pid"), "54321\n").expect("write pid");
+
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        assert_eq!(runtime.pid(), Some(54321));
+    }
+
+    // ── uptime_secs (A039/PostgresMetrics) ──────────────────────────────────
+
+    #[test]
+    fn t39_postgres_uptime_secs_zero_before_start() {
+        // A039/PostgresMetrics: Uptime is 0 when the server has never been started.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        assert_eq!(runtime.uptime_secs(), 0);
+    }
+
+    #[tokio::test]
+    async fn t39_postgres_uptime_secs_zero_after_stop() {
+        // A039/PostgresMetrics: Uptime resets to 0 after stop (without a live pg, stop is a no-op
+        // but started_at stays None).
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        runtime.stop().await.expect("stop");
+        assert_eq!(runtime.uptime_secs(), 0);
+    }
+
+    // ── rss_mb (A039/PostgresMetrics) ───────────────────────────────────────
+
+    #[test]
+    fn t39_postgres_rss_mb_returns_none_without_pid() {
+        // A039/PostgresMetrics: RSS is unavailable when no PID file exists.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        assert_eq!(runtime.rss_mb(), None);
+    }
+
+    #[test]
+    fn t39_postgres_rss_mb_returns_none_for_dead_pid() {
+        // A039/PostgresMetrics: RSS is None when the PID file references a non-existent process.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pg_data = temp.path().join("data").join("postgres");
+        std::fs::create_dir_all(&pg_data).expect("mkdir");
+        std::fs::write(pg_data.join("postmaster.pid"), "99999999\n").expect("write pid");
+
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        assert_eq!(runtime.rss_mb(), None);
+    }
+
+    #[test]
+    fn t39_postgres_rss_mb_returns_some_for_self_pid() {
+        // A039/PostgresMetrics: RSS returns a positive value for a known-live process (our own PID).
+        let temp = tempfile::tempdir().expect("tempdir");
+        let pg_data = temp.path().join("data").join("postgres");
+        std::fs::create_dir_all(&pg_data).expect("mkdir");
+        let self_pid = std::process::id();
+        std::fs::write(
+            pg_data.join("postmaster.pid"),
+            format!("{self_pid}\n"),
+        )
+        .expect("write pid");
+
+        let runtime = PostgresRuntime::new(temp.path().to_path_buf());
+        let rss = runtime.rss_mb();
+        assert!(rss.is_some(), "RSS must be available for own process");
+        assert!(rss.unwrap() > 0.0, "RSS must be positive for a live process");
     }
 }

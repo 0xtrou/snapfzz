@@ -226,7 +226,7 @@ fn main() {
                     let _ = process_mgr.shutdown("agentscope").await;
                     let _ = process_mgr.shutdown("litellm").await;
 
-                    if let Some(pg) = postgres_runtime.lock().await.as_ref() {
+                    if let Some(pg) = postgres_runtime.lock().await.as_mut() {
                         if let Err(e) = pg.stop().await {
                             eprintln!("[postgres] stop failed: {e}");
                         }
