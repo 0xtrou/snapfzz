@@ -7,7 +7,6 @@ import {
   Radio,
   Skeleton,
   Switch,
-  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -437,7 +436,7 @@ function DiscoveredModelChip({
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
         <Button
           type="text"
           size="small"
@@ -445,22 +444,13 @@ function DiscoveredModelChip({
           onClick={onCopy}
           aria-label={`Copy ${model.id}`}
         />
-        {imported ? (
-          <Tooltip title="Imported to LiteLLM">
-            <Text style={{ color: 'var(--color-success)', fontSize: 16, lineHeight: '24px', padding: '0 4px' }}>
-              ✓
-            </Text>
-          </Tooltip>
-        ) : (
-          <Button
-            type="text"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={onImport}
-            loading={importing}
-            aria-label={`Import ${model.id}`}
-          />
-        )}
+        <Switch
+          size="small"
+          checked={imported}
+          loading={importing}
+          onChange={() => { if (!imported) onImport(); }}
+          aria-label={`Enable ${model.id}`}
+        />
       </div>
     </div>
   );
@@ -641,7 +631,7 @@ function AvailableModels({
               loading={importAllLoading}
               size="small"
             >
-              Import All ({unimportedCount})
+              Enable All ({unimportedCount})
             </Button>
           )}
           <Button
