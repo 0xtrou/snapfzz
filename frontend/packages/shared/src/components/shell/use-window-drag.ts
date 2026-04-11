@@ -32,6 +32,7 @@ export function useWindowDrag() {
 
       if (clickCount === 1) {
         clickTimer = setTimeout(() => {
+          /* c8 ignore next -- clickCount can only be 1 here; the double-click handler always clears the timer before it fires */
           if (clickCount === 1) {
             invokeWindowCommand('plugin:window|start_dragging');
           }

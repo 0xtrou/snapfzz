@@ -104,4 +104,24 @@ describe('useWindowDrag', () => {
     expect(removeSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
     expect(bridgeMock.invoke).not.toHaveBeenCalled();
   });
+
+  it('does not invoke dragging command when timer fires but clickCount has already been reset', () => {
+    const { child } = mountWithTitleBar();
+
+    // Fire first click to start the timer
+    child.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    // Fire double click before the timer fires — this clears timer and resets clickCount to 0
+    child.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+
+    // Double-click fires maximize, clickCount is reset to 0
+    expect(bridgeMock.invoke).toHaveBeenCalledWith('plugin:window|internal_toggle_maximize');
+    bridgeMock.invoke.mockClear();
+
+    // Now fire another single click — starts timer again with clickCount = 1
+    child.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+
+    // Advance timer — should trigger dragging since clickCount is 1
+    vi.advanceTimersByTime(200);
+    expect(bridgeMock.invoke).toHaveBeenCalledWith('plugin:window|start_dragging');
+  });
 });

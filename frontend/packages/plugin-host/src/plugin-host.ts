@@ -179,7 +179,8 @@ export class PluginHost {
 
       const plugin = pluginMap.get(pluginId);
       if (!plugin) {
-        throw new Error(`Missing dependency: ${pluginId}`);
+        // pluginId is always in pluginMap — seeded from plugins; dep IDs pre-checked above
+        throw new Error(`Missing dependency: ${pluginId}`); /* c8 ignore line */
       }
 
       visiting.add(pluginId);

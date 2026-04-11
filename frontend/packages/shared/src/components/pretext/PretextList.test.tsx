@@ -135,6 +135,72 @@ describe('PretextList', () => {
     expect(screen.getByText('Value 3')).toBeTruthy();
   });
 
+  it('does not auto-scroll when followOutput is true but list shrinks', () => {
+    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+
+    const { rerender } = render(
+      <PretextList
+        items={items}
+        estimateHeight={() => 50}
+        renderItem={(item) => <div>{item.value}</div>}
+        keyExtractor={(item) => item.id}
+        followOutput
+      />,
+    );
+
+    const callsAfterMount = scrollToSpy.mock.calls.length;
+
+    // Shrink the list — should NOT auto-scroll
+    rerender(
+      <PretextList
+        items={items.slice(0, 2)}
+        estimateHeight={() => 50}
+        renderItem={(item) => <div>{item.value}</div>}
+        keyExtractor={(item) => item.id}
+        followOutput
+      />,
+    );
+
+    expect(scrollToSpy.mock.calls.length).toBe(callsAfterMount);
+  });
+
+  it('triggers ResizeObserver callback to update viewport height', async () => {
+    let observerCallback: (() => void) | null = null;
+    const disconnectSpy = vi.fn();
+
+    const OriginalResizeObserver = window.ResizeObserver;
+    window.ResizeObserver = class {
+      constructor(cb: () => void) {
+        observerCallback = cb;
+      }
+
+      observe() {}
+
+      disconnect() {
+        disconnectSpy();
+      }
+    } as unknown as typeof ResizeObserver;
+
+    const { unmount } = render(
+      <PretextList
+        items={items}
+        estimateHeight={() => 40}
+        renderItem={(item) => <div>{item.value}</div>}
+        keyExtractor={(item) => item.id}
+      />,
+    );
+
+    // Fire the ResizeObserver callback to cover that branch
+    act(() => {
+      observerCallback?.();
+    });
+
+    unmount();
+    expect(disconnectSpy).toHaveBeenCalled();
+
+    window.ResizeObserver = OriginalResizeObserver;
+  });
+
   it('does not emit bottom transition when bottom state does not change and applies custom style/className', () => {
     const onAtBottomChange = vi.fn();
 

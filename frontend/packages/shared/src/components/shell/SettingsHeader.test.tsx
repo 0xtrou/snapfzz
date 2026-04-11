@@ -62,4 +62,32 @@ describe('SettingsHeader', () => {
 
     expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
   });
+
+  it('renders subtitle when provided', () => {
+    render(<SettingsHeader title="General" subtitle="Configure your app" />);
+
+    expect(screen.getByText('Configure your app')).toBeTruthy();
+  });
+
+  it('shows saveSuccess indicator when saveSuccess is true', () => {
+    render(<SettingsHeader title="General" saveSuccess onSave={vi.fn()} />);
+
+    expect(screen.getByText('Saved')).toBeTruthy();
+  });
+
+  it('shows saveError message when saveError is provided', () => {
+    render(<SettingsHeader title="General" saveError="Something went wrong" onSave={vi.fn()} />);
+
+    expect(screen.getByText('Something went wrong')).toBeTruthy();
+  });
+
+  it('renders children inside header actions area', () => {
+    render(
+      <SettingsHeader title="General" onSave={vi.fn()}>
+        <span data-testid="custom-child">Custom</span>
+      </SettingsHeader>,
+    );
+
+    expect(screen.getByTestId('custom-child')).toBeTruthy();
+  });
 });
