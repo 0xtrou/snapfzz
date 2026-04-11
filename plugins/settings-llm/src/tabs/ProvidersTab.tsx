@@ -941,10 +941,10 @@ function AvailableModels({
             <VirtuosoGrid
               data={displayModels}
               totalCount={displayModels.length}
-              style={{ height: Math.min(displayModels.length * 45 + 16, 480) }}
+              style={{ height: Math.min(Math.ceil(displayModels.length / 4) * 140 + 16, 560) }}
               components={{
                 List: React.forwardRef(function GridList(props, ref) {
-                  return <div ref={ref} {...props} style={{ ...props.style, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }} />;
+                  return <div ref={ref} {...props} style={{ ...props.style, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }} />;
                 }),
                 Item: (props) => <div {...props} style={{ ...props.style }} />,
               }}
