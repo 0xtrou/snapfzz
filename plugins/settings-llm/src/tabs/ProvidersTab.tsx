@@ -713,7 +713,8 @@ function AvailableModels({
   // Fetch discovered models + check which are already registered in the gateway
   useEffect(() => {
     void fetchModels();
-    // Load already-enabled models and their metadata from the gateway
+    // Load already-enabled models and their metadata from the gateway — only when provider has keys
+    if (!hasKeys) return;
     (async () => {
       try {
         const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
