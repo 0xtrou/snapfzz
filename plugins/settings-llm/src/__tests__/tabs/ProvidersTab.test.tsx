@@ -1,7 +1,7 @@
 // Spec: A013-llm-providers.md
 // Section: Settings Plugin UI — Providers Tab
 // Verifies: card grid view, drill-in detail view, key CRUD operations, toggle state,
-//           custom providers, available models
+//           custom providers, available models, catalog integration
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -27,6 +27,85 @@ vi.mock('@snapfzz/shared', () => ({
     </button>
   ),
 }));
+
+// A013/Catalog: Mock the catalog module so tests are deterministic and fast.
+// The real catalog has 2656 entries — tests use a small fixture instead.
+vi.mock('../../catalog', () => {
+  const MOCK_CATALOG: Record<string, any> = {
+    'openai/gpt-4o': {
+      litellm_provider: 'openai',
+      max_tokens: 128000,
+      max_input_tokens: 128000,
+      max_output_tokens: 16384,
+      input_cost_per_token: 0.000005,
+      output_cost_per_token: 0.000015,
+      mode: 'chat',
+      supports_vision: true,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    },
+    'openai/gpt-4o-mini': {
+      litellm_provider: 'openai',
+      max_tokens: 128000,
+      max_input_tokens: 128000,
+      max_output_tokens: 16384,
+      input_cost_per_token: 0.00000015,
+      output_cost_per_token: 0.0000006,
+      mode: 'chat',
+      supports_vision: true,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    },
+    'anthropic/claude-sonnet-4-20250514': {
+      litellm_provider: 'anthropic',
+      max_input_tokens: 200000,
+      max_output_tokens: 16000,
+      input_cost_per_token: 0.000003,
+      output_cost_per_token: 0.000015,
+      mode: 'chat',
+      supports_vision: true,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    },
+    'deepseek/deepseek-chat': {
+      litellm_provider: 'deepseek',
+      max_input_tokens: 64000,
+      max_output_tokens: 8192,
+      input_cost_per_token: 0.00000014,
+      output_cost_per_token: 0.00000028,
+      mode: 'chat',
+      supports_function_calling: true,
+    },
+    'text-embedding-3-small': {
+      litellm_provider: 'openai',
+      max_tokens: 8191,
+      max_input_tokens: 8191,
+      mode: 'embedding',
+    },
+  };
+
+  const entries = Object.entries(MOCK_CATALOG);
+
+  return {
+    getProviderIds: () => {
+      const ids = new Set<string>();
+      for (const [, v] of entries) {
+        if (v.litellm_provider) ids.add(v.litellm_provider);
+      }
+      return [...ids].sort();
+    },
+    getModelsForProvider: (providerId: string) =>
+      entries
+        .filter(([, v]) => v.litellm_provider === providerId)
+        .map(([id, info]) => ({ id, info })),
+    getCatalogModelInfo: (modelId: string) => MOCK_CATALOG[modelId],
+    getProviderInfo: (providerId: string) => {
+      const models = entries.filter(([, v]) => v.litellm_provider === providerId);
+      const modes = [...new Set(models.map(([, v]) => v.mode).filter(Boolean))];
+      return { modelCount: models.length, modes };
+    },
+  };
+});
 
 describe('A013/UI/ProvidersTab', () => {
   beforeEach(() => {
@@ -54,17 +133,17 @@ describe('A013/UI/ProvidersTab', () => {
   });
 
   describe('Grid View', () => {
-    it('A013/Grid: renders a card for each provider with key counts', async () => {
+    it('A013/Grid: renders a card for each catalog provider with key counts', async () => {
       render(<ProvidersTab />);
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith('llm_list_provider_keys', { providerId: 'openai' });
       });
 
+      // Catalog mock has openai, anthropic, deepseek
       expect(await screen.findByText('OpenAI')).toBeInTheDocument();
       expect(screen.getByText('Anthropic')).toBeInTheDocument();
-      expect(screen.getByText('Google AI')).toBeInTheDocument();
-      expect(screen.getByText('Mistral')).toBeInTheDocument();
+      expect(screen.getByText('DeepSeek')).toBeInTheDocument();
     });
 
     it('A013/Grid: shows key count badges per provider', async () => {
@@ -77,13 +156,24 @@ describe('A013/UI/ProvidersTab', () => {
       expect(noKeyTexts.length).toBeGreaterThan(0);
     });
 
+    it('A013/Grid: shows catalog model count on provider cards', async () => {
+      render(<ProvidersTab />);
+
+      // Mock catalog has 3 openai models (gpt-4o, gpt-4o-mini, text-embedding-3-small)
+      expect(await screen.findByText('3 models')).toBeInTheDocument();
+      // Anthropic and DeepSeek each have 1 model in the mock catalog
+      const singleModelTexts = screen.getAllByText('1 model');
+      expect(singleModelTexts.length).toBe(2);
+    });
+
     it('A013/Grid: each card has a toggle switch', async () => {
       render(<ProvidersTab />);
 
       await screen.findByText('OpenAI');
 
       const toggles = screen.getAllByRole('switch');
-      expect(toggles.length).toBe(16);
+      // 3 catalog providers in mock
+      expect(toggles.length).toBe(3);
     });
 
     it('A013/Grid: toggle can be clicked without navigating to detail', async () => {
@@ -280,6 +370,13 @@ describe('A013/UI/ProvidersTab', () => {
       expect(screen.getByText('ENV: os.environ/PROVIDER_OPENAI_PRIMARY')).toBeInTheDocument();
     });
 
+    it('A013/Detail: does not show base URL for built-in providers', async () => {
+      await navigateToOpenAI();
+
+      // Built-in providers should not display a base URL — LiteLLM routes internally
+      expect(screen.queryByText(/api\.openai\.com/)).not.toBeInTheDocument();
+    });
+
     it('A013/Detail: shows connected status for each key', async () => {
       await navigateToOpenAI();
 
@@ -350,7 +447,7 @@ describe('A013/UI/ProvidersTab', () => {
       expect(keyNameInput).toBeDisabled();
     });
 
-    it('A013/Detail: shows Available Models section when keys exist', async () => {
+    it('A013/Detail: shows Available Models section with live discovery when keys exist', async () => {
       await navigateToOpenAI();
 
       expect(await screen.findByText('Available Models')).toBeInTheDocument();
@@ -484,8 +581,9 @@ describe('A013/UI/ProvidersTab', () => {
 
       const user = await navigateToOpenAI();
 
-      const importBtn = await screen.findByRole('button', { name: 'Import gpt-4o' });
-      await user.click(importBtn);
+      // The model chip uses a Switch with aria-label="Enable <model-id>"
+      const enableSwitch = await screen.findByRole('switch', { name: 'Enable gpt-4o' });
+      await user.click(enableSwitch);
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
@@ -496,6 +594,73 @@ describe('A013/UI/ProvidersTab', () => {
         });
       });
     });
+
+    it('A013/Detail: model chips show catalog metadata (mode, context, pricing, capabilities)', async () => {
+      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+        if (command === 'llm_list_provider_keys') {
+          if (args.providerId === 'openai') return ['primary'];
+          if (args.providerId === 'anthropic') return ['prod', 'dev'];
+          return [];
+        }
+        if (command === 'vault_read') return null;
+        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+        if (command === 'llm_get_master_key') return 'sk-master-test';
+        if (command === 'llm_discover_models') {
+          return { data: [{ id: 'gpt-4o', object: 'model' }] };
+        }
+        return undefined;
+      });
+
+      await navigateToOpenAI();
+
+      await screen.findByText('gpt-4o');
+
+      // Catalog metadata tags from mock: mode=chat, supports_vision, supports_function_calling
+      // The catalog lookup matches "gpt-4o" to "openai/gpt-4o" via the short-id mapping.
+      expect(await screen.findByText('chat')).toBeInTheDocument();
+      expect(screen.getByText('Vision')).toBeInTheDocument();
+      expect(screen.getByText('Tools')).toBeInTheDocument();
+      expect(screen.getByText('128K ctx')).toBeInTheDocument();
+      expect(screen.getByText('$5.00/M in · $15.00/M out')).toBeInTheDocument();
+    });
+  });
+
+  describe('Catalog Fallback', () => {
+    it('A013/Catalog: shows catalog models when provider has no keys', async () => {
+      const user = userEvent.setup();
+      render(<ProvidersTab />);
+
+      // DeepSeek has no keys in the mock
+      const deepseekCard = await screen.findByRole('button', { name: 'View DeepSeek details' });
+      await user.click(deepseekCard);
+
+      await screen.findByText('Back to Providers');
+
+      // Should show Available Models from catalog (not from API discovery)
+      expect(await screen.findByText('Available Models')).toBeInTheDocument();
+      expect(screen.getByText('from catalog')).toBeInTheDocument();
+      expect(screen.getByText('deepseek/deepseek-chat')).toBeInTheDocument();
+
+      // Should NOT call llm_discover_models since no keys
+      expect(mockInvoke).not.toHaveBeenCalledWith(
+        'llm_discover_models',
+        expect.anything(),
+      );
+    });
+
+    it('A013/Catalog: hides Enable All and Refresh buttons when showing catalog', async () => {
+      const user = userEvent.setup();
+      render(<ProvidersTab />);
+
+      const deepseekCard = await screen.findByRole('button', { name: 'View DeepSeek details' });
+      await user.click(deepseekCard);
+
+      await screen.findByText('Available Models');
+
+      // Catalog mode should not show Refresh or Enable All
+      expect(screen.queryByRole('button', { name: /Refresh/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Enable All/i })).not.toBeInTheDocument();
+    });
   });
 
   describe('Empty State', () => {
@@ -503,22 +668,23 @@ describe('A013/UI/ProvidersTab', () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
-      const googleCard = await screen.findByRole('button', { name: 'View Google AI details' });
-      await user.click(googleCard);
+      const deepseekCard = await screen.findByRole('button', { name: 'View DeepSeek details' });
+      await user.click(deepseekCard);
 
       await screen.findByText('Back to Providers');
-      expect(screen.getByText(/No API keys configured for Google AI/i)).toBeInTheDocument();
+      expect(screen.getByText(/No API keys configured for DeepSeek/i)).toBeInTheDocument();
     });
 
-    it('A013/Detail: does not show Available Models when provider has no keys', async () => {
+    it('A013/Detail: still shows Available Models from catalog when no keys exist', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
-      const googleCard = await screen.findByRole('button', { name: 'View Google AI details' });
-      await user.click(googleCard);
+      const deepseekCard = await screen.findByRole('button', { name: 'View DeepSeek details' });
+      await user.click(deepseekCard);
 
       await screen.findByText('Back to Providers');
-      expect(screen.queryByText('Available Models')).not.toBeInTheDocument();
+      // Models should be shown from catalog even without keys
+      expect(await screen.findByText('Available Models')).toBeInTheDocument();
     });
   });
 });

@@ -1,23 +1,6 @@
 // A013/Commands: Tauri commands for LLM Gateway operations
 
 use serde_json::Value;
-use std::sync::OnceLock;
-
-// A013/ModelCatalog: Bundled at compile time — 2656 models, 108 providers.
-// Served once, frontend caches in memory. No repeated file I/O.
-static MODEL_CATALOG: OnceLock<Value> = OnceLock::new();
-
-fn get_model_catalog() -> &'static Value {
-    MODEL_CATALOG.get_or_init(|| {
-        let bytes = include_bytes!("../../model-catalog.json");
-        serde_json::from_slice(bytes).unwrap_or(Value::Object(Default::default()))
-    })
-}
-
-#[tauri::command]
-pub fn llm_get_model_catalog() -> Value {
-    get_model_catalog().clone()
-}
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_llm::{
     config, vault,
@@ -135,14 +118,9 @@ pub async fn llm_get_config_path(data_dir: String) -> Result<String, String> {
 // A013/Discovery: Discover models from a provider's own API using vault-stored keys.
 // The frontend cannot call provider APIs directly because API keys live in the vault.
 
-// A013/ProviderBaseUrl: Returns the known API base URL for a built-in provider.
-#[tauri::command]
-pub async fn llm_get_provider_base_url(provider_id: String) -> Result<String, String> {
-    resolve_provider_base_url(&provider_id)
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("Unknown provider: {provider_id}"))
-}
-
+// A013/Internal: Known API base URLs for built-in providers. Used only by
+// llm_discover_models when no explicit base_url is supplied by the caller.
+// The frontend no longer queries this — it uses the bundled model catalog for metadata.
 fn resolve_provider_base_url(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "openai" => Some("https://api.openai.com"),

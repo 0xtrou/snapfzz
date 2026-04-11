@@ -201,32 +201,6 @@ export async function getMasterKey(): Promise<string> {
   return bridge.invoke<string>('llm_get_master_key', {});
 }
 
-// A013/ModelCatalog: Full model catalog bundled in the backend (2656 models, 108 providers).
-// Returned as a Record<modelId, ModelInfoDetails>. Frontend caches in memory after first call.
-let catalogCache: Record<string, ModelInfoDetails> | null = null;
-
-export async function getModelCatalog(): Promise<Record<string, ModelInfoDetails>> {
-  if (catalogCache) return catalogCache;
-  const data = await bridge.invoke<Record<string, ModelInfoDetails>>('llm_get_model_catalog', {});
-  catalogCache = data;
-  return data;
-}
-
-// Derived helpers from catalog
-export function catalogModelsForProvider(catalog: Record<string, ModelInfoDetails>, providerId: string): { id: string; info: ModelInfoDetails }[] {
-  return Object.entries(catalog)
-    .filter(([, v]) => v.litellm_provider === providerId)
-    .map(([id, info]) => ({ id, info }));
-}
-
-export function catalogProviderIds(catalog: Record<string, ModelInfoDetails>): string[] {
-  const ids = new Set<string>();
-  for (const v of Object.values(catalog)) {
-    if (v.litellm_provider) ids.add(v.litellm_provider);
-  }
-  return [...ids].sort();
-}
-
 // A013/Vault: Provider key management hooks
 
 export async function storeProviderKey(

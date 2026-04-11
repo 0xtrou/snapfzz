@@ -38,31 +38,94 @@ import {
   saveCustomProviders,
   storeProviderKey,
 } from '../hooks/useLlmCommands';
+import {
+  type CatalogModelEntry,
+  getModelsForProvider,
+  getProviderIds,
+  getProviderInfo,
+} from '../catalog';
 import { PROVIDER_ICONS } from '../provider-icons';
 
 const { Text, Title } = Typography;
 
-// Per A013/Config: all supported LLM providers
-const PROVIDERS = [
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'google', label: 'Google AI' },
-  { id: 'mistral', label: 'Mistral' },
-  { id: 'cohere', label: 'Cohere' },
-  { id: 'azure', label: 'Azure OpenAI' },
-  { id: 'ollama', label: 'Ollama' },
-  { id: 'groq', label: 'Groq' },
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'together_ai', label: 'Together AI' },
-  { id: 'fireworks_ai', label: 'Fireworks AI' },
-  { id: 'bedrock', label: 'AWS Bedrock' },
-  { id: 'vertex_ai', label: 'Google Vertex AI' },
-  { id: 'replicate', label: 'Replicate' },
-  { id: 'huggingface', label: 'Hugging Face' },
-  { id: 'openrouter', label: 'OpenRouter' },
-  { id: 'zhipu', label: 'Z.AI (Zhipu)' },
-  { id: 'xai', label: 'xAI (Grok)' },
+// A013/Catalog: Curated display names for known providers.
+// The catalog is the source of truth for which providers exist — this map only
+// adds human-friendly labels. Providers in the catalog but not in this map
+// get an auto-generated label from their ID.
+const CURATED_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google AI',
+  gemini: 'Gemini',
+  mistral: 'Mistral',
+  cohere: 'Cohere',
+  azure: 'Azure OpenAI',
+  azure_ai: 'Azure AI',
+  ollama: 'Ollama',
+  groq: 'Groq',
+  deepseek: 'DeepSeek',
+  together_ai: 'Together AI',
+  fireworks_ai: 'Fireworks AI',
+  bedrock: 'AWS Bedrock',
+  vertex_ai: 'Google Vertex AI',
+  replicate: 'Replicate',
+  huggingface: 'Hugging Face',
+  openrouter: 'OpenRouter',
+  zhipu: 'Z.AI (Zhipu)',
+  xai: 'xAI (Grok)',
+  perplexity: 'Perplexity',
+  databricks: 'Databricks',
+  cloudflare: 'Cloudflare',
+  ai21: 'AI21',
+  nlp_cloud: 'NLP Cloud',
+  cerebras: 'Cerebras',
+  sambanova: 'SambaNova',
+  voyage: 'Voyage',
+  text_completion_openai: 'OpenAI Completions',
+};
+
+// Providers we want shown first, in this order. All other catalog providers
+// follow alphabetically after these.
+const PINNED_PROVIDER_ORDER = [
+  'openai',
+  'anthropic',
+  'google',
+  'mistral',
+  'cohere',
+  'azure',
+  'ollama',
+  'groq',
+  'deepseek',
+  'together_ai',
+  'fireworks_ai',
+  'bedrock',
+  'vertex_ai',
+  'replicate',
+  'huggingface',
+  'openrouter',
+  'zhipu',
+  'xai',
 ];
+
+function labelForProvider(id: string): string {
+  return CURATED_LABELS[id] ?? id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Build the provider list from the catalog, respecting pinned order.
+function buildProviderList(): { id: string; label: string }[] {
+  const catalogIds = new Set(getProviderIds());
+
+  // Pinned providers shown first (only those present in catalog)
+  const pinned = PINNED_PROVIDER_ORDER.filter((id) => catalogIds.has(id));
+  const pinnedSet = new Set(pinned);
+
+  // Remaining catalog providers follow alphabetically
+  const rest = [...catalogIds].filter((id) => !pinnedSet.has(id)).sort();
+
+  return [...pinned, ...rest].map((id) => ({ id, label: labelForProvider(id) }));
+}
+
+const PROVIDERS = buildProviderList();
 
 // Brand colors for provider icon circles. Hex literals are intentional —
 // these represent brand identity, not theme colors.
@@ -166,12 +229,14 @@ function ProviderIcon({
 function ProviderCard({
   provider,
   keyCount,
+  catalogModelCount,
   enabled,
   onToggle,
   onClick,
 }: {
   provider: (typeof PROVIDERS)[number];
   keyCount: number;
+  catalogModelCount: number;
   enabled: boolean;
   onToggle: (checked: boolean) => void;
   onClick: () => void;
@@ -226,15 +291,27 @@ function ProviderCard({
           justifyContent: 'space-between',
         }}
       >
-        <Text
-          style={{
-            fontSize: 13,
-            color:
-              keyCount > 0 ? 'var(--color-success)' : 'var(--text-muted)',
-          }}
-        >
-          {keyCount > 0 ? `● ${keyCount} key${keyCount !== 1 ? 's' : ''}` : '○ No keys'}
-        </Text>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              color:
+                keyCount > 0 ? 'var(--color-success)' : 'var(--text-muted)',
+            }}
+          >
+            {keyCount > 0 ? `● ${keyCount} key${keyCount !== 1 ? 's' : ''}` : '○ No keys'}
+          </Text>
+          {catalogModelCount > 0 && (
+            <Text
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+              }}
+            >
+              {catalogModelCount} model{catalogModelCount !== 1 ? 's' : ''}
+            </Text>
+          )}
+        </div>
 
         <Switch
           size="small"
@@ -381,7 +458,7 @@ function CustomProviderCard({
 
 // ─── Discovered Model Chip ──────────────────────────────────────────────
 
-function ModelCapabilityTags({ info }: { info: ModelInfoDetails }) {
+function ModelCapabilityTags({ info }: { info: ModelInfoDetails | CatalogModelEntry }) {
   const contextTokens = info.max_input_tokens ?? info.max_tokens;
   const contextLabel = contextTokens
     ? contextTokens >= 1000
@@ -439,6 +516,7 @@ function DiscoveredModelChip({
   onImport,
   onCopy,
   registeredInfo,
+  catalogInfo,
 }: {
   model: DiscoveredModel;
   imported: boolean;
@@ -446,7 +524,11 @@ function DiscoveredModelChip({
   onImport: () => void;
   onCopy: () => void;
   registeredInfo?: ModelInfoDetails;
+  catalogInfo?: CatalogModelEntry;
 }) {
+  // Show metadata from the gateway (registered) if available, otherwise from the catalog.
+  const displayInfo = registeredInfo ?? catalogInfo;
+
   return (
     <div
       style={{
@@ -510,7 +592,7 @@ function DiscoveredModelChip({
         </div>
       </div>
 
-      {imported && registeredInfo && <ModelCapabilityTags info={registeredInfo} />}
+      {displayInfo && <ModelCapabilityTags info={displayInfo} />}
     </div>
   );
 }
@@ -564,9 +646,11 @@ function clearDiscoveryCache(providerId: string): void {
 
 function AvailableModels({
   providerId,
+  hasKeys,
   baseUrl,
 }: {
   providerId: string;
+  hasKeys: boolean;
   baseUrl?: string;
 }) {
   const [models, setModels] = useState<DiscoveredModel[]>([]);
@@ -578,11 +662,40 @@ function AvailableModels({
   const [importingId, setImportingId] = useState<string | null>(null);
   const [importAllLoading, setImportAllLoading] = useState(false);
   const [registeredInfoMap, setRegisteredInfoMap] = useState<Record<string, ModelInfoDetails>>({});
+  const [usingCatalog, setUsingCatalog] = useState(false);
+
+  // Build a catalog lookup for this provider (keyed by short model id).
+  const catalogLookup = useMemo(() => {
+    const lookup: Record<string, CatalogModelEntry> = {};
+    for (const { id, info } of getModelsForProvider(providerId)) {
+      lookup[id] = info;
+      // Also key by the short id (after the slash) for matching against discovered models
+      const shortId = id.includes('/') ? id.split('/').slice(1).join('/') : id;
+      if (shortId !== id) {
+        lookup[shortId] = info;
+      }
+    }
+    return lookup;
+  }, [providerId]);
 
   const fetchModels = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setUsingCatalog(false);
     try {
+      if (!hasKeys) {
+        // No API key configured: show catalog models as the preloaded list.
+        const catalogModels = getModelsForProvider(providerId);
+        const asDiscovered: DiscoveredModel[] = catalogModels.map(({ id }) => ({
+          id,
+          object: 'model',
+        }));
+        setModels(asDiscovered);
+        setFetched(true);
+        setUsingCatalog(true);
+        return;
+      }
+
       const cached = readDiscoveryCache(providerId);
       if (cached) {
         setModels(cached);
@@ -602,7 +715,7 @@ function AvailableModels({
     } finally {
       setLoading(false);
     }
-  }, [providerId, baseUrl]);
+  }, [providerId, baseUrl, hasKeys]);
 
   const handleRefresh = useCallback(async () => {
     clearDiscoveryCache(providerId);
@@ -626,7 +739,7 @@ function AvailableModels({
         const registered = new Set((modelsRes?.data ?? []).map((m: { id: string }) => m.id));
         setImportedIds(registered);
 
-        // Build a lookup from model_name → model_info for capability tags
+        // Build a lookup from model_name -> model_info for capability tags
         const infoMap: Record<string, ModelInfoDetails> = {};
         for (const entry of infoRes.data) {
           if (entry.model_info) {
@@ -707,11 +820,18 @@ function AvailableModels({
           marginBottom: 12,
         }}
       >
-        <Title level={5} style={{ margin: 0, color: 'var(--text-primary)' }}>
-          Available Models
-        </Title>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <Title level={5} style={{ margin: 0, color: 'var(--text-primary)' }}>
+            Available Models
+          </Title>
+          {usingCatalog && (
+            <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}>
+              from catalog
+            </Tag>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {models.length > 0 && unimportedCount > 0 && (
+          {models.length > 0 && unimportedCount > 0 && !usingCatalog && (
             <Button
               icon={<PlusOutlined />}
               onClick={() => void handleImportAll()}
@@ -721,14 +841,16 @@ function AvailableModels({
               Enable All ({unimportedCount})
             </Button>
           )}
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => void handleRefresh()}
-            loading={loading}
-            size="small"
-          >
-            Refresh
-          </Button>
+          {!usingCatalog && (
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => void handleRefresh()}
+              loading={loading}
+              size="small"
+            >
+              Refresh
+            </Button>
+          )}
         </div>
       </div>
 
@@ -807,6 +929,7 @@ function AvailableModels({
                   onImport={() => void handleImport(model.id)}
                   onCopy={() => void handleCopy(model.id)}
                   registeredInfo={registeredInfoMap[model.id]}
+                  catalogInfo={catalogLookup[model.id]}
                 />
               ))}
             </div>
@@ -838,7 +961,6 @@ function ProviderDetail({
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
-  const [registeredApiBase, setRegisteredApiBase] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -861,24 +983,6 @@ function ProviderDetail({
   useEffect(() => {
     void loadKeys();
   }, [loadKeys]);
-
-  // A013/ProviderBaseUrl: Resolve base URL from backend mapping (built-in) or custom config.
-  useEffect(() => {
-    if (isCustom && baseUrl) {
-      setRegisteredApiBase(baseUrl);
-      return;
-    }
-    (async () => {
-      try {
-        const { createTauriBridge } = await import('@snapfzz/shared');
-        const bridge = createTauriBridge();
-        const url = await bridge.invoke<string>('llm_get_provider_base_url', { providerId });
-        setRegisteredApiBase(url);
-      } catch {
-        // Unknown provider — no base URL to show
-      }
-    })();
-  }, [providerId, isCustom, baseUrl]);
 
   async function handleAddOrEdit(values: { keyName: string; keyValue: string }) {
     setSubmitting(true);
@@ -954,9 +1058,9 @@ function ProviderDetail({
             <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
               {keys.length} connection{keys.length !== 1 ? 's' : ''}
             </Text>
-            {registeredApiBase && (
+            {isCustom && baseUrl && (
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                {registeredApiBase}
+                {baseUrl}
               </Text>
             )}
           </div>
@@ -1078,8 +1182,8 @@ function ProviderDetail({
         ))
       )}
 
-      {/* Available Models — only shown when the provider has at least one key */}
-      {keys.length > 0 && <AvailableModels providerId={providerId} baseUrl={baseUrl} />}
+      {/* Available Models: live discovery when keys exist, catalog fallback otherwise */}
+      <AvailableModels providerId={providerId} hasKeys={keys.length > 0} baseUrl={baseUrl} />
 
       {/* Add / Edit Key Modal */}
       <Modal
@@ -1379,6 +1483,7 @@ export default function ProvidersTab() {
                 key={provider.id}
                 provider={provider}
                 keyCount={keyCounts[provider.id]?.length ?? 0}
+                catalogModelCount={getProviderInfo(provider.id).modelCount}
                 enabled={toggleState[provider.id] ?? false}
                 onToggle={(checked) =>
                   setToggleState((prev) => ({ ...prev, [provider.id]: checked }))
