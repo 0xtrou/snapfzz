@@ -156,6 +156,12 @@ All UI code uses this stack consistently. No exceptions.
 - **CSS variables** — theme tokens from `tokens.css` (colors, fonts)
 - **Bare HTML/CSS/JS** — when no Ant component fits the need
 
+### Virtualization
+
+- **PretextList** — for single-column scrolling lists with text content (chat messages, log lines). Uses arithmetic height via `@chenglou/pretext`. Per A001: replaces react-virtuoso for chat.
+- **react-virtuoso** — allowed for grid virtualization (`VirtuosoGrid`) and variable-height lists where PretextList's fixed `estimateHeight` doesn't work (e.g., card grids with wrapping text). Per A001 exception: PretextList is preferred but react-virtuoso is acceptable when PretextList's single-column fixed-height model doesn't fit.
+- **CSS grid + max-height + overflow-y: auto** — acceptable for lists under ~200 items where virtualization overhead isn't justified. Use `contain: layout paint` for rendering isolation.
+
 ### Forbidden
 
 - **Emoji in UI** — never use emoji as icons, labels, or decorators. Use Ant Design Icons.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Form,
@@ -21,7 +21,8 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { AppButton, ConfirmAction, PretextList } from '@snapfzz/shared';
+import { AppButton, ConfirmAction } from '@snapfzz/shared';
+import { VirtuosoGrid } from 'react-virtuoso';
 import {
   type CustomProvider,
   type CustomProviderVariant,
@@ -937,12 +938,19 @@ function AvailableModels({
               </Text>
             </div>
           ) : (
-            <PretextList
-              items={displayModels}
-              estimateHeight={() => 80}
-              keyExtractor={(model) => model.id}
-              renderItem={(model) => (
-                <div style={{ padding: '4px 0' }}>
+            <VirtuosoGrid
+              data={displayModels}
+              totalCount={displayModels.length}
+              style={{ height: Math.min(displayModels.length * 45 + 16, 480) }}
+              components={{
+                List: React.forwardRef(function GridList(props, ref) {
+                  return <div ref={ref} {...props} style={{ ...props.style, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }} />;
+                }),
+                Item: (props) => <div {...props} style={{ ...props.style }} />,
+              }}
+              itemContent={(index) => {
+                const model = displayModels[index];
+                return (
                   <DiscoveredModelChip
                     model={model}
                     imported={importedIds.has(model.id)}
@@ -952,9 +960,8 @@ function AvailableModels({
                     registeredInfo={registeredInfoMap[model.id]}
                     catalogInfo={catalogLookup[model.id]}
                   />
-                </div>
-              )}
-              style={{ height: Math.min(displayModels.length * 80, 480) }}
+                );
+              }}
             />
           )}
         </>
