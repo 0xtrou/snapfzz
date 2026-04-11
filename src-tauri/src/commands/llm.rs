@@ -224,11 +224,19 @@ pub async fn llm_import_model(
     };
     let litellm_url = format!("http://{}:{}", litellm_host, litellm_port);
 
-    // Build model deployment payload
+    // A013/ImportModel: For custom providers (custom-*), use openai/ prefix since
+    // they're OpenAI-compatible endpoints. For built-in providers, use their ID as prefix.
+    let litellm_model = if provider_id.starts_with("custom-") {
+        // Custom provider — model ID already includes any prefix from the provider API
+        format!("openai/{}", model_id)
+    } else {
+        format!("{}/{}", provider_id, model_id)
+    };
+
     let body = serde_json::json!({
         "model_name": model_name.unwrap_or_else(|| model_id.clone()),
         "litellm_params": {
-            "model": format!("{}/{}", provider_id, model_id),
+            "model": litellm_model,
             "api_key": api_key_ref,
             "api_base": base_url,
         }
