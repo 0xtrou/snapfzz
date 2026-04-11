@@ -1,8 +1,8 @@
 use base64::Engine;
 use serde_json::json;
 
-use crate::cdp::CdpServer;
-use crate::types::{CefError, ConsoleMessage, WindowConfig};
+use crate::cef::cdp::CdpServer;
+use crate::cef::types::{CefError, ConsoleMessage, WindowConfig};
 
 #[derive(Debug)]
 pub struct CefWindow {
@@ -146,8 +146,8 @@ impl CefWindow {
 
 #[cfg(test)]
 mod tests {
-    use crate::cdp::CdpServer;
-    use crate::types::{ConsoleMessage, WindowConfig};
+    use crate::cef::cdp::CdpServer;
+    use crate::cef::types::{ConsoleMessage, WindowConfig};
 
     use super::CefWindow;
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::types::CefError;
+use crate::cef::types::CefError;
 
 fn platform_base_dir(home: &PathBuf) -> PathBuf {
     if cfg!(target_os = "macos") {

@@ -3,6 +3,7 @@
 // Structure:
 //   core/         — traits, DTOs, download helpers, platform detection,
 //                   Python toolchain, PostgreSQL infrastructure
+//   cef/          — CEF service pack (Chromium Embedded Framework browser runtime)
 //   litellm/      — LiteLLM service pack
 //   agentscope/   — AgentScope service pack
 //
@@ -10,6 +11,7 @@
 
 pub mod core;
 pub mod agentscope;
+pub mod cef;
 pub mod litellm;
 
 // ── Backward-compatible re-exports ──────────────────────────────────────────

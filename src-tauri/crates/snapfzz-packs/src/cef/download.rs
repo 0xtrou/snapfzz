@@ -9,7 +9,7 @@ use futures::StreamExt;
 use sha1::{Digest, Sha1};
 use tokio::sync::Mutex;
 
-use crate::types::{CefError, DownloadProgress, DownloadStatus};
+use crate::cef::types::{CefError, DownloadProgress, DownloadStatus};
 
 const CEF_INDEX_URL: &str = "https://cef-builds.spotifycdn.com/index.json";
 const CEF_CDN_BASE: &str = "https://cef-builds.spotifycdn.com";
@@ -174,7 +174,7 @@ impl CefDownloader {
         })
     }
 
-    pub async fn download_cef(&self) -> Result<Vec<crate::types::DownloadProgress>, CefError> {
+    pub async fn download_cef(&self) -> Result<Vec<crate::cef::types::DownloadProgress>, CefError> {
         std::fs::create_dir_all(&self.install_dir)?;
 
         if self.cancelled.load(Ordering::SeqCst) {
@@ -282,7 +282,7 @@ impl CefDownloader {
             status: DownloadStatus::Extracting,
         });
 
-        snapfzz_packs::extract_tar_bz2(
+        crate::extract_tar_bz2(
             &self.install_dir.join(&build.filename),
             &self.install_dir,
         )
@@ -328,7 +328,7 @@ impl CefDownloader {
 
     pub async fn extract_cef(&self) -> Result<(), CefError> {
         let archive = self.find_archive()?;
-        snapfzz_packs::extract_tar_bz2(&archive, &self.install_dir)
+        crate::extract_tar_bz2(&archive, &self.install_dir)
             .map_err(|e| CefError::Io(e.to_string()))?;
         Ok(())
     }
@@ -360,7 +360,7 @@ fn platform_display_name(platform: &str) -> &'static str {
     }
 }
 
-use snapfzz_packs::{
+use crate::{
     ComponentError, ComponentInfo, DownloadProgress as KernelProgress, DownloadStatus as KernelStatus,
     SystemComponent,
 };

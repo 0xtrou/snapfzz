@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::cdp::CdpServer;
-use crate::download::CefDownloader;
-use crate::types::{CefError, ConsoleMessage, WindowConfig};
-use crate::window::CefWindow;
+use crate::cef::cdp::CdpServer;
+use crate::cef::download::CefDownloader;
+use crate::cef::types::{CefError, ConsoleMessage, WindowConfig};
+use crate::cef::window::CefWindow;
 
 pub struct CefRuntime {
     initialized: bool,
@@ -230,8 +230,8 @@ impl CefRuntime {
 #[cfg(test)]
 mod tests {
     use super::CefRuntime;
-    use crate::download::CefDownloader;
-    use crate::types::{CefError, WindowConfig};
+    use crate::cef::download::CefDownloader;
+    use crate::cef::types::{CefError, WindowConfig};
 
     #[tokio::test]
     async fn a015_runtime_ensure_ready_requires_preinstalled_cef() {
@@ -402,7 +402,7 @@ mod tests {
         runtime
             .record_console_message(
                 "miniapp-1",
-                crate::types::ConsoleMessage {
+                crate::cef::types::ConsoleMessage {
                     level: "warn".to_string(),
                     message: "slow render".to_string(),
                     source: Some("miniapp.js".to_string()),

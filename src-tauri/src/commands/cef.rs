@@ -1,6 +1,6 @@
-use snapfzz_cef::download::{CefBuildInfo, CefDownloader};
-use snapfzz_cef::runtime::CefRuntime;
-use snapfzz_cef::types::{ConsoleMessage, DownloadProgress, DownloadStatus, WindowConfig};
+use snapfzz_packs::cef::download::{CefBuildInfo, CefDownloader};
+use snapfzz_packs::cef::runtime::CefRuntime;
+use snapfzz_packs::cef::types::{ConsoleMessage, DownloadProgress, DownloadStatus, WindowConfig};
 use snapfzz_kernel::budget::device::DeviceInfo;
 use std::path::Path;
 use std::sync::Arc;
@@ -272,15 +272,15 @@ pub async fn cef_platform_info(
 }
 
 #[cfg(test)]
-fn map_cef_error(error: snapfzz_cef::types::CefError) -> String {
+fn map_cef_error(error: snapfzz_packs::cef::types::CefError) -> String {
     error.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snapfzz_cef::download::CefDownloader;
-    use snapfzz_cef::types::{CefError, DownloadStatus};
+    use snapfzz_packs::cef::download::CefDownloader;
+    use snapfzz_packs::cef::types::{CefError, DownloadStatus};
     use std::sync::Arc;
     use tauri::{
         test::{mock_builder, mock_context, noop_assets},

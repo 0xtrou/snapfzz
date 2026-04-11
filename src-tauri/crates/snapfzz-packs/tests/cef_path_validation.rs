@@ -1,4 +1,4 @@
-use snapfzz_cef::download::CefDownloader;
+use snapfzz_packs::cef::download::CefDownloader;
 
 fn validate_runtime_path(path: &std::path::Path, expected_subdir: &str) {
     let home = dirs::home_dir().expect("home directory");
