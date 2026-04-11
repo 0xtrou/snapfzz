@@ -77,7 +77,32 @@ pub async fn get_process_logs(
     name: String,
     tail_n: usize,
     process_mgr: tauri::State<'_, Arc<ProcessManager>>,
+    postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<Vec<String>, String> {
+    // A039/PostgresLogs: Read PostgreSQL logs from its log file, not the in-memory ring buffer.
+    if name == "postgresql" {
+        let pg = postgres_runtime.lock().await;
+        if let Some(ref pg) = *pg {
+            let log_path = pg.log_file_path();
+            if log_path.exists() {
+                let content = std::fs::read_to_string(&log_path).unwrap_or_default();
+                let lines: Vec<String> = content.lines().map(String::from).collect();
+                let start = lines.len().saturating_sub(tail_n);
+                return Ok(lines[start..].to_vec());
+            }
+        }
+        // Fallback: try the old start.log
+        let start_log = std::path::PathBuf::from(
+            std::env::var("HOME").unwrap_or_default()
+        ).join(".snapfzz/data/postgres/start.log");
+        if start_log.exists() {
+            let content = std::fs::read_to_string(&start_log).unwrap_or_default();
+            let lines: Vec<String> = content.lines().map(String::from).collect();
+            let start = lines.len().saturating_sub(tail_n);
+            return Ok(lines[start..].to_vec());
+        }
+        return Ok(vec![]);
+    }
     Ok(process_mgr.logs.tail(&name, tail_n))
 }
 
@@ -85,7 +110,16 @@ pub async fn get_process_logs(
 pub async fn clear_process_logs(
     name: String,
     process_mgr: tauri::State<'_, Arc<ProcessManager>>,
+    postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<(), String> {
+    // A039/PostgresLogs: Clear PostgreSQL log file directly.
+    if name == "postgresql" {
+        let pg = postgres_runtime.lock().await;
+        if let Some(ref pg) = *pg {
+            let _ = std::fs::write(pg.log_file_path(), "");
+        }
+        return Ok(());
+    }
     process_mgr.logs.clear(&name);
     Ok(())
 }
@@ -254,16 +288,22 @@ mod tests {
             Arc::new(Mutex::new(RuntimeState::new())),
             logs,
         ));
+        let postgres_runtime: Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
 
         let app = mock_builder()
             .manage(process_mgr)
+            .manage(postgres_runtime)
             .build(mock_context(noop_assets()))
             .expect("build app");
+
+        let pg_state = app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>();
 
         let tailed = tauri::async_runtime::block_on(super::get_process_logs(
             "agentscope".to_string(),
             10,
             app.state::<Arc<ProcessManager>>(),
+            pg_state.clone(),
         ))
         .expect("tail logs");
         assert_eq!(tailed, vec!["line-1".to_string(), "line-2".to_string()]);
@@ -271,6 +311,7 @@ mod tests {
         tauri::async_runtime::block_on(super::clear_process_logs(
             "agentscope".to_string(),
             app.state::<Arc<ProcessManager>>(),
+            pg_state.clone(),
         ))
         .expect("clear logs");
 
@@ -278,6 +319,7 @@ mod tests {
             "agentscope".to_string(),
             10,
             app.state::<Arc<ProcessManager>>(),
+            pg_state,
         ))
         .expect("tail after clear");
         assert!(tailed_after_clear.is_empty());

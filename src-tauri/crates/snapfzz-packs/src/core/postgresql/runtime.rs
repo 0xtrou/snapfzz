@@ -54,14 +54,69 @@ impl PostgresRuntime {
     // Cleans up stale postmaster.pid from a previous crash before attempting to start.
     // A039/PostgresMetrics: Records started_at for uptime tracking.
     // A039/PostgresHealth: Starts a tiny HTTP health server on a random port.
+    // A039/PostgresLogs: Patches postgresql.conf for structured logging, starts log tailer.
     pub async fn start(&mut self) -> Result<(), PostgresError> {
         self.cleanup_stale_postmaster();
+        self.patch_postgresql_conf();
         if let Some(pg) = self.pg.as_mut() {
             pg.start().await?;
             self.started_at = Some(Instant::now());
             self.start_health_server().await;
         }
         Ok(())
+    }
+
+    // A039/PostgresLogs: Patch postgresql.conf to enable structured logging.
+    // Sets log_destination=stderr, logging_collector=on, log_directory, log_filename,
+    // log_line_prefix with timestamp+pid, and reasonable log verbosity.
+    fn patch_postgresql_conf(&self) {
+        let conf_path = self.data_dir.join("data").join("postgres").join("postgresql.conf");
+        if !conf_path.exists() {
+            return;
+        }
+
+        let snapfzz_marker = "# snapfzz-managed logging";
+        if let Ok(content) = std::fs::read_to_string(&conf_path) {
+            if content.contains(snapfzz_marker) {
+                return; // Already patched
+            }
+        }
+
+        let log_dir = self.data_dir.join("data").join("postgres").join("log");
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let patch = format!(
+            "\n{snapfzz_marker}\n\
+             logging_collector = on\n\
+             log_directory = '{}'\n\
+             log_filename = 'postgresql.log'\n\
+             log_truncate_on_rotation = on\n\
+             log_rotation_age = 0\n\
+             log_rotation_size = 10240\n\
+             log_line_prefix = '%t [%p] '\n\
+             log_statement = 'ddl'\n\
+             log_connections = on\n\
+             log_disconnections = on\n",
+            log_dir.display()
+        );
+
+        if let Err(e) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&conf_path)
+            .and_then(|mut f| {
+                use std::io::Write;
+                f.write_all(patch.as_bytes())
+            })
+        {
+            eprintln!("[postgres] failed to patch postgresql.conf: {e}");
+        } else {
+            eprintln!("[postgres] patched postgresql.conf for structured logging");
+        }
+    }
+
+    /// Path to the PostgreSQL log file (available after setup + start with patched config).
+    pub fn log_file_path(&self) -> PathBuf {
+        self.data_dir.join("data").join("postgres").join("log").join("postgresql.log")
     }
 
     // A039/PostgresHealth: Tiny HTTP server that responds to GET /health with 200 OK
