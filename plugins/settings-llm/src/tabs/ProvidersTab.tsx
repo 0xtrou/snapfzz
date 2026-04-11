@@ -551,6 +551,7 @@ function DiscoveredModelChip({
         flexDirection: 'column',
         gap: 0,
         minWidth: 0,
+        minHeight: 100,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
