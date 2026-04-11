@@ -28,6 +28,25 @@ pub struct ProcessSnapshot {
     pub owner: String,
 }
 
+impl ProcessSnapshot {
+    // A037/list_snapshots: Synthetic Stopped snapshot for a registered but not-yet-spawned factory.
+    pub fn stopped(name: &str, owner: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            pid: None,
+            status: ProcessStatus::Stopped,
+            rss_mb: None,
+            cpu_pct: None,
+            restart_count: 0,
+            consecutive_failures: 0,
+            uptime_secs: 0,
+            location: "local".to_string(),
+            health_url: String::new(),
+            owner: owner.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetMetrics {

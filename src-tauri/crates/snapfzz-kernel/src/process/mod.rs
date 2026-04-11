@@ -58,6 +58,7 @@ pub struct SpawnConfig {
     pub host: String,
     pub port: u16,
     pub working_dir: PathBuf,
+    pub database_url: Option<String>,
 }
 
 pub struct ProcessManager {
@@ -250,8 +251,8 @@ fn remove_pid_file(data_dir: &std::path::Path, name: &str) {
 /// A008/BootCleanup: Clean up all known orphan processes at boot time.
 /// Scans PID files for agentscope and litellm, kills any orphan processes still running.
 pub fn cleanup_all_orphan_processes(data_dir: &std::path::Path) {
-    const MANAGED_PROCESSES: &[&str] = &["agentscope", "litellm"];
-    
+    const MANAGED_PROCESSES: &[&str] = &["agentscope", "litellm", "postgres"];
+
     for name in MANAGED_PROCESSES {
         cleanup_stale_pid(data_dir, name);
     }
@@ -324,9 +325,7 @@ fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::io::Write;
-    use std::path::{Path, PathBuf};
-    use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+    use std::sync::Arc;
     use std::time::Instant;
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -368,11 +367,6 @@ mod tests {
                 owner: "system".to_string(),
             },
         );
-    }
-
-    fn env_lock() -> &'static StdMutex<()> {
-        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| StdMutex::new(()))
     }
 
     async fn spawn_health_server() -> u16 {
@@ -426,11 +420,16 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 8080,
             working_dir: std::path::PathBuf::from("/tmp/work"),
+            database_url: Some("postgres://postgres:snapfzz@127.0.0.1:5432/litellm".to_string()),
         };
 
         assert_eq!(cfg.host, "127.0.0.1");
         assert_eq!(cfg.port, 8080);
         assert_eq!(cfg.working_dir, std::path::PathBuf::from("/tmp/work"));
+        assert_eq!(
+            cfg.database_url,
+            Some("postgres://postgres:snapfzz@127.0.0.1:5432/litellm".to_string())
+        );
     }
 
     #[tokio::test]

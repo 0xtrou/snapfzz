@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig, SpawnSecrets};
@@ -25,66 +25,6 @@ impl LiteLLMFactory {
         let data_dir = DataDir::new(&base_data_dir);
         let service = LiteLLMService::new(runtime, data_dir);
         Self { vault, service }
-    }
-
-    // A037/pre-run-setup: Resolve litellm sqlite DB file path in service data dir.
-    fn database_path(&self) -> Result<PathBuf, ServiceError> {
-        self.service
-            .working_dir()
-            .map(|dir| dir.join("litellm.db"))
-            .map_err(|err| ServiceError::SpawnFailed(err.to_string()))
-    }
-
-    // A037/pre-run-setup: Resolve Prisma schema source path from installed litellm package.
-    fn litellm_schema_source(runtime: &PythonRuntime) -> PathBuf {
-        runtime
-            .venv_dir()
-            .join("lib")
-            .join(format!("python{}", versions::PYTHON))
-            .join("site-packages")
-            .join("litellm")
-            .join("proxy")
-            .join("schema.prisma")
-    }
-
-    // A037/pre-run-setup: Rewrite prisma provider to sqlite for local file DB.
-    fn patch_schema_provider(schema_path: &Path) -> Result<(), ServiceError> {
-        let source = std::fs::read_to_string(schema_path)
-            .map_err(|err| ServiceError::SpawnFailed(format!("read schema failed: {err}")))?;
-
-        let patched = source.replace("provider = \"postgresql\"", "provider = \"sqlite\"");
-
-        std::fs::write(schema_path, patched)
-            .map_err(|err| ServiceError::SpawnFailed(format!("write schema failed: {err}")))
-    }
-
-    // A037/pre-run-setup: Execute prisma CLI commands in python venv.
-    fn run_prisma_command(
-        &self,
-        prisma_bin: &Path,
-        working_dir: &Path,
-        args: &[&str],
-        envs: &[(&str, String)],
-    ) -> Result<(), ServiceError> {
-        let mut command = std::process::Command::new(prisma_bin);
-        command.args(args).current_dir(working_dir);
-        for (key, value) in envs {
-            command.env(key, value);
-        }
-
-        let output = command
-            .output()
-            .map_err(|err| ServiceError::SpawnFailed(format!("prisma spawn failed: {err}")))?;
-
-        if output.status.success() {
-            return Ok(());
-        }
-
-        Err(ServiceError::SpawnFailed(format!(
-            "prisma command failed ({}): {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr)
-        )))
     }
 
     fn resolve_secrets_from_vault(&self) -> SpawnSecrets {
@@ -145,24 +85,20 @@ impl ProcessFactory for LiteLLMFactory {
         self.service.can_start()
     }
 
-    // A037/pre-run-setup: Refresh Prisma schema and SQLite metadata before LiteLLM startup.
     fn pre_run_setup(
         &self,
-        _config: &SpawnConfig,
+        config: &SpawnConfig,
         runtime: &PythonRuntime,
     ) -> Result<(), ServiceError> {
+        let database_url = config
+            .database_url
+            .as_ref()
+            .ok_or_else(|| ServiceError::SpawnFailed("PostgreSQL URL not available".to_string()))?;
+
         let working_dir = self
             .service
             .working_dir()
             .map_err(|err| ServiceError::SpawnFailed(err.to_string()))?;
-        let schema_source = Self::litellm_schema_source(runtime);
-        if !schema_source.exists() {
-            return Err(ServiceError::DependencyNotInstalled(format!(
-                "LiteLLM Prisma schema not found at {}",
-                schema_source.display()
-            )));
-        }
-
         let prisma_bin = runtime.venv_dir().join("bin").join("prisma");
         if !prisma_bin.exists() {
             return Err(ServiceError::DependencyNotInstalled(format!(
@@ -171,26 +107,59 @@ impl ProcessFactory for LiteLLMFactory {
             )));
         }
 
-        let patched_schema_path = working_dir.join("schema.prisma");
-        std::fs::copy(&schema_source, &patched_schema_path).map_err(|err| {
-            ServiceError::SpawnFailed(format!(
-                "copy schema failed from {} to {}: {err}",
-                schema_source.display(),
-                patched_schema_path.display()
-            ))
-        })?;
-        Self::patch_schema_provider(&patched_schema_path)?;
+        // A038/pre_run_setup: Run prisma generate against installed litellm schema
+        let schema_path = runtime
+            .venv_dir()
+            .join("lib")
+            .join(format!("python{}", versions::PYTHON))
+            .join("site-packages")
+            .join("litellm")
+            .join("proxy")
+            .join("schema.prisma");
+        if !schema_path.exists() {
+            return Err(ServiceError::DependencyNotInstalled(format!(
+                "LiteLLM Prisma schema not found at {}",
+                schema_path.display()
+            )));
+        }
 
-        let schema_arg = format!("--schema={}", patched_schema_path.display());
-        let database_url = format!("file:{}", self.database_path()?.display());
+        let schema_arg = format!("--schema={}", schema_path.display());
 
-        self.run_prisma_command(&prisma_bin, &working_dir, &["generate", &schema_arg], &[])?;
-        self.run_prisma_command(
-            &prisma_bin,
-            &working_dir,
-            &["db", "push", "--skip-generate", &schema_arg],
-            &[("DATABASE_URL", database_url)],
-        )
+        // A038/pre_run_setup: prisma-client-py generator must be on PATH for `prisma generate`
+        let venv_bin = runtime.venv_dir().join("bin");
+        let path_with_venv = std::env::var("PATH")
+            .map(|p| format!("{}:{p}", venv_bin.display()))
+            .unwrap_or_else(|_| venv_bin.display().to_string());
+
+        let output = std::process::Command::new(&prisma_bin)
+            .args(["generate", schema_arg.as_str()])
+            .env("DATABASE_URL", database_url)
+            .env("PATH", &path_with_venv)
+            .current_dir(&working_dir)
+            .output()
+            .map_err(|err| ServiceError::SpawnFailed(format!("prisma generate failed: {err}")))?;
+        if !output.status.success() {
+            return Err(ServiceError::SpawnFailed(format!(
+                "prisma generate failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        let output = std::process::Command::new(&prisma_bin)
+            .args(["db", "push", "--skip-generate", schema_arg.as_str()])
+            .env("DATABASE_URL", database_url)
+            .env("PATH", &path_with_venv)
+            .current_dir(&working_dir)
+            .output()
+            .map_err(|err| ServiceError::SpawnFailed(format!("prisma db push failed: {err}")))?;
+        if !output.status.success() {
+            return Err(ServiceError::SpawnFailed(format!(
+                "prisma db push failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        Ok(())
     }
 
     fn build_command(
@@ -203,7 +172,6 @@ impl ProcessFactory for LiteLLMFactory {
             .map_err(|e| ServiceError::SpawnFailed(e.to_string()))?;
         let config_path = self.service.config_path();
         let secrets = self.resolve_secrets_from_vault();
-        let database_url = format!("file:{}", self.database_path()?.display());
 
         let mut cmd = self.service.spawn_command(&ServiceConfig {
             host: config.host.clone(),
@@ -215,7 +183,10 @@ impl ProcessFactory for LiteLLMFactory {
             cmd.arg("--config").arg(&config_path);
         }
 
-        cmd.env("DATABASE_URL", database_url);
+        // A038/DATABASE_URL: Use PostgreSQL URL from embedded instance
+        if let Some(ref db_url) = config.database_url {
+            cmd.env("DATABASE_URL", db_url);
+        }
 
         for (key, value) in secrets.env {
             cmd.env(key, value);
@@ -238,7 +209,6 @@ mod tests {
     use super::LiteLLMFactory;
     use snapfzz_kernel::process::{ProcessFactory, SpawnConfig};
     use snapfzz_kernel::settings::Settings;
-    use snapfzz_packs::constants::versions;
     use snapfzz_packs::detect_platform;
     use snapfzz_packs::runtime::python::PythonRuntime;
     use snapfzz_vault::{load_or_generate_master_key, SecretVault};
@@ -289,6 +259,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 4000,
             working_dir: PathBuf::from("/tmp"),
+            database_url: None,
         };
         let error = factory
             .build_command(&config, &runtime(temp.path()))
@@ -318,41 +289,19 @@ mod tests {
     }
 
     #[test]
-    fn t37_pre_run_setup_schema_source_resolves_expected_package_path() {
+    fn t38_litellm_factory_pre_run_setup_requires_database_url() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let runtime = runtime(temp.path());
-        let schema_path = LiteLLMFactory::litellm_schema_source(&runtime);
+        let factory = make_factory(temp.path());
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 4000,
+            working_dir: PathBuf::from("/tmp"),
+            database_url: None,
+        };
 
-        assert_eq!(
-            schema_path,
-            temp.path()
-                .join("runtime")
-                .join("python")
-                .join("venv")
-                .join("lib")
-                .join(format!("python{}", versions::PYTHON))
-                .join("site-packages")
-                .join("litellm")
-                .join("proxy")
-                .join("schema.prisma")
-        );
-    }
-
-    #[test]
-    fn t37_pre_run_setup_patch_schema_provider_switches_postgresql_to_sqlite() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let schema_path = temp.path().join("schema.prisma");
-
-        std::fs::write(
-            &schema_path,
-            "datasource db {\n  provider = \"postgresql\"\n  url = env(\"DATABASE_URL\")\n}\n",
-        )
-        .expect("write schema");
-
-        LiteLLMFactory::patch_schema_provider(&schema_path).expect("patch provider");
-
-        let patched = std::fs::read_to_string(&schema_path).expect("read patched schema");
-        assert!(patched.contains("provider = \"sqlite\""));
-        assert!(!patched.contains("provider = \"postgresql\""));
+        let err = factory
+            .pre_run_setup(&config, &runtime(temp.path()))
+            .expect_err("database URL required");
+        assert!(err.to_string().contains("PostgreSQL URL not available"));
     }
 }

@@ -156,6 +156,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 0,
             working_dir: PathBuf::from("/tmp"),
+            database_url: None,
         };
 
         let command = factory

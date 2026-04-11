@@ -40,11 +40,12 @@ impl BudgetedProcess {
         settings_mgr: Arc<SettingsManager>,
         python_runtime: Arc<PythonRuntime>,
         process_mgr: Arc<ProcessManager>,
+        database_url: Option<String>,
     ) -> Result<Self, ProcessError> {
         let settings = settings_mgr
             .load()
             .map_err(|err| ProcessError::SpawnFailed(err.to_string()))?;
-        let config = Self::resolve_config(factory.as_ref(), &settings)?;
+        let config = Self::resolve_config(factory.as_ref(), &settings, database_url)?;
 
         let preset_max_restarts = {
             let preset = registry.preset.read().unwrap();
@@ -131,7 +132,11 @@ impl BudgetedProcess {
         let pid = self
             .process_mgr
             .spawn_process(&self.name, &mut command, budget, &self.registry, 120)
-            .await?;
+            .await
+            .inspect_err(|_| {
+                // A037/spawn_failure: Reset to Stopped so list_snapshots shows correct status
+                self.status = ProcessStatus::Stopped;
+            })?;
 
         self.pid = Some(pid);
         self.status = ProcessStatus::Online;
@@ -218,7 +223,11 @@ impl BudgetedProcess {
             .unwrap_or(false)
     }
 
-    fn resolve_config(factory: &dyn ProcessFactory, settings: &Settings) -> Result<SpawnConfig, ProcessError> {
+    fn resolve_config(
+        factory: &dyn ProcessFactory,
+        settings: &Settings,
+        database_url: Option<String>,
+    ) -> Result<SpawnConfig, ProcessError> {
         let (host_key, port_key) = factory.port_settings_keys();
 
         let host = Self::settings_get(settings, host_key)
@@ -248,6 +257,7 @@ impl BudgetedProcess {
             host,
             port,
             working_dir,
+            database_url,
         })
     }
 
@@ -389,6 +399,7 @@ mod tests {
             settings_mgr.clone(),
             runtime(),
             process_mgr,
+            None as Option<String>,
         )
         .expect("process");
 
@@ -413,6 +424,7 @@ mod tests {
             settings_mgr(),
             runtime(),
             Arc::new(ProcessManager::new()),
+            None as Option<String>,
         )
         .expect("process");
 
@@ -431,6 +443,7 @@ mod tests {
             settings_mgr(),
             runtime(),
             Arc::new(ProcessManager::new()),
+            None as Option<String>,
         )
         .expect("process");
 
@@ -452,6 +465,7 @@ mod tests {
             settings_mgr(),
             runtime(),
             Arc::new(ProcessManager::new()),
+            None as Option<String>,
         )
         .expect("process");
 
@@ -469,6 +483,7 @@ mod tests {
             settings_mgr(),
             runtime(),
             Arc::new(ProcessManager::new()),
+            None as Option<String>,
         )
         .expect("process");
 

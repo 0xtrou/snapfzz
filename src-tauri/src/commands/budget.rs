@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use snapfzz_kernel::budget::{self, device::DeviceInfo, preset::PresetName, BudgetRegistry};
+use snapfzz_kernel::process::ProcessFactoryRegistry;
 use std::sync::Arc;
 
 pub(crate) fn preset_name_from_str(preset_name: &str) -> Result<PresetName, String> {
@@ -56,10 +57,6 @@ pub(crate) fn do_budget_record_strike(registry: &BudgetRegistry, plugin_id: &str
     registry.is_plugin_disabled(plugin_id)
 }
 
-pub(crate) fn do_budget_snapshot(registry: &BudgetRegistry) -> Result<Value, String> {
-    serde_json::to_value(registry.snapshot()).map_err(|e| e.to_string())
-}
-
 pub(crate) fn do_budget_report_violation(
     class: String,
     metric: String,
@@ -112,8 +109,13 @@ pub async fn budget_report_violation(
 #[tauri::command]
 pub async fn budget_snapshot(
     registry: tauri::State<'_, Arc<BudgetRegistry>>,
+    factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
 ) -> Result<Value, String> {
-    do_budget_snapshot(&registry)
+    let mut metrics = registry.snapshot();
+    // A037/budget_snapshot: Override processes with ProcessFactoryRegistry so all known
+    // services appear (including Stopped/not-yet-spawned), not just ones in supervised domain.
+    metrics.processes = factory_registry.lock().await.list_snapshots();
+    serde_json::to_value(metrics).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -140,11 +142,34 @@ mod tests {
         supervised::{ProcessBudget, ProcessLocation},
         BudgetRegistry,
     };
+    use snapfzz_kernel::process::{logs::ProcessLogs, runtime::RuntimeState, ProcessFactoryRegistry, ProcessManager};
+    use snapfzz_kernel::settings::SettingsManager;
+    use snapfzz_packs::{detect_platform, runtime::python::PythonRuntime};
     use std::sync::Arc;
     use tauri::{
         test::{mock_builder, mock_context, noop_assets},
         Manager,
     };
+
+    fn empty_factory_registry(data_dir: &std::path::Path) -> Arc<tokio::sync::Mutex<ProcessFactoryRegistry>> {
+        let logs = Arc::new(ProcessLogs::with_max_lines(data_dir.to_path_buf(), 100));
+        let process_mgr = Arc::new(ProcessManager::with_parts(
+            Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
+            logs,
+        ));
+        let platform = detect_platform().expect("platform");
+        let python_runtime = Arc::new(PythonRuntime::new(data_dir.join("runtime"), platform));
+        Arc::new(tokio::sync::Mutex::new(ProcessFactoryRegistry::new(
+            Arc::new(BudgetRegistry::from_hardware()),
+            process_mgr,
+            Arc::new(SettingsManager::new(data_dir.to_path_buf())),
+            python_runtime,
+        )))
+    }
+
+    fn do_budget_snapshot(registry: &BudgetRegistry) -> Result<Value, String> {
+        serde_json::to_value(registry.snapshot()).map_err(|e| e.to_string())
+    }
 
     fn register_process(registry: &Arc<BudgetRegistry>, name: &str) {
         registry.register_process(
@@ -276,9 +301,12 @@ mod tests {
 
     #[test]
     fn a008_commands_budget_ipc_commands_return_expected_values() {
+        let temp = tempfile::tempdir().expect("tempdir");
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Balanced));
+        let factory_registry = empty_factory_registry(temp.path());
         let app = mock_builder()
             .manage(registry.clone())
+            .manage(factory_registry)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
@@ -296,6 +324,7 @@ mod tests {
 
         let snapshot = tauri::async_runtime::block_on(budget_snapshot(
             app.state::<Arc<BudgetRegistry>>(),
+            app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
         ))
         .expect("budget snapshot");
         assert_eq!(snapshot["presetName"], "balanced");

@@ -17,6 +17,9 @@ flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 thiserror = "2"
 dirs = "6"
+postgresql_embedded = "0.20"
+sysinfo = "0.38"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

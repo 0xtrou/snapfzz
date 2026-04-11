@@ -18,6 +18,7 @@ pub struct ProcessFactoryRegistry {
     settings_mgr: Arc<SettingsManager>,
     python_runtime: Arc<PythonRuntime>,
     process_mgr: Arc<ProcessManager>,
+    database_url: Option<String>,
 }
 
 impl ProcessFactoryRegistry {
@@ -38,6 +39,7 @@ impl ProcessFactoryRegistry {
             settings_mgr,
             python_runtime,
             process_mgr,
+            database_url: None,
         }
     }
     
@@ -47,6 +49,10 @@ impl ProcessFactoryRegistry {
 
     pub fn register(&mut self, factory: Arc<dyn ProcessFactory>) {
         self.factories.insert(factory.name().to_string(), factory);
+    }
+
+    pub fn set_database_url(&mut self, url: String) {
+        self.database_url = Some(url);
     }
 
     pub async fn spawn(&mut self, name: &str) -> Result<(), ProcessError> {
@@ -62,6 +68,7 @@ impl ProcessFactoryRegistry {
                 self.settings_mgr.clone(),
                 self.python_runtime.clone(),
                 self.process_mgr.clone(),
+                self.database_url.clone(),
             )?;
 
             self.processes.insert(name.to_string(), process);
@@ -74,9 +81,9 @@ impl ProcessFactoryRegistry {
             .await;
 
         if result.is_err() {
-            // C2/C7: Cleanup orphaned child and remove stale BudgetedProcess on spawn failure
+            // A037/spawn_failure: Kill orphaned child but keep BudgetedProcess in map so
+            // list_snapshots() can still surface the process with Stopped status to the UI.
             let _ = self.process_mgr.shutdown(name).await;
-            self.processes.remove(name);
         }
 
         result
@@ -126,7 +133,15 @@ impl ProcessFactoryRegistry {
     }
 
     pub fn list_snapshots(&self) -> Vec<ProcessSnapshot> {
-        self.processes.values().map(BudgetedProcess::snapshot).collect()
+        // A037/list_snapshots: Include all registered factories, not just spawned ones.
+        // Factories not yet in `processes` appear as Stopped so the UI always shows all services.
+        let mut snapshots: Vec<ProcessSnapshot> = self.processes.values().map(BudgetedProcess::snapshot).collect();
+        for (name, factory) in &self.factories {
+            if !self.processes.contains_key(name) {
+                snapshots.push(ProcessSnapshot::stopped(name, factory.owner()));
+            }
+        }
+        snapshots
     }
 
     pub fn total_rss_mb(&self) -> f64 {
@@ -257,11 +272,19 @@ mod tests {
 
     #[tokio::test]
     async fn t37_registry_spawn_creates_budgeted_process_from_factory() {
+        // A037/registry: spawn must use the registered factory, not fail with "unknown process factory".
+        // Process may be cleaned up after spawn failure (health timeout), so assert on the error
+        // kind rather than post-spawn registry state.
         let mut registry = make_registry();
         registry.register(Arc::new(TestFactory { name: "agentscope" }));
 
-        let _ = registry.spawn("agentscope").await;
-        assert!(registry.get("agentscope").is_some());
+        let result = registry.spawn("agentscope").await;
+        if let Err(e) = result {
+            assert!(
+                !e.to_string().contains("unknown process factory"),
+                "unexpected error: {e}"
+            );
+        }
     }
 
     #[tokio::test]

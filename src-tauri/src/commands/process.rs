@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use snapfzz_kernel::budget::BudgetRegistry;
 use snapfzz_kernel::process::{ProcessFactoryRegistry, ProcessManager};
 use std::sync::Arc;
 use tauri::Emitter;
@@ -40,9 +39,12 @@ pub(crate) fn emit_supervisor<R: tauri::Runtime>(
 
 #[tauri::command]
 pub async fn list_processes(
-    registry: tauri::State<'_, Arc<BudgetRegistry>>,
+    factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
 ) -> Result<Value, String> {
-    serde_json::to_value(registry.snapshot().processes).map_err(|e| e.to_string())
+    // A037/list_processes: Read from ProcessFactoryRegistry so all known services appear,
+    // including those that are Stopped or failed to start — not just running ones.
+    let registry = factory_registry.lock().await;
+    serde_json::to_value(registry.list_snapshots()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -110,11 +112,7 @@ pub async fn kill_process<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snapfzz_kernel::budget::{
-        metrics::ProcessStatus,
-        preset::PresetName,
-        supervised::{ProcessBudget, ProcessLocation},
-    };
+    use snapfzz_kernel::budget::{preset::PresetName, BudgetRegistry};
     use snapfzz_kernel::process::{logs::ProcessLogs, runtime::RuntimeState, ProcessFactoryRegistry};
     use snapfzz_kernel::settings::SettingsManager;
     use snapfzz_packs::{detect_platform, runtime::python::PythonRuntime};
@@ -124,25 +122,6 @@ mod tests {
         Manager,
     };
     use tokio::sync::Mutex;
-
-    fn register_process(registry: &Arc<BudgetRegistry>, name: &str) {
-        registry.register_process(
-            name,
-            ProcessBudget {
-                pid: None,
-                health_url: "http://127.0.0.1:1/health".to_string(),
-                health_interval_ms: 1000,
-                max_health_failures: 3,
-                max_restarts: 3,
-                location: ProcessLocation::Local,
-                consecutive_failures: 0,
-                restart_count: 0,
-                status: ProcessStatus::Starting,
-                started_at: None,
-                owner: "system".to_string(),
-            },
-        );
-    }
 
     fn make_factory_registry(
         data_dir: &std::path::Path,
@@ -182,23 +161,28 @@ mod tests {
 
     #[test]
     fn a014_process_list_processes_returns_registered_snapshots() {
-        let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
-        register_process(&registry, "agentscope");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory_registry = make_factory_registry(temp.path());
 
         let app = mock_builder()
-            .manage(registry)
+            .manage(factory_registry)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
         let result = tauri::async_runtime::block_on(super::list_processes(
-            app.state::<Arc<BudgetRegistry>>(),
+            app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
         ))
         .expect("list processes");
 
+        // Factory registry has agentscope + litellm registered; list_processes returns all known
+        // services regardless of running state.
         let processes = result.as_array().expect("array response");
-        assert!(processes
-            .iter()
-            .any(|entry| entry.get("name").and_then(|v| v.as_str()) == Some("agentscope")));
+        assert!(
+            processes
+                .iter()
+                .any(|entry| entry.get("name").and_then(|v| v.as_str()) == Some("litellm")),
+            "litellm should appear in process list"
+        );
     }
 
     #[test]

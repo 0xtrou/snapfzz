@@ -111,6 +111,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 8090,
             working_dir: PathBuf::from("/tmp"),
+            database_url: None,
         };
         let error = factory
             .build_command(&config, &runtime())
