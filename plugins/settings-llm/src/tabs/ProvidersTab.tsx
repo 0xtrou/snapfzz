@@ -21,7 +21,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { AppButton, ConfirmAction } from '@snapfzz/shared';
+import { AppButton, ConfirmAction, PretextList } from '@snapfzz/shared';
 import {
   type CustomProvider,
   type CustomProviderVariant,
@@ -671,6 +671,7 @@ function AvailableModels({
   const [importAllLoading, setImportAllLoading] = useState(false);
   const [registeredInfoMap, setRegisteredInfoMap] = useState<Record<string, ModelInfoDetails>>({});
   const [usingCatalog, setUsingCatalog] = useState(false);
+  const [modelFilter, setModelFilter] = useState<'latest' | 'all'>('latest');
 
   // Build a catalog lookup for this provider (keyed by short model id).
   const catalogLookup = useMemo(() => {
@@ -767,7 +768,14 @@ function AvailableModels({
     return models.filter((m) => m.id.toLowerCase().includes(lower));
   }, [models, filter]);
 
-  const unimportedCount = filteredModels.filter((m) => !importedIds.has(m.id)).length;
+  const latestModels = useMemo(() => {
+    const sorted = [...filteredModels].sort((a, b) => a.id.length - b.id.length);
+    return sorted.slice(0, 10);
+  }, [filteredModels]);
+
+  const displayModels = modelFilter === 'latest' ? latestModels : filteredModels;
+
+  const unimportedCount = displayModels.filter((m) => !importedIds.has(m.id)).length;
 
   const handleImport = useCallback(
     async (modelId: string) => {
@@ -787,7 +795,7 @@ function AvailableModels({
   );
 
   const handleImportAll = useCallback(async () => {
-    const toImport = filteredModels.filter((m) => !importedIds.has(m.id));
+    const toImport = displayModels.filter((m) => !importedIds.has(m.id));
     if (toImport.length === 0) return;
     setImportAllLoading(true);
     let succeeded = 0;
@@ -807,7 +815,7 @@ function AvailableModels({
       message.warning(`Imported ${succeeded}, failed ${failed}`);
     }
     setImportAllLoading(false);
-  }, [providerId, baseUrl, importedIds, filteredModels]);
+  }, [providerId, baseUrl, importedIds, displayModels]);
 
   const handleCopy = useCallback(async (modelId: string) => {
     try {
@@ -838,7 +846,15 @@ function AvailableModels({
             </Tag>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Radio.Group
+            value={modelFilter}
+            onChange={(e) => setModelFilter(e.target.value as 'latest' | 'all')}
+            size="small"
+          >
+            <Radio.Button value="latest">Latest ({latestModels.length})</Radio.Button>
+            <Radio.Button value="all">All ({filteredModels.length})</Radio.Button>
+          </Radio.Group>
           {models.length > 0 && unimportedCount > 0 && !usingCatalog && (
             <Button
               icon={<PlusOutlined />}
@@ -901,11 +917,11 @@ function AvailableModels({
               aria-label="Filter models"
             />
             <Text style={{ color: 'var(--text-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>
-              {filteredModels.length}/{models.length} active
+              {displayModels.length}/{models.length} active
             </Text>
           </div>
 
-          {filteredModels.length === 0 ? (
+          {displayModels.length === 0 ? (
             <div
               style={{
                 padding: 24,
@@ -921,16 +937,12 @@ function AvailableModels({
               </Text>
             </div>
           ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                gap: 8,
-              }}
-            >
-              {filteredModels.map((model) => (
+            <PretextList
+              items={displayModels}
+              estimateHeight={() => 72}
+              keyExtractor={(model) => model.id}
+              renderItem={(model) => (
                 <DiscoveredModelChip
-                  key={model.id}
                   model={model}
                   imported={importedIds.has(model.id)}
                   importing={importingId === model.id}
@@ -939,8 +951,9 @@ function AvailableModels({
                   registeredInfo={registeredInfoMap[model.id]}
                   catalogInfo={catalogLookup[model.id]}
                 />
-              ))}
-            </div>
+              )}
+              style={{ maxHeight: 400 }}
+            />
           )}
         </>
       )}
