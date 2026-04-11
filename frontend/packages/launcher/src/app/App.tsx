@@ -2,7 +2,7 @@
 // Per A005/PluginArchitecture: shell reads ContributionStore, empty until plugins register.
 // Per A006/CoreRuntime: launcher shell = header + main + status bar, all from store.
 import { ConfigProvider } from 'antd';
-import { useAppSettings, darkTheme, lightTheme } from '@snapfzz/shared';
+import { useAppSettings, darkTheme, lightTheme, createTauriBridge } from '@snapfzz/shared';
 import {
   PluginHost,
   ContributionStore,
@@ -15,8 +15,11 @@ import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
 import type { ComponentContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
 
 // Per A003/InstantLoading: measure TTI and LCP on every boot.
+// Per A002/ZoneViolation: report long tasks and LCP violations to BudgetRegistry.
 function measureStartup() {
   if (typeof window === 'undefined' || !window.performance) return;
+
+  const bridge = createTauriBridge();
 
   // LCP — when the skeleton logo becomes visible
   new PerformanceObserver((list) => {
@@ -24,6 +27,8 @@ function measureStartup() {
     const last = entries[entries.length - 1];
     // eslint-disable-next-line no-console
     console.log(`[A003/metrics] LCP: ${Math.round(last.startTime)}ms`);
+    // Per A002/ZoneViolation: report LCP to BudgetRegistry via Tauri IPC.
+    void bridge.invoke('budget_report_violation', { class: 'startup', metric: 'lcp', actual_ms: last.startTime });
   }).observe({ type: 'largest-contentful-paint', buffered: true });
 
   // Long tasks — any JS blocking > 50ms
@@ -31,6 +36,8 @@ function measureStartup() {
     for (const entry of list.getEntries()) {
       // eslint-disable-next-line no-console
       console.log(`[A003/metrics] Long task: ${Math.round(entry.duration)}ms at ${Math.round(entry.startTime)}ms`);
+      // Per A002/ZoneViolation: report long task to BudgetRegistry via Tauri IPC.
+      void bridge.invoke('budget_report_violation', { class: 'cpu', metric: 'longtask', actual_ms: entry.duration });
     }
   }).observe({ type: 'longtask', buffered: true });
 

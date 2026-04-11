@@ -21,7 +21,7 @@ const emptySnapshot = {
 let snapshot = { ...emptySnapshot };
 let crashingPluginIds = new Set<string>();
 
-const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock } = vi.hoisted(() => {
+const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvokeMock } = vi.hoisted(() => {
   class MockPerformanceObserver {
     private readonly callback: (list: { getEntries: () => Array<{ startTime?: number; duration?: number }> }) => void;
 
@@ -39,10 +39,13 @@ const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock } = vi.hoist
     }
   }
 
+  const invokeMock = vi.fn().mockResolvedValue(undefined);
+
   return {
     useAppSettingsMock: vi.fn(),
     consoleLogMock: vi.fn(),
     PerformanceObserverMock: MockPerformanceObserver,
+    bridgeInvokeMock: invokeMock,
   };
 });
 
@@ -50,6 +53,7 @@ vi.mock('@snapfzz/shared', () => ({
   useAppSettings: useAppSettingsMock,
   darkTheme: { algorithm: undefined, token: {} },
   lightTheme: { algorithm: undefined, token: {} },
+  createTauriBridge: () => ({ invoke: bridgeInvokeMock, listen: vi.fn(), isAvailable: false }),
 }));
 
 vi.mock('antd', () => ({
@@ -103,6 +107,8 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     useAppSettingsMock.mockReturnValue({ theme: 'dark', toggleTheme: vi.fn(), customFonts: [] });
 
     consoleLogMock.mockReset();
+    bridgeInvokeMock.mockReset();
+    bridgeInvokeMock.mockResolvedValue(undefined);
     vi.stubGlobal('PerformanceObserver', PerformanceObserverMock);
     vi.spyOn(console, 'log').mockImplementation(consoleLogMock);
   });
@@ -198,6 +204,21 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     expect(consoleLogMock).toHaveBeenCalledWith('[A003/metrics] LCP: 42ms');
     expect(consoleLogMock).toHaveBeenCalledWith('[A003/metrics] Long task: 67ms at 9ms');
     expect(consoleLogMock).toHaveBeenCalledWith(expect.stringMatching(/\[A003\/metrics\] TTI \(hydration\): \d+ms/));
+  });
+
+  it('A002/ZoneViolation: reports LCP and long task violations to BudgetRegistry via bridge invoke', () => {
+    render(createElement(App));
+
+    expect(bridgeInvokeMock).toHaveBeenCalledWith('budget_report_violation', {
+      class: 'startup',
+      metric: 'lcp',
+      actual_ms: 42,
+    });
+    expect(bridgeInvokeMock).toHaveBeenCalledWith('budget_report_violation', {
+      class: 'cpu',
+      metric: 'longtask',
+      actual_ms: 67,
+    });
   });
 
   it('A005/isolation: routes component crashes to plugin boundary fallback', async () => {

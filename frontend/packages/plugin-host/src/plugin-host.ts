@@ -1,4 +1,5 @@
 import type { ActivationEvent, PluginContext, PluginHandle, HostSurface, PluginDefinition } from '@snapfzz/plugin-sdk';
+import { createTauriBridge } from '@snapfzz/shared';
 import { ContributionStore } from './contribution-store';
 import { createPluginContext, disposePluginContext } from './plugin-context-factory';
 
@@ -36,8 +37,15 @@ type PluginLoader = () => Promise<PluginDefinition>;
 const DISABLED_PLUGINS_KEY = 'snapfzz:disabledPlugins';
 const CRASH_WINDOW_MS = 300_000;
 const MAX_CRASH_COUNT = 3;
-const STARTUP_BUDGET_MS = 200;
-const ACTIVATION_TIMEOUT_MS = 5_000;
+// Per A003/StartupBudget: values flow from BudgetRegistry, not hardcoded.
+// These are fallback defaults used when the Rust invoke is unavailable (tests, early boot failure).
+const STARTUP_BUDGET_MS_DEFAULT = 200;
+const ACTIVATION_TIMEOUT_MS_DEFAULT = 5_000;
+
+interface StartupBudget {
+  startupBudgetMs: number;
+  activationTimeoutMs: number;
+}
 
 export class PluginHost {
   // Per A006/PluginHost: runtime owns manifest registry keyed by plugin id for lookup + lifecycle ops.
@@ -53,6 +61,8 @@ export class PluginHost {
   private store: ContributionStore;
   private surface: HostSurface;
   private storage?: PluginHostStorage;
+  // Per A003/StartupBudget: cached budget fetched once from BudgetRegistry on first activation event.
+  private startupBudget: StartupBudget | null = null;
 
   constructor(store: ContributionStore, surface?: HostSurface, storage?: PluginHostStorage) {
     this.store = store;
@@ -222,12 +232,14 @@ export class PluginHost {
     );
     const startedAt = Date.now();
 
+    const activationTimeoutMs = this.startupBudget?.activationTimeoutMs ?? ACTIVATION_TIMEOUT_MS_DEFAULT;
+
     try {
       const activationPromise = plugin.activate ? plugin.activate(context) : Promise.resolve({});
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(
-          () => reject(new Error(`Plugin '${pluginId}' activation timed out after ${ACTIVATION_TIMEOUT_MS}ms`)),
-          ACTIVATION_TIMEOUT_MS,
+          () => reject(new Error(`Plugin '${pluginId}' activation timed out after ${activationTimeoutMs}ms`)),
+          activationTimeoutMs,
         );
       });
 
@@ -235,8 +247,8 @@ export class PluginHost {
       const handle = await Promise.race<PluginHandle>([activationPromise, timeoutPromise]);
       const elapsed = Date.now() - startedAt;
 
-      if (elapsed > ACTIVATION_TIMEOUT_MS) {
-        console.warn(`[PluginHost] Plugin '${pluginId}' activation took ${elapsed}ms (over ${ACTIVATION_TIMEOUT_MS}ms budget)`);
+      if (elapsed > activationTimeoutMs) {
+        console.warn(`[PluginHost] Plugin '${pluginId}' activation took ${elapsed}ms (over ${activationTimeoutMs}ms budget)`);
       }
 
       this.activatedPlugins.set(pluginId, { handle, context });
@@ -274,6 +286,12 @@ export class PluginHost {
   async activateByEvent(event: ActivationEvent): Promise<void> {
     this.firedEvents.add(event);
 
+    // Per A003/StartupBudget: values flow from BudgetRegistry, not hardcoded.
+    // Fetch once and cache; fall back to defaults if Rust is unavailable.
+    if (this.startupBudget === null) {
+      this.startupBudget = await this.fetchStartupBudget();
+    }
+
     const ordered = this.resolve();
     const shouldActivate = new Set<string>();
 
@@ -299,10 +317,11 @@ export class PluginHost {
       await this.activate(plugin.id);
     }
 
-    // Per A005/Lifecycle: startup plugins must fit a 200ms critical budget.
+    // Per A005/Lifecycle: startup plugins must fit the registry-configured critical budget.
     if (event === 'onStartupFinished') {
+      const startupBudgetMs = this.startupBudget.startupBudgetMs;
       const startupElapsed = Date.now() - startupBegin;
-      if (startupElapsed > STARTUP_BUDGET_MS) {
+      if (startupElapsed > startupBudgetMs) {
         console.warn(`[PluginHost] Startup activation budget exceeded: ${startupElapsed}ms`);
       }
     } else {
@@ -469,6 +488,29 @@ export class PluginHost {
         scheduleDuringIdle(() => resolve());
       });
     }
+  }
+
+  private async fetchStartupBudget(): Promise<StartupBudget> {
+    // Per A003/StartupBudget: values flow from BudgetRegistry, not hardcoded.
+    // Defensive: fall back to compile-time defaults if Rust is unavailable during early boot.
+    try {
+      const bridge = createTauriBridge();
+      const response = await bridge.invoke<{ visible_ms: number; activation_timeout_ms: number }>(
+        'get_startup_budget',
+      );
+      if (response && typeof response.visible_ms === 'number' && typeof response.activation_timeout_ms === 'number') {
+        return {
+          startupBudgetMs: response.visible_ms,
+          activationTimeoutMs: response.activation_timeout_ms,
+        };
+      }
+    } catch {
+      // Rust not available — proceed with defaults.
+    }
+    return {
+      startupBudgetMs: STARTUP_BUDGET_MS_DEFAULT,
+      activationTimeoutMs: ACTIVATION_TIMEOUT_MS_DEFAULT,
+    };
   }
 
   private readDisabledPlugins(): Set<string> {
