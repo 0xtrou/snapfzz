@@ -39,21 +39,32 @@ import {
 
 const { Text, Title } = Typography;
 
-// Per A013/Config: all supported LLM providers with CDN icon mapping
+// Per A013/Config: all supported LLM providers
 const PROVIDERS = [
-  { id: 'openai', label: 'OpenAI', icon: 'openai' },
-  { id: 'anthropic', label: 'Anthropic', icon: 'anthropic' },
-  { id: 'google', label: 'Google AI', icon: 'google' },
-  { id: 'mistral', label: 'Mistral', icon: 'mistral' },
-  { id: 'cohere', label: 'Cohere', icon: 'cohere' },
-  { id: 'azure', label: 'Azure OpenAI', icon: 'azure' },
-  { id: 'ollama', label: 'Ollama', icon: 'ollama' },
-  { id: 'groq', label: 'Groq', icon: 'groq' },
-  { id: 'deepseek', label: 'DeepSeek', icon: 'deepseek' },
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'anthropic', label: 'Anthropic' },
+  { id: 'google', label: 'Google AI' },
+  { id: 'mistral', label: 'Mistral' },
+  { id: 'cohere', label: 'Cohere' },
+  { id: 'azure', label: 'Azure OpenAI' },
+  { id: 'ollama', label: 'Ollama' },
+  { id: 'groq', label: 'Groq' },
+  { id: 'deepseek', label: 'DeepSeek' },
 ];
 
-const ICON_CDN_BASE =
-  'https://raw.githubusercontent.com/xandemon/developer-icons/main/icons';
+// Brand colors for provider icon circles. Hex literals are intentional —
+// these represent brand identity, not theme colors.
+const PROVIDER_BRAND_COLORS: Record<string, string> = {
+  openai: '#10A37F',
+  anthropic: '#D4A574',
+  google: '#4285F4',
+  mistral: '#FF7000',
+  cohere: '#39594D',
+  azure: '#0078D4',
+  ollama: '#FFFFFF',
+  groq: '#F55036',
+  deepseek: '#4D6BFE',
+};
 
 interface ProviderKeyEntry {
   keyName: string;
@@ -69,60 +80,46 @@ interface ToggleState {
   [providerId: string]: boolean;
 }
 
-function iconUrl(iconName: string): string {
-  return `${ICON_CDN_BASE}/${iconName}.svg`;
-}
-
 /**
- * Fallback avatar: colored circle with the first letter of the provider name.
- * Uses var(--bg-subtle) background and var(--text-primary) foreground.
+ * Branded circle avatar for a provider. Uses the provider's brand color as
+ * the background and renders the first letter of the label. No external
+ * image dependencies — works offline and never 404s.
  */
-function ProviderIconFallback({ label }: { label: string }) {
+function ProviderIcon({
+  providerId,
+  label,
+  size = 40,
+}: {
+  providerId: string;
+  label: string;
+  size?: number;
+}) {
+  const bg = PROVIDER_BRAND_COLORS[providerId] ?? 'var(--bg-subtle)';
+  // Ollama uses a white background — use a dark letter so it reads on light bg.
+  const color = bg === '#FFFFFF' ? 'var(--text-primary)' : '#ffffff';
+  const fontSize = Math.round(size * 0.45);
+
   return (
     <div
+      aria-label={`${label} icon`}
       style={{
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         borderRadius: '50%',
-        background: 'var(--bg-subtle)',
+        background: bg,
+        border: bg === '#FFFFFF' ? '1px solid var(--border-default)' : 'none',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 18,
-        fontWeight: 600,
-        color: 'var(--text-primary)',
+        fontSize,
+        fontWeight: 700,
+        color,
         flexShrink: 0,
+        userSelect: 'none',
       }}
     >
       {label.charAt(0).toUpperCase()}
     </div>
-  );
-}
-
-function ProviderIcon({
-  iconName,
-  label,
-  size = 40,
-}: {
-  iconName: string;
-  label: string;
-  size?: number;
-}) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) {
-    return <ProviderIconFallback label={label} />;
-  }
-
-  return (
-    <img
-      src={iconUrl(iconName)}
-      alt={`${label} icon`}
-      width={size}
-      height={size}
-      style={{ flexShrink: 0 }}
-      onError={() => setFailed(true)}
-    />
   );
 }
 
@@ -175,7 +172,7 @@ function ProviderCard({
         e.currentTarget.style.borderColor = 'var(--border-default)';
       }}
     >
-      <ProviderIcon iconName={provider.icon} label={provider.label} />
+      <ProviderIcon providerId={provider.id} label={provider.label} />
 
       <Text
         style={{
@@ -561,13 +558,11 @@ function AvailableModels({ providerId }: { providerId: string }) {
 function ProviderDetail({
   providerId,
   providerLabel,
-  providerIcon,
   isCustom,
   onBack,
 }: {
   providerId: string;
   providerLabel: string;
-  providerIcon?: string;
   isCustom?: boolean;
   onBack: () => void;
 }) {
@@ -662,7 +657,7 @@ function ProviderDetail({
             />
           ) : (
             <ProviderIcon
-              iconName={providerIcon ?? providerId}
+              providerId={providerId}
               label={providerLabel}
               size={36}
             />
@@ -1031,7 +1026,6 @@ export default function ProvidersTab() {
         <ProviderDetail
           providerId={builtIn.id}
           providerLabel={builtIn.label}
-          providerIcon={builtIn.icon}
           onBack={handleBack}
         />
       );

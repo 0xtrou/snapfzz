@@ -315,7 +315,7 @@ export default function ApiKeysTab() {
           <Empty description="No virtual keys created" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <Table<KeyInfo>
-            rowKey={(r) => resolveKey(r)}
+            rowKey={(r, index) => `${resolveKey(r)}-${index}`}
             columns={columns}
             dataSource={keys}
             pagination={false}
