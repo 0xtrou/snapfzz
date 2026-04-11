@@ -42,4 +42,5 @@ coverage/
 **/coverage-summary.json
 src-tauri/*.json
 !src-tauri/tauri.conf.json
+!src-tauri/model-catalog.json
 .gitnexus
