@@ -1,10 +1,11 @@
 // Spec: A013-llm-providers.md
 // Section: Settings Plugin UI — Providers Tab
-// Verifies: card grid view, drill-in detail view, key CRUD operations, toggle state
+// Verifies: card grid view, drill-in detail view, key CRUD operations, toggle state,
+//           custom providers, available models
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ProvidersTab from '../../tabs/ProvidersTab';
 
 const { mockInvoke } = vi.hoisted(() => ({
@@ -27,17 +28,39 @@ vi.mock('@snapfzz/shared', () => ({
   ),
 }));
 
+const mockFetch = vi.fn();
+
 describe('A013/UI/ProvidersTab', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+    mockFetch.mockReset();
+    vi.stubGlobal('fetch', mockFetch);
     mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
       if (command === 'llm_list_provider_keys') {
         if (args.providerId === 'openai') return ['primary'];
         if (args.providerId === 'anthropic') return ['prod', 'dev'];
         return [];
       }
+      if (command === 'vault_read') {
+        if (args.key === 'litellm:custom_providers') return null;
+        return null;
+      }
+      if (command === 'vault_store') return undefined;
+      if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+      if (command === 'llm_get_master_key') return 'sk-master-test';
       return undefined;
     });
+
+    // Default: /v1/models returns empty
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [] }),
+      text: () => Promise.resolve('{}'),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   describe('Grid View', () => {
@@ -98,6 +121,151 @@ describe('A013/UI/ProvidersTab', () => {
       await user.click(openaiCard);
 
       expect(await screen.findByText('Back to Providers')).toBeInTheDocument();
+    });
+
+    it('A013/Grid: shows Built-in Providers and Custom Providers sections', async () => {
+      render(<ProvidersTab />);
+
+      expect(await screen.findByText('Built-in Providers')).toBeInTheDocument();
+      expect(screen.getByText('Custom Providers')).toBeInTheDocument();
+    });
+
+    it('A013/Grid: shows empty state for custom providers when none configured', async () => {
+      render(<ProvidersTab />);
+
+      expect(
+        await screen.findByText(/No custom providers configured/),
+      ).toBeInTheDocument();
+    });
+
+    it('A013/Grid: shows Add OpenAI Compatible and Add Anthropic Compatible buttons', async () => {
+      render(<ProvidersTab />);
+
+      await screen.findByText('OpenAI');
+
+      expect(
+        screen.getByRole('button', { name: /Add OpenAI Compatible/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /Add Anthropic Compatible/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('Custom Providers', () => {
+    it('A013/Custom: renders custom provider cards when vault has data', async () => {
+      mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
+        if (command === 'llm_list_provider_keys') {
+          if (args.providerId === 'openai') return ['primary'];
+          if (args.providerId === 'anthropic') return ['prod', 'dev'];
+          if (args.providerId === 'custom-solo-eng') return ['default'];
+          return [];
+        }
+        if (command === 'vault_read') {
+          if (args.key === 'litellm:custom_providers') {
+            return JSON.stringify([
+              {
+                id: 'solo-eng',
+                name: 'llm.solo.engineer',
+                baseUrl: 'https://llm.solo.engineer/v1',
+                variant: 'openai',
+              },
+            ]);
+          }
+          return null;
+        }
+        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+        if (command === 'llm_get_master_key') return 'sk-master-test';
+        return undefined;
+      });
+
+      render(<ProvidersTab />);
+
+      expect(await screen.findByText('llm.solo.engineer')).toBeInTheDocument();
+      expect(screen.getByText('https://llm.solo.engineer/v1')).toBeInTheDocument();
+    });
+
+    it('A013/Custom: clicking Add OpenAI Compatible opens modal', async () => {
+      const user = userEvent.setup();
+      render(<ProvidersTab />);
+
+      await screen.findByText('OpenAI');
+
+      const addBtn = screen.getByRole('button', { name: /Add OpenAI Compatible/i });
+      await user.click(addBtn);
+
+      expect(await screen.findByText('Add Custom Provider')).toBeInTheDocument();
+    });
+
+    it('A013/Custom: add modal stores provider config and key', async () => {
+      const user = userEvent.setup();
+      render(<ProvidersTab />);
+
+      await screen.findByText('OpenAI');
+
+      const addBtn = screen.getByRole('button', { name: /Add OpenAI Compatible/i });
+      await user.click(addBtn);
+
+      const modal = await screen.findByRole('dialog', { name: /Add Custom Provider/i });
+
+      const nameInput = within(modal).getByLabelText(/Name/i);
+      const urlInput = within(modal).getByLabelText(/Base URL/i);
+      const keyInput = within(modal).getByLabelText(/API Key/i);
+
+      await user.type(nameInput, 'my-provider');
+      await user.type(urlInput, 'https://api.example.com/v1');
+      await user.type(keyInput, 'sk-custom-key');
+
+      await user.click(within(modal).getByRole('button', { name: 'OK' }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+          key: 'litellm:custom_providers',
+          value: expect.stringContaining('my-provider'),
+        });
+      });
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith('llm_store_provider_key', {
+          providerId: 'custom-my-provider',
+          keyName: 'default',
+          keyValue: 'sk-custom-key',
+        });
+      });
+    });
+
+    it('A013/Custom: clicking custom provider card navigates to detail', async () => {
+      mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
+        if (command === 'llm_list_provider_keys') {
+          if (args.providerId === 'custom-solo-eng') return ['default'];
+          return [];
+        }
+        if (command === 'vault_read') {
+          if (args.key === 'litellm:custom_providers') {
+            return JSON.stringify([
+              {
+                id: 'solo-eng',
+                name: 'solo-eng',
+                baseUrl: 'https://llm.solo.engineer/v1',
+                variant: 'openai',
+              },
+            ]);
+          }
+          return null;
+        }
+        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+        if (command === 'llm_get_master_key') return 'sk-master-test';
+        return undefined;
+      });
+
+      const user = userEvent.setup();
+      render(<ProvidersTab />);
+
+      const card = await screen.findByRole('button', { name: 'View solo-eng details' });
+      await user.click(card);
+
+      expect(await screen.findByText('Back to Providers')).toBeInTheDocument();
+      expect(screen.getByText('solo-eng')).toBeInTheDocument();
     });
   });
 
@@ -190,6 +358,92 @@ describe('A013/UI/ProvidersTab', () => {
 
       expect(keyNameInput).toHaveValue('primary');
       expect(keyNameInput).toBeDisabled();
+    });
+
+    it('A013/Detail: shows Available Models section', async () => {
+      await navigateToOpenAI();
+
+      expect(await screen.findByText('Available Models')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument();
+    });
+
+    it('A013/Detail: shows model chips from LiteLLM /v1/models', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              { id: 'openai/gpt-4o' },
+              { id: 'openai/gpt-4o-mini' },
+              { id: 'anthropic/claude-3' },
+            ],
+          }),
+        text: () => Promise.resolve(''),
+      });
+
+      await navigateToOpenAI();
+
+      // Should only show openai-prefixed models
+      expect(await screen.findByText('gpt-4o')).toBeInTheDocument();
+      expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
+      // Anthropic model should not appear
+      expect(screen.queryByText('claude-3')).not.toBeInTheDocument();
+    });
+
+    it('A013/Detail: model filter narrows displayed models', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              { id: 'openai/gpt-4o' },
+              { id: 'openai/gpt-4o-mini' },
+              { id: 'openai/gpt-3.5-turbo' },
+            ],
+          }),
+        text: () => Promise.resolve(''),
+      });
+
+      const user = await navigateToOpenAI();
+
+      await screen.findByText('gpt-4o');
+
+      const filterInput = screen.getByLabelText('Filter models');
+      await user.type(filterInput, 'mini');
+
+      expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
+      expect(screen.queryByText('gpt-3.5-turbo')).not.toBeInTheDocument();
+      expect(screen.getByText('1/3 active')).toBeInTheDocument();
+    });
+
+    it('A013/Detail: shows error state when model fetch fails', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Internal error'),
+        json: () => Promise.reject(new Error('fail')),
+      });
+
+      await navigateToOpenAI();
+
+      expect(await screen.findByText('Unable to fetch models')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    });
+
+    it('A013/Detail: copy button is present for each model chip', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [{ id: 'openai/gpt-4o' }],
+          }),
+        text: () => Promise.resolve(''),
+      });
+
+      await navigateToOpenAI();
+
+      const copyBtn = await screen.findByRole('button', { name: 'Copy gpt-4o' });
+      expect(copyBtn).toBeInTheDocument();
     });
   });
 

@@ -12,16 +12,18 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { AppButton, ConfirmAction } from '@snapfzz/shared';
 import {
   listKeys,
   deleteKey,
   getBaseUrl,
   getMasterKey,
+  getModels,
   type KeyInfo,
   type KeyGenerateParams,
 } from '../hooks/useLlmCommands';
@@ -34,14 +36,42 @@ const BUDGET_DURATIONS = [
   { value: '30d', label: '30 Days' },
 ];
 
-// A013/Keys: LiteLLM uses `token` or `key` — helper resolves either.
+const MODELS_CACHE_KEY = 'snapfzz:available_models';
+const MAX_VISIBLE_TAGS = 3;
+
 function resolveKey(record: KeyInfo): string {
   return record.key || record.token || record.key_alias || record.key_name || '(unknown)';
 }
 
 function maskKey(key: string): string {
-  if (!key || key.length <= 8) return '•'.repeat(key?.length || 4);
-  return `${key.slice(0, 4)}${'•'.repeat(key.length - 8)}${key.slice(-4)}`;
+  if (!key || key.length <= 8) return '\u2022'.repeat(key?.length || 4);
+  return `${key.slice(0, 4)}${'\u2022'.repeat(key.length - 8)}${key.slice(-4)}`;
+}
+
+function resolveAlias(record: KeyInfo): string {
+  return record.key_alias || record.key_name || '-';
+}
+
+function formatDate(iso: string | undefined): string {
+  if (!iso) return '-';
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function loadCachedModels(): string[] {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    return cached ? JSON.parse(cached) : [];
+  } catch {
+    return [];
+  }
 }
 
 export default function ApiKeysTab() {
@@ -53,6 +83,27 @@ export default function ApiKeysTab() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+  const [availableModels, setAvailableModels] = useState<string[]>(loadCachedModels);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  const fetchModels = useCallback(async (url: string, key: string) => {
+    if (!url || !key) return;
+    setModelsLoading(true);
+    try {
+      const data = await getModels(url, key);
+      const models = (data.data || []).map((m) => m.id);
+      setAvailableModels(models);
+      localStorage.setItem(MODELS_CACHE_KEY, JSON.stringify(models));
+    } catch (err) {
+      console.error('[ApiKeysTab] Failed to fetch models:', err);
+      const cached = loadCachedModels();
+      if (cached.length > 0) {
+        setAvailableModels(cached);
+      }
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
 
   const loadKeys = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
@@ -82,10 +133,17 @@ export default function ApiKeysTab() {
     void loadKeys();
   }, [loadKeys]);
 
+  useEffect(() => {
+    if (baseUrl && masterKey) {
+      void fetchModels(baseUrl, masterKey);
+    }
+  }, [baseUrl, masterKey, fetchModels]);
+
   const columns: TableColumnsType<KeyInfo> = [
     {
       title: 'Key',
       key: 'key',
+      width: 160,
       render: (_: unknown, record: KeyInfo) => (
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm, 13px)' }}>
           {maskKey(resolveKey(record))}
@@ -93,32 +151,48 @@ export default function ApiKeysTab() {
       ),
     },
     {
+      title: 'Alias',
+      key: 'alias',
+      width: 140,
+      render: (_: unknown, record: KeyInfo) => (
+        <Text>{resolveAlias(record)}</Text>
+      ),
+    },
+    {
       title: 'Models',
       dataIndex: 'models',
       key: 'models',
-      render: (models: string[] | undefined) => (
-        <Space size={4} wrap>
-          {(models || []).map((m) => <Tag key={m}>{m}</Tag>)}
-        </Space>
-      ),
+      render: (models: string[] | undefined) => {
+        if (!models || models.length === 0) {
+          return <Tag color="green">All models</Tag>;
+        }
+        const visible = models.slice(0, MAX_VISIBLE_TAGS);
+        const remaining = models.length - MAX_VISIBLE_TAGS;
+        return (
+          <Space size={4} wrap>
+            {visible.map((m) => <Tag key={m}>{m}</Tag>)}
+            {remaining > 0 && (
+              <Tooltip title={models.slice(MAX_VISIBLE_TAGS).join(', ')}>
+                <Tag>+{remaining} more</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Spend',
       dataIndex: 'spend',
       key: 'spend',
-      render: (spend: number) => `$${(spend || 0).toFixed(4)}`,
+      width: 100,
+      render: (spend: number) => `$${(spend || 0).toFixed(2)}`,
     },
     {
       title: 'Budget',
       dataIndex: 'max_budget',
       key: 'max_budget',
+      width: 100,
       render: (budget: number) => (budget ? `$${budget.toFixed(2)}` : 'Unlimited'),
-    },
-    {
-      title: 'Duration',
-      dataIndex: 'budget_duration',
-      key: 'budget_duration',
-      render: (duration: string) => duration || '-',
     },
     {
       title: 'Actions',
@@ -147,7 +221,51 @@ export default function ApiKeysTab() {
     },
   ];
 
+  const expandedRowRender = (record: KeyInfo) => {
+    const models = record.models || [];
+    const spent = record.spend || 0;
+    const budget = record.max_budget;
+    const duration = record.budget_duration || '-';
+    const expires = formatDate(record.expires);
+
+    return (
+      <div style={{ padding: '8px 0' }}>
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <div>
+            <Text type="secondary">Alias: </Text>
+            <Text>{resolveAlias(record)}</Text>
+          </div>
+          <div>
+            <Text type="secondary">Allowed Models: </Text>
+            {models.length === 0 ? (
+              <Tag color="green">All models</Tag>
+            ) : (
+              <Space size={4} wrap>
+                {models.map((m) => <Tag key={m}>{m}</Tag>)}
+              </Space>
+            )}
+          </div>
+          <div>
+            <Text type="secondary">Budget: </Text>
+            <Text>
+              ${spent.toFixed(2)} / {budget ? `$${budget.toFixed(2)}` : 'Unlimited'}
+            </Text>
+          </div>
+          <div>
+            <Text type="secondary">Duration: </Text>
+            <Text>{duration}</Text>
+          </div>
+          <div>
+            <Text type="secondary">Expires: </Text>
+            <Text>{expires}</Text>
+          </div>
+        </Space>
+      </div>
+    );
+  };
+
   async function handleCreate(values: {
+    key_alias?: string;
     models: string[];
     max_budget: number;
     budget_duration: string;
@@ -165,6 +283,9 @@ export default function ApiKeysTab() {
         budget_duration: values.budget_duration || '30d',
         metadata: {},
       };
+      if (values.key_alias) {
+        params.key_alias = values.key_alias;
+      }
       const result = await generateKey(baseUrl, masterKey, params);
       setGeneratedKey(result.key);
       await loadKeys();
@@ -193,7 +314,13 @@ export default function ApiKeysTab() {
         ) : keys.length === 0 ? (
           <Empty description="No virtual keys created" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
-          <Table<KeyInfo> rowKey={(r) => resolveKey(r)} columns={columns} dataSource={keys} pagination={false} />
+          <Table<KeyInfo>
+            rowKey={(r) => resolveKey(r)}
+            columns={columns}
+            dataSource={keys}
+            pagination={false}
+            expandable={{ expandedRowRender }}
+          />
         )}
       </Space>
 
@@ -232,20 +359,44 @@ export default function ApiKeysTab() {
         ) : (
           <Form form={form} layout="vertical" onFinish={handleCreate}>
             <Form.Item
+              name="key_alias"
+              label="Key Alias"
+            >
+              <Input placeholder="e.g., dev-key, staging-key" />
+            </Form.Item>
+            <Form.Item
               name="models"
               label="Allowed Models"
               rules={[{ required: true, message: 'Select at least one model' }]}
             >
               <Select
                 mode="multiple"
-                placeholder="Select models (e.g., gpt-4o, claude-sonnet)"
-              >
-                <Select.Option value="gpt-4o">gpt-4o</Select.Option>
-                <Select.Option value="gpt-4o-mini">gpt-4o-mini</Select.Option>
-                <Select.Option value="claude-sonnet">claude-sonnet</Select.Option>
-                <Select.Option value="claude-haiku">claude-haiku</Select.Option>
-                <Select.Option value="gemini-pro">gemini-pro</Select.Option>
-              </Select>
+                placeholder="Select models from connected providers"
+                showSearch
+                loading={modelsLoading}
+                filterOption={(input, option) =>
+                  (option?.value as string).toLowerCase().includes(input.toLowerCase())
+                }
+                options={availableModels.map((m) => ({ value: m, label: m }))}
+                notFoundContent={
+                  modelsLoading ? (
+                    <span>Loading models...</span>
+                  ) : availableModels.length === 0 ? (
+                    <Space direction="vertical" size={4} align="center" style={{ padding: 8 }}>
+                      <Text type="secondary">No models found</Text>
+                      <Button
+                        size="small"
+                        icon={<ReloadOutlined />}
+                        onClick={() => void fetchModels(baseUrl, masterKey)}
+                      >
+                        Refresh
+                      </Button>
+                    </Space>
+                  ) : (
+                    'No matches'
+                  )
+                }
+              />
             </Form.Item>
             <Form.Item name="max_budget" label="Max Budget ($)">
               <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="0 = unlimited" />

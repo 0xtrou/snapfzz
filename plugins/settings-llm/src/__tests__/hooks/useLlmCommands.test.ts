@@ -267,4 +267,46 @@ describe('A013/Hooks: useLlmCommands', () => {
       expect(result.data).toHaveLength(1);
     });
   });
+
+  describe('A013/Custom: Custom provider persistence', () => {
+    it('loads custom providers from vault', async () => {
+      const providers = [
+        { id: 'solo', name: 'Solo', baseUrl: 'https://solo.dev/v1', variant: 'openai' },
+      ];
+      mockInvoke.mockResolvedValue(JSON.stringify(providers));
+      const { loadCustomProviders } = await import('../../hooks/useLlmCommands');
+      const result = await loadCustomProviders();
+      expect(result).toEqual(providers);
+      expect(mockInvoke).toHaveBeenCalledWith('vault_read', {
+        key: 'litellm:custom_providers',
+      });
+    });
+
+    it('returns empty array when vault has no custom providers', async () => {
+      mockInvoke.mockResolvedValue(null);
+      const { loadCustomProviders } = await import('../../hooks/useLlmCommands');
+      const result = await loadCustomProviders();
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array when vault_read throws', async () => {
+      mockInvoke.mockRejectedValue(new Error('vault locked'));
+      const { loadCustomProviders } = await import('../../hooks/useLlmCommands');
+      const result = await loadCustomProviders();
+      expect(result).toEqual([]);
+    });
+
+    it('saves custom providers to vault as JSON', async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const { saveCustomProviders } = await import('../../hooks/useLlmCommands');
+      const providers = [
+        { id: 'test', name: 'Test', baseUrl: 'https://test.io/v1', variant: 'openai' as const },
+      ];
+      await saveCustomProviders(providers);
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: 'litellm:custom_providers',
+        value: JSON.stringify(providers),
+      });
+    });
+  });
 });

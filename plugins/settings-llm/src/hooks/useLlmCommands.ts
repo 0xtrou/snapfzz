@@ -47,6 +47,7 @@ export interface KeyGenerateParams {
   max_budget: number;
   budget_duration: string;
   metadata: Record<string, string>;
+  key_alias?: string;
   rpm_limit?: number;
   tpm_limit?: number;
 }
@@ -126,6 +127,16 @@ export interface ModelInfo {
 
 export interface ModelListResponse {
   data: ModelInfo[];
+}
+
+// Custom provider metadata stored in vault as JSON blob
+export type CustomProviderVariant = 'openai' | 'anthropic';
+
+export interface CustomProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  variant: CustomProviderVariant;
 }
 
 // A013/Fetch: Helper to call LiteLLM APIs directly via fetch
@@ -326,4 +337,27 @@ export async function getModels(
 ): Promise<ModelListResponse> {
   const res = await litellmFetch(`${baseUrl}/v1/models`, masterKey);
   return res.json();
+}
+
+// Custom provider config persistence via vault
+
+export async function loadCustomProviders(): Promise<CustomProvider[]> {
+  try {
+    const raw = await bridge.invoke<string>('vault_read', {
+      key: 'litellm:custom_providers',
+    });
+    if (!raw) return [];
+    return JSON.parse(raw) as CustomProvider[];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCustomProviders(
+  providers: CustomProvider[],
+): Promise<void> {
+  await bridge.invoke<void>('vault_store', {
+    key: 'litellm:custom_providers',
+    value: JSON.stringify(providers),
+  });
 }
