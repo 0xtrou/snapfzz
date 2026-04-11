@@ -65,11 +65,6 @@ pub async fn clear_process_logs(
     Ok(())
 }
 
-pub(crate) fn do_kill_process(name: &str, process_mgr: &ProcessManager) -> Result<String, String> {
-    process_mgr.kill(name).map_err(|e| e.to_string())?;
-    Ok("Process killed".to_string())
-}
-
 #[tauri::command]
 pub async fn restart_process<R: tauri::Runtime>(
     name: String,
@@ -92,21 +87,27 @@ pub async fn restart_process<R: tauri::Runtime>(
     }
 }
 
+// A037/kill_process: Route through ProcessFactoryRegistry so registry state
+// (processes map, budget supervisor) is cleaned up alongside the OS process.
 #[tauri::command]
 pub async fn kill_process<R: tauri::Runtime>(
     name: String,
     app: tauri::AppHandle<R>,
-    process_mgr: tauri::State<'_, Arc<ProcessManager>>,
+    factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
 ) -> Result<(), String> {
-    let process_mgr = process_mgr.inner().clone();
-    let name_for_kill = name.clone();
-    let message =
-        tokio::task::spawn_blocking(move || do_kill_process(&name_for_kill, &process_mgr))
-            .await
-            .map_err(|e| e.to_string())??;
+    let mut registry = factory_registry.lock().await;
+    let result = registry.kill(&name).await;
 
-    emit_supervisor(&app, "success", &name, message);
-    Ok(())
+    match result {
+        Ok(()) => {
+            emit_supervisor(&app, "success", &name, format!("{} killed", name));
+            Ok(())
+        }
+        Err(e) => {
+            emit_supervisor(&app, "error", &name, format!("Failed to kill {}: {}", name, e));
+            Err(e.to_string())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -114,6 +115,11 @@ mod tests {
     use super::*;
     use snapfzz_kernel::budget::{preset::PresetName, BudgetRegistry};
     use snapfzz_kernel::process::{logs::ProcessLogs, runtime::RuntimeState, ProcessFactoryRegistry};
+
+    fn do_kill_process(name: &str, process_mgr: &ProcessManager) -> Result<String, String> {
+        process_mgr.kill(name).map_err(|e| e.to_string())?;
+        Ok("Process killed".to_string())
+    }
     use snapfzz_kernel::settings::SettingsManager;
     use snapfzz_packs::{detect_platform, runtime::python::PythonRuntime};
     use std::sync::Arc;
@@ -228,23 +234,25 @@ mod tests {
     #[test]
     fn a014_commands_process_do_kill_process_returns_runtime_not_running_error() {
         let process_mgr = ProcessManager::new();
-        let err = super::do_kill_process("missing", &process_mgr)
+        let err = do_kill_process("missing", &process_mgr)
             .expect_err("missing process should fail");
         assert!(err.contains("not running"));
     }
 
     #[test]
     fn a014_commands_process_kill_process_command_propagates_missing_runtime_error() {
-        let process_mgr = Arc::new(ProcessManager::new());
+        let temp = tempfile::tempdir().expect("tempdir");
+        let factory_registry = make_factory_registry(temp.path());
+
         let app = mock_builder()
-            .manage(process_mgr)
+            .manage(factory_registry)
             .build(mock_context(noop_assets()))
             .expect("build app");
 
         let err = tauri::async_runtime::block_on(super::kill_process(
             "missing".to_string(),
             app.handle().clone(),
-            app.state::<Arc<ProcessManager>>(),
+            app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
         ))
         .expect_err("missing runtime should fail");
         assert!(err.contains("not running"));
@@ -304,7 +312,7 @@ mod tests {
     fn a014_commands_process_do_kill_process_propagates_missing_runtime_error() {
         let process_mgr = ProcessManager::new();
 
-        let err = super::do_kill_process("missing", &process_mgr)
+        let err = do_kill_process("missing", &process_mgr)
             .expect_err("missing runtime should fail");
         assert!(err.contains("not running"));
     }
