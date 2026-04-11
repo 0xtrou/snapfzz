@@ -672,7 +672,7 @@ function AvailableModels({
   const [importAllLoading, setImportAllLoading] = useState(false);
   const [registeredInfoMap, setRegisteredInfoMap] = useState<Record<string, ModelInfoDetails>>({});
   const [usingCatalog, setUsingCatalog] = useState(false);
-  const [modelFilter, setModelFilter] = useState<'latest' | 'all'>('latest');
+  const [modelTypeFilter, setModelTypeFilter] = useState<string>('chat');
 
   // Build a catalog lookup for this provider (keyed by short model id).
   const catalogLookup = useMemo(() => {
@@ -769,12 +769,28 @@ function AvailableModels({
     return models.filter((m) => m.id.toLowerCase().includes(lower));
   }, [models, filter]);
 
-  const latestModels = useMemo(() => {
-    const sorted = [...filteredModels].sort((a, b) => a.id.length - b.id.length);
-    return sorted.slice(0, 10);
-  }, [filteredModels]);
+  // Collect available model types from catalog/discovered models
+  const modelTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const m of filteredModels) {
+      const info = catalogLookup[m.id];
+      const mode = info?.mode || m.owned_by || 'chat';
+      types.add(mode);
+    }
+    return ['all', ...Array.from(types).sort()];
+  }, [filteredModels, catalogLookup]);
 
-  const displayModels = modelFilter === 'latest' ? latestModels : filteredModels;
+  const displayModels = useMemo(() => {
+    const typed = modelTypeFilter === 'all'
+      ? filteredModels
+      : filteredModels.filter((m) => {
+          const info = catalogLookup[m.id];
+          const mode = info?.mode || m.owned_by || 'chat';
+          return mode === modelTypeFilter;
+        });
+    // Sort by name length (shortest = flagship/latest, e.g., gpt-4o before gpt-4o-2024-08-06)
+    return [...typed].sort((a, b) => a.id.length - b.id.length);
+  }, [filteredModels, modelTypeFilter, catalogLookup]);
 
   const unimportedCount = displayModels.filter((m) => !importedIds.has(m.id)).length;
 
@@ -849,12 +865,20 @@ function AvailableModels({
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Radio.Group
-            value={modelFilter}
-            onChange={(e) => setModelFilter(e.target.value as 'latest' | 'all')}
+            value={modelTypeFilter}
+            onChange={(e) => setModelTypeFilter(e.target.value as string)}
             size="small"
           >
-            <Radio.Button value="latest">Latest ({latestModels.length})</Radio.Button>
-            <Radio.Button value="all">All ({filteredModels.length})</Radio.Button>
+            {modelTypes.map((type) => {
+              const count = type === 'all'
+                ? filteredModels.length
+                : filteredModels.filter((m) => (catalogLookup[m.id]?.mode || m.owned_by || 'chat') === type).length;
+              return (
+                <Radio.Button key={type} value={type}>
+                  {type === 'all' ? 'All' : type.replace(/_/g, ' ')} ({count})
+                </Radio.Button>
+              );
+            })}
           </Radio.Group>
           {models.length > 0 && unimportedCount > 0 && !usingCatalog && (
             <Button
@@ -941,7 +965,7 @@ function AvailableModels({
             <VirtuosoGrid
               data={displayModels}
               totalCount={displayModels.length}
-              style={{ height: Math.min(Math.ceil(displayModels.length / 4) * 140 + 16, 560) }}
+              style={{ height: 480 }}
               components={{
                 List: React.forwardRef(function GridList(props, ref) {
                   return <div ref={ref} {...props} style={{ ...props.style, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }} />;
