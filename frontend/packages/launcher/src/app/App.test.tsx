@@ -2,9 +2,10 @@
 // Spec: A003-instant-loading.md
 // Section: LoadingSequence, SkeletonBehavior
 // Verifies: launcher shell renders instantly via static skeleton, transitions to React shell
+// Per A003/BootComplete: skeleton stays visible until boot-complete event is received.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, act } from '@testing-library/react';
 import type { StatusItemContribution, ComponentContribution } from '@snapfzz/plugin-sdk';
 
 const emptySnapshot = {
@@ -21,7 +22,7 @@ const emptySnapshot = {
 let snapshot = { ...emptySnapshot };
 let crashingPluginIds = new Set<string>();
 
-const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvokeMock } = vi.hoisted(() => {
+const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvokeMock, bootCompleteHandlers } = vi.hoisted(() => {
   class MockPerformanceObserver {
     private readonly callback: (list: { getEntries: () => Array<{ startTime?: number; duration?: number }> }) => void;
 
@@ -40,12 +41,15 @@ const { useAppSettingsMock, consoleLogMock, PerformanceObserverMock, bridgeInvok
   }
 
   const invokeMock = vi.fn().mockResolvedValue(undefined);
+  // Per A003/BootComplete: capture boot-complete handlers so tests can fire them.
+  const handlers: Array<() => void> = [];
 
   return {
     useAppSettingsMock: vi.fn(),
     consoleLogMock: vi.fn(),
     PerformanceObserverMock: MockPerformanceObserver,
     bridgeInvokeMock: invokeMock,
+    bootCompleteHandlers: handlers,
   };
 });
 
@@ -53,7 +57,17 @@ vi.mock('@snapfzz/shared', () => ({
   useAppSettings: useAppSettingsMock,
   darkTheme: { algorithm: undefined, token: {} },
   lightTheme: { algorithm: undefined, token: {} },
-  createTauriBridge: () => ({ invoke: bridgeInvokeMock, listen: vi.fn(), isAvailable: false }),
+  createTauriBridge: () => ({
+    invoke: bridgeInvokeMock,
+    // Per A003/BootComplete: listen returns a Promise so .then() works; captures boot-complete handler.
+    listen: vi.fn().mockImplementation((event: string, handler: () => void) => {
+      if (event === 'boot-complete') {
+        bootCompleteHandlers.push(handler);
+      }
+      return Promise.resolve(vi.fn());
+    }),
+    isAvailable: false,
+  }),
 }));
 
 vi.mock('antd', () => ({
@@ -102,6 +116,7 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     if (existing) existing.remove();
     snapshot = { ...emptySnapshot };
     crashingPluginIds = new Set<string>();
+    bootCompleteHandlers.length = 0;
 
     useAppSettingsMock.mockReset();
     useAppSettingsMock.mockReturnValue({ theme: 'dark', toggleTheme: vi.fn(), customFonts: [] });
@@ -120,17 +135,32 @@ describe('A003/InstantLoading: Launcher shell boot', () => {
     vi.restoreAllMocks();
   });
 
-  it('A003/InstantLoading: sets data-app-ready on hydration', async () => {
+  it('A003/BootComplete: sets data-app-ready only after boot-complete event', async () => {
     render(createElement(App));
+    // Before boot-complete fires, data-app-ready must not be set.
+    expect(document.documentElement.getAttribute('data-app-ready')).toBeNull();
+
+    // Simulate backend emitting boot-complete after all phases finish.
+    await act(async () => {
+      for (const handler of bootCompleteHandlers) handler();
+    });
+
     expect(document.documentElement.getAttribute('data-app-ready')).toBe('true');
   });
 
-  it('A003/InstantLoading: adds fade-out class to skeleton element', async () => {
+  it('A003/BootComplete: adds fade-out class to skeleton only after boot-complete event', async () => {
     const skeleton = document.createElement('div');
     skeleton.id = 'skeleton';
     document.body.appendChild(skeleton);
 
     render(createElement(App));
+    // Skeleton must still be visible before boot-complete.
+    expect(skeleton.classList.contains('fade-out')).toBe(false);
+
+    // Simulate backend emitting boot-complete after all phases finish.
+    await act(async () => {
+      for (const handler of bootCompleteHandlers) handler();
+    });
 
     await waitFor(() => {
       expect(skeleton.classList.contains('fade-out')).toBe(true);

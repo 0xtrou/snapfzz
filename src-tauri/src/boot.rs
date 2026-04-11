@@ -7,6 +7,8 @@
 // Phase 3 — Service spawn (waits for Phase 1 + 2 via Notify; brief lock per service)
 
 use crate::helpers::emit_supervisor;
+#[allow(unused_imports)]
+use tauri::Emitter;
 use snapfzz_kernel::process::ProcessFactoryRegistry;
 use snapfzz_packs::{runtime::python::PythonRuntime, ComponentRegistry};
 use std::{path::PathBuf, sync::Arc};
@@ -150,6 +152,17 @@ pub fn spawn_boot_phases(
                     }
                 }
             }
+
+            // Per A003/BootComplete: emit after all Phase 3 results are processed so the
+            // frontend skeleton stays visible until the full boot sequence is done.
+            app_handle.emit("boot-complete", serde_json::json!({
+                "success": true,
+                "timestamp": std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64
+            })).ok();
+            eprintln!("[boot] boot-complete event emitted");
         });
     }
 }

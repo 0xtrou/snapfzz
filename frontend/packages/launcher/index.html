@@ -78,7 +78,7 @@
     <!-- Per A003/InstantLoading: static skeleton visible at 0ms, replaced when React hydrates -->
     <div id="skeleton">
       <div class="sk-header"><div class="sk-header-dot"></div></div>
-      <div class="sk-main">
+      <div class="sk-main" style="flex-direction: column;">
         <svg class="sk-logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Snapfzz logo">
           <defs>
             <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -112,6 +112,7 @@
           </g>
           <path d="M 290 110 L 150 270 L 250 270 L 210 430 L 370 230 L 260 230 Z" fill="url(#boltGrad)" />
         </svg>
+        <span id="skeleton-status" style="color: #71717a; font-size: 12px; margin-top: 8px;">Starting...</span>
       </div>
       <div class="sk-statusbar"><div class="sk-statusbar-dot"></div></div>
     </div>

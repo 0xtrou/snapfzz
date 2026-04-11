@@ -1,4 +1,5 @@
 // Per A003/InstantLoading: skeleton in index.html visible at 0ms, React replaces when hydrated.
+// Per A003/BootComplete: skeleton stays visible until all boot phases complete.
 // Per A005/PluginArchitecture: shell reads ContributionStore, empty until plugins register.
 // Per A006/CoreRuntime: launcher shell = header + main + status bar, all from store.
 import { ConfigProvider } from 'antd';
@@ -11,7 +12,7 @@ import {
   PluginErrorBoundary,
   registerDiscoveredPlugins,
 } from '@snapfzz/plugin-host';
-import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
 
 // Per A003/InstantLoading: measure TTI and LCP on every boot.
@@ -65,16 +66,56 @@ export function App() {
 
   const contributions = useContributionStore(() => store);
 
+  // Per A003/BootComplete: skeleton stays visible until all boot phases complete.
+  const [bootComplete, setBootComplete] = useState(false);
+
   useEffect(() => {
-    // Per A003/InstantLoading: hide skeleton skeleton once React hydrates.
+    // Per A003/InstantLoading: measure TTI and register plugins immediately — not gated on boot.
+    measureStartup();
+  }, []);
+
+  useEffect(() => {
+    // Per A003/BootComplete: skeleton stays visible until all boot phases complete.
+    // Fallback: 30s timeout ensures skeleton is removed even if boot-complete event is lost.
+    const bridge = createTauriBridge();
+    let unlisten: (() => void) | null = null;
+
+    bridge.listen('boot-complete', () => {
+      setBootComplete(true);
+    }).then((fn) => { unlisten = fn; });
+
+    const timeout = setTimeout(() => setBootComplete(true), 30000);
+
+    return () => {
+      unlisten?.();
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Per A003/BootComplete: skeleton stays visible until all boot phases complete.
+    if (!bootComplete) return;
     document.documentElement.setAttribute('data-app-ready', 'true');
     const skeleton = document.getElementById('skeleton');
     if (skeleton) {
       skeleton.classList.add('fade-out');
       skeleton.addEventListener('transitionend', () => skeleton.remove(), { once: true });
     }
-    measureStartup();
-  }, []);
+  }, [bootComplete]);
+
+  useEffect(() => {
+    // Per A003/BootComplete: update skeleton status text while boot is in progress.
+    if (bootComplete) return;
+    const bridge = createTauriBridge();
+    let unlisten: (() => void) | null = null;
+
+    bridge.listen<{ process: string; message: string }>('supervisor-event', (event) => {
+      const el = document.getElementById('skeleton-status');
+      if (el) el.textContent = event.message;
+    }).then((fn) => { unlisten = fn; });
+
+    return () => { unlisten?.(); };
+  }, [bootComplete]);
 
   useEffect(() => {
     // Per A006/BootSequence: discover manifests → register → activate critical plugins.
