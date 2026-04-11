@@ -115,10 +115,38 @@ export interface ModelListResponse {
   data: ModelInfo[];
 }
 
+// A013/Fetch: Helper to call LiteLLM APIs directly via fetch
+
+async function litellmFetch(
+  url: string,
+  masterKey: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${masterKey}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status}: ${body}`);
+  }
+  return res;
+}
+
 // A013/Config: Get LiteLLM base URL from backend settings
 
 export async function getBaseUrl(): Promise<string> {
   return bridge.invoke<string>('llm_get_base_url', {});
+}
+
+// A013/Config: Get LiteLLM master key from vault
+
+export async function getMasterKey(): Promise<string> {
+  return bridge.invoke<string>('llm_get_master_key', {});
 }
 
 // A013/Vault: Provider key management hooks
@@ -169,86 +197,115 @@ export async function getConfigPath(dataDir: string): Promise<string> {
   });
 }
 
-// A013/Keys: Virtual key management hooks
+// A013/Keys: Virtual key management via direct LiteLLM fetch
 
 export async function generateKey(
   baseUrl: string,
+  masterKey: string,
   params: KeyGenerateParams,
 ): Promise<GeneratedKey> {
-  return bridge.invoke<GeneratedKey>('llm_generate_key', {
-    baseUrl,
-    params,
+  const res = await litellmFetch(`${baseUrl}/key/generate`, masterKey, {
+    method: 'POST',
+    body: JSON.stringify(params),
   });
+  return res.json();
 }
 
 export async function listKeys(
   baseUrl: string,
+  masterKey: string,
   page?: number,
   size?: number,
 ): Promise<KeyListResponse> {
-  return bridge.invoke<KeyListResponse>('llm_list_keys', {
-    baseUrl,
-    page,
-    size,
-  });
+  const query = new URLSearchParams();
+  if (page != null) query.set('page', String(page));
+  if (size != null) query.set('size', String(size));
+  const qs = query.toString();
+  const url = `${baseUrl}/key/list${qs ? `?${qs}` : ''}`;
+  const res = await litellmFetch(url, masterKey);
+  return res.json();
 }
 
-export async function deleteKey(baseUrl: string, key: string): Promise<boolean> {
-  return bridge.invoke<boolean>('llm_delete_key', {
-    baseUrl,
-    key,
+export async function deleteKey(
+  baseUrl: string,
+  masterKey: string,
+  key: string,
+): Promise<boolean> {
+  const res = await litellmFetch(`${baseUrl}/key/delete`, masterKey, {
+    method: 'POST',
+    body: JSON.stringify({ keys: [key] }),
   });
+  const data = await res.json();
+  return !!data;
 }
 
-export async function getKeyInfo(baseUrl: string, key: string): Promise<KeyInfo> {
-  return bridge.invoke<KeyInfo>('llm_get_key_info', {
-    baseUrl,
-    key,
-  });
+export async function getKeyInfo(
+  baseUrl: string,
+  masterKey: string,
+  key: string,
+): Promise<KeyInfo> {
+  const res = await litellmFetch(`${baseUrl}/key/info?key=${encodeURIComponent(key)}`, masterKey);
+  return res.json();
 }
 
 export async function updateKey(
   baseUrl: string,
+  masterKey: string,
   key: string,
   params: KeyUpdateParams,
 ): Promise<KeyInfo> {
-  return bridge.invoke<KeyInfo>('llm_update_key', {
-    baseUrl,
-    key,
-    params,
+  const res = await litellmFetch(`${baseUrl}/key/update`, masterKey, {
+    method: 'POST',
+    body: JSON.stringify({ key, ...params }),
   });
+  return res.json();
 }
 
-// A013/Spend: Spend tracking hooks
+// A013/Spend: Spend tracking via direct LiteLLM fetch
 
 export async function getSpendLogs(
   baseUrl: string,
+  masterKey: string,
   filters: SpendFilters,
 ): Promise<SpendLog[]> {
-  return bridge.invoke<SpendLog[]>('llm_get_spend_logs', {
-    baseUrl,
-    filters,
-  });
+  const query = new URLSearchParams();
+  if (filters.start_date) query.set('start_date', filters.start_date);
+  if (filters.end_date) query.set('end_date', filters.end_date);
+  if (filters.key) query.set('key', filters.key);
+  if (filters.model) query.set('model', filters.model);
+  if (filters.user) query.set('user', filters.user);
+  if (filters.page != null) query.set('page', String(filters.page));
+  if (filters.size != null) query.set('size', String(filters.size));
+  const qs = query.toString();
+  const url = `${baseUrl}/spend/logs${qs ? `?${qs}` : ''}`;
+  const res = await litellmFetch(url, masterKey);
+  return res.json();
 }
 
 export async function getKeySpend(
   baseUrl: string,
+  masterKey: string,
   key: string,
 ): Promise<KeySpend> {
-  return bridge.invoke<KeySpend>('llm_get_key_spend', {
-    baseUrl,
-    key,
-  });
+  const res = await litellmFetch(
+    `${baseUrl}/spend/key?key=${encodeURIComponent(key)}`,
+    masterKey,
+  );
+  return res.json();
 }
 
-export async function getGlobalSpend(baseUrl: string): Promise<GlobalSpend> {
-  return bridge.invoke<GlobalSpend>('llm_get_global_spend', {
-    baseUrl,
-  });
+export async function getGlobalSpend(
+  baseUrl: string,
+  masterKey: string,
+): Promise<GlobalSpend> {
+  const res = await litellmFetch(`${baseUrl}/global/spend`, masterKey);
+  return res.json();
 }
 
-export async function getModels(baseUrl: string): Promise<ModelListResponse> {
-  return bridge.invoke<ModelListResponse>('llm_get_models', {
-    baseUrl,
-  });
+export async function getModels(
+  baseUrl: string,
+  masterKey: string,
+): Promise<ModelListResponse> {
+  const res = await litellmFetch(`${baseUrl}/v1/models`, masterKey);
+  return res.json();
 }

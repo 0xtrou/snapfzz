@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Empty, message, Select, Skeleton, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { getSpendLogs, getBaseUrl, type SpendLog } from '../hooks/useLlmCommands';
+import { getSpendLogs, getBaseUrl, getMasterKey, type SpendLog } from '../hooks/useLlmCommands';
 
 const { Text } = Typography;
 
 export default function AuditLogTab() {
   const [baseUrl, setBaseUrl] = useState<string>('');
+  const [masterKey, setMasterKey] = useState<string>('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
   const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   const loadLogs = useCallback(async () => {
-    if (!baseUrl) return;
+    if (!baseUrl || !masterKey) return;
     setLoading(true);
     try {
-      const result = await getSpendLogs(baseUrl, {});
+      const result = await getSpendLogs(baseUrl, masterKey, {});
       setLogs(result);
     } catch (err) {
       console.error('[AuditLogTab] Failed to load spend logs:', err);
@@ -23,11 +24,14 @@ export default function AuditLogTab() {
     } finally {
       setLoading(false);
     }
-  }, [baseUrl]);
+  }, [baseUrl, masterKey]);
 
   useEffect(() => {
-    getBaseUrl()
-      .then(setBaseUrl)
+    Promise.all([getBaseUrl(), getMasterKey()])
+      .then(([url, key]) => {
+        setBaseUrl(url);
+        setMasterKey(key);
+      })
       .catch(() => message.error('Failed to get LiteLLM URL'));
   }, []);
 

@@ -6,8 +6,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { message } from 'antd';
 import AuditLogTab from '../../tabs/AuditLogTab';
 
-const mockInvoke = vi.fn();
+const mockGetSpendLogs = vi.fn();
 const mockGetBaseUrl = vi.fn();
+const mockGetMasterKey = vi.fn();
 
 vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
@@ -17,24 +18,27 @@ vi.mock('@snapfzz/shared', () => ({
 
 vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
-  getSpendLogs: () => mockInvoke(),
+  getMasterKey: () => mockGetMasterKey(),
+  getSpendLogs: (...args: unknown[]) => mockGetSpendLogs(...args),
 }));
 
 describe('A013/UI/AuditLogTab', () => {
   beforeEach(() => {
-    mockInvoke.mockReset();
+    mockGetSpendLogs.mockReset();
     mockGetBaseUrl.mockReset();
+    mockGetMasterKey.mockReset();
     mockGetBaseUrl.mockResolvedValue('http://127.0.0.1:4000');
+    mockGetMasterKey.mockResolvedValue('sk-master-test');
   });
 
   it('renders loading state initially', () => {
-    mockInvoke.mockImplementation(() => new Promise(() => {}));
+    mockGetSpendLogs.mockImplementation(() => new Promise(() => {}));
     render(<AuditLogTab />);
     expect(document.querySelector('.ant-skeleton')).toBeTruthy();
   });
 
   it('shows empty state when no logs', async () => {
-    mockInvoke.mockResolvedValue([]);
+    mockGetSpendLogs.mockResolvedValue([]);
     render(<AuditLogTab />);
     
     await waitFor(() => {
@@ -44,7 +48,7 @@ describe('A013/UI/AuditLogTab', () => {
 
   it('displays spend logs and filters by model', async () => {
     const user = userEvent.setup();
-    mockInvoke.mockResolvedValue([
+    mockGetSpendLogs.mockResolvedValue([
       {
         request_id: 'req-123',
         api_key: 'short',
@@ -81,7 +85,7 @@ describe('A013/UI/AuditLogTab', () => {
   });
 
   it('shows empty state when spend log fetch fails', async () => {
-    mockInvoke.mockRejectedValue(new Error('log-failed'));
+    mockGetSpendLogs.mockRejectedValue(new Error('log-failed'));
 
     render(<AuditLogTab />);
 

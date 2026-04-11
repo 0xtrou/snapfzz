@@ -19,6 +19,7 @@ vi.mock('@snapfzz/shared', () => ({
 
 vi.mock('../hooks/useLlmCommands', () => ({
   getBaseUrl: () => Promise.resolve('http://127.0.0.1:4000'),
+  getMasterKey: () => Promise.resolve('sk-master-test'),
   listProviderKeys: () => Promise.resolve([]),
   listKeys: () => Promise.resolve({ keys: [] }),
   getSpendLogs: () => Promise.resolve([]),

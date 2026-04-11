@@ -21,6 +21,7 @@ import {
   listKeys,
   deleteKey,
   getBaseUrl,
+  getMasterKey,
   type KeyInfo,
   type KeyGenerateParams,
 } from '../hooks/useLlmCommands';
@@ -40,6 +41,7 @@ function maskKey(key: string): string {
 
 export default function ApiKeysTab() {
   const [baseUrl, setBaseUrl] = useState<string>('');
+  const [masterKey, setMasterKey] = useState<string>('');
   const [keys, setKeys] = useState<KeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -48,10 +50,10 @@ export default function ApiKeysTab() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
-    if (!baseUrl) return;
+    if (!baseUrl || !masterKey) return;
     setLoading(true);
     try {
-      const response = await listKeys(baseUrl);
+      const response = await listKeys(baseUrl, masterKey);
       setKeys(response.keys || []);
     } catch (err) {
       console.error('[ApiKeysTab] Failed to load keys:', err);
@@ -60,11 +62,14 @@ export default function ApiKeysTab() {
     } finally {
       setLoading(false);
     }
-  }, [baseUrl]);
+  }, [baseUrl, masterKey]);
 
   useEffect(() => {
-    getBaseUrl()
-      .then(setBaseUrl)
+    Promise.all([getBaseUrl(), getMasterKey()])
+      .then(([url, key]) => {
+        setBaseUrl(url);
+        setMasterKey(key);
+      })
       .catch(() => message.error('Failed to get LiteLLM URL'));
   }, []);
 
@@ -121,8 +126,8 @@ export default function ApiKeysTab() {
           title={`Delete key ${maskKey(record.key)}?`}
           description="This permanently removes the virtual key."
           onConfirm={async () => {
-            if (!baseUrl) return;
-            await deleteKey(baseUrl, record.key);
+            if (!baseUrl || !masterKey) return;
+            await deleteKey(baseUrl, masterKey, record.key);
             await loadKeys();
           }}
           okText="Delete"
@@ -143,7 +148,7 @@ export default function ApiKeysTab() {
     max_budget: number;
     budget_duration: string;
   }) {
-    if (!baseUrl) {
+    if (!baseUrl || !masterKey) {
       message.error('LiteLLM URL not configured');
       return;
     }
@@ -156,7 +161,7 @@ export default function ApiKeysTab() {
         budget_duration: values.budget_duration || '30d',
         metadata: {},
       };
-      const result = await generateKey(baseUrl, params);
+      const result = await generateKey(baseUrl, masterKey, params);
       setGeneratedKey(result.key);
       await loadKeys();
     } catch (err) {

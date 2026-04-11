@@ -7,11 +7,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { message } from 'antd';
 import ApiKeysTab from '../../tabs/ApiKeysTab';
 
-const { mockListKeys, mockDeleteKey, mockGenerateKey, mockGetBaseUrl, writeTextMock } = vi.hoisted(() => ({
+const { mockListKeys, mockDeleteKey, mockGenerateKey, mockGetBaseUrl, mockGetMasterKey, writeTextMock } = vi.hoisted(() => ({
   mockListKeys: vi.fn(),
   mockDeleteKey: vi.fn(),
   mockGenerateKey: vi.fn(),
   mockGetBaseUrl: vi.fn(),
+  mockGetMasterKey: vi.fn(),
   writeTextMock: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -40,6 +41,7 @@ vi.mock('@snapfzz/shared', () => ({
 
 vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
+  getMasterKey: () => mockGetMasterKey(),
   listKeys: (...args: unknown[]) => mockListKeys(...args),
   deleteKey: (...args: unknown[]) => mockDeleteKey(...args),
   generateKey: (...args: unknown[]) => mockGenerateKey(...args),
@@ -51,7 +53,9 @@ describe('A013/UI/ApiKeysTab', () => {
     mockDeleteKey.mockReset();
     mockGenerateKey.mockReset();
     mockGetBaseUrl.mockReset();
+    mockGetMasterKey.mockReset();
     mockGetBaseUrl.mockResolvedValue('http://127.0.0.1:4000');
+    mockGetMasterKey.mockResolvedValue('sk-master-test');
     mockListKeys.mockResolvedValue({ keys: [] });
     writeTextMock.mockClear();
     Object.defineProperty(navigator, 'clipboard', {
@@ -131,7 +135,7 @@ describe('A013/UI/ApiKeysTab', () => {
     await user.click(screen.getByRole('button', { name: /Delete key/i }));
 
     await waitFor(() => {
-      expect(mockDeleteKey).toHaveBeenCalledWith('http://127.0.0.1:4000', 'sk-test12345678');
+      expect(mockDeleteKey).toHaveBeenCalledWith('http://127.0.0.1:4000', 'sk-master-test', 'sk-test12345678');
     });
     expect(mockListKeys).toHaveBeenCalledTimes(2);
   });
@@ -190,6 +194,7 @@ describe('A013/UI/ApiKeysTab', () => {
     await waitFor(() => {
       expect(mockGenerateKey).toHaveBeenCalledWith(
         'http://127.0.0.1:4000',
+        'sk-master-test',
         expect.objectContaining({
           models: ['gpt-4o'],
           max_budget: 10,

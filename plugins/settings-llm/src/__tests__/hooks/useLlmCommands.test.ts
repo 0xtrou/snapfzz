@@ -1,6 +1,6 @@
-// A013/Hooks: Tauri command wrappers for LLM operations
+// A013/Hooks: Tauri command wrappers + direct LiteLLM fetch for LLM operations
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockInvoke = vi.fn();
 
@@ -10,9 +10,18 @@ vi.mock('@snapfzz/shared', () => ({
   }),
 }));
 
+// A013/Fetch: Mock global fetch for direct LiteLLM API calls
+const mockFetch = vi.fn();
+
 describe('A013/Hooks: useLlmCommands', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+    mockFetch.mockReset();
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   describe('A013/Vault: Provider key management', () => {
@@ -57,6 +66,14 @@ describe('A013/Hooks: useLlmCommands', () => {
       expect(mockInvoke).toHaveBeenCalledWith('llm_get_base_url', {});
     });
 
+    it('gets master key from vault via Tauri command', async () => {
+      mockInvoke.mockResolvedValue('sk-master-abc');
+      const { getMasterKey } = await import('../../hooks/useLlmCommands');
+      const result = await getMasterKey();
+      expect(result).toBe('sk-master-abc');
+      expect(mockInvoke).toHaveBeenCalledWith('llm_get_master_key', {});
+    });
+
     it('saves config with correct parameters', async () => {
       mockInvoke.mockResolvedValue(undefined);
       const { saveConfig } = await import('../../hooks/useLlmCommands');
@@ -81,9 +98,13 @@ describe('A013/Hooks: useLlmCommands', () => {
     });
   });
 
-  describe('A013/Keys: Virtual key management', () => {
-    it('generates key with correct parameters', async () => {
-      mockInvoke.mockResolvedValue({ key: 'sk-gen-123' });
+  describe('A013/Keys: Virtual key management via direct fetch', () => {
+    it('generates key via POST /key/generate', async () => {
+      const responseBody = { key: 'sk-gen-123' };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(responseBody),
+      });
       const { generateKey } = await import('../../hooks/useLlmCommands');
       const params = {
         models: ['gpt-4o'],
@@ -91,76 +112,158 @@ describe('A013/Hooks: useLlmCommands', () => {
         budget_duration: '30d',
         metadata: {},
       };
-      const result = await generateKey('http://localhost:4000', params);
+      const result = await generateKey('http://localhost:4000', 'sk-master', params);
       expect(result.key).toBe('sk-gen-123');
-      expect(mockInvoke).toHaveBeenCalledWith('llm_generate_key', {
-        base_url: 'http://localhost:4000',
-        params,
-      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/key/generate',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer sk-master',
+          }),
+          body: JSON.stringify(params),
+        }),
+      );
     });
 
-    it('lists keys with pagination', async () => {
-      mockInvoke.mockResolvedValue({ keys: [{ key: 'sk-1' }], total_count: 1 });
+    it('lists keys via GET /key/list with pagination', async () => {
+      const responseBody = { keys: [{ key: 'sk-1' }], total_count: 1 };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(responseBody),
+      });
       const { listKeys } = await import('../../hooks/useLlmCommands');
-      const result = await listKeys('http://localhost:4000', 1, 10);
+      const result = await listKeys('http://localhost:4000', 'sk-master', 1, 10);
       expect(result.keys).toHaveLength(1);
-      expect(mockInvoke).toHaveBeenCalledWith('llm_list_keys', {
-        base_url: 'http://localhost:4000',
-        page: 1,
-        size: 10,
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/key/list?page=1&size=10',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer sk-master',
+          }),
+        }),
+      );
+    });
+
+    it('lists keys without pagination when no page/size given', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ keys: [] }),
       });
+      const { listKeys } = await import('../../hooks/useLlmCommands');
+      await listKeys('http://localhost:4000', 'sk-master');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/key/list',
+        expect.anything(),
+      );
     });
 
-    it('deletes key', async () => {
-      mockInvoke.mockResolvedValue(true);
+    it('deletes key via POST /key/delete', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ deleted: true }),
+      });
       const { deleteKey } = await import('../../hooks/useLlmCommands');
-      const result = await deleteKey('http://localhost:4000', 'sk-test');
+      const result = await deleteKey('http://localhost:4000', 'sk-master', 'sk-test');
       expect(result).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/key/delete',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ keys: ['sk-test'] }),
+        }),
+      );
     });
 
-    it('gets key info', async () => {
-      mockInvoke.mockResolvedValue({ key: 'sk-test', models: ['gpt-4o'] });
+    it('gets key info via GET /key/info', async () => {
+      const responseBody = { key: 'sk-test', models: ['gpt-4o'] };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(responseBody),
+      });
       const { getKeyInfo } = await import('../../hooks/useLlmCommands');
-      const result = await getKeyInfo('http://localhost:4000', 'sk-test');
+      const result = await getKeyInfo('http://localhost:4000', 'sk-master', 'sk-test');
       expect(result.key).toBe('sk-test');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/key/info?key=sk-test',
+        expect.anything(),
+      );
     });
 
-    it('updates key', async () => {
-      mockInvoke.mockResolvedValue({ key: 'sk-test', models: ['gpt-4o', 'claude'] });
+    it('updates key via POST /key/update', async () => {
+      const responseBody = { key: 'sk-test', models: ['gpt-4o', 'claude'] };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(responseBody),
+      });
       const { updateKey } = await import('../../hooks/useLlmCommands');
       const params = { models: ['gpt-4o', 'claude'] };
-      const result = await updateKey('http://localhost:4000', 'sk-test', params);
+      const result = await updateKey('http://localhost:4000', 'sk-master', 'sk-test', params);
       expect(result.models).toContain('claude');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/key/update',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ key: 'sk-test', ...params }),
+        }),
+      );
+    });
+
+    it('throws on non-ok fetch response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve('Forbidden'),
+      });
+      const { listKeys } = await import('../../hooks/useLlmCommands');
+      await expect(listKeys('http://localhost:4000', 'sk-bad')).rejects.toThrow('403: Forbidden');
     });
   });
 
-  describe('A013/Spend: Spend tracking', () => {
-    it('gets spend logs with filters', async () => {
-      mockInvoke.mockResolvedValue([{ request_id: 'req-1', model: 'gpt-4o', spend: 0.01 }]);
+  describe('A013/Spend: Spend tracking via direct fetch', () => {
+    it('gets spend logs via GET /spend/logs with filters', async () => {
+      const responseBody = [{ request_id: 'req-1', model: 'gpt-4o', spend: 0.01 }];
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(responseBody),
+      });
       const { getSpendLogs } = await import('../../hooks/useLlmCommands');
       const filters = { model: 'gpt-4o', size: 100 };
-      const result = await getSpendLogs('http://localhost:4000', filters);
+      const result = await getSpendLogs('http://localhost:4000', 'sk-master', filters);
       expect(result).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/spend/logs?model=gpt-4o&size=100',
+        expect.anything(),
+      );
     });
 
-    it('gets key spend', async () => {
-      mockInvoke.mockResolvedValue({ key: 'sk-test', spend: 1.23 });
+    it('gets key spend via GET /spend/key', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ key: 'sk-test', spend: 1.23 }),
+      });
       const { getKeySpend } = await import('../../hooks/useLlmCommands');
-      const result = await getKeySpend('http://localhost:4000', 'sk-test');
+      const result = await getKeySpend('http://localhost:4000', 'sk-master', 'sk-test');
       expect(result.spend).toBe(1.23);
     });
 
-    it('gets global spend', async () => {
-      mockInvoke.mockResolvedValue({ total_spend: 10.5, by_provider: {} });
+    it('gets global spend via GET /global/spend', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ total_spend: 10.5, by_provider: {} }),
+      });
       const { getGlobalSpend } = await import('../../hooks/useLlmCommands');
-      const result = await getGlobalSpend('http://localhost:4000');
+      const result = await getGlobalSpend('http://localhost:4000', 'sk-master');
       expect(result.total_spend).toBe(10.5);
     });
 
-    it('gets models list', async () => {
-      mockInvoke.mockResolvedValue({ data: [{ id: 'gpt-4o' }] });
+    it('gets models list via GET /v1/models', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ id: 'gpt-4o' }] }),
+      });
       const { getModels } = await import('../../hooks/useLlmCommands');
-      const result = await getModels('http://localhost:4000');
+      const result = await getModels('http://localhost:4000', 'sk-master');
       expect(result.data).toHaveLength(1);
     });
   });
