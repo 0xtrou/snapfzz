@@ -195,4 +195,82 @@ describe('A007/Preferences/App', () => {
       expect(screen.getByText('crashed:broken')).toBeTruthy();
     });
   });
+
+  it('spec: sorts sections with undefined order to end using 999 fallback', async () => {
+    snapshot.settingsSections = [
+      // Section with no order — exercises the `order ?? 999` branch
+      {
+        id: 'no-order',
+        label: 'No Order',
+        icon: 'QuestionOutlined',
+        component: async () => ({ default: () => createElement('div', null, 'no-order-content') }),
+      } as SettingsSectionContribution,
+      createSection('first', 'First', 'SettingOutlined', 1, 'first-content'),
+    ];
+
+    render(createElement(App));
+
+    await waitFor(() => {
+      expect(screen.getByText('First')).toBeTruthy();
+      expect(screen.getByText('No Order')).toBeTruthy();
+    });
+
+    const sectionButtons = screen.getAllByRole('button');
+    // Section with explicit order=1 should appear before the orderless section
+    expect(sectionButtons[0]?.textContent).toContain('First');
+    expect(sectionButtons[1]?.textContent).toContain('No Order');
+  });
+
+  it('spec: reuses cached lazy component when switching back to a previously visited section', async () => {
+    snapshot.settingsSections = [
+      createSection('alpha', 'Alpha', 'SettingOutlined', 1, 'alpha-content'),
+      createSection('beta', 'Beta', 'AppstoreOutlined', 2, 'beta-content'),
+    ];
+
+    render(createElement(App));
+
+    // Wait for initial auto-selection of first section
+    await waitFor(() => {
+      expect(screen.getByText('alpha-content')).toBeTruthy();
+    });
+
+    // Navigate to second section
+    fireEvent.click(screen.getByRole('button', { name: /beta/i }));
+    await waitFor(() => {
+      expect(screen.getByText('beta-content')).toBeTruthy();
+    });
+
+    // Navigate back to first section — exercises the lazySectionCache hit branch
+    fireEvent.click(screen.getByRole('button', { name: /alpha/i }));
+    await waitFor(() => {
+      expect(screen.getByText('alpha-content')).toBeTruthy();
+    });
+  });
+
+  it('spec: keeps activeSectionId null when rendered with no sections', () => {
+    // No sections registered — activeSectionId stays null, mountedSectionsRef add is skipped
+    render(createElement(App));
+
+    expect(screen.getAllByText(/no settings available/i).length).toBeGreaterThan(0);
+    // No section buttons should be present
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('spec: fires skeleton transitionend listener to remove skeleton from DOM', async () => {
+    const skeleton = document.createElement('div');
+    skeleton.id = 'skeleton';
+    document.body.appendChild(skeleton);
+
+    render(createElement(App));
+
+    await waitFor(() => {
+      expect(skeleton.classList.contains('fade-out')).toBe(true);
+    });
+
+    // Simulate the transitionend event to trigger removal — exercises the addEventListener once branch
+    skeleton.dispatchEvent(new Event('transitionend'));
+
+    // Skeleton should be removed from DOM after transitionend
+    expect(document.getElementById('skeleton')).toBeNull();
+  });
 });
