@@ -206,6 +206,9 @@ impl ProcessFactory for LiteLLMFactory {
         // A038/DATABASE_URL: Use PostgreSQL URL from embedded instance
         if let Some(ref db_url) = config.database_url {
             cmd.env("DATABASE_URL", db_url);
+            // A013/ModelDB: Enable dynamic model management via API — models stored
+            // in PostgreSQL so they persist without config.yaml and can be added from the UI.
+            cmd.env("STORE_MODEL_IN_DB", "True");
         }
 
         for (key, value) in secrets.env {
