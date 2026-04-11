@@ -1612,28 +1612,39 @@ export default function ProvidersTab() {
               </Radio.Button>
             </Radio.Group>
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: 16,
-              contain: 'layout paint',
-            }}
-          >
-            {filteredProviders.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                keyCount={keyCounts[provider.id]?.length ?? 0}
-                catalogModelCount={getProviderInfo(provider.id).modelCount}
-                enabled={toggleState[provider.id] ?? false}
-                onToggle={(checked) =>
-                  setToggleState((prev) => ({ ...prev, [provider.id]: checked }))
-                }
-                onClick={() => setSelectedProvider(provider.id)}
+          {(() => {
+            // Group providers into rows of 4 for PretextList virtualization
+            const COLS = 4;
+            const rows: (typeof filteredProviders)[] = [];
+            for (let i = 0; i < filteredProviders.length; i += COLS) {
+              rows.push(filteredProviders.slice(i, i + COLS));
+            }
+            return (
+              <PretextList
+                items={rows}
+                estimateHeight={() => 140}
+                keyExtractor={(row) => row.map((p) => p.id).join('-')}
+                renderItem={(row) => (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 16, padding: '8px 0' }}>
+                    {row.map((provider) => (
+                      <ProviderCard
+                        key={provider.id}
+                        provider={provider}
+                        keyCount={keyCounts[provider.id]?.length ?? 0}
+                        catalogModelCount={getProviderInfo(provider.id).modelCount}
+                        enabled={toggleState[provider.id] ?? false}
+                        onToggle={(checked) =>
+                          setToggleState((prev) => ({ ...prev, [provider.id]: checked }))
+                        }
+                        onClick={() => setSelectedProvider(provider.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+                style={{ height: Math.min(rows.length * 140, 600) }}
               />
-            ))}
-          </div>
+            );
+          })()}
         </>
       )}
 
