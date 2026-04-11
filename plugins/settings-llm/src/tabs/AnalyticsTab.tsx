@@ -383,6 +383,7 @@ export default function AnalyticsTab() {
       dataIndex: 'share',
       key: 'share',
       width: 140,
+      align: 'right' as const,
       render: (_: number, _record: ProviderBreakdown, index: number) => <ShareBar pct={_} colorIndex={index} />,
     },
   ];
@@ -409,6 +410,7 @@ export default function AnalyticsTab() {
       dataIndex: 'share',
       key: 'share',
       width: 140,
+      align: 'right' as const,
       render: (_: number, _record: ModelBreakdown, index: number) => <ShareBar pct={_} colorIndex={index} />,
     },
   ];
