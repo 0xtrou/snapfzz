@@ -10,9 +10,12 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    src-tauri/src/ — THE ORCHESTRATOR                  │
 │                                                                      │
-│  main.rs (~100 lines)                                                │
-│    ├── Builder config, state management, invoke_handler              │
-│    └── setup: runtime env, process spawn, metrics loop               │
+│  main.rs (236 lines)                                                 │
+│    ├── Builder config, state management, invoke_handler (95 cmds)    │
+│    └── setup: boot phases, metrics loop                              │
+│                                                                      │
+│  boot.rs (155 lines)                                                 │
+│    └── Three-phase async bootstrap (Python → PostgreSQL → Services)  │
 │                                                                      │
 │  commands/          ← thin Tauri command handlers, delegate to crates│
 │    ├── settings.rs    get/save settings                              │
@@ -22,9 +25,13 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 │    ├── stream.rs      send_message, stop, create/load session        │
 │    ├── cef.rs         window lifecycle, navigate, devtools, capture  │
 │    ├── components.rs  system pack CRUD, download, uninstall          │
-│    ├── runtime.rs     runtime check/start/stop/restart               │
 │    ├── llm.rs         LiteLLM config, key mgmt, spend tracking      │
+│    ├── pip.rs         python pack install/uninstall, runtime status  │
 │    └── system.rs      health, open_path, pick_folder, preferences   │
+│                                                                      │
+│  factories/         ← ProcessFactory impls for managed services      │
+│    ├── agentscope.rs  AgentScope process factory                     │
+│    └── litellm.rs     LiteLLM process factory (prisma cache, DB URL)│
 │                                                                      │
 │  helpers.rs         ← resolve_data_dir, configure_runtime_env        │
 │  metrics.rs         ← 2s budget-metrics emission loop                │
@@ -32,7 +39,7 @@ Single source of truth for the system architecture. All specs, guides, and docs 
          │         │          │          │          │
     ┌────▼───┐ ┌───▼────┐ ┌──▼───┐ ┌───▼───┐ ┌───▼────┐ ┌────────┐
     │snapfzz │ │snapfzz │ │snpfz │ │snpfz  │ │snapfzz │ │snapfzz │
-    │kernel  │ │runtime │ │vault │ │packs  │ │stream  │ │llm     │
+    │kernel  │ │packs   │ │vault │ │stream │ │llm     │ │cef     │
     └────────┘ └────────┘ └──────┘ └───────┘ └────────┘ └────────┘
 ```
 
@@ -42,12 +49,12 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 
 | Crate | Owns | Does NOT own |
 |---|---|---|
-| **snapfzz-kernel** | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save), components trait (SystemComponent), sandbox trait (SandboxBackend), shared types | Tauri commands, runtime lifecycle, window management |
-| **snapfzz-runtime** | Runtime lifecycle for AgentScope, LiteLLM, CEF. Runtime trait with `is_runtime_ready()`. RuntimeManager orchestration. Health checks. Sandbox (MicrovmRuntime, SandboxManager). | Component downloads, budget gating, Tauri commands |
-| **snapfzz-packs** | System component downloads (uv, Python, CEF, AgentScope, LiteLLM, Firecracker). Implements SystemComponent trait. | Runtime lifecycle, process spawning |
+| **snapfzz-kernel** | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save), shared types | Tauri commands, runtime lifecycle, window management |
+| **snapfzz-packs** | Service pack architecture: `core/` (traits, DTOs, Python toolchain, PostgreSQL infra), `litellm/` (LiteLLM service), `agentscope/` (AgentScope service). Implements SystemComponent + ManagedService traits. | Process spawning, budget gating, Tauri commands |
 | **snapfzz-stream** | SSE consumer, token batching at `batch_interval_ms`, Channel callback | Tauri Channel type, HTTP client config |
 | **snapfzz-vault** | AES-256-GCM encryption, master key (keychain/keyfile), vault file I/O, rate limiting | Tauri commands, plugin access policy |
-| **snapfzz-llm** | LiteLLM config.yaml generation, virtual key management (/key/* proxy), spend tracking (/spend/* proxy) | LiteLLM process lifecycle (snapfzz-runtime owns that) |
+| **snapfzz-llm** | LiteLLM config.yaml generation, virtual key management (/key/* proxy), spend tracking (/spend/* proxy) | LiteLLM process lifecycle |
+| **snapfzz-cef** | CEF binary download, runtime lifecycle, window management, CDP automation | Tauri commands |
 | **snapfzz-plugin-bridge** | Schema validation, capability checking, typed command routing (Beta) | Plugin discovery, plugin UI rendering |
 | **main.rs + commands/** | Tauri command handlers, event emission (`app.emit`), window management, orchestration flow | Domain logic — always delegates to crates |
 
@@ -62,63 +69,55 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 ### Dependency Graph (no cycles)
 
 ```
-snapfzz-kernel ← snapfzz-packs (uses SystemComponent trait)
-snapfzz-kernel ← snapfzz-runtime (uses ProcessManager, BudgetRegistry)
-snapfzz-runtime ← snapfzz-packs (checks if components installed before starting)
-snapfzz-runtime ← snapfzz-llm (LiteLLM runtime uses llm config)
+snapfzz-kernel ← snapfzz-packs (uses PythonRuntime, ManagedService)
+snapfzz-kernel (standalone — no deps on packs, llm, cef, vault)
+snapfzz-packs  (standalone — no deps on kernel, llm, cef, vault)
+snapfzz-llm    (standalone — no inter-crate deps)
+snapfzz-stream (standalone — no inter-crate deps)
+snapfzz-vault  (standalone — no inter-crate deps)
+snapfzz-cef    (standalone — no inter-crate deps)
+
+main.rs imports ALL crates; crates never import each other
+(except kernel ← packs for PythonRuntime type)
 ```
 
 ---
 
-## Runtime Directory
-
-All managed binaries, processes, and packages live under `~/.snapfzz/runtime/`:
+## snapfzz-packs — Vertical Domain Slices
 
 ```
-~/.snapfzz/
-├── settings.json              user settings
-├── vault.enc                  encrypted secrets
-├── runtime/
-│   ├── bin/                   managed binaries (on PATH)
-│   │   ├── uv                 uv binary (~15MB)
-│   │   └── python/            Python 3.12 (managed by uv, ~30MB)
-│   ├── processes/             runtime process CWDs
-│   │   ├── agentscope/        AgentScope CWD (app.py, pyproject.toml)
-│   │   ├── litellm/           LiteLLM CWD (config.yaml lives here)
-│   │   └── cef/               CEF extracted binary + browser cache
-│   └── packages/              pip-installed packages
-│       ├── agentscope/        agentscope pip packages
-│       └── litellm/           litellm[proxy] pip packages
+snapfzz-packs/src/
+├── core/                        ← THE STANDARD INTERFACE
+│   ├── component.rs               SystemComponent trait (downloadable artifacts)
+│   ├── service.rs                 ManagedService trait (spawnable services)
+│   ├── status.rs                  RuntimeStatus DTOs
+│   ├── registry.rs                ComponentRegistry
+│   ├── data.rs                    DataDir (filesystem layout helper)
+│   ├── download.rs                download_file, extract helpers
+│   ├── platform.rs                PlatformInfo, detect_platform
+│   ├── constants.rs               versions, URLs
+│   ├── python/                  ← Python toolchain infrastructure
+│   │   ├── runtime.rs              PythonRuntime (venv, pip, packages)
+│   │   ├── downloader.rs           PythonDownloader (SystemComponent)
+│   │   └── uv.rs                   UvDownloader (SystemComponent)
+│   └── postgresql/              ← PostgreSQL infrastructure
+│       └── runtime.rs              PostgresRuntime (embedded PG lifecycle)
+│
+├── litellm/                     ← LiteLLM service pack
+│   └── service.rs                 LiteLLMService (implements ManagedService)
+│
+├── agentscope/                  ← AgentScope service pack
+│   └── service.rs                 AgentScopeService (implements ManagedService)
+│
+└── lib.rs                       ← re-exports + backward-compat shim modules
 ```
 
-### Runtime Env Vars (set at boot, before any process spawning)
+**Adding a new service pack:**
+1. Create `snapfzz-packs/src/{name}/`
+2. Implement `core::ManagedService`
+3. Register in `lib.rs`
 
-```rust
-PATH = ~/.snapfzz/runtime/bin:~/.snapfzz/runtime/bin/python:$PATH
-UV_PYTHON_INSTALL_DIR = ~/.snapfzz/runtime/bin/python
-SNAPFZZ_RUNTIME_DIR = ~/.snapfzz/runtime
-SNAPFZZ_BIN_DIR = ~/.snapfzz/runtime/bin
-SNAPFZZ_PROCESSES_DIR = ~/.snapfzz/runtime/processes
-```
-
-### Process CWD Convention
-
-Every spawned process runs with CWD set to its `processes/` subdirectory:
-
-```rust
-// AgentScope: CWD = ~/.snapfzz/runtime/processes/agentscope/
-Command::new(uv_bin).args(["run", "python", "app.py"])
-    .current_dir(runtime_dir.join("processes/agentscope"))
-
-// LiteLLM: CWD = ~/.snapfzz/runtime/processes/litellm/
-Command::new(uv_bin).args(["run", "litellm", "--config", "config.yaml", "--port", "4000"])
-    .current_dir(runtime_dir.join("processes/litellm"))
-
-// CEF: in-process, install dir = ~/.snapfzz/runtime/processes/cef/
-CefRuntime::new(runtime_dir.join("processes/cef"))
-```
-
-No process runs outside `~/.snapfzz/runtime/`. No process uses system-wide binaries.
+Core defines contracts; service packs implement them. Dependency flows one way: packs → core, never core → pack.
 
 ---
 
@@ -142,49 +141,89 @@ Zone 2 (Web Workers — future Beta scope)
 
 ---
 
-## Boot Sequence (A012)
+## Boot Sequence (A012 + A039)
+
+### Sync Phase (<25ms)
 
 ```
 main()
-  ├── resolve_data_dir()                     ~/.snapfzz/
-  ├── configure_runtime_env(runtime_dir)     set PATH, UV_PYTHON_INSTALL_DIR
-  ├── PreflightService::new(data_dir)
-  ├── run_sync()                              < 100ms
-  │   ├── Phase 1: filesystem                 create ~/.snapfzz/*
-  │   ├── Phase 2: vault                      master key + vault.enc
-  │   ├── Phase 3: settings                   load settings.json
-  │   └── Phase 4: budget                     BudgetRegistry from preset
-  ├── manage(registry, vault, process_mgr, settings_mgr)
-  ├── manage(component_registry)              system packs
-  ├── manage(runtime_manager)                 runtime lifecycle
-  ├── .setup()
-  │   ├── runtime_manager.start_installed()   start AgentScope, LiteLLM if packs ready
-  │   └── metrics::run_metrics_loop()
-  └── .run()
+  ├── cleanup_all_orphan_processes()     kill stale PIDs from prior crash
+  ├── PreflightService::run_sync()       < 25ms
+  │   ├── Phase 1: filesystem            create ~/.snapfzz/*
+  │   ├── Phase 2: vault                 master key + vault.enc
+  │   ├── Phase 3: settings              load settings.json
+  │   └── Phase 4: budget                BudgetRegistry from preset
+  ├── manage(registry, vault, process_mgr, settings_mgr, ...)
+  └── .setup()
+      ├── boot::spawn_boot_phases()      fire-and-forget (async)
+      └── metrics::run_metrics_loop()    2s emission loop
 ```
+
+### Async Phase (A039 — three independent tasks)
+
+```
+Phase 1: Python Runtime                 Phase 2: PostgreSQL
+  ├── is_runtime_ready()?                 ├── cleanup stale postmaster.pid
+  │   yes → skip                          ├── pg.setup() (idempotent)
+  │   no →                                ├── pg.start()
+  │     ├── download uv                   ├── pg.create_database("litellm")
+  │     ├── download Python               └── send URL via watch channel
+  │     └── pip install all packages        └── notify pg_ready
+  └── notify python_ready
+                    │                                    │
+                    └──────────┬─────────────────────────┘
+                               ▼
+                    Phase 3: Service Spawn
+                      ├── wait python_ready + pg_ready
+                      ├── set_database_url from watch channel
+                      ├── spawn_all() (concurrent via tokio::spawn)
+                      │   ├── LiteLLM: prisma cache check → spawn
+                      │   └── AgentScope: can_start()=false → skip
+                      └── emit supervisor events per service
+```
+
+**Performance (A039):**
+- Prisma schema cached — skip `generate` + `db push` on warm boot (saves 4-8s)
+- Health polls every 250ms (not 1s) — service detected healthy in <1s
+- Services spawn concurrently via `tokio::spawn` — scales with service count
+- Warm boot: ~3-5s (PG start dominates)
 
 ---
 
 ## Runtime Lifecycle (A016)
 
 ```
-RuntimeManager
-  ├── AgentScope   port 8090  health: /health
-  ├── LiteLLM      port 4000  health: /health/liveliness
-  └── CEF          in-process  health: binary check
+ProcessFactoryRegistry
+  ├── LiteLLM      port dynamic  health: /health/liveliness
+  ├── AgentScope    port dynamic  health: /health (disabled)
+  └── PostgreSQL    port dynamic  managed by postgresql_embedded
 
-Each runtime implements:
-  is_runtime_ready() → ReadinessCheck
-    ├── binary_installed: bool    (pack downloaded?)
-    ├── binary_version: String    (not corrupted?)
-    ├── process_running: bool     (PID alive?)
-    ├── health_ok: bool           (HTTP health 2xx?)
-    └── status: NotInstalled | Installed | Starting | Online | Degraded | Error
+Each service implements ProcessFactory:
+  can_start()       → readiness check
+  pre_run_setup()   → prisma, migrations, etc.
+  build_command()   → tokio::process::Command
+  health_path()     → HTTP health endpoint
+  resource_limits() → max memory, max restarts
+```
 
-Used by:
-  - Diagnostics plugin (System Health Check)
-  - System Packs plugin (install status + runtime readiness)
-  - Boot sequence (start_installed skips uninstalled runtimes)
+---
+
+## Runtime Directory
+
+```
+~/.snapfzz/
+├── settings.json              user settings
+├── vault.enc                  encrypted secrets
+├── runtime/
+│   ├── python/
+│   │   ├── bin/               uv binary, Python install
+│   │   └── venv/              virtual environment (pip packages)
+│   └── postgres/              PostgreSQL binaries (postgresql_embedded)
+├── data/
+│   └── postgres/              PostgreSQL data directory + postmaster.pid
+└── processes/
+    ├── agentscope/            AgentScope CWD
+    └── litellm/               LiteLLM CWD (config.yaml, .prisma_hash)
 ```
 
 ---
@@ -192,9 +231,10 @@ Used by:
 ## LLM Gateway (A013)
 
 ```
-LiteLLM Proxy (managed child process, port 4000)
-  CWD: ~/.snapfzz/runtime/processes/litellm/
-  Config: ~/.snapfzz/runtime/processes/litellm/config.yaml
+LiteLLM Proxy (managed child process, dynamic port)
+  CWD: ~/.snapfzz/processes/litellm/
+  Config: ~/.snapfzz/processes/litellm/config.yaml
+  Database: PostgreSQL (embedded, connection via DATABASE_URL)
   ├── /v1/chat/completions     OpenAI-compatible
   ├── /v1/messages             Anthropic-compatible
   ├── /v1/models               model discovery
@@ -204,13 +244,9 @@ LiteLLM Proxy (managed child process, port 4000)
   └── /health/liveliness       health check
 
 snapfzz-llm crate (thin proxy):
-  ├── config.rs    generate config.yaml → runtime/processes/litellm/
+  ├── config.rs    generate config.yaml
   ├── keys.rs      proxy /key/* API calls
   └── spend.rs     proxy /spend/* API calls
-
-Config flow:
-  User settings → GatewayConfig → processes/litellm/config.yaml → LiteLLM reads it
-  Provider API keys: vault → env vars → LiteLLM process
 ```
 
 ---
@@ -305,11 +341,23 @@ BudgetRegistry (snapfzz-kernel/budget/)
   │
   └── Supervised domain (cross-process, observe+kill)
       ├── Process memory       RSS monitoring, kill on exceed
-      ├── Process health       HTTP polling, restart on failure
+      ├── Process health       HTTP polling (250ms startup, 2-5s ongoing)
       └── Storage              disk usage monitoring
 
 Presets: Performance (80% hardware) / Balanced / Battery
 ```
+
+---
+
+## Codebase Stats
+
+| Metric | Value |
+|---|---|
+| Total Rust LOC | ~21,000 |
+| Total Tests | 462+ |
+| Crates | 8 |
+| Tauri Commands | 95 |
+| main.rs | 236 lines |
 
 ---
 
@@ -334,5 +382,7 @@ All specs live in `docs/plans/` and `docs/ui-specs/`. They reference this file f
 | A015 | Mini App Runtime | CEF, full-stack plugin apps, bookmarks |
 | A016 | Runtime Architecture | Runtime trait, RuntimeManager, is_runtime_ready |
 | A017 | MicroVM Sandbox | SandboxBackend trait, FirecrackerPack, MicrovmRuntime lifecycle |
+| A018 | Packs Refactoring | Vertical domain slices, core/ + service packs |
+| A039 | Phased Boot | Parallel async boot, prisma cache, fast health poll |
 | U001-U010 | UI Specs | Navigation, responsive, design system, etc. |
 | U011 | Vault Settings | Vault management UI |
