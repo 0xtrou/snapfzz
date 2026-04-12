@@ -173,4 +173,43 @@ mod tests {
         let result = service.spawn_command(&config);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn t33_agentscope_service_spawn_command_succeeds_when_venv_python_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime_temp = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = Arc::new(crate::core::python::runtime::PythonRuntime::new(
+            runtime_temp.path().to_path_buf(),
+            platform,
+        ));
+
+        // Create the venv python binary so spawn_command succeeds
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(runtime.venv_python(), b"#!/bin/sh\n").expect("create venv python");
+
+        let service = AgentScopeService::new(runtime, DataDir::new(temp.path()));
+        let config = ServiceConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8090,
+            working_dir: temp.path().to_path_buf(),
+        };
+        let result = service.spawn_command(&config);
+        assert!(result.is_ok(), "spawn_command should succeed when venv python exists");
+    }
+
+    #[test]
+    fn t33_agentscope_service_spawn_command_returns_dependency_error_when_venv_missing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
+        let config = ServiceConfig {
+            host: "0.0.0.0".to_string(),
+            port: 9000,
+            working_dir: PathBuf::from("/tmp"),
+        };
+        let err = service.spawn_command(&config).expect_err("should fail");
+        assert!(matches!(err, ServiceError::DependencyNotInstalled(_)));
+        assert!(err.to_string().contains("venv") || err.to_string().contains("Python"));
+    }
 }

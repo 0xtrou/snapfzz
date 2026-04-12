@@ -164,6 +164,21 @@ mod tests {
     }
 
     #[test]
+    fn t37_data_dir_ensure_runtime_dir_fails_when_parent_is_a_file() {
+        // Trigger CreateFailed by placing a regular file where a directory would need to go.
+        let temp = tempfile::tempdir().expect("tempdir");
+        // Write a file at the path that `data/` would occupy — so create_dir_all
+        // cannot create `data/litellm` because `data` is a file, not a directory.
+        let data_path = temp.path().join("data");
+        std::fs::write(&data_path, b"I am a file, not a dir").expect("write file");
+
+        let data_dir = DataDir::new(temp.path());
+        let err = data_dir.ensure_runtime_dir(slugs::LITELLM).expect_err("should fail");
+        assert!(matches!(err, DataError::CreateFailed { .. }));
+        assert!(err.to_string().contains(slugs::LITELLM));
+    }
+
+    #[test]
     fn t37_data_error_create_failed_formats_message() {
         let error = DataError::CreateFailed {
             slug: "test".to_string(),

@@ -1069,6 +1069,85 @@ mod tests {
         assert_eq!(status.percent, 0.0);
     }
 
+    // ── SystemComponent::download cancelled ──────────────────────────────────
+
+    #[tokio::test]
+    async fn a015_system_component_download_returns_cancelled_when_flag_set() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        downloader.cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let events = SystemComponent::download(&downloader).await.expect("should return events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].status,
+            crate::core::component::DownloadStatus::Cancelled
+        );
+        assert_eq!(events[0].component_id, "cef");
+    }
+
+    // ── SystemComponent::status_path / repository_url / website_url ──────────
+
+    #[test]
+    fn a015_system_component_status_path_defaults_to_install_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        let downloader = CefDownloader::new(install_dir.clone(), "macos-arm64".to_string());
+        assert_eq!(SystemComponent::status_path(&downloader), install_dir);
+    }
+
+    #[test]
+    fn a015_system_component_repository_and_website_urls_use_defaults() {
+        // CefDownloader does not override repository_url/website_url on the trait;
+        // the URLs are embedded in ComponentInfo returned by resolve(), not the trait methods.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let downloader = CefDownloader::new(temp.path().join("cef"), "macos-arm64".to_string());
+        // Default trait implementation returns empty strings.
+        assert_eq!(SystemComponent::repository_url(&downloader), "");
+        assert_eq!(SystemComponent::website_url(&downloader), "");
+        // visible_in_components_list defaults to true
+        assert!(SystemComponent::visible_in_components_list(&downloader));
+    }
+
+    // ── CefInstallCheck trait ─────────────────────────────────────────────────
+
+    #[test]
+    fn a015_cef_install_check_is_installed_false_without_extracted_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        use snapfzz_cef::CefInstallCheck;
+        assert!(!CefInstallCheck::is_installed(&downloader));
+    }
+
+    #[test]
+    fn a015_cef_install_check_is_installed_true_with_cef_binary_dir() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(install_dir.join("cef_binary_146_macosarm64")).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        use snapfzz_cef::CefInstallCheck;
+        assert!(CefInstallCheck::is_installed(&downloader));
+    }
+
+    // ── download_events delegates to download_cef ────────────────────────────
+
+    #[tokio::test]
+    async fn a015_download_events_cancelled_matches_download_cef() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        std::fs::create_dir_all(&install_dir).expect("create dir");
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        downloader.cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let events = downloader.download_events().await.expect("events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].status, DownloadStatus::Cancelled);
+    }
+
     fn create_test_tar_bz2(path: &Path, files: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).expect("create archive");
         let compressor = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());

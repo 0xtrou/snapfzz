@@ -187,4 +187,29 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].status, DownloadStatus::Ready);
     }
+
+    // ── MockComponent trait method coverage ─────────────────────────────────
+
+    #[test]
+    fn a014_mock_component_sync_trait_methods() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("comp");
+        std::fs::create_dir_all(&dir).unwrap();
+        let c = MockComponent { component_id: "test-id".to_string(), dir: dir.clone() };
+
+        assert_eq!(c.name(), "Mock Component");
+        assert_eq!(c.install_dir(), dir.as_path());
+        assert!(!c.is_installed());
+        c.cancel();      // no-op — just call for coverage
+        c.clear_cancel(); // no-op — just call for coverage
+    }
+
+    #[tokio::test]
+    async fn a014_mock_component_async_verify_and_extract() {
+        let temp = tempfile::tempdir().unwrap();
+        let c = MockComponent::new("verify-test");
+        let hash = c.verify().await.unwrap();
+        assert_eq!(hash, "mock-hash");
+        c.extract().await.unwrap();
+    }
 }

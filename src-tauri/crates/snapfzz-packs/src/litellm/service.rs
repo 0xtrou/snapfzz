@@ -182,4 +182,55 @@ mod tests {
         let result = service.spawn_command(&config);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn t33_litellm_service_spawn_command_succeeds_when_litellm_bin_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let runtime_temp = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = Arc::new(crate::core::python::runtime::PythonRuntime::new(
+            runtime_temp.path().to_path_buf(),
+            platform,
+        ));
+
+        // Create the litellm CLI binary so spawn_command succeeds
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(venv_bin.join("litellm"), b"#!/bin/sh\n").expect("create litellm bin");
+
+        let service = LiteLLMService::new(runtime, DataDir::new(temp.path()));
+        let config = ServiceConfig {
+            host: "127.0.0.1".to_string(),
+            port: 4000,
+            working_dir: temp.path().to_path_buf(),
+        };
+        let result = service.spawn_command(&config);
+        assert!(result.is_ok(), "spawn_command should succeed when litellm CLI binary exists");
+    }
+
+    #[test]
+    fn t33_litellm_service_spawn_command_returns_dependency_error_when_litellm_missing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+
+        // Create venv dir but without the litellm binary
+        let runtime_temp = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = Arc::new(crate::core::python::runtime::PythonRuntime::new(
+            runtime_temp.path().to_path_buf(),
+            platform,
+        ));
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        // litellm binary is NOT written — only the venv bin dir exists
+
+        let service = LiteLLMService::new(runtime, DataDir::new(temp.path()));
+        let config = ServiceConfig {
+            host: "127.0.0.1".to_string(),
+            port: 4000,
+            working_dir: PathBuf::from("/tmp"),
+        };
+        let err = service.spawn_command(&config).expect_err("should fail without litellm CLI");
+        assert!(matches!(err, ServiceError::DependencyNotInstalled(_)));
+        assert!(err.to_string().contains("litellm"));
+    }
 }
