@@ -10,7 +10,7 @@ permissions:
 jobs:
   update-badges:
     name: Update Coverage Badges
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
