@@ -462,13 +462,13 @@ mod tests {
         let reg = Arc::new(BudgetRegistry::with_preset(preset));
 
         // Register a local process so total_rss check runs.
-        // Use port 0 so the health check gets an immediate connection-refused
-        // instead of blocking on a TCP timeout (port 1 hangs for seconds).
+        // Health URL uses an invalid scheme so reqwest rejects it instantly
+        // without making a TCP connection (port 0/1 can block on Linux).
         reg.register_process(
             "test-mem",
             ProcessBudget {
                 pid: Some(std::process::id()),
-                health_url: "http://127.0.0.1:0/health".into(),
+                health_url: "invalid://not-a-url".into(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
                 max_restarts: 3,
@@ -486,6 +486,8 @@ mod tests {
             reg_clone.enforce_loop(1, |_| {}).await;
         });
 
+        // Give the loop time to run one iteration (health check fails instantly
+        // with invalid URL scheme), then abort.
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         handle.abort();
         let _ = handle.await;
