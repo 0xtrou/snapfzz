@@ -50,6 +50,23 @@ beforeEach(() => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Shared helpers for Python Runtime tests
+// ---------------------------------------------------------------------------
+
+function makePythonMock(pythonRuntime: object | null) {
+  return (cmd: string) => {
+    if (cmd === 'preflight_status') return Promise.resolve(okPhases);
+    if (cmd === 'get_hardware_info') return Promise.resolve(hardware);
+    if (cmd === 'budget_snapshot') return Promise.resolve({ presetName: 'performance' });
+    if (cmd === 'component_list') return Promise.resolve(components);
+    if (cmd === 'python_runtime_status') {
+      return pythonRuntime === null ? Promise.reject(new Error('unavailable')) : Promise.resolve(pythonRuntime);
+    }
+    return Promise.resolve(undefined);
+  };
+}
+
 describe('A012/settings-diagnostics', () => {
   it('A012/settings-diagnostics: renders header', async () => {
     render(<DiagnosticsSettings />);
@@ -359,6 +376,390 @@ describe('A012/settings-diagnostics', () => {
     await waitFor(() => {
       expect(screen.getByText('Ok')).toBeInTheDocument();
       expect(screen.queryByText('1. ')).not.toBeInTheDocument();
+    });
+  });
+
+  it('A012/settings-diagnostics: shows failed status with explicit detail message', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'preflight_status') {
+        return Promise.resolve([
+          { phase: 1, name: 'filesystem', durationMs: 3, status: 'failed', detail: 'Disk read error' },
+        ]);
+      }
+      if (cmd === 'get_hardware_info') return Promise.resolve(hardware);
+      if (cmd === 'budget_snapshot') return Promise.resolve({ presetName: 'performance' });
+      if (cmd === 'component_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('Disk read error')).toBeInTheDocument();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Python Runtime section
+// ---------------------------------------------------------------------------
+
+describe('A012/settings-diagnostics — Python Runtime section', () => {
+  it('shows "Loading Python runtime status..." while python_runtime_status is pending or unavailable', async () => {
+    mockInvoke.mockImplementation(makePythonMock(null));
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Loading Python runtime status...')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Python Runtime section when python_runtime_status resolves', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: '/usr/local/bin/python3',
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Python Runtime')).toBeInTheDocument();
+      expect(screen.queryByText('Loading Python runtime status...')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows installed Python tag with version when python_installed=true and python_version is set', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.12.2',
+        python_path: null,
+        uv_installed: false,
+        uv_version: undefined,
+        venv_exists: false,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('v3.12.2')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "Installed" tag (no version) when python_installed=true and python_version is absent', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: undefined,
+        python_path: null,
+        uv_installed: false,
+        uv_version: undefined,
+        venv_exists: false,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      const tags = screen.getAllByText('Installed');
+      expect(tags.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('shows "Not Installed" tag when python_installed=false', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: false,
+        python_version: undefined,
+        python_path: null,
+        uv_installed: false,
+        uv_version: undefined,
+        venv_exists: false,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Not Installed').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows uv version tag when uv_installed=true and uv_version is set', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.0',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.5.3',
+        venv_exists: true,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('v0.5.3')).toBeInTheDocument();
+    });
+  });
+
+  it('shows uv "Installed" tag (no version) when uv_installed=true and uv_version is absent', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.0',
+        python_path: null,
+        uv_installed: true,
+        uv_version: undefined,
+        venv_exists: true,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      const tags = screen.getAllByText('Installed');
+      expect(tags.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('shows uv "Not Installed" tag when uv_installed=false', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.0',
+        python_path: null,
+        uv_installed: false,
+        uv_version: undefined,
+        venv_exists: false,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Not Installed')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Python Path row when python_path is present', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: '/usr/local/bin/python3',
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Python Path')).toBeInTheDocument();
+      expect(screen.getByText('/usr/local/bin/python3')).toBeInTheDocument();
+    });
+  });
+
+  it('does not show Python Path row when python_path is null/absent', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Python Path')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows "No agent packages installed" when installed_packages is empty', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: [],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No agent packages installed')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "No agent packages installed" when packages do not match agentscope or litellm', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['requests==2.31.0', 'numpy==1.26.0', 'someother-enterprise==1.0.0'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No agent packages installed')).toBeInTheDocument();
+    });
+  });
+
+  it('shows agentscope package tag when present', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['agentscope==0.2.1', 'requests==2.31.0'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('agentscope')).toBeInTheDocument();
+      expect(screen.queryByText('No agent packages installed')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows litellm package tag when present', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['litellm==1.0.0'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('litellm')).toBeInTheDocument();
+      expect(screen.queryByText('No agent packages installed')).not.toBeInTheDocument();
+    });
+  });
+
+  it('strips extras bracket from package name in tag (e.g. agentscope[all])', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['agentscope[all]==0.3.0'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('agentscope')).toBeInTheDocument();
+    });
+  });
+
+  it('filters out enterprise-suffixed agentscope packages', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['agentscope-enterprise==0.2.1'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No agent packages installed')).toBeInTheDocument();
+    });
+  });
+
+  it('shows package tag without version tooltip text when version segment is absent', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['agentscope'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('agentscope')).toBeInTheDocument();
+    });
+  });
+
+  it('shows both agentscope and litellm package tags when both present', async () => {
+    mockInvoke.mockImplementation(
+      makePythonMock({
+        python_installed: true,
+        python_version: '3.11.9',
+        python_path: null,
+        uv_installed: true,
+        uv_version: '0.4.1',
+        venv_exists: true,
+        installed_packages: ['agentscope==0.2.1', 'litellm==1.0.0', 'requests==2.31.0'],
+      }),
+    );
+
+    render(<DiagnosticsSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText('agentscope')).toBeInTheDocument();
+      expect(screen.getByText('litellm')).toBeInTheDocument();
     });
   });
 });
