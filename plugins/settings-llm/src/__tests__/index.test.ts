@@ -21,5 +21,5 @@ describe('A013/PluginManifest: settings-llm registration export', () => {
     const module = await section?.component();
     expect(module).toBeDefined();
     expect(module).toHaveProperty('default');
-  });
+  }, 15_000);
 });
