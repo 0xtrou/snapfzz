@@ -86,27 +86,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install
-      - name: Test with coverage
-        run: pnpm --filter @snapfzz/${{ matrix.package }} exec npx vitest run --coverage --coverage.reporter=json-summary
-      - name: Assert ≥90% overall coverage (lines + branches + functions)
-        run: |
-          SUMMARY="frontend/packages/${{ matrix.package }}/coverage/coverage-summary.json"
-          if [ -f "$SUMMARY" ]; then
-            node -e "
-              const s = require('./$SUMMARY').total;
-              const lines = s.lines.pct;
-              const branches = s.branches.pct;
-              const functions = s.functions.pct;
-              console.log('${{ matrix.package }}: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
-              if (lines < 90 || branches < 90 || functions < 90) {
-                console.error('FAIL: need ≥90% on lines + branches + functions');
-                process.exit(1);
-              }
-            "
-          else
-            echo "ERROR: No coverage report found — test suite may have failed"
-            exit 1
-          fi
+      - name: Test with coverage (thresholds enforced by vitest config)
+        run: pnpm --filter @snapfzz/${{ matrix.package }} exec npx vitest run --coverage
 
   plugin-chat:
     name: Chat Plugin
@@ -121,26 +102,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install
-      - run: pnpm --filter @snapfzz/chat-plugin exec npx vitest run --coverage --coverage.reporter=json-summary
-      - name: Assert ≥90% overall coverage (lines + branches + functions)
-        run: |
-          SUMMARY="plugins/chat/coverage/coverage-summary.json"
-          if [ -f "$SUMMARY" ]; then
-            node -e "
-              const s = require('./$SUMMARY').total;
-              const lines = s.lines.pct;
-              const branches = s.branches.pct;
-              const functions = s.functions.pct;
-              console.log('chat: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
-              if (lines < 90 || branches < 90 || functions < 90) {
-                console.error('FAIL: need ≥90% on lines + branches + functions');
-                process.exit(1);
-              }
-            "
-          else
-            echo "ERROR: No coverage report found — test suite may have failed"
-            exit 1
-          fi
+      - name: Test with coverage (thresholds enforced by vitest config)
+        run: pnpm --filter @snapfzz/chat-plugin exec npx vitest run --coverage
 
   plugin-settings:
     name: Settings Plugins
@@ -158,24 +121,5 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install
-      - name: Test with coverage
-        run: pnpm --filter @snapfzz/${{ matrix.plugin }} exec npx vitest run --coverage --coverage.reporter=json-summary
-      - name: Assert ≥90% overall coverage (lines + branches + functions)
-        run: |
-          SUMMARY="plugins/${{ matrix.plugin }}/coverage/coverage-summary.json"
-          if [ -f "$SUMMARY" ]; then
-            node -e "
-              const s = require('./$SUMMARY').total;
-              const lines = s.lines.pct;
-              const branches = s.branches.pct;
-              const functions = s.functions.pct;
-              console.log('${{ matrix.plugin }}: lines=' + lines + '% branches=' + branches + '% functions=' + functions + '%');
-              if (lines < 90 || branches < 90 || functions < 90) {
-                console.error('FAIL: need ≥90% on lines + branches + functions');
-                process.exit(1);
-              }
-            "
-          else
-            echo "ERROR: No coverage report found — test suite may have failed"
-            exit 1
-          fi
+      - name: Test with coverage (thresholds enforced by vitest config)
+        run: pnpm --filter @snapfzz/${{ matrix.plugin }} exec npx vitest run --coverage
