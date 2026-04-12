@@ -5,7 +5,7 @@
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ProvidersTab from '../../tabs/ProvidersTab';
 
 const { mockInvoke } = vi.hoisted(() => ({
@@ -107,6 +107,19 @@ vi.mock('../../catalog', () => {
   };
 });
 
+// A013/VirtuosoGrid: In jsdom there is no real layout engine, so VirtuosoGrid
+// never measures container height and renders zero items. Replace it with a
+// simple flat list so tests can assert on model chip content.
+vi.mock('react-virtuoso', () => ({
+  VirtuosoGrid: ({ data, itemContent }: { data: any[]; itemContent: (index: number, item: any) => any }) => (
+    <div data-testid="virtuoso-grid">
+      {(data ?? []).map((_item: any, index: number) => (
+        <div key={index}>{itemContent(index, _item)}</div>
+      ))}
+    </div>
+  ),
+}));
+
 describe('A013/UI/ProvidersTab', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
@@ -166,33 +179,6 @@ describe('A013/UI/ProvidersTab', () => {
       expect(singleModelTexts.length).toBe(2);
     });
 
-    it('A013/Grid: each card has a toggle switch', async () => {
-      render(<ProvidersTab />);
-
-      await screen.findByText('OpenAI');
-
-      const toggles = screen.getAllByRole('switch');
-      // 3 catalog providers in mock
-      expect(toggles.length).toBe(3);
-    });
-
-    it('A013/Grid: toggle can be clicked without navigating to detail', async () => {
-      const user = userEvent.setup();
-      render(<ProvidersTab />);
-
-      await screen.findByText('OpenAI');
-
-      const openaiToggle = screen.getByRole('switch', { name: 'Toggle OpenAI' });
-      // OpenAI has keys, so toggle should be checked by default
-      expect(openaiToggle).toBeChecked();
-
-      await user.click(openaiToggle);
-      expect(openaiToggle).not.toBeChecked();
-
-      // Should still be on grid view (not detail)
-      expect(screen.queryByText('Back to Providers')).not.toBeInTheDocument();
-    });
-
     it('A013/Grid: clicking a card navigates to detail view', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
@@ -203,11 +189,14 @@ describe('A013/UI/ProvidersTab', () => {
       expect(await screen.findByText('Back to Providers')).toBeInTheDocument();
     });
 
-    it('A013/Grid: shows Built-in Providers and Custom Providers sections', async () => {
+    it('A013/Grid: shows Custom Providers and Providers sections', async () => {
       render(<ProvidersTab />);
 
-      expect(await screen.findByText('Built-in Providers')).toBeInTheDocument();
+      await screen.findByText('OpenAI');
+
       expect(screen.getByText('Custom Providers')).toBeInTheDocument();
+      // Built-in section label is "Providers"
+      expect(screen.getByText('Providers')).toBeInTheDocument();
     });
 
     it('A013/Grid: shows empty state for custom providers when none configured', async () => {

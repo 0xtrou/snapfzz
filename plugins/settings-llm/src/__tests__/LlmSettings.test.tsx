@@ -34,7 +34,7 @@ describe('A013/UI: LlmSettings', () => {
 
   it('renders all tabs', () => {
     render(<LlmSettings />);
-    expect(screen.getByText('Providers')).toBeInTheDocument();
+    expect(screen.getAllByText('Providers').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('API Keys')).toBeInTheDocument();
     expect(screen.getByText('Routing')).toBeInTheDocument();
     expect(screen.getByText('Audit Log')).toBeInTheDocument();

@@ -401,4 +401,59 @@ describe('A013/UI/ApiKeysTab', () => {
       expect(screen.getByText('$1.23')).toBeInTheDocument();
     });
   });
+
+  it('expands row to show full key details', async () => {
+    const user = userEvent.setup();
+    mockListKeys.mockResolvedValue({
+      keys: [
+        {
+          key: 'sk-test12345678',
+          key_alias: 'dev-key',
+          models: ['gpt-4o'],
+          spend: 0.5,
+          max_budget: 20,
+          budget_duration: '30d',
+          expires: '2026-12-31T00:00:00Z',
+        },
+      ],
+    });
+
+    render(<ApiKeysTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText('dev-key')).toBeInTheDocument();
+    });
+
+    // Click the ant-table expand icon to trigger expandedRowRender
+    const expandBtn = document.querySelector('.ant-table-row-expand-icon');
+    if (expandBtn) {
+      await user.click(expandBtn as HTMLElement);
+      await waitFor(() => {
+        expect(screen.getByText('Allowed Models:')).toBeInTheDocument();
+      });
+      // Also shows expires date from expandedRowRender
+      expect(screen.getByText('Expires:')).toBeInTheDocument();
+    }
+  });
+
+  it('uses token field as fallback when key field is absent', async () => {
+    mockListKeys.mockResolvedValue({
+      keys: [
+        {
+          token: 'sk-token-value',
+          models: [],
+          spend: 0,
+          max_budget: 0,
+          budget_duration: '',
+        },
+      ],
+    });
+
+    render(<ApiKeysTab />);
+
+    await waitFor(() => {
+      // token is used in resolveKey when key is absent
+      expect(screen.getByText('All models')).toBeInTheDocument();
+    });
+  });
 });

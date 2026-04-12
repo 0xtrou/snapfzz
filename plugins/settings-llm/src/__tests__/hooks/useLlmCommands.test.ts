@@ -86,7 +86,7 @@ describe('A013/Hooks: useLlmCommands', () => {
       await saveConfig(config, '/path/to/data');
       expect(mockInvoke).toHaveBeenCalledWith('llm_save_config', {
         config,
-        data_dir: '/path/to/data',
+        dataDir: '/path/to/data',
       });
     });
 
@@ -156,6 +156,18 @@ describe('A013/Hooks: useLlmCommands', () => {
         'http://localhost:4000/key/list',
         expect.anything(),
       );
+    });
+
+    it('handles flat array response from /key/list', async () => {
+      const flatArray = [{ key: 'sk-1' }, { key: 'sk-2' }];
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(flatArray),
+      });
+      const { listKeys } = await import('../../hooks/useLlmCommands');
+      const result = await listKeys('http://localhost:4000', 'sk-master');
+      expect(result.keys).toHaveLength(2);
+      expect(result.total_count).toBe(2);
     });
 
     it('deletes key via POST /key/delete', async () => {
@@ -237,6 +249,41 @@ describe('A013/Hooks: useLlmCommands', () => {
       );
     });
 
+    it('gets spend logs with all filter params', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([]),
+      });
+      const { getSpendLogs } = await import('../../hooks/useLlmCommands');
+      const filters = {
+        start_date: '2026-01-01',
+        end_date: '2026-01-31',
+        key: 'sk-test',
+        model: 'gpt-4o',
+        user: 'user-123',
+        page: 2,
+        size: 50,
+      };
+      await getSpendLogs('http://localhost:4000', 'sk-master', filters);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('start_date=2026-01-01'),
+        expect.anything(),
+      );
+    });
+
+    it('gets spend logs without query string when filters are empty', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([]),
+      });
+      const { getSpendLogs } = await import('../../hooks/useLlmCommands');
+      await getSpendLogs('http://localhost:4000', 'sk-master', {});
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/spend/logs',
+        expect.anything(),
+      );
+    });
+
     it('gets key spend via GET /spend/key', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -299,6 +346,33 @@ describe('A013/Hooks: useLlmCommands', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('A013/ModelDelete: Delete model from LiteLLM gateway', () => {
+    it('deletes model via POST /model/delete', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+      const { deleteModel } = await import('../../hooks/useLlmCommands');
+      await deleteModel('http://localhost:4000', 'sk-master', 'model-db-id-123');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/model/delete',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ id: 'model-db-id-123' }),
+        }),
+      );
+    });
+
+    it('throws when model delete returns non-ok', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        text: () => Promise.resolve('Not found'),
+      });
+      const { deleteModel } = await import('../../hooks/useLlmCommands');
+      await expect(deleteModel('http://localhost:4000', 'sk-master', 'bad-id')).rejects.toThrow();
     });
   });
 

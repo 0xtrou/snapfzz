@@ -19,10 +19,14 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: |
+            ~/.cargo/bin/cargo-llvm-cov
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-badges-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-badges-
+            ${{ runner.os }}-cargo-
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -33,7 +37,7 @@ jobs:
       - run: pnpm install
 
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
+        run: command -v cargo-llvm-cov || cargo install cargo-llvm-cov --locked
 
       - name: Run Rust coverage
         working-directory: src-tauri
