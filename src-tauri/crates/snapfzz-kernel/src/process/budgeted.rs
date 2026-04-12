@@ -564,7 +564,7 @@ mod tests {
         .expect("make_process")
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_process_spawn_creates_budget_entry_and_persists_port() {
         let registry = Arc::new(BudgetRegistry::from_hardware());
         let logs = Arc::new(ProcessLogs::new());
@@ -654,7 +654,7 @@ mod tests {
         assert!(process.measure_cpu().is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_process_check_health_marks_unhealthy_for_unreachable_endpoint() {
         let registry = Arc::new(BudgetRegistry::from_hardware());
         let mut process = BudgetedProcess::new(
@@ -970,7 +970,7 @@ mod tests {
     // spawn() error paths
     // -------------------------------------------------------------------------
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_spawn_errors_when_can_start_returns_false() {
         // A037/spawn: When factory.can_start() returns false, spawn must return a SpawnFailed
         // error before attempting any OS-level process creation.
@@ -993,7 +993,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_spawn_errors_when_pre_run_setup_fails() {
         // A037/spawn: When factory.pre_run_setup() returns an error, spawn must propagate it
         // as a SpawnFailed so the caller can surface it without leaving the process in a
@@ -1017,7 +1017,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_spawn_resets_status_to_stopped_on_failure() {
         // A037/spawn: After a spawn failure the status field must revert to Stopped so that
         // list_snapshots() does not report a phantom Starting/Online state.
@@ -1344,7 +1344,7 @@ mod tests {
     // kill() — exercises the shutdown + unregister path without a live process
     // -------------------------------------------------------------------------
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_kill_on_never_spawned_process_returns_ok() {
         // A037/kill: Calling kill() on a process that was never spawned should
         // return Ok and set status to Stopped (the shutdown call on ProcessManager
@@ -1361,7 +1361,7 @@ mod tests {
     // restart() — exercises kill + spawn sequence
     // -------------------------------------------------------------------------
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_budgeted_restart_increments_restart_count_and_attempts_spawn() {
         // A037/restart: restart() must call kill() then increment restart_count by 1
         // before calling spawn().  With CannotStartFactory spawn will fail after kill,

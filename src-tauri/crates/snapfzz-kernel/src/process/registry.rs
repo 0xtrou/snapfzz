@@ -329,14 +329,14 @@ mod tests {
         assert!(registry.factories.contains_key("agentscope"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_spawn_returns_error_for_unknown_factory() {
         let mut registry = make_registry();
         let err = registry.spawn("unknown").await.expect_err("unknown factory");
         assert!(err.to_string().contains("unknown process factory"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_spawn_creates_budgeted_process_from_factory() {
         // A037/registry: spawn must use the registered factory, not fail with "unknown process factory".
         // Process may be cleaned up after spawn failure (health timeout), so assert on the error
@@ -353,7 +353,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_spawn_all_attempts_each_registered_factory() {
         let mut registry = make_registry();
         registry.register(Arc::new(TestFactory { name: "agentscope" }));
@@ -363,7 +363,7 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_kill_removes_process_from_tracking() {
         let mut registry = make_registry();
         registry.register(Arc::new(TestFactory { name: "agentscope" }));
@@ -373,7 +373,7 @@ mod tests {
         assert!(registry.get("agentscope").is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_restart_delegates_to_budgeted_process() {
         let mut registry = make_registry();
         registry.register(Arc::new(TestFactory { name: "agentscope" }));
@@ -486,14 +486,14 @@ mod tests {
         assert!(Arc::ptr_eq(&pm1, &pm2));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_kill_unknown_process_returns_not_running() {
         let mut registry = make_registry();
         let err = registry.kill("no-such").await.expect_err("kill unknown should fail");
         assert!(matches!(err, crate::process::ProcessError::RuntimeNotRunning { .. }));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn t37_registry_restart_unknown_process_delegates_to_spawn() {
         // restart() on an unknown process name calls spawn() which fails with unknown factory
         let mut registry = make_registry();

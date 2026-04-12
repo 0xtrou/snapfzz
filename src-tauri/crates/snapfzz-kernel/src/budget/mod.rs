@@ -137,13 +137,7 @@ impl BudgetRegistry {
 
             for entry in self.supervised.processes.iter() {
                 let name = entry.key();
-                #[cfg(test)]
-                eprintln!("[budget/enforce_loop] checking health for '{name}'");
-
                 let healthy = self.supervised.check_health(name).await;
-
-                #[cfg(test)]
-                eprintln!("[budget/enforce_loop] health check done for '{name}': {healthy}");
 
                 if healthy {
                     self.supervised.reset_health_failures(name);
@@ -429,7 +423,7 @@ mod tests {
 
     // --- enforce_loop: runs one tick and invokes callback, then task is aborted ---
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a008_registry_enforce_loop_invokes_callback_on_each_tick() {
         use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
@@ -457,8 +451,10 @@ mod tests {
     }
 
     // --- enforce_loop: triggers memory-exceeded log path ---
+    // Uses multi_thread runtime so tokio::spawn abort can fire even when
+    // sysinfo blocks a worker thread (single-thread runtime deadlocks).
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a008_registry_enforce_loop_memory_exceeded_path_runs_without_panic() {
         use std::sync::Arc;
 
@@ -467,9 +463,6 @@ mod tests {
         preset.memory.app_total_mb = 0; // Force budget to 0 so any RSS exceeds it
         let reg = Arc::new(BudgetRegistry::with_preset(preset));
 
-        // Register a local process so total_rss check runs.
-        // Health URL uses an invalid scheme so reqwest rejects it instantly
-        // without making a TCP connection (port 0/1 can block on Linux).
         reg.register_process(
             "test-mem",
             ProcessBudget {
@@ -488,23 +481,18 @@ mod tests {
         );
 
         let reg_clone = reg.clone();
-        eprintln!("[test] spawning enforce_loop task");
         let handle = tokio::spawn(async move {
             reg_clone.enforce_loop(1, |_| {}).await;
         });
 
-        eprintln!("[test] sleeping 100ms before abort");
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        eprintln!("[test] aborting enforce_loop task");
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         handle.abort();
-        eprintln!("[test] waiting for abort to complete");
-        let result = handle.await;
-        eprintln!("[test] abort completed: is_cancelled={}", result.unwrap_err().is_cancelled());
+        let _ = handle.await;
     }
 
     // --- enforce_loop: storage-exceeded log path ---
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a008_registry_enforce_loop_storage_exceeded_path_runs_without_panic() {
         use std::sync::Arc;
         use crate::budget::supervised::{StorageState, SupervisedBudgets};
