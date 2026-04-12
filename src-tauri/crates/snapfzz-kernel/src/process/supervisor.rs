@@ -44,7 +44,7 @@ mod tests {
             name,
             ProcessBudget {
                 pid: Some(pid),
-                health_url: "http://127.0.0.1:1/health".to_string(),
+                health_url: "http://127.0.0.1:0/health".to_string(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
                 max_restarts: 3,

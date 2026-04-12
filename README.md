@@ -22,45 +22,45 @@ Coverage ≥90% enforced by CI on every push. Rust coverage via `cargo-llvm-cov`
 
 ### Rust Crates — Runtime Management
 
-| Package | Coverage | CI |
-|---|---|---|
-| [`snapfzz-kernel`](src-tauri/crates/snapfzz-kernel/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/kernel.json)](src-tauri/crates/snapfzz-kernel/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=kernel)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`snapfzz-packs`](src-tauri/crates/snapfzz-packs/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/packs.json)](src-tauri/crates/snapfzz-packs/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=packs)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Package | Coverage |
+|---|---|
+| [`snapfzz-kernel`](src-tauri/crates/snapfzz-kernel/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/kernel.json)](src-tauri/crates/snapfzz-kernel/) |
+| [`snapfzz-packs`](src-tauri/crates/snapfzz-packs/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/packs.json)](src-tauri/crates/snapfzz-packs/) |
 
 ### Rust Crates — Domain Logic
 
-| Package | Coverage | CI |
-|---|---|---|
-| [`snapfzz-stream`](src-tauri/crates/snapfzz-stream/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/stream.json)](src-tauri/crates/snapfzz-stream/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=stream)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`snapfzz-vault`](src-tauri/crates/snapfzz-vault/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/vault.json)](src-tauri/crates/snapfzz-vault/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=vault)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`snapfzz-llm`](src-tauri/crates/snapfzz-llm/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/llm.json)](src-tauri/crates/snapfzz-llm/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=llm)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`snapfzz-cef`](src-tauri/crates/snapfzz-cef/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/cef.json)](src-tauri/crates/snapfzz-cef/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=cef)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Package | Coverage |
+|---|---|
+| [`snapfzz-stream`](src-tauri/crates/snapfzz-stream/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/stream.json)](src-tauri/crates/snapfzz-stream/) |
+| [`snapfzz-vault`](src-tauri/crates/snapfzz-vault/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/vault.json)](src-tauri/crates/snapfzz-vault/) |
+| [`snapfzz-llm`](src-tauri/crates/snapfzz-llm/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/llm.json)](src-tauri/crates/snapfzz-llm/) |
+| [`snapfzz-cef`](src-tauri/crates/snapfzz-cef/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/cef.json)](src-tauri/crates/snapfzz-cef/) |
 
 ### Frontend — Core Packages
 
-| Package | Coverage | CI |
-|---|---|---|
-| [`@snapfzz/shared`](frontend/packages/shared/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/shared.json)](frontend/packages/shared/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=shared)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/plugin-sdk`](frontend/packages/plugin-sdk/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/plugin-sdk.json)](frontend/packages/plugin-sdk/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugin-sdk)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/plugin-host`](frontend/packages/plugin-host/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/plugin-host.json)](frontend/packages/plugin-host/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugin-host)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/launcher`](frontend/packages/launcher/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/launcher.json)](frontend/packages/launcher/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=launcher)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/project`](frontend/packages/project/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/project.json)](frontend/packages/project/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=project)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/preferences`](frontend/packages/preferences/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/preferences.json)](frontend/packages/preferences/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=preferences)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Package | Coverage |
+|---|---|
+| [`@snapfzz/shared`](frontend/packages/shared/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/shared.json)](frontend/packages/shared/) |
+| [`@snapfzz/plugin-sdk`](frontend/packages/plugin-sdk/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/plugin-sdk.json)](frontend/packages/plugin-sdk/) |
+| [`@snapfzz/plugin-host`](frontend/packages/plugin-host/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/plugin-host.json)](frontend/packages/plugin-host/) |
+| [`@snapfzz/launcher`](frontend/packages/launcher/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/launcher.json)](frontend/packages/launcher/) |
+| [`@snapfzz/project`](frontend/packages/project/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/project.json)](frontend/packages/project/) |
+| [`@snapfzz/preferences`](frontend/packages/preferences/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/preferences.json)](frontend/packages/preferences/) |
 
 ### Frontend — System Plugins
 
-| Package | Coverage | CI |
-|---|---|---|
-| [`@snapfzz/chat`](plugins/chat/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/chat.json)](plugins/chat/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=chat)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-general`](plugins/settings-general/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-general.json)](plugins/settings-general/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=general)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-llm-providers`](plugins/settings-llm-providers/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-llm-providers.json)](plugins/settings-llm-providers/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=llm-providers)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-performance`](plugins/settings-performance/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-performance.json)](plugins/settings-performance/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=performance)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-processes`](plugins/settings-processes/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-processes.json)](plugins/settings-processes/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=processes)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-vault`](plugins/settings-vault/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-vault.json)](plugins/settings-vault/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=vault)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-components`](plugins/settings-components/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-components.json)](plugins/settings-components/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=components)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-diagnostics`](plugins/settings-diagnostics/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-diagnostics.json)](plugins/settings-diagnostics/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=diagnostics)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-plugins`](plugins/settings-plugins/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-plugins.json)](plugins/settings-plugins/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=plugins)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
-| [`@snapfzz/settings-advanced`](plugins/settings-advanced/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-advanced.json)](plugins/settings-advanced/) | [![](https://img.shields.io/github/actions/workflow/status/0xtrou/snapfzz/ci.yml?label=advanced)](https://github.com/0xtrou/snapfzz/actions/workflows/ci.yml) |
+| Package | Coverage |
+|---|---|
+| [`@snapfzz/chat`](plugins/chat/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/chat.json)](plugins/chat/) |
+| [`@snapfzz/settings-general`](plugins/settings-general/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-general.json)](plugins/settings-general/) |
+| [`@snapfzz/settings-llm`](plugins/settings-llm/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-llm.json)](plugins/settings-llm/) |
+| [`@snapfzz/settings-performance`](plugins/settings-performance/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-performance.json)](plugins/settings-performance/) |
+| [`@snapfzz/settings-processes`](plugins/settings-processes/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-processes.json)](plugins/settings-processes/) |
+| [`@snapfzz/settings-vault`](plugins/settings-vault/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-vault.json)](plugins/settings-vault/) |
+| [`@snapfzz/settings-components`](plugins/settings-components/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-components.json)](plugins/settings-components/) |
+| [`@snapfzz/settings-diagnostics`](plugins/settings-diagnostics/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-diagnostics.json)](plugins/settings-diagnostics/) |
+| [`@snapfzz/settings-plugins`](plugins/settings-plugins/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-plugins.json)](plugins/settings-plugins/) |
+| [`@snapfzz/settings-advanced`](plugins/settings-advanced/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-advanced.json)](plugins/settings-advanced/) |
 
 ## Architecture
 

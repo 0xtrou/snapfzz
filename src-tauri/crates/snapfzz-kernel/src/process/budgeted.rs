@@ -24,6 +24,7 @@ pub struct BudgetedProcess {
     health_interval_ms: u64,
     max_health_failures: u32,
     max_restarts: u32,
+    health_timeout_secs: u64,
     registry: Arc<BudgetRegistry>,
     logs: Arc<ProcessLogs>,
     settings_mgr: Arc<SettingsManager>,
@@ -69,6 +70,7 @@ impl BudgetedProcess {
             health_interval_ms: 2000,
             max_health_failures: 3,
             max_restarts,
+            health_timeout_secs: 120,
             registry,
             logs,
             settings_mgr,
@@ -87,6 +89,10 @@ impl BudgetedProcess {
 
     pub fn set_consecutive_failures(&mut self, value: u32) {
         self.consecutive_failures = value;
+    }
+
+    pub fn set_health_timeout_secs(&mut self, value: u64) {
+        self.health_timeout_secs = value;
     }
 
     pub fn pid(&self) -> Option<u32> {
@@ -131,7 +137,7 @@ impl BudgetedProcess {
 
         let pid = self
             .process_mgr
-            .spawn_process(&self.name, &mut command, budget, &self.registry, 120)
+            .spawn_process(&self.name, &mut command, budget, &self.registry, self.health_timeout_secs)
             .await
             .inspect_err(|_| {
                 // A037/spawn_failure: Reset to Stopped so list_snapshots shows correct status
@@ -577,6 +583,7 @@ mod tests {
         )
         .expect("process");
 
+        process.set_health_timeout_secs(1);
         let result = process.spawn().await;
         assert!(result.is_err() || registry.supervised.processes.contains_key("agentscope"));
 

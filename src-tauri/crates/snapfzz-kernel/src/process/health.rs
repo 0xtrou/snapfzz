@@ -106,7 +106,7 @@ mod tests {
         register_health_process(
             &registry,
             "agentscope",
-            "http://127.0.0.1:1/health".to_string(),
+            "http://127.0.0.1:0/health".to_string(),
         );
 
         let error = wait_until_healthy(&registry, "agentscope", 0, Duration::from_millis(7))
@@ -147,7 +147,7 @@ mod tests {
         register_health_process(
             &registry,
             "agentscope",
-            "http://127.0.0.1:1/health".to_string(),
+            "http://127.0.0.1:0/health".to_string(),
         );
 
         let failures = apply_health_check(&registry, "agentscope").await;

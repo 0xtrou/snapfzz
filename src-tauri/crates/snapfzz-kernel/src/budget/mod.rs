@@ -461,12 +461,14 @@ mod tests {
         preset.memory.app_total_mb = 0; // Force budget to 0 so any RSS exceeds it
         let reg = Arc::new(BudgetRegistry::with_preset(preset));
 
-        // Register a local process so total_rss check runs
+        // Register a local process so total_rss check runs.
+        // Use port 0 so the health check gets an immediate connection-refused
+        // instead of blocking on a TCP timeout (port 1 hangs for seconds).
         reg.register_process(
             "test-mem",
             ProcessBudget {
                 pid: Some(std::process::id()),
-                health_url: "http://127.0.0.1:1/health".into(),
+                health_url: "http://127.0.0.1:0/health".into(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
                 max_restarts: 3,
@@ -484,7 +486,7 @@ mod tests {
             reg_clone.enforce_loop(1, |_| {}).await;
         });
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         handle.abort();
         let _ = handle.await;
     }

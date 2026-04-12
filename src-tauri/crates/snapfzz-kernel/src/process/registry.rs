@@ -19,6 +19,7 @@ pub struct ProcessFactoryRegistry {
     python_runtime: Arc<PythonRuntime>,
     process_mgr: Arc<ProcessManager>,
     database_url: Option<String>,
+    health_timeout_override: Option<u64>,
 }
 
 impl ProcessFactoryRegistry {
@@ -30,7 +31,7 @@ impl ProcessFactoryRegistry {
         python_runtime: Arc<PythonRuntime>,
     ) -> Self {
         let logs = process_mgr.logs.clone();
-        
+
         Self {
             factories: HashMap::new(),
             processes: HashMap::new(),
@@ -40,6 +41,7 @@ impl ProcessFactoryRegistry {
             python_runtime,
             process_mgr,
             database_url: None,
+            health_timeout_override: None,
         }
     }
     
@@ -61,7 +63,7 @@ impl ProcessFactoryRegistry {
                 ProcessError::SpawnFailed(format!("unknown process factory '{name}'"))
             })?;
 
-            let process = BudgetedProcess::new(
+            let mut process = BudgetedProcess::new(
                 factory,
                 self.registry.clone(),
                 self.logs.clone(),
@@ -70,6 +72,10 @@ impl ProcessFactoryRegistry {
                 self.process_mgr.clone(),
                 self.database_url.clone(),
             )?;
+
+            if let Some(timeout) = self.health_timeout_override {
+                process.set_health_timeout_secs(timeout);
+            }
 
             self.processes.insert(name.to_string(), process);
         }
@@ -303,12 +309,14 @@ mod tests {
             Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
             logs,
         ));
-        ProcessFactoryRegistry::new(
+        let mut reg = ProcessFactoryRegistry::new(
             Arc::new(BudgetRegistry::from_hardware()),
             process_mgr,
             Arc::new(SettingsManager::new(data_dir.path().to_path_buf())),
             make_runtime(),
-        )
+        );
+        reg.health_timeout_override = Some(1);
+        reg
     }
 
     #[test]

@@ -37,7 +37,7 @@ jobs:
         working-directory: src-tauri
         run: |
           mkdir -p ../.badges
-          for crate in snapfzz-kernel snapfzz-stream; do
+          for crate in snapfzz-kernel snapfzz-packs snapfzz-vault snapfzz-llm snapfzz-cef snapfzz-stream; do
             cargo llvm-cov test -p "$crate" --lib --json --output-path "/tmp/${crate}-cov.json" 2>/dev/null || true
             if [ -f "/tmp/${crate}-cov.json" ]; then
               COV=$(python3 -c "
@@ -86,7 +86,7 @@ jobs:
           done
 
           # Plugins
-          for plugin in chat settings-general settings-performance settings-plugins settings-advanced settings-processes settings-vault; do
+          for plugin in chat settings-general settings-llm settings-performance settings-plugins settings-advanced settings-processes settings-vault settings-components settings-diagnostics; do
             DIR="plugins/$plugin"
             if [ "$plugin" = "chat" ]; then
               FILTER="@snapfzz/chat-plugin"

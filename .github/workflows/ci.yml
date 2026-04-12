@@ -7,9 +7,13 @@ on:
     branches: [main]
 
 jobs:
-  rust-tests:
-    name: Rust Tests
+  rust-crates:
+    name: Rust — ${{ matrix.crate }}
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [snapfzz-kernel, snapfzz-packs, snapfzz-vault, snapfzz-llm, snapfzz-cef, snapfzz-stream]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,40 +26,37 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
-      - name: Kernel crate tests with coverage
-        run: cargo llvm-cov test -p snapfzz-kernel --lib --json --output-path kernel-cov.json
+      - name: Test with coverage
+        run: cargo llvm-cov test -p ${{ matrix.crate }} --lib --json --output-path cov.json
         working-directory: src-tauri
-      - name: Assert kernel coverage ≥90% (lines + functions)
-        working-directory: src-tauri
-        run: |
-          python3 -c "
-          import json, sys
-          d = json.load(open('kernel-cov.json'))
-          t = d['data'][0]['totals']
-          lines = t['lines']['covered'] / t['lines']['count'] * 100 if t['lines']['count'] > 0 else 0
-          funcs = t['functions']['covered'] / t['functions']['count'] * 100 if t['functions']['count'] > 0 else 0
-          print(f'snapfzz-kernel: lines={lines:.1f}% functions={funcs:.1f}%')
-          if lines < 90 or funcs < 90:
-              print(f'FAIL: lines={lines:.1f}% funcs={funcs:.1f}% (need ≥90% each)')
-              sys.exit(1)
-          "
-      - name: Stream crate tests with coverage
-        run: cargo llvm-cov test -p snapfzz-stream --lib --json --output-path stream-cov.json
-        working-directory: src-tauri
-      - name: Assert stream coverage ≥90% (lines + functions)
+      - name: Assert coverage ≥90% (lines + functions)
         working-directory: src-tauri
         run: |
           python3 -c "
           import json, sys
-          d = json.load(open('stream-cov.json'))
+          d = json.load(open('cov.json'))
           t = d['data'][0]['totals']
           lines = t['lines']['covered'] / t['lines']['count'] * 100 if t['lines']['count'] > 0 else 0
           funcs = t['functions']['covered'] / t['functions']['count'] * 100 if t['functions']['count'] > 0 else 0
-          print(f'snapfzz-stream: lines={lines:.1f}% functions={funcs:.1f}%')
+          print(f'${{ matrix.crate }}: lines={lines:.1f}% functions={funcs:.1f}%')
           if lines < 90 or funcs < 90:
               print(f'FAIL: lines={lines:.1f}% funcs={funcs:.1f}% (need ≥90% each)')
               sys.exit(1)
           "
+
+  rust-binary:
+    name: Rust — main binary
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
       - name: Main binary tests
         run: cargo test --bin Snapfzz
         working-directory: src-tauri
@@ -137,7 +138,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        plugin: [settings-general, settings-performance, settings-plugins, settings-advanced, settings-processes, settings-vault]
+        plugin: [settings-general, settings-llm, settings-performance, settings-plugins, settings-advanced, settings-processes, settings-vault, settings-components, settings-diagnostics]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
