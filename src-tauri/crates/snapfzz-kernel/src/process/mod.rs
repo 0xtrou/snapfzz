@@ -356,7 +356,7 @@ mod tests {
             name,
             ProcessBudget {
                 pid: Some(std::process::id()),
-                health_url: "http://invalid:0/health".to_string(),
+                health_url: "none://skip".to_string(),
                 health_interval_ms: 100,
                 max_health_failures: 3,
                 max_restarts: 3,
@@ -839,7 +839,7 @@ mod tests {
 
         let budget = ProcessBudget {
             pid: None,
-            health_url: "http://invalid:0/health".to_string(),
+            health_url: "none://skip".to_string(),
             health_interval_ms: 1000,
             max_health_failures: 3,
             max_restarts: 3,

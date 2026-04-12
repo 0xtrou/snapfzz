@@ -468,7 +468,7 @@ mod tests {
             "test-mem",
             ProcessBudget {
                 pid: Some(std::process::id()),
-                health_url: "invalid://not-a-url".into(),
+                health_url: String::new(),
                 health_interval_ms: 1000,
                 max_health_failures: 3,
                 max_restarts: 3,

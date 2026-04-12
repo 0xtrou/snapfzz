@@ -48,6 +48,7 @@ impl SupervisedBudgets {
             processes: DashMap::new(),
             storage,
             http_client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(2))
                 .timeout(Duration::from_secs(2))
                 .build()
                 .unwrap_or_default(),
@@ -104,6 +105,10 @@ impl SupervisedBudgets {
             Some(entry) => entry.health_url.clone(),
             None => return false,
         };
+
+        if url.is_empty() || !url.starts_with("http") {
+            return false;
+        }
 
         self.http_client
             .get(&url)
