@@ -130,15 +130,18 @@ pub(crate) fn build_preferences_window<R: tauri::Runtime>(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    WebviewWindowBuilder::new(app, "preferences", preferences_webview_url())
+    let builder = WebviewWindowBuilder::new(app, "preferences", preferences_webview_url())
         .title("Snapfzz Preferences")
         .inner_size(1280.0, 800.0)
         .min_inner_size(800.0, 600.0)
+        .center();
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .center()
-        .build()
-        .map_err(|e| e.to_string())?;
+        .hidden_title(true);
+
+    builder.build().map_err(|e| e.to_string())?;
 
     Ok(())
 }
