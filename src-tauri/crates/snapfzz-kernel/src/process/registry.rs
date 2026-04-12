@@ -118,7 +118,10 @@ impl ProcessFactoryRegistry {
                 self.process_mgr.clone(),
                 self.database_url.clone(),
             ) {
-                Ok(process) => {
+                Ok(mut process) => {
+                    if let Some(timeout) = self.health_timeout_override {
+                        process.set_health_timeout_secs(timeout);
+                    }
                     self.processes.insert(name.clone(), process);
                 }
                 Err(_) => continue,

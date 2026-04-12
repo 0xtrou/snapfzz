@@ -137,8 +137,14 @@ impl BudgetRegistry {
 
             for entry in self.supervised.processes.iter() {
                 let name = entry.key();
+                #[cfg(test)]
+                eprintln!("[budget/enforce_loop] checking health for '{name}'");
 
                 let healthy = self.supervised.check_health(name).await;
+
+                #[cfg(test)]
+                eprintln!("[budget/enforce_loop] health check done for '{name}': {healthy}");
+
                 if healthy {
                     self.supervised.reset_health_failures(name);
                 } else {
@@ -482,15 +488,18 @@ mod tests {
         );
 
         let reg_clone = reg.clone();
+        eprintln!("[test] spawning enforce_loop task");
         let handle = tokio::spawn(async move {
             reg_clone.enforce_loop(1, |_| {}).await;
         });
 
-        // Give the loop time to run one iteration (health check fails instantly
-        // with invalid URL scheme), then abort.
+        eprintln!("[test] sleeping 100ms before abort");
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        eprintln!("[test] aborting enforce_loop task");
         handle.abort();
-        let _ = handle.await;
+        eprintln!("[test] waiting for abort to complete");
+        let result = handle.await;
+        eprintln!("[test] abort completed: is_cancelled={}", result.unwrap_err().is_cancelled());
     }
 
     // --- enforce_loop: storage-exceeded log path ---
