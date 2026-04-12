@@ -1,12 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import SystemComponentCard, { type ComponentInfo, type DownloadProgress } from '../SystemComponentCard';
+import SystemComponentCard, { type ComponentInfo } from '../SystemComponentCard';
 
 function makeComponent(overrides: Partial<ComponentInfo> = {}): ComponentInfo {
   return {
     id: 'cef',
     name: 'Chromium Embedded Framework',
+    description: 'Embedded browser engine',
+    license: 'BSD',
     version: 'v146.0.10',
     platform: 'macos-arm64',
     platformDisplay: 'macOS (Apple Silicon)',
@@ -20,27 +22,14 @@ function makeComponent(overrides: Partial<ComponentInfo> = {}): ComponentInfo {
   };
 }
 
-function makeStatus(overrides: Partial<DownloadProgress> = {}): DownloadProgress {
-  return {
-    componentId: 'cef',
-    bytesDownloaded: 0,
-    bytesTotal: 0,
-    percent: 0,
-    status: 'pending',
-    ...overrides,
-  };
-}
-
 describe('A007/settings-components: SystemComponentCard branches', () => {
   it('A007/settings-components: renders unknown platform fallback when platform labels missing', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ platformDisplay: '', platform: '' })}
-        status={makeStatus({ status: 'pending' })}
         busyDownload={false}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
@@ -50,55 +39,44 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(screen.getByText('Not Installed')).toBeInTheDocument();
   });
 
-  it('A007/settings-components: resolves undefined status as pending', () => {
+  it('A007/settings-components: renders not installed with install button when not installed', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ isInstalled: false })}
-        status={undefined}
         busyDownload={false}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Not Installed')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /install/i })).toBeInTheDocument();
   });
 
-  it('A007/settings-components: renders installing state and cancel action from status', async () => {
-    const onCancelDownload = vi.fn();
-    const user = userEvent.setup();
-
+  it('A007/settings-components: renders installing state when busyDownload is true', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ isInstalled: false })}
-        status={makeStatus({ status: 'downloading' })}
-        busyDownload={false}
+        busyDownload={true}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={onCancelDownload}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Installing')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /cancel download/i }));
-    expect(onCancelDownload).toHaveBeenCalledWith('cef');
   });
 
   it('A007/settings-components: falls back to Unavailable metadata labels', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ downloadUrl: '', installPath: '' })}
-        status={makeStatus({ status: 'pending' })}
         busyDownload={false}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
@@ -111,11 +89,9 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ license: '' })}
-        status={makeStatus({ status: 'pending' })}
         busyDownload={false}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
@@ -124,15 +100,13 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(screen.queryByText(/License:/i)).not.toBeInTheDocument();
   });
 
-  it('A007/settings-components: treats ready-like status text as installed', () => {
+  it('A007/settings-components: renders installed state with open folder and uninstall', () => {
     render(
       <SystemComponentCard
-        component={makeComponent({ isInstalled: false })}
-        status={makeStatus({ status: 'Ready to use' })}
+        component={makeComponent({ isInstalled: true })}
         busyDownload={false}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
@@ -149,11 +123,9 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ isInstalled: true, installPath: '/tmp/component' })}
-        status={makeStatus({ status: 'ready' })}
         busyDownload={false}
         busyUninstall={false}
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={onOpenFolder}
       />,
@@ -163,37 +135,16 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
     expect(onOpenFolder).toHaveBeenCalledWith('/tmp/component');
   });
 
-  it('A007/settings-components: busy download shows progress tag and percentage', () => {
-    render(
-      <SystemComponentCard
-        component={makeComponent({ isInstalled: false })}
-        status={makeStatus({ status: 'pending', percent: 63 })}
-        busyDownload={true}
-        busyUninstall={false}
-        onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
-        onUninstall={vi.fn()}
-        onOpenFolder={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Installing')).toBeInTheDocument();
-    expect(screen.getByText('63%')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /cancel download/i })).toBeInTheDocument();
-  });
-
-  it('A007/settings-components: renders dependency badge and order label with disabled download', () => {
+  it('A007/settings-components: renders dependency badge and order label with disabled install', () => {
     render(
       <SystemComponentCard
         component={makeComponent({ id: 'agentscope', name: 'AgentScope', isInstalled: false })}
-        status={makeStatus({ componentId: 'agentscope', status: 'pending' })}
         busyDownload={false}
         busyUninstall={false}
         downloadDisabled={true}
         dependencyBadges={[{ label: 'Requires Python', tone: 'required' }]}
         installOrderLabel="2nd"
         onDownload={vi.fn()}
-        onCancelDownload={vi.fn()}
         onUninstall={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
@@ -201,6 +152,55 @@ describe('A007/settings-components: SystemComponentCard branches', () => {
 
     expect(screen.getByText('Requires Python')).toBeInTheDocument();
     expect(screen.getByText('2nd')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /download/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /install/i })).toBeDisabled();
+  });
+
+  it('A007/settings-components: clicking install calls onDownload with component id', async () => {
+    const onDownload = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <SystemComponentCard
+        component={makeComponent({ isInstalled: false })}
+        busyDownload={false}
+        busyUninstall={false}
+        onDownload={onDownload}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /install/i }));
+    expect(onDownload).toHaveBeenCalledWith('cef');
+  });
+
+  it('A007/settings-components: shows description when provided', () => {
+    render(
+      <SystemComponentCard
+        component={makeComponent({ description: 'A browser engine' })}
+        busyDownload={false}
+        busyUninstall={false}
+        onDownload={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('A browser engine')).toBeInTheDocument();
+  });
+
+  it('A007/settings-components: shows license when provided', () => {
+    render(
+      <SystemComponentCard
+        component={makeComponent({ license: 'MIT' })}
+        busyDownload={false}
+        busyUninstall={false}
+        onDownload={vi.fn()}
+        onUninstall={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('License: MIT')).toBeInTheDocument();
   });
 });
