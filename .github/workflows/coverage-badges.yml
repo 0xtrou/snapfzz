@@ -22,11 +22,10 @@ jobs:
             ~/.cargo/bin/cargo-llvm-cov
             ~/.cargo/registry
             ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-badges-${{ hashFiles('src-tauri/Cargo.lock') }}
+            src-tauri/target/llvm-cov-target
+          key: ${{ runner.os }}-llvm-cov-badges-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-badges-
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-llvm-cov-badges-
       - uses: pnpm/action-setup@v4
         with:
           version: 10

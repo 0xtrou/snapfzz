@@ -206,7 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn a014_mock_component_async_verify_and_extract() {
-        let temp = tempfile::tempdir().unwrap();
+        let _temp = tempfile::tempdir().unwrap();
         let c = MockComponent::new("verify-test");
         let hash = c.verify().await.unwrap();
         assert_eq!(hash, "mock-hash");
