@@ -450,18 +450,16 @@ mod tests {
         assert!(counter.load(Ordering::SeqCst) >= 1, "enforce_loop callback must be called at least once");
     }
 
-    // --- enforce_loop: triggers memory-exceeded log path ---
-    // Uses multi_thread runtime so tokio::spawn abort can fire even when
-    // sysinfo blocks a worker thread (single-thread runtime deadlocks).
+    // --- memory-exceeded: test the check directly without enforce_loop ---
+    // enforce_loop + sysinfo System::new_all() blocks the thread for seconds
+    // on CI runners, causing test hangs. Test the logic directly instead.
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a008_registry_enforce_loop_memory_exceeded_path_runs_without_panic() {
-        use std::sync::Arc;
-
+    #[test]
+    fn a008_registry_is_total_memory_exceeded_triggers_with_zero_budget() {
         let hw = HardwareInfo { cores: 8, ram_gb: 16, on_battery: false };
         let mut preset = build_preset(PresetName::Performance, &hw);
-        preset.memory.app_total_mb = 0; // Force budget to 0 so any RSS exceeds it
-        let reg = Arc::new(BudgetRegistry::with_preset(preset));
+        preset.memory.app_total_mb = 0;
+        let reg = BudgetRegistry::with_preset(preset);
 
         reg.register_process(
             "test-mem",
@@ -480,14 +478,8 @@ mod tests {
             },
         );
 
-        let reg_clone = reg.clone();
-        let handle = tokio::spawn(async move {
-            reg_clone.enforce_loop(1, |_| {}).await;
-        });
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-        handle.abort();
-        let _ = handle.await;
+        // With app_total_mb=0 and a real PID registered, total_rss > 0 → exceeded
+        assert!(reg.supervised.is_total_memory_exceeded(0));
     }
 
     // --- enforce_loop: storage-exceeded log path ---
