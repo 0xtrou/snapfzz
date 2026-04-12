@@ -327,13 +327,10 @@ mod tests {
     }
 
     #[test]
-    fn t37_litellm_factory_config_path_uses_data_dir_runtime_slug() {
+    fn t37_litellm_factory_config_path_returns_none() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory = make_factory(temp.path());
-        let path = factory
-            .config_path(&PathBuf::from("/unused"))
-            .expect("config path");
-        assert!(path.to_string_lossy().contains("data/litellm/config.yaml"));
+        assert!(factory.config_path(&PathBuf::from("/unused")).is_none());
     }
 
     #[test]
