@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Empty, Input, message, Skeleton, Space, Table, Tag, Typography } from 'antd';
+import { Empty, Input, Skeleton, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { createTauriBridge, ConfirmAction, SettingsHeader, AppButton } from '@snapfzz/shared';
+import { createTauriBridge, ConfirmAction, SettingsHeader, AppButton, fetchWithToast } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -107,15 +107,12 @@ export default function VaultSettings() {
             description="This permanently removes the secret from the vault."
             onConfirm={async () => {
               setDeletingName(record.name);
-              try {
-                await bridge.invoke<void>('vault_delete', { key: record.name });
-                message.success('Secret deleted');
-                await loadSecrets();
-              } catch {
-                message.error('Failed to delete secret');
-              } finally {
-                setDeletingName(null);
-              }
+              const { error } = await fetchWithToast(
+                () => bridge.invoke<void>('vault_delete', { key: record.name }),
+                { successMessage: 'Secret deleted', errorMessage: 'Failed to delete secret' },
+              );
+              if (!error) await loadSecrets();
+              setDeletingName(null);
             }}
             okText="Delete"
             danger
@@ -142,18 +139,17 @@ export default function VaultSettings() {
     }
 
     setSubmitting(true);
-    try {
-      await bridge.invoke<void>('vault_store', { key: trimmedName, value: newValue });
-      message.success('Secret stored');
+    const { error } = await fetchWithToast(
+      () => bridge.invoke<void>('vault_store', { key: trimmedName, value: newValue }),
+      { successMessage: 'Secret stored', errorMessage: 'Failed to store secret' },
+    );
+    if (!error) {
       setNewName('');
       setNewValue('');
       setNameError(null);
       await loadSecrets();
-    } catch {
-      message.error('Failed to store secret');
-    } finally {
-      setSubmitting(false);
     }
+    setSubmitting(false);
   }
 
   return (

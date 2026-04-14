@@ -15,6 +15,9 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  fetchWithToast: async (fn: () => Promise<unknown>) => {
+    try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
+  },
   PretextGrid: ({ items, renderItem, keyExtractor }: any) => (
     <div data-testid="pretext-grid">
       {(items ?? []).map((item: any, i: number) => (

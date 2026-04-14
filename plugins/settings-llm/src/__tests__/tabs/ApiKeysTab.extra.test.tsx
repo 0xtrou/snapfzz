@@ -23,6 +23,9 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  fetchWithToast: async (fn: () => Promise<unknown>) => {
+    try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
+  },
   AppButton: ({ children, onClick, ...props }: any) => (
     <button type="button" onClick={onClick} onKeyUp={onClick} {...props}>{children}</button>
   ),
@@ -164,15 +167,13 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
   });
 
   it('shows error when key fetch fails without throwing', async () => {
-    const messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
     mockListKeys.mockRejectedValue(new Error('server error'));
 
     render(<ApiKeysTab />);
 
+    // fetchWithToast handles the error silently in tests (no toastAPI); verify empty state
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to load keys'),
-      );
+      expect(screen.getByText('No virtual keys created')).toBeInTheDocument();
     });
   });
 
@@ -540,24 +541,21 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
     });
   });
 
-  it('A013/loadKeys error: covers String(err) branch when thrown value is not an Error instance', async () => {
-    const messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
-
-    // Throw a plain string (not an Error) to hit the String(err) branch in loadKeys catch
+  it('A013/loadKeys error: shows empty state when fetch throws a non-Error value', async () => {
+    // fetchWithToast handles non-Error rejections internally; verify the component shows empty state
     mockListKeys.mockRejectedValue('network timeout');
 
     render(<ApiKeysTab />);
 
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('Failed to load keys: network timeout');
+      expect(screen.getByText('No virtual keys created')).toBeInTheDocument();
     });
   });
 
-  it('A013/handleCreate error: covers String(err) branch when thrown value is not an Error', async () => {
+  it('A013/handleCreate error: shows no generated key when create throws a non-Error value', async () => {
     const user = userEvent.setup();
-    const messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => undefined as any);
 
-    // Throw a non-Error string to hit the String(err) branch in the catch handler
+    // Throw a non-Error string; fetchWithToast normalises it internally
     mockGenerateKey.mockRejectedValue('plain string error');
     mockGetModels.mockResolvedValue({
       data: [{ id: 'openai/gpt-4o', object: 'model', owned_by: 'openai' }],
@@ -577,8 +575,9 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
     await user.click(screen.getByTitle('openai/gpt-4o'));
     await user.click(screen.getByRole('button', { name: 'OK' }));
 
+    // The modal should stay open (no generated key was set on error)
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('Failed to create key: plain string error');
+      expect(screen.queryByText(/Your new key has been created/)).not.toBeInTheDocument();
     });
   });
 

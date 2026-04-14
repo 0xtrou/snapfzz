@@ -7,7 +7,6 @@ import {
   Space,
   Typography,
   Tooltip,
-  message,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -18,7 +17,7 @@ import {
   LinkOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons';
-import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton, fetchWithToast } from '@snapfzz/shared';
 import AnsiLogViewer from './AnsiLogViewer';
 
 const { Text } = Typography;
@@ -118,33 +117,27 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
 
 
   const handleRestart = async () => {
-    try {
-      await bridge.invoke<void>('restart_process', { name: process.name });
-      onAction();
-      void message.success('Process restarted');
-    } catch (err) {
-      void message.error('Failed to restart process');
-    }
+    const { error } = await fetchWithToast(
+      () => bridge.invoke<void>('restart_process', { name: process.name }),
+      { successMessage: 'Process restarted', errorMessage: 'Failed to restart process' },
+    );
+    if (!error) onAction();
   };
 
   const handleKill = async () => {
-    try {
-      await bridge.invoke<void>('kill_process', { name: process.name });
-      onAction();
-      void message.success('Process killed');
-    } catch (err) {
-      void message.error('Failed to kill process');
-    }
+    const { error } = await fetchWithToast(
+      () => bridge.invoke<void>('kill_process', { name: process.name }),
+      { successMessage: 'Process killed', errorMessage: 'Failed to kill process' },
+    );
+    if (!error) onAction();
   };
 
   const handleClearLogs = async () => {
-    try {
-      await bridge.invoke<void>('clear_process_logs', { name: process.name });
-      setLogs([]);
-      void message.success('Logs cleared');
-    } catch (err) {
-      void message.error('Failed to clear logs');
-    }
+    const { error } = await fetchWithToast(
+      () => bridge.invoke<void>('clear_process_logs', { name: process.name }),
+      { successMessage: 'Logs cleared', errorMessage: 'Failed to clear logs' },
+    );
+    if (!error) setLogs([]);
   };
 
   return (
@@ -286,14 +279,13 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
         <AppButton
           size="small"
           icon={<FolderOpenOutlined />}
-          onClick={async () => {
-            try {
+          onClick={() => void fetchWithToast(
+            async () => {
               const dataDir = await bridge.invoke<string>('get_data_dir');
-              void bridge.invoke<void>('open_path', { path: `${dataDir}/runtime/${process.name}` });
-            } catch (err) {
-              void message.error('Failed to open folder');
-            }
-          }}
+              await bridge.invoke<void>('open_path', { path: `${dataDir}/runtime/${process.name}` });
+            },
+            { errorMessage: 'Failed to open folder' },
+          )}
           data-testid={`btn-open-log-file-${process.name}`}
         >
           Open Log Folder

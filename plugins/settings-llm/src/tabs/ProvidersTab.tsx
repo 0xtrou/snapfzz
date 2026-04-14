@@ -21,7 +21,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { AppButton, ConfirmAction, PretextGrid } from '@snapfzz/shared';
+import { AppButton, ConfirmAction, fetchWithToast, PretextGrid } from '@snapfzz/shared';
 import {
   type CustomProvider,
   type CustomProviderVariant,
@@ -799,16 +799,12 @@ function AvailableModels({
   const handleImport = useCallback(
     async (modelId: string) => {
       setImportingId(modelId);
-      try {
-        await importModel(providerId, modelId, undefined, baseUrl);
-        setImportedIds((prev) => new Set(prev).add(modelId));
-        message.success(`${modelId} enabled`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        message.error(`Failed to enable ${modelId}: ${msg}`);
-      } finally {
-        setImportingId(null);
-      }
+      const { data } = await fetchWithToast(
+        () => importModel(providerId, modelId, undefined, baseUrl),
+        { successMessage: `${modelId} enabled`, errorMessage: `Failed to enable ${modelId}` },
+      );
+      if (data !== undefined) setImportedIds((prev) => new Set(prev).add(modelId));
+      setImportingId(null);
     },
     [providerId, baseUrl],
   );
@@ -820,11 +816,14 @@ function AvailableModels({
     let succeeded = 0;
     let failed = 0;
     for (const model of toImport) {
-      try {
-        await importModel(providerId, model.id, undefined, baseUrl);
+      const { data } = await fetchWithToast(
+        () => importModel(providerId, model.id, undefined, baseUrl),
+        { showSuccessToast: false, errorMessage: `Failed to enable ${model.id}` },
+      );
+      if (data !== undefined) {
         setImportedIds((prev) => new Set(prev).add(model.id));
         succeeded++;
-      } catch {
+      } else {
         failed++;
       }
     }
@@ -839,34 +838,33 @@ function AvailableModels({
   const handleDisable = useCallback(
     async (modelId: string) => {
       setImportingId(modelId);
-      try {
-        const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
-        // Get the model's DB ID from model/info
-        const infoRes = await getModelInfo(url, key);
-        const entry = (infoRes.data ?? []).find((e: { model_name: string }) => e.model_name === modelId);
-        const dbId = entry?.model_info?.id;
-        if (!dbId) throw new Error('Model not found in gateway');
-        const { deleteModel } = await import('../hooks/useLlmCommands');
-        await deleteModel(url, key, dbId);
+      const { data } = await fetchWithToast(
+        async () => {
+          const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
+          // Get the model's DB ID from model/info
+          const infoRes = await getModelInfo(url, key);
+          const entry = (infoRes.data ?? []).find((e: { model_name: string }) => e.model_name === modelId);
+          const dbId = entry?.model_info?.id;
+          if (!dbId) throw new Error('Model not found in gateway');
+          const { deleteModel } = await import('../hooks/useLlmCommands');
+          await deleteModel(url, key, dbId);
+          return true;
+        },
+        { successMessage: `${modelId} disabled`, errorMessage: `Failed to disable ${modelId}` },
+      );
+      if (data !== undefined) {
         setImportedIds((prev) => { const next = new Set(prev); next.delete(modelId); return next; });
-        message.success(`${modelId} disabled`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        message.error(`Failed to disable ${modelId}: ${msg}`);
-      } finally {
-        setImportingId(null);
       }
+      setImportingId(null);
     },
     [],
   );
 
   const handleCopy = useCallback(async (modelId: string) => {
-    try {
-      await navigator.clipboard.writeText(modelId);
-      message.success('Model ID copied');
-    } catch {
-      message.error('Failed to copy');
-    }
+    await fetchWithToast(
+      () => navigator.clipboard.writeText(modelId),
+      { successMessage: 'Model ID copied', errorMessage: 'Failed to copy' },
+    );
   }, []);
 
   const modelKeyExtractor = useCallback((model: DiscoveredModel) => model.id, []);
@@ -1047,21 +1045,22 @@ function ProviderDetail({
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
-    try {
-      const keyNames = await listProviderKeys(providerId);
+    const { data: keyNames, error } = await fetchWithToast(
+      () => listProviderKeys(providerId),
+      { errorMessage: 'Failed to load provider keys', showSuccessToast: false },
+    );
+    if (keyNames) {
       setKeys(
         keyNames.map((keyName) => ({
           keyName,
           envVar: `PROVIDER_${providerId.toUpperCase()}_${keyName.toUpperCase()}`,
         })),
       );
-    } catch (error) {
-      console.error(`[ProviderDetail] Failed to load keys for ${providerId}:`, error);
-      message.error('Failed to load provider keys');
+    } else {
+      if (error) console.error(`[ProviderDetail] Failed to load keys for ${providerId}:`, error);
       setKeys([]);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }, [providerId]);
 
   useEffect(() => {
@@ -1412,25 +1411,33 @@ export default function ProvidersTab() {
 
   const loadKeyCounts = useCallback(async () => {
     setLoading(true);
-    try {
-      const [counts, customs] = await Promise.all([
-        (async () => {
-          const c: ProviderKeyCounts = {};
-          for (const provider of PROVIDERS) {
-            const keys = await listProviderKeys(provider.id);
-            c[provider.id] = keys;
-          }
-          return c;
-        })(),
-        loadCustomProviders(),
-      ]);
+    const { data } = await fetchWithToast(
+      async () => {
+        const [counts, customs] = await Promise.all([
+          (async () => {
+            const c: ProviderKeyCounts = {};
+            for (const provider of PROVIDERS) {
+              const keys = await listProviderKeys(provider.id);
+              c[provider.id] = keys;
+            }
+            return c;
+          })(),
+          loadCustomProviders(),
+        ]);
 
-      // Load key counts for custom providers too
-      for (const cp of customs) {
-        const keys = await listProviderKeys(`custom-${cp.id}`);
-        counts[`custom-${cp.id}`] = keys;
-      }
+        // Load key counts for custom providers too
+        for (const cp of customs) {
+          const keys = await listProviderKeys(`custom-${cp.id}`);
+          counts[`custom-${cp.id}`] = keys;
+        }
 
+        return { counts, customs };
+      },
+      { errorMessage: 'Failed to load providers', showSuccessToast: false },
+    );
+
+    if (data) {
+      const { counts, customs } = data;
       setKeyCounts(counts);
       setCustomProviders(customs);
 
@@ -1445,13 +1452,10 @@ export default function ProvidersTab() {
         newToggle[cpKey] = toggleState[cpKey] ?? (counts[cpKey]?.length ?? 0) > 0;
       }
       setToggleState(newToggle);
-    } catch (error) {
-      console.error('[ProvidersTab] Failed to load provider key counts:', error);
-      message.error('Failed to load providers');
+    } else {
       setKeyCounts({});
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -1522,14 +1526,19 @@ export default function ProvidersTab() {
 
   async function handleDeleteCustomProvider(cpId: string) {
     const updated = customProviders.filter((cp) => cp.id !== cpId);
-    await saveCustomProviders(updated);
-    // Delete all keys for this custom provider
-    const keys = await listProviderKeys(`custom-${cpId}`);
-    for (const keyName of keys) {
-      await deleteProviderKey(`custom-${cpId}`, keyName);
-    }
-    setCustomProviders(updated);
-    await loadKeyCounts();
+    await fetchWithToast(
+      async () => {
+        await saveCustomProviders(updated);
+        // Delete all keys for this custom provider
+        const keys = await listProviderKeys(`custom-${cpId}`);
+        for (const keyName of keys) {
+          await deleteProviderKey(`custom-${cpId}`, keyName);
+        }
+        setCustomProviders(updated);
+        await loadKeyCounts();
+      },
+      { successMessage: 'Custom provider deleted', errorMessage: 'Failed to delete custom provider' },
+    );
   }
 
   if (selectedProvider) {

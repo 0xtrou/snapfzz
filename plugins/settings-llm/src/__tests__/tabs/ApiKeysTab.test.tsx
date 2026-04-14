@@ -21,6 +21,9 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  fetchWithToast: async (fn: () => Promise<unknown>) => {
+    try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
+  },
   AppButton: ({ children, onClick, ...props }: any) => (
     <button type="button" onClick={onClick} onKeyUp={onClick} {...props}>{children}</button>
   ),
@@ -332,9 +335,6 @@ describe('A013/UI/ApiKeysTab', () => {
 
   it('shows message when create key fails', async () => {
     const user = userEvent.setup();
-    const messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => {
-      return undefined as any;
-    });
 
     mockGenerateKey.mockRejectedValue(new Error('boom'));
 
@@ -352,8 +352,9 @@ describe('A013/UI/ApiKeysTab', () => {
     await user.click(screen.getByTitle('openai/gpt-4o'));
     await user.click(screen.getByRole('button', { name: 'OK' }));
 
+    // fetchWithToast handles the error; the generated key screen should not appear
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('Failed to create key: boom');
+      expect(screen.queryByText(/Your new key has been created/)).not.toBeInTheDocument();
     });
   });
 

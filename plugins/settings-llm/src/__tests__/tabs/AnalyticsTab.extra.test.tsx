@@ -16,6 +16,9 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  fetchWithToast: async (fn: () => Promise<unknown>) => {
+    try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
+  },
 }));
 
 vi.mock('../../hooks/useLlmCommands', () => ({

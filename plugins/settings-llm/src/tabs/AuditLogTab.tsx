@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Empty, message, Popconfirm, Select, Skeleton, Tag, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
-import { AppButton, PretextPaginatedList } from '@snapfzz/shared';
+import { AppButton, fetchWithToast, PretextPaginatedList } from '@snapfzz/shared';
 import { createTauriBridge } from '@snapfzz/shared';
 import { getSpendLogs, getBaseUrl, getMasterKey, type SpendLog } from '../hooks/useLlmCommands';
 
@@ -181,16 +181,13 @@ export default function AuditLogTab() {
   const loadLogs = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
-    try {
-      const result = await getSpendLogs(baseUrl, masterKey, {});
-      setLogs(result);
-    } catch (err) {
-      console.error('[AuditLogTab] Failed to load spend logs:', err);
-      message.error('Failed to load spend logs');
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
+    const { data } = await fetchWithToast(
+      () => getSpendLogs(baseUrl, masterKey, {}),
+      { errorMessage: 'Failed to load spend logs', showSuccessToast: false },
+    );
+    if (data) setLogs(data);
+    else setLogs([]);
+    setLoading(false);
   }, [baseUrl, masterKey]);
 
   useEffect(() => {
@@ -216,13 +213,14 @@ export default function AuditLogTab() {
   }, []);
 
   const handleClearLogs = useCallback(async (keepDays: number) => {
-    try {
-      const deleted = await bridge.invoke<number>('llm_cleanup_spend_logs', { keepDays });
-      message.success(`Cleared ${deleted} log${deleted !== 1 ? 's' : ''} older than ${keepDays} day${keepDays !== 1 ? 's' : ''}`);
-      await loadLogs();
-    } catch (err) {
-      message.error(`Failed to clear logs: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    const { data: deleted } = await fetchWithToast(
+      () => bridge.invoke<number>('llm_cleanup_spend_logs', { keepDays }),
+      {
+        successMessage: `Cleared logs older than ${keepDays} day${keepDays !== 1 ? 's' : ''}`,
+        errorMessage: 'Failed to clear logs',
+      },
+    );
+    if (deleted != null) await loadLogs();
   }, [loadLogs]);
 
   const uniqueModels = useMemo(

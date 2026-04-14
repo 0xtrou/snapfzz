@@ -1,8 +1,8 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via shared bridge IPC,
 // refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
-import { Card, message, Progress, Radio, Space, Typography } from 'antd';
-import { AntIcon, createTauriBridge, SettingsHeader } from '@snapfzz/shared';
+import { Card, Progress, Radio, Space, Typography } from 'antd';
+import { AntIcon, createTauriBridge, SettingsHeader, fetchWithToast } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -229,20 +229,24 @@ export default function PerformanceSettings() {
         saveSuccess={saveSuccess}
         onSave={async () => {
           setSaving(true);
-          try {
-            await bridge.invoke('set_preset', { presetName: displayPreset });
-            const current = await bridge.invoke<Record<string, unknown>>('get_settings');
-            await bridge.invoke('save_settings', { settings: { ...current, preset: displayPreset } });
-            window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
-            setPendingPreset(null);
-            try {
-              const snap = await bridge.invoke<BudgetMetrics>('budget_snapshot');
-              setMetrics(snap);
-            } catch { void 0; }
-            void message.success('Preset applied');
+          const { error } = await fetchWithToast(
+            async () => {
+              await bridge.invoke('set_preset', { presetName: displayPreset });
+              const current = await bridge.invoke<Record<string, unknown>>('get_settings');
+              await bridge.invoke('save_settings', { settings: { ...current, preset: displayPreset } });
+              window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
+              setPendingPreset(null);
+              try {
+                const snap = await bridge.invoke<BudgetMetrics>('budget_snapshot');
+                setMetrics(snap);
+              } catch { void 0; }
+            },
+            { successMessage: 'Preset applied', errorMessage: 'Failed to apply preset' },
+          );
+          if (!error) {
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2500);
-          } catch { void message.error('Failed to apply preset'); }
+          }
           setSaving(false);
         }}
         onDiscard={() => setPendingPreset(null)}

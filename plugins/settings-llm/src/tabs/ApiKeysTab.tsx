@@ -17,7 +17,7 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { AppButton, ConfirmAction } from '@snapfzz/shared';
+import { AppButton, ConfirmAction, fetchWithToast } from '@snapfzz/shared';
 import {
   listKeys,
   deleteKey,
@@ -108,16 +108,13 @@ export default function ApiKeysTab() {
   const loadKeys = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
-    try {
-      const response = await listKeys(baseUrl, masterKey);
-      setKeys(response.keys || []);
-    } catch (err) {
-      console.error('[ApiKeysTab] Failed to load keys:', err);
-      message.error(`Failed to load keys: ${err instanceof Error ? err.message : String(err)}`);
-      setKeys([]);
-    } finally {
-      setLoading(false);
-    }
+    const { data } = await fetchWithToast(
+      () => listKeys(baseUrl, masterKey),
+      { errorMessage: 'Failed to load keys', showSuccessToast: false },
+    );
+    if (data) setKeys(data.keys || []);
+    else setKeys([]);
+    setLoading(false);
   }, [baseUrl, masterKey]);
 
   useEffect(() => {
@@ -205,13 +202,11 @@ export default function ApiKeysTab() {
           description="This permanently removes the virtual key."
           onConfirm={async () => {
             if (!baseUrl || !masterKey) return;
-            try {
-              await deleteKey(baseUrl, masterKey, resolveKey(record));
-              message.success('Key deleted');
-              await loadKeys();
-            } catch {
-              message.error('Failed to delete key');
-            }
+            const { error } = await fetchWithToast(
+              () => deleteKey(baseUrl, masterKey, resolveKey(record)),
+              { successMessage: 'Key deleted', errorMessage: 'Failed to delete key' },
+            );
+            if (!error) await loadKeys();
           }}
           okText="Delete"
           danger
@@ -280,26 +275,25 @@ export default function ApiKeysTab() {
       return;
     }
     setSubmitting(true);
-    try {
-      const { generateKey } = await import('../hooks/useLlmCommands');
-      const params: KeyGenerateParams = {
-        models: values.models,
-        max_budget: values.max_budget || 0,
-        budget_duration: values.budget_duration || '30d',
-        metadata: {},
-      };
-      if (values.key_alias) {
-        params.key_alias = values.key_alias;
-      }
-      const result = await generateKey(baseUrl, masterKey, params);
-      setGeneratedKey(result.key);
-      message.success('Key created successfully');
-      await loadKeys();
-    } catch (err) {
-      message.error(`Failed to create key: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setSubmitting(false);
+    const { generateKey } = await import('../hooks/useLlmCommands');
+    const params: KeyGenerateParams = {
+      models: values.models,
+      max_budget: values.max_budget || 0,
+      budget_duration: values.budget_duration || '30d',
+      metadata: {},
+    };
+    if (values.key_alias) {
+      params.key_alias = values.key_alias;
     }
+    const { data: result } = await fetchWithToast(
+      () => generateKey(baseUrl, masterKey, params),
+      { successMessage: 'Key created successfully', errorMessage: 'Failed to create key' },
+    );
+    if (result) {
+      setGeneratedKey(result.key);
+      await loadKeys();
+    }
+    setSubmitting(false);
   }
 
   return (

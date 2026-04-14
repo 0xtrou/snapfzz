@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Input, message, Modal, Space, Typography } from 'antd';
-import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
+import { Input, Modal, Space, Typography } from 'antd';
+import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton, fetchWithToast } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -23,8 +23,8 @@ export default function AdvancedSettings(): React.ReactElement {
   }, [loadSettings]);
 
   async function handleReset(): Promise<void> {
-    try {
-      await bridge.invoke<void>('save_settings', {
+    const { error } = await fetchWithToast(
+      () => bridge.invoke<void>('save_settings', {
         settings: {
           apiKey: '',
           model: 'gpt-4o',
@@ -38,12 +38,10 @@ export default function AdvancedSettings(): React.ReactElement {
           agentscopeHost: '127.0.0.1',
           agentscopePort: '8090',
         },
-      });
-      window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
-      void message.success('Settings reset to defaults');
-    } catch {
-      void message.error('Failed to reset settings');
-    }
+      }),
+      { successMessage: 'Settings reset to defaults', errorMessage: 'Failed to reset settings' },
+    );
+    if (!error) window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
   }
 
   return (
@@ -64,8 +62,8 @@ export default function AdvancedSettings(): React.ReactElement {
                 readOnly
                 style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12 }}
               />
-              <AppButton onClick={async () => {
-                try {
+              <AppButton onClick={() => void fetchWithToast(
+                async () => {
                   const selected = await bridge.invoke<string | null>('pick_folder', { defaultPath: dataDir });
                   if (selected) {
                     await bridge.invoke<void>('set_data_dir', { newPath: selected });
@@ -75,8 +73,9 @@ export default function AdvancedSettings(): React.ReactElement {
                       content: 'Data directory changed. Please restart for changes to take effect.',
                     });
                   }
-                } catch { void message.error('Failed to change data directory'); }
-              }}>
+                },
+                { errorMessage: 'Failed to change data directory' },
+              )}>
                 Browse...
               </AppButton>
             </Space.Compact>

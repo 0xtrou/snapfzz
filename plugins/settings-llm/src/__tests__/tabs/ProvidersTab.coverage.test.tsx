@@ -17,6 +17,9 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: mockInvoke,
   }),
+  fetchWithToast: async (fn: () => Promise<unknown>) => {
+    try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
+  },
   AppButton: ({ children, onClick, ...props }: any) => (
     <button type="button" onClick={onClick} {...props}>
       {children}
