@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { App, ConfigProvider } from 'antd';
 import { useAppSettings } from '../../hooks/use-app-settings';
 import { darkTheme, lightTheme } from '../../theme';
+import { setToastAPI } from '../../lib/toast';
 import { useWindowDrag } from './use-window-drag';
 import { WindowHeader } from './WindowHeader';
 import { StatusBar } from './StatusBar';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 
 export const CustomFontsContext = createContext<string[]>([]);
 
@@ -25,6 +26,7 @@ export function WindowShell({ title, children, statusBarContent }: WindowShellPr
     <CustomFontsContext.Provider value={customFonts}>
       <ConfigProvider theme={antdTheme}>
         <App>
+          <ToastBridge />
           <div className="flex flex-col h-screen overflow-hidden">
             <WindowHeader titleBarRef={titleBarRef} theme={theme} toggleTheme={toggleTheme} title={title} />
             <div className="flex-1 overflow-hidden" style={{ contain: 'strict' }}>
@@ -36,6 +38,22 @@ export function WindowShell({ title, children, statusBarContent }: WindowShellPr
       </ConfigProvider>
     </CustomFontsContext.Provider>
   );
+}
+
+// Wires antd's context-aware message API into the shared ToastAPI singleton.
+// Must be rendered inside <App> so App.useApp() has context.
+function ToastBridge() {
+  const { message } = App.useApp();
+
+  useEffect(() => {
+    setToastAPI({
+      success: (msg) => { void message.success(msg); },
+      error: (msg) => { void message.error(msg); },
+    });
+    return () => setToastAPI(null);
+  }, [message]);
+
+  return null;
 }
 
 export function useCustomFonts(): string[] {

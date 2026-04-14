@@ -18,6 +18,7 @@ export {
   parseAndToastResponse,
   ApiErrorResponseError,
   invokeWithToast,
+  fetchWithToast,
   createToastedBridge,
   setToastAPI,
   getToastAPI,

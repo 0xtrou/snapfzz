@@ -71,6 +71,51 @@ export async function invokeWithToast<T>(
   return parseAndToastResponse(response, options);
 }
 
+/**
+ * Generic async operation wrapper with toast notifications.
+ * Works with any async function — Tauri invoke, fetch, localStorage, etc.
+ *
+ * Returns `{ data }` on success or `{ error }` on failure. Never throws.
+ * Shows success/error toasts automatically via the shared ToastAPI.
+ *
+ * @example
+ * const { data, error } = await fetchWithToast(
+ *   () => bridge.invoke<Settings>('get_settings'),
+ *   { successMessage: 'Settings loaded', errorMessage: 'Failed to load settings' },
+ * );
+ * if (data) setSettings(data);
+ */
+export async function fetchWithToast<T>(
+  fn: () => Promise<T>,
+  options: ToastOptions = {},
+): Promise<{ data: T; error?: undefined } | { data?: undefined; error: Error }> {
+  const {
+    successMessage,
+    errorMessage,
+    showSuccessToast = true,
+    showErrorToast = true,
+  } = options;
+
+  try {
+    const data = await fn();
+
+    if (showSuccessToast && successMessage && _toastAPI) {
+      _toastAPI.success(successMessage);
+    }
+
+    return { data };
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    const displayMessage = errorMessage || error.message || 'An error occurred';
+
+    if (showErrorToast && _toastAPI) {
+      _toastAPI.error(displayMessage);
+    }
+
+    return { error };
+  }
+}
+
 export function createToastedBridge(bridge: TauriBridge) {
   return {
     invoke: <T>(
