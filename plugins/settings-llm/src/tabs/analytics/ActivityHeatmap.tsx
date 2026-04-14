@@ -339,13 +339,27 @@ function MostActiveDayCard({
 
 // -- Weekly card sub-component --
 
-function WeeklyCard({ weeklyRequests }: { weeklyRequests: number[] }) {
-  const maxWeekly = Math.max(...weeklyRequests, 1);
-  // Show the last 7 days of the week (last 7 columns map to Sun-Sat)
-  // We display a simplified 7-square row for the current week
+function WeeklyCard({ dailyData }: { dailyData: { date: string; requests: number }[] }) {
+  // Show the current week (Mon-Sun) with actual daily request counts
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  // Use last 7 weekly bucket values as a proxy for the weekly pattern
-  const last7 = weeklyRequests.slice(-7);
+  const today = new Date();
+  const dayOfWeek = (today.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek);
+
+  // Build lookup: date string → requests
+  const dateMap = new Map<string, number>();
+  for (const d of dailyData) dateMap.set(d.date, d.requests);
+
+  // Get 7 days starting from Monday of current week
+  const last7: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    last7.push(dateMap.get(key) ?? 0);
+  }
+  const maxWeekly = Math.max(...last7, 1);
 
   return (
     <div
@@ -528,7 +542,7 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
         )}
 
         {/* Weekly card */}
-        <WeeklyCard weeklyRequests={weeklyRequests} />
+        <WeeklyCard dailyData={dailyData} />
       </div>
     </div>
   );
