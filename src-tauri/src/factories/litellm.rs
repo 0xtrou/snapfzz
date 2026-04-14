@@ -97,7 +97,7 @@ impl ProcessFactory for LiteLLMFactory {
         // so models added via the UI persist in PostgreSQL.
         let config_path = self.service.config_path();
         if !config_path.exists() {
-            let config_content = "general_settings:\n  master_key: os.environ/LITELLM_MASTER_KEY\n  database_url: os.environ/DATABASE_URL\n  store_model_in_db: True\n";
+            let config_content = "general_settings:\n  master_key: os.environ/LITELLM_MASTER_KEY\n  database_url: os.environ/DATABASE_URL\n  store_model_in_db: True\n  store_prompts_in_spend_logs: True\n";
             if let Some(parent) = config_path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }

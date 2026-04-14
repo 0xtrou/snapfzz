@@ -25,13 +25,16 @@ type TimeRange = '1D' | '30D' | 'YTD' | 'All';
 
 function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } {
   if (range === 'All') return {};
-  const end = new Date();
+  const now = new Date();
+  // Use tomorrow as end_date so records timestamped with timezone-shifted or
+  // slightly future timestamps (e.g. UTC+N clocks) are not cut off by the filter.
+  const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   let start: Date;
   if (range === 'YTD') {
-    start = new Date(end.getFullYear(), 0, 1);
+    start = new Date(now.getFullYear(), 0, 1);
   } else {
     const days = range === '1D' ? 1 : 30;
-    start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+    start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   }
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
