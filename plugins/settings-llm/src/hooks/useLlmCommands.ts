@@ -310,6 +310,12 @@ export async function listKeysWithInfo(
 ): Promise<KeyListResponse> {
   const listResponse = await listKeys(baseUrl, masterKey);
 
+  // Debug: log actual response shape to identify the key identifier field
+  if (listResponse.keys.length > 0) {
+    console.log('[listKeysWithInfo] /key/list response sample:', JSON.stringify(listResponse.keys[0], null, 2));
+    console.log('[listKeysWithInfo] Available fields:', Object.keys(listResponse.keys[0]));
+  }
+
   // Extract token identifiers — LiteLLM may use any of these field names
   const tokens: string[] = [];
   for (const k of listResponse.keys) {
