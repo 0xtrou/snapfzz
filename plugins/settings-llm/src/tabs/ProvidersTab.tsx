@@ -743,15 +743,9 @@ function AvailableModels({
           })(),
           getModelInfo(url, key).catch(() => ({ data: [] })),
         ]);
-        // Model IDs from gateway may be "provider-slug/model-id" — extract the
-        // base model-id so it matches discovered model IDs from the provider API.
-        const registered = new Set<string>();
-        for (const m of (modelsRes?.data ?? []) as { id: string }[]) {
-          registered.add(m.id);
-          // Also add the bare model ID (after last slash) for matching
-          const bare = m.id.includes('/') ? m.id.split('/').pop()! : m.id;
-          registered.add(bare);
-        }
+        // Store full model names (e.g. "solo-engineer/coder") from gateway.
+        // The imported check uses provider-scoped matching below.
+        const registered = new Set((modelsRes?.data ?? []).map((m: { id: string }) => m.id));
         setImportedIds(registered);
 
         // Build a lookup from model_name -> model_info for capability tags
@@ -767,6 +761,13 @@ function AvailableModels({
       }
     })();
   }, [fetchModels]);
+
+  // Provider-scoped import check: model may be registered as "provider-slug/model-id"
+  // or just "model-id" (old format). Derive the slug from providerId.
+  const providerSlug = providerId.startsWith('custom-') ? providerId.slice(7) : providerId;
+  const isModelImported = useCallback((modelId: string) => {
+    return importedIds.has(`${providerSlug}/${modelId}`) || importedIds.has(modelId);
+  }, [importedIds, providerSlug]);
 
   // Per A001/Performance: single-pass computation — filter, classify, sort, count
   // in one useMemo instead of 5 cascading memos.
@@ -797,8 +798,8 @@ function AvailableModels({
 
     // Sort: imported first, then by name length (shortest = flagship)
     list.sort((a, b) => {
-      const ai = importedIds.has(a.id) ? 0 : 1;
-      const bi = importedIds.has(b.id) ? 0 : 1;
+      const ai = isModelImported(a.id) ? 0 : 1;
+      const bi = isModelImported(b.id) ? 0 : 1;
       return ai !== bi ? ai - bi : a.id.length - b.id.length;
     });
 
@@ -806,10 +807,10 @@ function AvailableModels({
       displayModels: list,
       modelTypes: orderedTypes,
       hasMultipleTypes: multipleTypes,
-      unimportedCount: list.filter((m) => !importedIds.has(m.id)).length,
+      unimportedCount: list.filter((m) => !isModelImported(m.id)).length,
       typeCounts: counts,
     };
-  }, [models, filter, modelTypeFilter, catalogLookup, importedIds]);
+  }, [models, filter, modelTypeFilter, catalogLookup, isModelImported]);
 
   const handleImport = useCallback(
     async (modelId: string) => {
@@ -825,7 +826,7 @@ function AvailableModels({
   );
 
   const handleImportAll = useCallback(async () => {
-    const toImport = displayModels.filter((m) => !importedIds.has(m.id));
+    const toImport = displayModels.filter((m) => !isModelImported(m.id));
     if (toImport.length === 0) return;
     setImportAllLoading(true);
     let succeeded = 0;
@@ -890,7 +891,7 @@ function AvailableModels({
     (model: DiscoveredModel) => (
       <DiscoveredModelChip
         model={model}
-        imported={importedIds.has(model.id)}
+        imported={isModelImported(model.id)}
         importing={importingId === model.id}
         disabled={usingCatalog}
         onImport={handleImport}
@@ -900,7 +901,7 @@ function AvailableModels({
         catalogInfo={catalogLookup[model.id]}
       />
     ),
-    [importedIds, importingId, usingCatalog, handleImport, handleDisable, handleCopy, registeredInfoMap, catalogLookup],
+    [isModelImported, importingId, usingCatalog, handleImport, handleDisable, handleCopy, registeredInfoMap, catalogLookup],
   );
 
   return (
