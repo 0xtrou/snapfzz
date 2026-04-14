@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Form,
@@ -21,8 +21,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import { AppButton, ConfirmAction } from '@snapfzz/shared';
-import { VirtuosoGrid } from 'react-virtuoso';
+import { AppButton, ConfirmAction, PretextGrid } from '@snapfzz/shared';
 import {
   type CustomProvider,
   type CustomProviderVariant,
@@ -631,33 +630,6 @@ function clearDiscoveryCache(providerId: string): void {
   }
 }
 
-// Per A001/Performance: hoisted outside render so VirtuosoGrid receives a
-// stable component identity — inline definitions caused full grid remounts
-// on every parent re-render (the primary cause of jank on Linux/Ubuntu).
-const VirtuosoGridList = React.forwardRef<HTMLDivElement>(function GridList(props, ref) {
-  return (
-    <div
-      ref={ref}
-      {...props}
-      style={{
-        ...props.style,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-        gap: 12,
-      }}
-    />
-  );
-});
-
-const VirtuosoGridItem = (props: React.HTMLAttributes<HTMLDivElement>) => (
-  <div {...props} style={{ ...props.style }} />
-);
-
-const VIRTUOSO_GRID_COMPONENTS = {
-  List: VirtuosoGridList,
-  Item: VirtuosoGridItem,
-};
-
 // ─── Available Models Section ────────────────────────────────────────────
 
 function AvailableModels({
@@ -672,8 +644,18 @@ function AvailableModels({
   const [models, setModels] = useState<DiscoveredModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filterInput, setFilterInput] = useState('');
   const [filter, setFilter] = useState('');
   const [fetched, setFetched] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleFilterChange = useCallback((value: string) => {
+    setFilterInput(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setFilter(value), 1000);
+  }, []);
+
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [importingId, setImportingId] = useState<string | null>(null);
   const [importAllLoading, setImportAllLoading] = useState(false);
@@ -771,52 +753,48 @@ function AvailableModels({
     })();
   }, [fetchModels]);
 
-  const filteredModels = useMemo(() => {
-    if (!filter) return models;
-    const lower = filter.toLowerCase();
-    return models.filter((m) => m.id.toLowerCase().includes(lower));
-  }, [models, filter]);
+  // Per A001/Performance: single-pass computation — filter, classify, sort, count
+  // in one useMemo instead of 5 cascading memos.
+  const { displayModels, modelTypes, hasMultipleTypes, unimportedCount, typeCounts } = useMemo(() => {
+    const lower = filter ? filter.toLowerCase() : '';
+    const filtered: DiscoveredModel[] = [];
+    const counts: Record<string, number> = {};
 
-  // Collect available model types from catalog/discovered models
-  const modelTypes = useMemo(() => {
-    const types = new Set<string>();
-    for (const m of filteredModels) {
-      const info = catalogLookup[m.id];
-      const mode = info?.mode || 'chat';
-      types.add(mode);
+    // Single pass: filter by text + count per type
+    for (const m of models) {
+      if (lower && !m.id.toLowerCase().includes(lower)) continue;
+      filtered.push(m);
+      const mode = catalogLookup[m.id]?.mode || 'chat';
+      counts[mode] = (counts[mode] ?? 0) + 1;
     }
-    const sorted = Array.from(types).sort();
-    // Put 'chat' first if it exists, then the rest
-    const ordered = sorted.filter((t) => t === 'chat').concat(sorted.filter((t) => t !== 'chat'));
-    return ['all', ...ordered];
-  }, [filteredModels, catalogLookup]);
 
-  // Count real types with models (excluding 'all')
-  const hasMultipleTypes = useMemo(() => {
-    return modelTypes.filter((t) => t !== 'all').filter((t) =>
-      filteredModels.some((m) => (catalogLookup[m.id]?.mode || 'chat') === t)
-    ).length >= 2;
-  }, [modelTypes, filteredModels, catalogLookup]);
+    // Model type tabs: 'chat' first, then rest alphabetically
+    const typeKeys = Object.keys(counts).sort();
+    const orderedTypes = ['all', ...typeKeys.filter((t) => t === 'chat'), ...typeKeys.filter((t) => t !== 'chat')];
+    const multipleTypes = typeKeys.length >= 2;
+    counts['all'] = filtered.length;
 
-  const displayModels = useMemo(() => {
-    let list = filteredModels;
-    if (hasMultipleTypes && modelTypeFilter !== 'all') {
-      list = filteredModels.filter((m) => {
-        const info = catalogLookup[m.id];
-        const mode = info?.mode || 'chat';
-        return mode === modelTypeFilter;
-      });
+    // Apply type filter
+    let list = filtered;
+    if (multipleTypes && modelTypeFilter !== 'all') {
+      list = filtered.filter((m) => (catalogLookup[m.id]?.mode || 'chat') === modelTypeFilter);
     }
-    // Sort: enabled (imported) first, then by name length (shortest = flagship)
-    return [...list].sort((a, b) => {
-      const aImported = importedIds.has(a.id) ? 0 : 1;
-      const bImported = importedIds.has(b.id) ? 0 : 1;
-      if (aImported !== bImported) return aImported - bImported;
-      return a.id.length - b.id.length;
+
+    // Sort: imported first, then by name length (shortest = flagship)
+    list.sort((a, b) => {
+      const ai = importedIds.has(a.id) ? 0 : 1;
+      const bi = importedIds.has(b.id) ? 0 : 1;
+      return ai !== bi ? ai - bi : a.id.length - b.id.length;
     });
-  }, [filteredModels, modelTypeFilter, catalogLookup, hasMultipleTypes, importedIds]);
 
-  const unimportedCount = displayModels.filter((m) => !importedIds.has(m.id)).length;
+    return {
+      displayModels: list,
+      modelTypes: orderedTypes,
+      hasMultipleTypes: multipleTypes,
+      unimportedCount: list.filter((m) => !importedIds.has(m.id)).length,
+      typeCounts: counts,
+    };
+  }, [models, filter, modelTypeFilter, catalogLookup, importedIds]);
 
   const handleImport = useCallback(
     async (modelId: string) => {
@@ -891,6 +869,24 @@ function AvailableModels({
     }
   }, []);
 
+  const modelKeyExtractor = useCallback((model: DiscoveredModel) => model.id, []);
+
+  const renderModelItem = useCallback(
+    (model: DiscoveredModel) => (
+      <DiscoveredModelChip
+        model={model}
+        imported={importedIds.has(model.id)}
+        importing={importingId === model.id}
+        onImport={handleImport}
+        onDisable={handleDisable}
+        onCopy={handleCopy}
+        registeredInfo={registeredInfoMap[model.id]}
+        catalogInfo={catalogLookup[model.id]}
+      />
+    ),
+    [importedIds, importingId, handleImport, handleDisable, handleCopy, registeredInfoMap, catalogLookup],
+  );
+
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -929,9 +925,7 @@ function AvailableModels({
       </div>
 
       {/* Only show type filter when there are 2+ distinct types with models */}
-      {modelTypes.filter((t) => t !== 'all').filter((t) => {
-        return filteredModels.some((m) => (catalogLookup[m.id]?.mode || 'chat') === t);
-      }).length >= 2 && (
+      {hasMultipleTypes && (
       <div style={{ marginBottom: 12, overflowX: 'auto' }}>
         <Radio.Group
           value={modelTypeFilter}
@@ -939,9 +933,7 @@ function AvailableModels({
           size="small"
         >
           {modelTypes.map((type) => {
-            const count = type === 'all'
-              ? filteredModels.length
-              : filteredModels.filter((m) => (catalogLookup[m.id]?.mode || 'chat') === type).length;
+            const count = typeCounts[type] ?? 0;
             if (type !== 'all' && count === 0) return null;
             return (
               <Radio.Button key={type} value={type}>
@@ -985,9 +977,10 @@ function AvailableModels({
             <Input
               prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
               placeholder="Filter models..."
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              value={filterInput}
+              onChange={(e) => handleFilterChange(e.target.value)}
               allowClear
+              onClear={() => { setFilterInput(''); setFilter(''); clearTimeout(debounceRef.current); }}
               style={{ flex: 1, maxWidth: 320 }}
               aria-label="Filter models"
             />
@@ -1012,26 +1005,16 @@ function AvailableModels({
               </Text>
             </div>
           ) : (
-            <VirtuosoGrid
-              data={displayModels}
-              totalCount={displayModels.length}
-              style={{ height: 480 }}
-              components={VIRTUOSO_GRID_COMPONENTS}
-              itemContent={(index) => {
-                const model = displayModels[index];
-                return (
-                  <DiscoveredModelChip
-                    model={model}
-                    imported={importedIds.has(model.id)}
-                    importing={importingId === model.id}
-                    onImport={handleImport}
-                    onDisable={handleDisable}
-                    onCopy={handleCopy}
-                    registeredInfo={registeredInfoMap[model.id]}
-                    catalogInfo={catalogLookup[model.id]}
-                  />
-                );
-              }}
+            // Per A001/Performance: PretextGrid virtualizes rows — only visible
+            // rows mount in DOM. Responsive columns via ResizeObserver.
+            <PretextGrid
+              items={displayModels}
+              renderItem={renderModelItem}
+              keyExtractor={modelKeyExtractor}
+              columnMinWidth={240}
+              rowHeight={100}
+              gap={6}
+              scroll={false}
             />
           )}
         </>
@@ -1495,6 +1478,23 @@ export default function ProvidersTab() {
     void loadKeyCounts();
   }, [loadKeyCounts]);
 
+  const providerKeyExtractor = useCallback(
+    (provider: (typeof PROVIDERS)[number]) => provider.id,
+    [],
+  );
+
+  const renderProviderItem = useCallback(
+    (provider: (typeof PROVIDERS)[number]) => (
+      <ProviderCard
+        provider={provider}
+        keyCount={keyCounts[provider.id]?.length ?? 0}
+        catalogModelCount={getProviderInfo(provider.id).modelCount}
+        onClick={() => setSelectedProvider(provider.id)}
+      />
+    ),
+    [keyCounts],
+  );
+
   async function handleAddCustomProvider(values: {
     name: string;
     baseUrl: string;
@@ -1693,26 +1693,17 @@ export default function ProvidersTab() {
               </Radio.Button>
             </Radio.Group>
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: 12,
-              maxHeight: 720,
-              overflowY: 'auto',
-              contain: 'layout paint',
-            }}
-          >
-            {filteredProviders.map((provider) => (
-              <ProviderCard
-                key={provider.id}
-                provider={provider}
-                keyCount={keyCounts[provider.id]?.length ?? 0}
-                catalogModelCount={getProviderInfo(provider.id).modelCount}
-                onClick={() => setSelectedProvider(provider.id)}
-              />
-            ))}
-          </div>
+          {/* Per A001/Performance: PretextGrid virtualizes the provider card
+              grid — only visible rows in DOM. */}
+          <PretextGrid
+            items={filteredProviders}
+            renderItem={renderProviderItem}
+            keyExtractor={providerKeyExtractor}
+            columnMinWidth={200}
+            rowHeight={172}
+            gap={12}
+            scroll={false}
+          />
         </>
       )}
 

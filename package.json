@@ -21,7 +21,6 @@
     "@chenglou/pretext": "^0.0.4",
     "@snapfzz/chat-plugin": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
-    "react-virtuoso": "^4.18.4",
     "zod": "^3.24.0"
   },
   "devDependencies": {

@@ -5,7 +5,7 @@
 
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { message } from 'antd';
 import ProvidersTab from '../../tabs/ProvidersTab';
 
@@ -26,6 +26,13 @@ vi.mock('@snapfzz/shared', () => ({
     <button type="button" onClick={onConfirm}>
       {children}
     </button>
+  ),
+  PretextGrid: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-grid">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
   ),
 }));
 
@@ -112,16 +119,6 @@ vi.mock('../../catalog', () => {
   };
 });
 
-vi.mock('react-virtuoso', () => ({
-  VirtuosoGrid: ({ data, itemContent }: { data: any[]; itemContent: (index: number, item: any) => any }) => (
-    <div data-testid="virtuoso-grid">
-      {(data ?? []).map((_item: any, index: number) => (
-        <div key={index}>{itemContent(index, _item)}</div>
-      ))}
-    </div>
-  ),
-}));
-
 // Base mock implementation factory
 function makeBaseMock() {
   return async (command: string, args: Record<string, any>) => {
@@ -144,9 +141,14 @@ function makeBaseMock() {
 
 describe('A013/UI/ProvidersTab/Extra', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(makeBaseMock());
     localStorage.removeItem('snapfzz:discovered_models');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // ─── Provider Filter ───────────────────────────────────────────────────
@@ -942,6 +944,9 @@ describe('A013/UI/ProvidersTab/Extra', () => {
 
       const filterInput = screen.getByLabelText('Filter models');
       await user.type(filterInput, 'zzz-nomatch-xyz');
+
+      // Filter is debounced — flush the timer to apply it
+      await act(() => { vi.advanceTimersByTime(1000); });
 
       await waitFor(() => {
         expect(screen.getByText('No models match your filter.')).toBeInTheDocument();

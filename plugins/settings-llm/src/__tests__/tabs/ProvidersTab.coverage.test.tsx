@@ -27,6 +27,13 @@ vi.mock('@snapfzz/shared', () => ({
       {children}
     </button>
   ),
+  PretextGrid: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-grid">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock('../../catalog', () => {
@@ -93,16 +100,6 @@ vi.mock('../../catalog', () => {
     },
   };
 });
-
-vi.mock('react-virtuoso', () => ({
-  VirtuosoGrid: ({ data, itemContent }: { data: any[]; itemContent: (index: number, item: any) => any }) => (
-    <div data-testid="virtuoso-grid">
-      {(data ?? []).map((_item: any, index: number) => (
-        <div key={index}>{itemContent(index, _item)}</div>
-      ))}
-    </div>
-  ),
-}));
 
 describe('A013/UI/ProvidersTab/Coverage', () => {
   beforeEach(() => {

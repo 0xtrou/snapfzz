@@ -28,9 +28,9 @@ export const darkTheme: ThemeConfig = {
     colorBgLayout: '#09090b',
     colorBorder: '#3f3f46',
     colorBorderSecondary: '#52525b',
-    colorText: '#fafafa',
-    colorTextSecondary: '#a1a1aa',
-    colorTextTertiary: '#71717a',
+    colorText: 'rgba(250, 250, 250, 0.7)',
+    colorTextSecondary: 'rgba(161, 161, 170, 0.7)',
+    colorTextTertiary: 'rgba(113, 113, 122, 0.7)',
     colorPrimary: '#3b82f6',
     colorPrimaryHover: '#60a5fa',
     colorPrimaryActive: '#2563eb',
@@ -80,7 +80,7 @@ export const darkTheme: ThemeConfig = {
     Button: {
       defaultBg: '#27272a',
       defaultBorderColor: '#3f3f46',
-      defaultColor: '#fafafa',
+      defaultColor: 'rgba(250, 250, 250, 0.7)',
     },
   },
 };

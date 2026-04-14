@@ -3,9 +3,9 @@
 // Verifies: card grid view, drill-in detail view, key CRUD operations, toggle state,
 //           custom providers, available models, catalog integration
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ProvidersTab from '../../tabs/ProvidersTab';
 
 const { mockInvoke } = vi.hoisted(() => ({
@@ -25,6 +25,15 @@ vi.mock('@snapfzz/shared', () => ({
     <button type="button" onClick={onConfirm}>
       {children}
     </button>
+  ),
+  // PretextGrid: flat render in tests — jsdom has no layout engine for
+  // virtualization. Renders all items so assertions can find them.
+  PretextGrid: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-grid">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
   ),
 }));
 
@@ -107,21 +116,10 @@ vi.mock('../../catalog', () => {
   };
 });
 
-// A013/VirtuosoGrid: In jsdom there is no real layout engine, so VirtuosoGrid
-// never measures container height and renders zero items. Replace it with a
-// simple flat list so tests can assert on model chip content.
-vi.mock('react-virtuoso', () => ({
-  VirtuosoGrid: ({ data, itemContent }: { data: any[]; itemContent: (index: number, item: any) => any }) => (
-    <div data-testid="virtuoso-grid">
-      {(data ?? []).map((_item: any, index: number) => (
-        <div key={index}>{itemContent(index, _item)}</div>
-      ))}
-    </div>
-  ),
-}));
 
 describe('A013/UI/ProvidersTab', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
       if (command === 'llm_list_provider_keys') {
@@ -143,6 +141,10 @@ describe('A013/UI/ProvidersTab', () => {
 
     // Clear discovery cache before each test
     localStorage.removeItem('snapfzz:discovered_models');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('Grid View', () => {
@@ -503,6 +505,9 @@ describe('A013/UI/ProvidersTab', () => {
 
       const filterInput = screen.getByLabelText('Filter models');
       await user.type(filterInput, 'mini');
+
+      // Filter is debounced — flush the timer to apply it
+      await act(() => { vi.advanceTimersByTime(1000); });
 
       expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
       expect(screen.queryByText('gpt-3.5-turbo')).not.toBeInTheDocument();

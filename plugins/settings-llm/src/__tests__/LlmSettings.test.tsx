@@ -15,6 +15,13 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  PretextGrid: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-grid">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock('../hooks/useLlmCommands', () => ({
@@ -23,6 +30,7 @@ vi.mock('../hooks/useLlmCommands', () => ({
   listProviderKeys: () => Promise.resolve([]),
   listKeys: () => Promise.resolve({ keys: [] }),
   getSpendLogs: () => Promise.resolve([]),
+  loadCustomProviders: () => Promise.resolve([]),
 }));
 
 describe('A013/UI: LlmSettings', () => {
