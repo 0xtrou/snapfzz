@@ -493,7 +493,9 @@ function ModelCapabilityTags({ info }: { info: ModelInfoDetails | CatalogModelEn
   );
 }
 
-function DiscoveredModelChip({
+// Per A001/Performance: memoized to prevent re-render of every visible chip
+// when sibling state changes (filter input, import toggle on another chip).
+const DiscoveredModelChip = React.memo(function DiscoveredModelChip({
   model,
   imported,
   importing,
@@ -506,9 +508,9 @@ function DiscoveredModelChip({
   model: DiscoveredModel;
   imported: boolean;
   importing: boolean;
-  onImport: () => void;
-  onDisable: () => void;
-  onCopy: () => void;
+  onImport: (id: string) => void;
+  onDisable: (id: string) => void;
+  onCopy: (id: string) => void;
   registeredInfo?: ModelInfoDetails;
   catalogInfo?: CatalogModelEntry;
 }) {
@@ -566,14 +568,14 @@ function DiscoveredModelChip({
             type="text"
             size="small"
             icon={<CopyOutlined />}
-            onClick={onCopy}
+            onClick={() => onCopy(model.id)}
             aria-label={`Copy ${model.id}`}
           />
           <Switch
             size="small"
             checked={imported}
             loading={importing}
-            onChange={() => { imported ? onDisable() : onImport(); }}
+            onChange={() => { imported ? onDisable(model.id) : onImport(model.id); }}
             aria-label={`Enable ${model.id}`}
           />
         </div>
@@ -582,7 +584,7 @@ function DiscoveredModelChip({
       {displayInfo && <ModelCapabilityTags info={displayInfo} />}
     </div>
   );
-}
+});
 
 // ─── Discovery Cache ────────────────────────────────────────────────────
 
@@ -628,6 +630,33 @@ function clearDiscoveryCache(providerId: string): void {
     // silently ignore
   }
 }
+
+// Per A001/Performance: hoisted outside render so VirtuosoGrid receives a
+// stable component identity — inline definitions caused full grid remounts
+// on every parent re-render (the primary cause of jank on Linux/Ubuntu).
+const VirtuosoGridList = React.forwardRef<HTMLDivElement>(function GridList(props, ref) {
+  return (
+    <div
+      ref={ref}
+      {...props}
+      style={{
+        ...props.style,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+        gap: 12,
+      }}
+    />
+  );
+});
+
+const VirtuosoGridItem = (props: React.HTMLAttributes<HTMLDivElement>) => (
+  <div {...props} style={{ ...props.style }} />
+);
+
+const VIRTUOSO_GRID_COMPONENTS = {
+  List: VirtuosoGridList,
+  Item: VirtuosoGridItem,
+};
 
 // ─── Available Models Section ────────────────────────────────────────────
 
@@ -987,12 +1016,7 @@ function AvailableModels({
               data={displayModels}
               totalCount={displayModels.length}
               style={{ height: 480 }}
-              components={{
-                List: React.forwardRef(function GridList(props, ref) {
-                  return <div ref={ref} {...props} style={{ ...props.style, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }} />;
-                }),
-                Item: (props) => <div {...props} style={{ ...props.style }} />,
-              }}
+              components={VIRTUOSO_GRID_COMPONENTS}
               itemContent={(index) => {
                 const model = displayModels[index];
                 return (
@@ -1000,9 +1024,9 @@ function AvailableModels({
                     model={model}
                     imported={importedIds.has(model.id)}
                     importing={importingId === model.id}
-                    onImport={() => void handleImport(model.id)}
-                    onDisable={() => void handleDisable(model.id)}
-                    onCopy={() => void handleCopy(model.id)}
+                    onImport={handleImport}
+                    onDisable={handleDisable}
+                    onCopy={handleCopy}
                     registeredInfo={registeredInfoMap[model.id]}
                     catalogInfo={catalogLookup[model.id]}
                   />
