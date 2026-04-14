@@ -186,6 +186,7 @@ export default function AuditLogTab() {
       setLogs(result);
     } catch (err) {
       console.error('[AuditLogTab] Failed to load spend logs:', err);
+      message.error('Failed to load spend logs');
       setLogs([]);
     } finally {
       setLoading(false);

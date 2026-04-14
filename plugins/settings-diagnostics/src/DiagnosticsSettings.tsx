@@ -215,7 +215,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
               bordered
               column={1}
               style={{ maxWidth: '100%' }}
-              labelStyle={{ width: 140 }}
+              styles={{ label: { width: 140 } }}
               items={[
                 { key: 'cores', label: 'CPU Cores', children: <div style={{ textAlign: 'right' }}>{hardware?.cores ?? '—'}</div> },
                 { key: 'ram', label: 'RAM', children: <div style={{ textAlign: 'right' }}>{hardware ? `${hardware.ramGb} GB` : '—'}</div> },
@@ -233,7 +233,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 bordered
                 column={1}
                 style={{ maxWidth: '100%' }}
-                labelStyle={{ width: 140 }}
+                styles={{ label: { width: 140 } }}
                 items={[
                   {
                     key: 'python',

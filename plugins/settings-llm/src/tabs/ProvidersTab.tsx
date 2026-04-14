@@ -1057,6 +1057,7 @@ function ProviderDetail({
       );
     } catch (error) {
       console.error(`[ProviderDetail] Failed to load keys for ${providerId}:`, error);
+      message.error('Failed to load provider keys');
       setKeys([]);
     } finally {
       setLoading(false);
@@ -1446,6 +1447,7 @@ export default function ProvidersTab() {
       setToggleState(newToggle);
     } catch (error) {
       console.error('[ProvidersTab] Failed to load provider key counts:', error);
+      message.error('Failed to load providers');
       setKeyCounts({});
     } finally {
       setLoading(false);

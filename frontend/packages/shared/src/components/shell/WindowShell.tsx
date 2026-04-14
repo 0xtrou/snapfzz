@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ConfigProvider } from 'antd';
+import { App, ConfigProvider } from 'antd';
 import { useAppSettings } from '../../hooks/use-app-settings';
 import { darkTheme, lightTheme } from '../../theme';
 import { useWindowDrag } from './use-window-drag';
@@ -24,13 +24,15 @@ export function WindowShell({ title, children, statusBarContent }: WindowShellPr
   return (
     <CustomFontsContext.Provider value={customFonts}>
       <ConfigProvider theme={antdTheme}>
-        <div className="flex flex-col h-screen overflow-hidden">
-          <WindowHeader titleBarRef={titleBarRef} theme={theme} toggleTheme={toggleTheme} title={title} />
-          <div className="flex-1 overflow-hidden" style={{ contain: 'strict' }}>
-            {children}
+        <App>
+          <div className="flex flex-col h-screen overflow-hidden">
+            <WindowHeader titleBarRef={titleBarRef} theme={theme} toggleTheme={toggleTheme} title={title} />
+            <div className="flex-1 overflow-hidden" style={{ contain: 'strict' }}>
+              {children}
+            </div>
+            <StatusBar>{statusBarContent}</StatusBar>
           </div>
-          <StatusBar>{statusBarContent}</StatusBar>
-        </div>
+        </App>
       </ConfigProvider>
     </CustomFontsContext.Provider>
   );
