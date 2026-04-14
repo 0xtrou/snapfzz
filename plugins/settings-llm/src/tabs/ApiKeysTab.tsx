@@ -40,16 +40,21 @@ const MODELS_CACHE_KEY = 'snapfzz:available_models';
 const MAX_VISIBLE_TAGS = 3;
 
 function resolveKey(record: KeyInfo): string {
-  return record.key || record.token || record.key_alias || record.key_name || '(unknown)';
+  // LiteLLM returns `token` as the key hash, `key` as the short display form
+  return record.token || record.key || '';
 }
 
 function maskKey(key: string): string {
-  if (!key || key.length <= 8) return '\u2022'.repeat(key?.length || 4);
-  return `${key.slice(0, 4)}${'\u2022'.repeat(key.length - 8)}${key.slice(-4)}`;
+  if (!key) return '\u2022\u2022\u2022\u2022';
+  // Fully mask — show only bullet points, no partial reveal
+  return '\u2022'.repeat(Math.min(key.length, 20));
 }
 
 function resolveAlias(record: KeyInfo): string {
-  return record.key_alias || record.key_name || '-';
+  // key_alias may be empty string — treat as unset
+  if (record.key_alias && record.key_alias.trim()) return record.key_alias;
+  if (record.key_name && record.key_name.trim()) return record.key_name;
+  return '-';
 }
 
 function formatDate(iso: string | undefined): string {

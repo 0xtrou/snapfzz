@@ -1223,16 +1223,6 @@ function ProviderDetail({
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--text-sm, 13px)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              {maskKey(entry.keyName)}
-            </Text>
-
-            <Text
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--text-sm, 13px)',
                 color: 'var(--text-muted)',
               }}
             >

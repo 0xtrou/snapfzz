@@ -1144,10 +1144,10 @@ describe('A013/UI/ProvidersTab/Extra', () => {
   // ─── ProviderDetail: maskKey coverage ─────────────────────────────────
 
   describe('ProviderDetail maskKey', () => {
-    it('A013/MaskKey: short key names are fully masked with bullets', async () => {
+    it('A013/KeyName: shows key name as plain text without masking', async () => {
       mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
         if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['ab']; // very short key name
+          if (args.providerId === 'openai') return ['my-api-key'];
           return [];
         }
         if (command === 'vault_read') return null;
@@ -1169,37 +1169,8 @@ describe('A013/UI/ProvidersTab/Extra', () => {
       await user.click(card);
 
       await screen.findByText('Back to Providers');
-      // 'ab' is <= 8 chars, should show bullet-masked version
-      expect(screen.getByText('\u2022\u2022')).toBeInTheDocument();
-    });
-
-    it('A013/MaskKey: long key names are partially masked', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['very-long-key-name']; // > 8 chars
-          return [];
-        }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') return { data: [] };
-        return undefined;
-      });
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: [] }),
-      });
-
-      const user = userEvent.setup();
-      render(<ProvidersTab />);
-
-      const card = await screen.findByRole('button', { name: 'View OpenAI details' });
-      await user.click(card);
-
-      await screen.findByText('Back to Providers');
-      // 'very' + bullets + 'name'
-      expect(screen.getByText(`very${'\u2022'.repeat(12)}name`)).toBeInTheDocument();
+      // Key name shown plainly — no masked duplicate
+      expect(screen.getByText('my-api-key')).toBeInTheDocument();
     });
   });
 
