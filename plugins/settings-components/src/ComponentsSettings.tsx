@@ -177,24 +177,23 @@ export default function ComponentsSettings(): React.ReactElement {
     setLoading(true);
     setError(null);
     try {
-      const [list, metadata] = await Promise.all([
+      // Per A001/Performance: all three calls in parallel — python_runtime_status
+      // was previously sequential, adding a full round-trip to page load.
+      const [list, metadata, pythonStatus] = await Promise.all([
         bridge.invoke<ComponentInfo[]>('component_list'),
         bridge.invoke<PythonPackMetadataItem[]>('python_pack_metadata'),
+        bridge.invoke<typeof pythonRuntime>('python_runtime_status').catch((e) => {
+          console.error('Failed to fetch python_runtime_status:', e);
+          return null;
+        }),
       ]);
       setComponents(list);
       setPythonPackMetadata(metadata);
-      setLoading(false);
-
-      try {
-        const pythonStatus = await bridge.invoke<typeof pythonRuntime>('python_runtime_status');
-        setPythonRuntime(pythonStatus);
-      } catch (e) {
-        console.error('Failed to fetch python_runtime_status:', e);
-        setPythonRuntime(null);
-      }
+      setPythonRuntime(pythonStatus);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load system packs right now.');
       setComponents([]);
+    } finally {
       setLoading(false);
     }
   }, []);
