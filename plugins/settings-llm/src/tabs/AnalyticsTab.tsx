@@ -6,12 +6,8 @@ import { Empty, message, Radio, Skeleton } from 'antd';
 import {
   getBaseUrl,
   getMasterKey,
-  getSpendSummary,
-  getSpendReport,
-  getDailyActivity,
-  type SpendSummary,
-  type SpendReportEntry,
-  type DailyActivity,
+  getSpendLogs,
+  type SpendLog,
 } from '../hooks/useLlmCommands';
 import {
   OverviewCards,
@@ -40,30 +36,11 @@ function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } 
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
-function buildBreakdownRows(data: Record<string, { spend: number; total_tokens?: number; prompt_tokens?: number; completion_tokens?: number; api_requests?: number }> | undefined) {
-  if (!data) return [];
-  const entries = Object.entries(data).map(([name, v]) => ({
-    name,
-    requests: v.api_requests ?? 0,
-    inputTokens: v.prompt_tokens ?? 0,
-    outputTokens: v.completion_tokens ?? 0,
-    totalTokens: v.total_tokens ?? 0,
-    cost: v.spend ?? 0,
-    share: 0,
-  }));
-  const grandTotal = entries.reduce((sum, e) => sum + e.totalTokens, 0);
-  for (const e of entries) {
-    e.share = grandTotal > 0 ? (e.totalTokens / grandTotal) * 100 : 0;
-  }
-  return entries.sort((a, b) => b.totalTokens - a.totalTokens);
-}
 
 export default function AnalyticsTab() {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
-  const [summary, setSummary] = useState<SpendSummary | null>(null);
-  const [report, setReport] = useState<SpendReportEntry[]>([]);
-  const [dailyData, setDailyData] = useState<DailyActivity[]>([]);
+  const [logs, setLogs] = useState<SpendLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<TimeRange>('30D');
 
@@ -72,17 +49,17 @@ export default function AnalyticsTab() {
     setLoading(true);
     try {
       const { start, end } = dateRangeForFilter(timeRange);
-      const [s, r, d] = await Promise.all([
-        getSpendSummary(baseUrl, masterKey, start, end).catch(() => null),
-        getSpendReport(baseUrl, masterKey, start, end).catch(() => []),
-        getDailyActivity(baseUrl, masterKey, start || '2025-01-01', end || new Date().toISOString().slice(0, 10)).catch(() => []),
-      ]);
-      setSummary(s);
-      setReport(r);
-      setDailyData(d);
+      // /spend/logs with date filters — the only analytics endpoint available
+      // without LiteLLM Enterprise. Filter out empty-model internal probes.
+      const raw = await getSpendLogs(baseUrl, masterKey, {
+        start_date: start,
+        end_date: end,
+      });
+      setLogs(raw.filter((l) => l.model && l.model.trim() !== ''));
     } catch (err) {
       console.error('[AnalyticsTab] Failed to load analytics:', err);
       message.error('Failed to load usage data');
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -96,122 +73,135 @@ export default function AnalyticsTab() {
 
   useEffect(() => { void loadData(); }, [loadData]);
 
-  // Breakdowns from summary
-  const modelRows = useMemo(() => buildBreakdownRows(summary?.per_model), [summary]);
-  const providerRows = useMemo(() => buildBreakdownRows(summary?.per_provider), [summary]);
-  const keyRows = useMemo(() => buildBreakdownRows(summary?.per_api_key), [summary]);
+  // Single-pass client-side aggregation from spend logs.
+  // /global/spend/report and /spend/logs?summarize=true require LiteLLM Enterprise.
+  const computed = useMemo(() => {
+    let totalTokens = 0, inputTokens = 0, outputTokens = 0, totalSpend = 0;
+    const modelMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
+    const providerMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
+    const keyMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
+    const dayMap = new Map<string, { tokens: number; requests: number; inputTokens: number; outputTokens: number; cost: number }>();
 
-  // Fallback from report if summary lacks breakdowns
-  const reportRows = useMemo(() => {
-    if (modelRows.length > 0 || report.length === 0) return [];
-    return buildBreakdownRows(
-      Object.fromEntries(
-        report.filter((r) => r.model || r.provider).map((r) => [
-          r.model || r.provider || 'unknown',
-          { spend: r.spend, total_tokens: r.total_tokens, prompt_tokens: r.prompt_tokens, completion_tokens: r.completion_tokens, api_requests: r.api_requests },
-        ]),
-      ),
-    );
-  }, [modelRows, report]);
+    for (const log of logs) {
+      const pt = log.prompt_tokens ?? 0;
+      const ct = log.completion_tokens ?? 0;
+      const tt = log.total_tokens ?? (pt + ct);
+      const spend = log.spend ?? 0;
+      inputTokens += pt;
+      outputTokens += ct;
+      totalTokens += tt;
+      totalSpend += spend;
+
+      // Model breakdown
+      const model = log.model || 'unknown';
+      const me = modelMap.get(model) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
+      me.requests++; me.inputTokens += pt; me.outputTokens += ct; me.totalTokens += tt; me.cost += spend;
+      modelMap.set(model, me);
+
+      // Provider breakdown
+      const provider = model.includes('/') ? model.split('/')[0] : model;
+      const pe = providerMap.get(provider) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
+      pe.requests++; pe.inputTokens += pt; pe.outputTokens += ct; pe.totalTokens += tt; pe.cost += spend;
+      providerMap.set(provider, pe);
+
+      // Key breakdown
+      const key = log.api_key || 'unknown';
+      const maskedKey = key.length > 12 ? `${key.slice(0, 4)}...${key.slice(-4)}` : key;
+      const ke = keyMap.get(maskedKey) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
+      ke.requests++; ke.inputTokens += pt; ke.outputTokens += ct; ke.totalTokens += tt; ke.cost += spend;
+      keyMap.set(maskedKey, ke);
+
+      // Daily breakdown
+      const ts = log.startTime || log.timestamp;
+      const day = ts ? new Date(ts).toISOString().slice(0, 10) : 'unknown';
+      if (day !== 'unknown') {
+        const de = dayMap.get(day) ?? { tokens: 0, requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 };
+        de.tokens += tt; de.requests++; de.inputTokens += pt; de.outputTokens += ct; de.cost += spend;
+        dayMap.set(day, de);
+      }
+    }
+
+    const toRows = (map: Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>) => {
+      const entries = [...map.entries()].map(([name, v]) => ({ name, ...v, share: 0 }));
+      const grand = entries.reduce((s, e) => s + e.totalTokens, 0);
+      for (const e of entries) e.share = grand > 0 ? (e.totalTokens / grand) * 100 : 0;
+      return entries.sort((a, b) => b.totalTokens - a.totalTokens);
+    };
+
+    return { totalTokens, inputTokens, outputTokens, totalSpend, modelRows: toRows(modelMap), providerRows: toRows(providerMap), keyRows: toRows(keyMap), dayMap };
+  }, [logs]);
+
+  const { totalTokens, inputTokens, outputTokens, totalSpend, modelRows, providerRows, keyRows } = computed;
+  const totalRequests = logs.length;
 
   // Heatmap data
   const heatmapData = useMemo(() =>
-    dailyData.map((d) => ({ date: d.date, tokens: d.total_tokens, requests: d.api_requests })),
-    [dailyData],
+    [...computed.dayMap.entries()].map(([date, d]) => ({ date, tokens: d.tokens, requests: d.requests })),
+    [computed.dayMap],
   );
 
-  // Token & Cost trend
+  // Trend data
   const trendData = useMemo(() =>
-    dailyData.map((d) => ({ date: d.date, inputTokens: d.prompt_tokens, outputTokens: d.completion_tokens, cost: d.spend })),
-    [dailyData],
+    [...computed.dayMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({ date, inputTokens: d.inputTokens, outputTokens: d.outputTokens, cost: d.cost })),
+    [computed.dayMap],
   );
 
-  // Model usage over time (for stacked area chart)
+  // Model usage over time
   const modelTimeData = useMemo(() => {
-    if (!dailyData.length) return [];
-    // Group by date, collect per-model tokens
     const byDate = new Map<string, Record<string, number>>();
-    for (const d of dailyData) {
-      const key = d.date;
-      if (!byDate.has(key)) byDate.set(key, {});
-      const models = byDate.get(key)!;
-      const modelName = d.model || 'unknown';
-      models[modelName] = (models[modelName] || 0) + d.total_tokens;
+    for (const log of logs) {
+      const ts = log.startTime || log.timestamp;
+      const day = ts ? new Date(ts).toISOString().slice(0, 10) : null;
+      if (!day) continue;
+      if (!byDate.has(day)) byDate.set(day, {});
+      const models = byDate.get(day)!;
+      const model = log.model || 'unknown';
+      models[model] = (models[model] || 0) + (log.total_tokens ?? 0);
     }
-    return [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, models]) => ({ date, models }));
-  }, [dailyData]);
+    return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, models]) => ({ date, models }));
+  }, [logs]);
 
-  // Donut data for cost by provider
+  // Donut slices
   const providerDonutSlices = useMemo(() =>
     providerRows.map((r, i) => ({ label: r.name, value: r.cost, color: SHARE_COLORS[i % SHARE_COLORS.length] })),
     [providerRows],
   );
 
-  // Donut data for by account / by API key
   const accountEntries = useMemo(() =>
-    keyRows.map((r) => ({ label: r.name.length > 20 ? `${r.name.slice(0, 8)}...${r.name.slice(-4)}` : r.name, value: r.totalTokens })),
+    keyRows.map((r) => ({ label: r.name, value: r.totalTokens })),
     [keyRows],
   );
 
-  // Computed metrics
-  const totalRequests = summary?.api_requests ?? 0;
-  const totalTokens = summary?.total_tokens ?? 0;
-  const inputTokens = summary?.prompt_tokens ?? 0;
-  const outputTokens = summary?.completion_tokens ?? 0;
-  const totalSpend = summary?.total_spend ?? 0;
-
+  // Metrics
   const metrics = useMemo(() => {
-    const uniqueProviders = providerRows.length;
-    const uniqueModels = modelRows.length || reportRows.length;
-    const uniqueKeys = keyRows.length;
     const avgTokens = totalRequests > 0 ? totalTokens / totalRequests : 0;
     const costPerReq = totalRequests > 0 ? totalSpend / totalRequests : 0;
     const ioRatio = outputTokens > 0 ? inputTokens / outputTokens : 0;
-    const topModel = modelRows[0]?.name || reportRows[0]?.name || '—';
+    const topModel = modelRows[0]?.name || '—';
     const topProvider = providerRows[0]?.name || '—';
+    let busiestDay = '—', maxTokens = 0;
+    for (const [day, d] of computed.dayMap) { if (d.tokens > maxTokens) { maxTokens = d.tokens; busiestDay = day; } }
 
-    // Find busiest day
-    let busiestDay = '—';
-    let maxTokens = 0;
-    for (const d of dailyData) {
-      if (d.total_tokens > maxTokens) {
-        maxTokens = d.total_tokens;
-        busiestDay = d.date;
-      }
-    }
-
-    // Diversity: how evenly distributed across models (Shannon entropy normalized)
-    const modelTokens = (modelRows.length > 0 ? modelRows : reportRows).map((r) => r.totalTokens);
+    const modelTokens = modelRows.map((r) => r.totalTokens);
     const total = modelTokens.reduce((a, b) => a + b, 0);
     let diversity = 0;
     if (total > 0 && modelTokens.length > 1) {
       let entropy = 0;
-      for (const t of modelTokens) {
-        if (t > 0) {
-          const p = t / total;
-          entropy -= p * Math.log2(p);
-        }
-      }
+      for (const t of modelTokens) { if (t > 0) { const p = t / total; entropy -= p * Math.log2(p); } }
       diversity = (entropy / Math.log2(modelTokens.length)) * 100;
-    } else if (modelTokens.length === 1) {
-      diversity = 100;
-    }
+    } else if (modelTokens.length === 1) diversity = 100;
 
     return {
-      infrastructure: { accounts: uniqueKeys, providers: uniqueProviders, apiKeys: uniqueKeys, models: uniqueModels },
+      infrastructure: { accounts: keyRows.length, providers: providerRows.length, apiKeys: keyRows.length, models: modelRows.length },
       performance: { avgTokensPerReq: avgTokens, costPerReq, ioRatio, fallbackRate: 100 },
       highlights: { topModel, topProvider, busiestDay, diversity },
     };
-  }, [totalRequests, totalTokens, totalSpend, inputTokens, outputTokens, modelRows, providerRows, keyRows, reportRows, dailyData]);
+  }, [totalRequests, totalTokens, totalSpend, inputTokens, outputTokens, modelRows, providerRows, keyRows, computed.dayMap]);
 
   if (loading) {
     return <Skeleton active paragraph={{ rows: 12 }} />;
-  }
-
-  if (!summary && report.length === 0) {
-    return <Empty description="No usage data yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
   return (
@@ -267,7 +257,7 @@ export default function AnalyticsTab() {
       {/* Model Breakdown */}
       <BreakdownTable
         title="MODEL BREAKDOWN"
-        rows={modelRows.length > 0 ? modelRows : reportRows}
+        rows={modelRows}
         nameHeader="MODEL"
       />
 

@@ -1,14 +1,11 @@
-// A013/UI/AnalyticsTab: Additional tests for server-side analytics
-// Targets: time range switching, fallback to report data, empty summary fields,
-//          formatTokens M-scale, formatCost tiny values, error handling
+// A013/UI/AnalyticsTab: Additional tests for client-side analytics aggregation
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AnalyticsTab from '../../tabs/AnalyticsTab';
 
-const mockGetSpendSummary = vi.fn();
-const mockGetSpendReport = vi.fn();
+const mockGetSpendLogs = vi.fn();
 const mockGetBaseUrl = vi.fn();
 const mockGetMasterKey = vi.fn();
 
@@ -22,55 +19,37 @@ vi.mock('@snapfzz/shared', () => ({
 vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
   getMasterKey: () => mockGetMasterKey(),
-  getSpendSummary: (...args: unknown[]) => mockGetSpendSummary(...args),
-  getSpendReport: (...args: unknown[]) => mockGetSpendReport(...args),
-  getDailyActivity: () => Promise.resolve([]),
+  getSpendLogs: (...args: unknown[]) => mockGetSpendLogs(...args),
 }));
 
 describe('A013/UI/AnalyticsTab/Extra', () => {
   beforeEach(() => {
-    mockGetSpendSummary.mockReset();
-    mockGetSpendReport.mockReset();
+    mockGetSpendLogs.mockReset();
     mockGetBaseUrl.mockReset();
     mockGetMasterKey.mockReset();
     mockGetBaseUrl.mockResolvedValue('http://127.0.0.1:4000');
     mockGetMasterKey.mockResolvedValue('sk-master-test');
-    mockGetSpendReport.mockResolvedValue([]);
   });
 
   it('A013/analytics/format-M: shows M-scale tokens for large counts', async () => {
-    mockGetSpendSummary.mockResolvedValue({
-      total_spend: 5.0,
-      total_tokens: 1_500_000,
-      prompt_tokens: 1_000_000,
-      completion_tokens: 500_000,
-      api_requests: 100,
-    });
+    mockGetSpendLogs.mockResolvedValue([{
+      request_id: 'req-big', api_key: 'sk-big', model: 'openai/gpt-4o', spend: 5.0,
+      startTime: new Date().toISOString(), prompt_tokens: 1_000_000, completion_tokens: 500_000, total_tokens: 1_500_000,
+    }]);
     render(<AnalyticsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument();
-    });
-
+    await waitFor(() => { expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument(); });
     const statValues = document.querySelectorAll('.ant-statistic-content-value');
     const texts = Array.from(statValues).map((el) => el.textContent);
     expect(texts.some((t) => t?.includes('M'))).toBe(true);
   });
 
   it('A013/analytics/format-cost-tiny: shows 4 decimal places for cost < $0.01', async () => {
-    mockGetSpendSummary.mockResolvedValue({
-      total_spend: 0.0001,
-      total_tokens: 15,
-      prompt_tokens: 10,
-      completion_tokens: 5,
-      api_requests: 1,
-    });
+    mockGetSpendLogs.mockResolvedValue([{
+      request_id: 'req-tiny', api_key: 'sk-tiny', model: 'openai/gpt-4o', spend: 0.0001,
+      startTime: new Date().toISOString(), prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,
+    }]);
     render(<AnalyticsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText('EST. COST')).toBeInTheDocument();
-    });
-
+    await waitFor(() => { expect(screen.getByText('EST. COST')).toBeInTheDocument(); });
     const statValues = document.querySelectorAll('.ant-statistic-content-value');
     const texts = Array.from(statValues).map((el) => el.textContent);
     expect(texts.some((t) => t?.includes('0001'))).toBe(true);
@@ -78,77 +57,32 @@ describe('A013/UI/AnalyticsTab/Extra', () => {
 
   it('A013/analytics/time-range: switching time range triggers reload', async () => {
     const user = userEvent.setup();
-    mockGetSpendSummary.mockResolvedValue({
-      total_spend: 1.0,
-      total_tokens: 1000,
-      prompt_tokens: 600,
-      completion_tokens: 400,
-      api_requests: 10,
-    });
+    mockGetSpendLogs.mockResolvedValue([{
+      request_id: 'req-1', api_key: 'sk-1', model: 'openai/gpt-4o', spend: 0.01,
+      startTime: new Date().toISOString(), prompt_tokens: 100, completion_tokens: 50, total_tokens: 150,
+    }]);
     render(<AnalyticsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument();
-    });
-
-    // Switch to YTD — should trigger a new fetch
+    await waitFor(() => { expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument(); });
     await user.click(screen.getByText('YTD'));
-
-    await waitFor(() => {
-      // getSpendSummary called again with date range params
-      expect(mockGetSpendSummary).toHaveBeenCalledTimes(2);
-    });
+    await waitFor(() => { expect(mockGetSpendLogs).toHaveBeenCalledTimes(2); });
   });
 
-  it('A013/analytics/report-fallback: uses report data when summary has no breakdowns', async () => {
-    mockGetSpendSummary.mockResolvedValue({
-      total_spend: 0.05,
-      total_tokens: 500,
-      prompt_tokens: 300,
-      completion_tokens: 200,
-      api_requests: 2,
-      // No per_model, per_provider, per_api_key
-    });
-    mockGetSpendReport.mockResolvedValue([
-      { model: 'openai/gpt-4o', spend: 0.03, total_tokens: 300, prompt_tokens: 200, completion_tokens: 100, api_requests: 1 },
-      { model: 'anthropic/claude', spend: 0.02, total_tokens: 200, prompt_tokens: 100, completion_tokens: 100, api_requests: 1 },
-    ]);
+  it('A013/analytics/zero-tokens: handles logs with zero values', async () => {
+    mockGetSpendLogs.mockResolvedValue([{
+      request_id: 'req-zero', api_key: 'sk-zero', model: 'openai/gpt-4o', spend: 0,
+      startTime: new Date().toISOString(), prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
+    }]);
     render(<AnalyticsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText('MODEL BREAKDOWN')).toBeInTheDocument();
-    });
-
-    expect(screen.getAllByText('openai/gpt-4o').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('anthropic/claude').length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('A013/analytics/summary-error: handles getSpendSummary failure gracefully', async () => {
-    mockGetSpendSummary.mockRejectedValue(new Error('network error'));
-    render(<AnalyticsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText('No usage data yet')).toBeInTheDocument();
-    });
-  });
-
-  it('A013/analytics/zero-tokens: handles summary with zero values', async () => {
-    mockGetSpendSummary.mockResolvedValue({
-      total_spend: 0,
-      total_tokens: 0,
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      api_requests: 0,
-    });
-    render(<AnalyticsTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument();
-    });
-
+    await waitFor(() => { expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument(); });
     const statValues = document.querySelectorAll('.ant-statistic-content-value');
     const texts = Array.from(statValues).map((el) => el.textContent);
     expect(texts).toContain('0');
     expect(texts).toContain('$0.00');
+  });
+
+  it('A013/analytics/error: handles getSpendLogs failure', async () => {
+    mockGetSpendLogs.mockRejectedValue(new Error('network'));
+    render(<AnalyticsTab />);
+    await waitFor(() => { expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument(); });
   });
 });
