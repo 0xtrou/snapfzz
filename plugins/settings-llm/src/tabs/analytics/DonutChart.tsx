@@ -164,7 +164,7 @@ export default function DonutChart({ title, slices, totalLabel }: DonutChartProp
         {/* Legend */}
         {slices.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1 }}>
-            {slices.map((slice, i) => {
+            {slices.slice(0, 10).map((slice, i) => {
               const pct = total > 0 ? (slice.value / total) * 100 : 0;
               return (
                 <div

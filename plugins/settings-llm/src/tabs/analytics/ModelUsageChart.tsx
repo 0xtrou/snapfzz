@@ -60,26 +60,34 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
       .map(([name]) => name);
   }, [data]);
 
+  const innerWidth = Math.max(containerWidth - Y_AXIS_WIDTH, 80);
+  const stackedModels = useMemo(() => [...models].reverse(), [models]);
+
+  // Pad data: if only 1 day, add a zero-value day before so areas have width
+  const paddedData = useMemo(() => {
+    if (data.length <= 1 && data.length > 0) {
+      const d = new Date(data[0].date);
+      d.setDate(d.getDate() - 1);
+      const zeroed: Record<string, number> = {};
+      for (const key of Object.keys(data[0].models)) zeroed[key] = 0;
+      return [{ date: d.toISOString().slice(0, 10), models: zeroed }, ...data];
+    }
+    return data;
+  }, [data]);
+
   // Max stacked total across all days
   const maxTotal = useMemo(() => {
-    const daily = data.map((d) =>
+    const daily = paddedData.map((d) =>
       Object.values(d.models).reduce((s, v) => s + v, 0),
     );
     return Math.max(...daily, 1);
-  }, [data]);
-
-  const innerWidth = Math.max(containerWidth - Y_AXIS_WIDTH, 80);
-
-  // For each date index, compute the cumulative stacked Y values per model.
-  // Stack order: models[0] at bottom, models[last] at top.
-  // We reverse the model list so the most-used model fills from the bottom.
-  const stackedModels = useMemo(() => [...models].reverse(), [models]);
+  }, [paddedData]);
 
   // paths[i] = SVG path string for stackedModels[i]
   const paths = useMemo(() => {
-    if (data.length === 0) return [];
+    if (paddedData.length === 0) return [];
 
-    const n = data.length;
+    const n = paddedData.length;
     const xStep = innerWidth / Math.max(n - 1, 1);
 
     return stackedModels.map((model, stackIdx) => {
@@ -91,9 +99,9 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
         // Sum all models below this one in the stack
         let cumulativeBelow = 0;
         for (let si = 0; si < stackIdx; si++) {
-          cumulativeBelow += data[di].models[stackedModels[si]] ?? 0;
+          cumulativeBelow += paddedData[di].models[stackedModels[si]] ?? 0;
         }
-        const thisValue = data[di].models[model] ?? 0;
+        const thisValue = paddedData[di].models[model] ?? 0;
         const cumulativeTop = cumulativeBelow + thisValue;
 
         const yBottom = CHART_HEIGHT - (cumulativeBelow / maxTotal) * CHART_HEIGHT;
@@ -114,7 +122,7 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
 
       return `${topPath} ${bottomPath} Z`;
     });
-  }, [data, stackedModels, maxTotal, innerWidth]);
+  }, [paddedData, stackedModels, maxTotal, innerWidth]);
 
   // Y-axis ticks
   const tokenTicks = Array.from({ length: Y_TICK_COUNT + 1 }, (_, i) =>
@@ -123,14 +131,14 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
 
   // X-axis date labels
   const dateLabels = useMemo(() => {
-    if (data.length === 0) return [];
-    const n = data.length;
+    if (paddedData.length === 0) return [];
+    const n = paddedData.length;
     const xStep = innerWidth / Math.max(n - 1, 1);
     const step = Math.max(1, Math.ceil(n / 7));
-    return data
+    return paddedData
       .map((d, i) => ({ label: d.date.slice(5), x: i * xStep, show: i % step === 0 || i === n - 1 }))
       .filter((l) => l.show);
-  }, [data, innerWidth]);
+  }, [paddedData, innerWidth]);
 
   if (data.length === 0 || models.length === 0) {
     return (
@@ -309,7 +317,7 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
           paddingLeft: Y_AXIS_WIDTH,
         }}
       >
-        {models.map((model, i) => (
+        {models.slice(0, 10).map((model, i) => (
           <span
             key={model}
             style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)' }}

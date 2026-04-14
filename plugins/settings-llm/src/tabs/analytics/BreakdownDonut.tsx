@@ -170,7 +170,7 @@ export function BreakdownDonut({ title, entries }: BreakdownDonutProps) {
           {entries.length === 0 ? (
             <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No entries</span>
           ) : (
-            entries.map((entry, i) => {
+            entries.slice(0, 10).map((entry, i) => {
               const color = SHARE_COLORS[i % SHARE_COLORS.length];
               const pct = total > 0 ? (entry.value / total) * 100 : 0;
               return (
