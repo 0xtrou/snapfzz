@@ -8,13 +8,14 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PretextGrid } from './PretextGrid';
+import * as containerWidthModule from './use-container-width';
 
 // Mock useContainerWidth to return a stable width (no real ResizeObserver in jsdom)
 vi.mock('./use-container-width', () => ({
-  useContainerWidth: () => {
+  useContainerWidth: vi.fn(() => {
     const ref = { current: null };
     return [ref, 600]; // 600px container
-  },
+  }),
 }));
 
 interface TestItem {
@@ -148,5 +149,87 @@ describe('A001/PretextGrid', () => {
 
     // 4 items, 2 cols → 2 rows. Indices should be 0,1,2,3
     expect(indices).toEqual(expect.arrayContaining([0, 1, 2, 3]));
+  });
+
+  it('A001/grid/scroll: virtualizes within fixed viewport when scroll=true', () => {
+    const { container } = render(
+      <PretextGrid
+        items={items}
+        renderItem={(item) => <div data-testid={`cell-${item.id}`}>{item.label}</div>}
+        keyExtractor={(item) => item.id}
+        columnMinWidth={240}
+        rowHeight={100}
+        scroll={true}
+        style={{ height: 400 }}
+      />,
+    );
+
+    // Items should render through PretextList (scroll mode)
+    expect(screen.getByText('Model 0')).toBeTruthy();
+    // The list inner style should use height: 100% (scroll path)
+    const listEl = container.querySelector('div[style*="height: 100%"]');
+    expect(listEl).toBeTruthy();
+  });
+
+  it('A001/grid/scroll-false: expands to fit all content when scroll=false', () => {
+    const { container } = render(
+      <PretextGrid
+        items={items}
+        renderItem={(item) => <div>{item.label}</div>}
+        keyExtractor={(item) => item.id}
+        columnMinWidth={240}
+        rowHeight={100}
+        scroll={false}
+      />,
+    );
+
+    // All 10 items must be in the DOM (no virtualization cutoff)
+    for (let i = 0; i < 10; i++) {
+      expect(screen.getByText(`Model ${i}`)).toBeTruthy();
+    }
+
+    // The list wrapper should use overflow: hidden (no-scroll path)
+    const hiddenEl = container.querySelector('div[style*="overflow: hidden"]');
+    expect(hiddenEl).toBeTruthy();
+  });
+
+  it('A001/grid/zero-width: renders no PretextList when containerWidth is 0', () => {
+    // Override the global mock for this test only
+    vi.mocked(containerWidthModule.useContainerWidth).mockReturnValueOnce([{ current: null }, 0]);
+
+    const { container } = render(
+      <PretextGrid
+        items={items}
+        renderItem={(item) => <div>{item.label}</div>}
+        keyExtractor={(item) => item.id}
+        columnMinWidth={240}
+        rowHeight={100}
+      />,
+    );
+
+    // Guard on containerWidth > 0 should prevent PretextList from mounting
+    expect(screen.queryByText('Model 0')).toBeNull();
+    // Only the outer wrapper div should be present
+    expect(container.querySelectorAll('div').length).toBe(1);
+  });
+
+  it('A001/grid/min-columns: uses 1 column when columnMinWidth exceeds containerWidth', () => {
+    const { container } = render(
+      <div style={{ height: 400 }}>
+        <PretextGrid
+          items={items.slice(0, 3)}
+          renderItem={(item) => <div>{item.label}</div>}
+          keyExtractor={(item) => item.id}
+          columnMinWidth={700}
+          rowHeight={100}
+        />
+      </div>,
+    );
+
+    // 600px container, 700px min column → floor((600+12)/(700+12)) = 0 → max(1,0) = 1 column
+    const grids = container.querySelectorAll('div[style*="grid-template-columns"]');
+    expect(grids.length).toBeGreaterThan(0);
+    const firstGrid = grids[0] as HTMLElement;
+    expect(firstGrid.style.gridTemplateColumns).toBe('repeat(1, 1fr)');
   });
 });
