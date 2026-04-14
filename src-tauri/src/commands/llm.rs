@@ -197,12 +197,13 @@ pub async fn llm_import_model(
             .map_err(|e| e.to_string())?
     };
 
-    // Resolve API key env var reference for the provider
+    // Resolve API key env var reference for the provider — fail if no key configured
     let api_key_ref = {
         let mut guard = vault.lock().unwrap();
         let keys = vault::list_provider_keys(&mut guard, &provider_id)
             .unwrap_or_default();
-        let key_name = keys.first().cloned().unwrap_or_else(|| "DEFAULT".to_string());
+        let key_name = keys.first().cloned()
+            .ok_or_else(|| format!("No API key configured for provider '{provider_id}'. Add a key first."))?;
         format!(
             "os.environ/PROVIDER_{}_{}",
             provider_id.to_uppercase().replace('-', "_"),
