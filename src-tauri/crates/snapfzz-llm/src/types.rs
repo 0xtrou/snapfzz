@@ -59,92 +59,6 @@ pub struct DefaultKeyGenerateParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KeyGenerateParams {
-    pub models: Vec<String>,
-    pub max_budget: f64,
-    pub budget_duration: String,
-    pub metadata: HashMap<String, String>,
-    pub rpm_limit: Option<u32>,
-    pub tpm_limit: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KeyUpdateParams {
-    pub models: Option<Vec<String>>,
-    pub max_budget: Option<f64>,
-    pub budget_duration: Option<String>,
-    pub metadata: Option<HashMap<String, String>>,
-    pub rpm_limit: Option<u32>,
-    pub tpm_limit: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct GeneratedKey {
-    pub key: String,
-    pub key_alias: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KeyInfo {
-    pub key: String,
-    pub models: Vec<String>,
-    pub spend: Option<f64>,
-    pub max_budget: Option<f64>,
-    pub budget_duration: Option<String>,
-    pub metadata: Option<HashMap<String, String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KeyListResponse {
-    #[serde(default)]
-    pub keys: Vec<KeyInfo>,
-    pub total_count: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct SpendFilters {
-    pub start_date: Option<String>,
-    pub end_date: Option<String>,
-    pub key: Option<String>,
-    pub model: Option<String>,
-    pub user: Option<String>,
-    pub page: Option<u32>,
-    pub size: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SpendLog {
-    pub request_id: String,
-    pub api_key: String,
-    pub model: String,
-    pub spend: f64,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct KeySpend {
-    pub key: String,
-    pub spend: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct GlobalSpend {
-    pub total_spend: f64,
-    pub by_provider: HashMap<String, f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ModelInfo {
-    pub id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ModelListResponse {
-    #[serde(default)]
-    pub data: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderConfig {
     pub provider_id: String,
     pub key_name: String,
@@ -164,12 +78,8 @@ pub enum LlmError {
     Yaml(#[from] serde_yaml::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("http client error: {0}")]
-    Http(#[from] reqwest::Error),
     #[error("vault error: {0}")]
     Vault(String),
-    #[error("http status {status}: {body}")]
-    HttpStatus { status: u16, body: String },
     #[error("{0}")]
     Message(String),
 }
@@ -220,28 +130,21 @@ mod tests {
     }
 
     #[test]
-    fn a013_types_key_generate_params_round_trip_json_serialization() {
-        let params = KeyGenerateParams {
-            models: vec!["gpt-4o".to_string()],
-            max_budget: 25.0,
-            budget_duration: "30d".to_string(),
-            metadata: HashMap::from([("env".to_string(), "dev".to_string())]),
-            rpm_limit: Some(200),
-            tpm_limit: Some(8_000),
+    fn a013_types_provider_config_round_trip_json_serialization() {
+        let config = ProviderConfig {
+            provider_id: "openai".to_string(),
+            key_name: "key_1".to_string(),
+            model_name: "gpt-4o".to_string(),
+            provider_model: "openai/gpt-4o".to_string(),
+            api_base: None,
+            rpm: Some(100),
+            tpm: Some(1_000),
+            enabled: true,
         };
 
-        let json = serde_json::to_string(&params).expect("serialize json");
-        let decoded: KeyGenerateParams = serde_json::from_str(&json).expect("deserialize json");
+        let json = serde_json::to_string(&config).expect("serialize json");
+        let decoded: ProviderConfig = serde_json::from_str(&json).expect("deserialize json");
 
-        assert_eq!(decoded, params);
-    }
-
-    #[test]
-    fn a013_types_spend_filters_defaults_to_empty() {
-        let filters = SpendFilters::default();
-        assert_eq!(filters.start_date, None);
-        assert_eq!(filters.end_date, None);
-        assert_eq!(filters.key, None);
-        assert_eq!(filters.model, None);
+        assert_eq!(decoded, config);
     }
 }
