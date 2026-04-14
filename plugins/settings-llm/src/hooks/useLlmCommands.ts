@@ -421,6 +421,96 @@ export async function getGlobalSpend(
   return res.json();
 }
 
+// A013/Analytics: Server-side aggregated spend report — no client-side computation needed.
+// GET /global/spend/report?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&group_by=team|customer
+export interface SpendReportEntry {
+  group_by?: string;
+  spend: number;
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  api_requests?: number;
+  model?: string;
+  provider?: string;
+  // Nested model breakdown when group_by is used
+  breakdown?: Record<string, {
+    spend: number;
+    total_tokens: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    api_requests: number;
+  }>;
+}
+
+export async function getSpendReport(
+  baseUrl: string,
+  masterKey: string,
+  startDate?: string,
+  endDate?: string,
+  groupBy?: string,
+): Promise<SpendReportEntry[]> {
+  const query = new URLSearchParams();
+  if (startDate) query.set('start_date', startDate);
+  if (endDate) query.set('end_date', endDate);
+  if (groupBy) query.set('group_by', groupBy);
+  const qs = query.toString();
+  const res = await litellmFetch(`${baseUrl}/global/spend/report${qs ? `?${qs}` : ''}`, masterKey);
+  const data = await res.json();
+  return Array.isArray(data) ? data : (data.data ?? data.report ?? [data]);
+}
+
+// A013/Analytics: GET /spend/logs?summarize=true returns aggregated summary
+export interface SpendSummary {
+  total_spend: number;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  api_requests: number;
+  per_model?: Record<string, { spend: number; total_tokens: number; prompt_tokens: number; completion_tokens: number; api_requests: number }>;
+  per_provider?: Record<string, { spend: number; total_tokens: number; api_requests: number }>;
+  per_api_key?: Record<string, { spend: number; total_tokens: number; api_requests: number }>;
+}
+
+export async function getSpendSummary(
+  baseUrl: string,
+  masterKey: string,
+  startDate?: string,
+  endDate?: string,
+): Promise<SpendSummary> {
+  const query = new URLSearchParams();
+  query.set('summarize', 'true');
+  if (startDate) query.set('start_date', startDate);
+  if (endDate) query.set('end_date', endDate);
+  const url = `${baseUrl}/spend/logs?${query.toString()}`;
+  const res = await litellmFetch(url, masterKey);
+  return res.json();
+}
+
+// A013/Analytics: GET /user/daily/activity for time-series data
+export interface DailyActivity {
+  date: string;
+  model?: string;
+  provider?: string;
+  api_key?: string;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  spend: number;
+  api_requests: number;
+}
+
+export async function getDailyActivity(
+  baseUrl: string,
+  masterKey: string,
+  startDate: string,
+  endDate: string,
+): Promise<DailyActivity[]> {
+  const query = new URLSearchParams({ start_date: startDate, end_date: endDate });
+  const res = await litellmFetch(`${baseUrl}/user/daily/activity?${query.toString()}`, masterKey);
+  const data = await res.json();
+  return Array.isArray(data) ? data : (data.data ?? data.daily_activity ?? []);
+}
+
 export async function getModels(
   baseUrl: string,
   masterKey: string,
