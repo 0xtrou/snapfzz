@@ -21,11 +21,10 @@ const DAYS_PER_WEEK = 7;
 const CELL_SIZE = 9;
 const CELL_GAP = 2;
 
-// row index: 0 = Sunday, 1 = Monday, ... 6 = Saturday (JS getDay())
-// We display Sunday last (row 6 in CSS grid), Mon–Sat as rows 0–5.
-// Grid row = (getDay() + 6) % 7  → Mon=0, Tue=1, ..., Sun=6
+// All date math in UTC to avoid timezone-shifted day boundaries.
+// Grid row = Mon=0, Tue=1, ..., Sun=6
 function dayOfWeekRow(date: Date): number {
-  return (date.getDay() + 6) % 7;
+  return (date.getUTCDay() + 6) % 7;
 }
 
 // -- Color helpers --
@@ -62,18 +61,17 @@ function buildGrid(dailyData: DailyData[]): {
   totalTokens: number;
   weeklyRequests: number[];
 } {
+  // Use UTC throughout to match the UTC date strings from spend logs.
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
 
-  // Anchor: start from the most recent Sunday such that we get WEEKS full weeks ending today.
-  // Column 0 = oldest week, column WEEKS-1 = most recent week.
   const gridEnd = new Date(today);
-  // Advance to the coming Saturday so the last column is always full.
-  const daysToSat = (6 - gridEnd.getDay() + 7) % 7;
-  gridEnd.setDate(gridEnd.getDate() + daysToSat);
+  // Advance to the coming Saturday (UTC) so the last column is always full.
+  const daysToSat = (6 - gridEnd.getUTCDay() + 7) % 7;
+  gridEnd.setUTCDate(gridEnd.getUTCDate() + daysToSat);
 
   const gridStart = new Date(gridEnd);
-  gridStart.setDate(gridEnd.getDate() - WEEKS * DAYS_PER_WEEK + 1);
+  gridStart.setUTCDate(gridEnd.getUTCDate() - WEEKS * DAYS_PER_WEEK + 1);
 
   const dataByDate = new Map<string, DailyData>(dailyData.map((d) => [d.date, d]));
 
@@ -109,7 +107,7 @@ function buildGrid(dailyData: DailyData[]): {
       totalTokens += tokens;
     }
 
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return { cells, dataByDate, p25, p75, activeDays, totalTokens, weeklyRequests };
@@ -127,7 +125,7 @@ function formatDate(dateStr: string): string {
 
 function getDayName(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long' });
+  return d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
 }
 
 // -- Sub-components --
@@ -342,20 +340,20 @@ function MostActiveDayCard({
 function WeeklyCard({ dailyData }: { dailyData: { date: string; requests: number }[] }) {
   // Show the current week (Mon-Sun) with actual daily request counts
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // UTC-based to match spend log dates
   const today = new Date();
-  const dayOfWeek = (today.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  today.setUTCHours(0, 0, 0, 0);
+  const dayOfWeek = (today.getUTCDay() + 6) % 7; // Mon=0 ... Sun=6
   const monday = new Date(today);
-  monday.setDate(today.getDate() - dayOfWeek);
+  monday.setUTCDate(today.getUTCDate() - dayOfWeek);
 
-  // Build lookup: date string → requests
   const dateMap = new Map<string, number>();
   for (const d of dailyData) dateMap.set(d.date, d.requests);
 
-  // Get 7 days starting from Monday of current week
   const last7: number[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
+    d.setUTCDate(monday.getUTCDate() + i);
     const key = d.toISOString().slice(0, 10);
     last7.push(dateMap.get(key) ?? 0);
   }
