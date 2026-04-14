@@ -308,43 +308,39 @@ export async function listKeysWithInfo(
   baseUrl: string,
   masterKey: string,
 ): Promise<KeyListResponse> {
-  const listResponse = await listKeys(baseUrl, masterKey);
+  // /key/list returns a flat array of token hash strings (not objects).
+  // Fetch /key/info per token in parallel to get the full key data.
+  const res = await litellmFetch(`${baseUrl}/key/list`, masterKey);
+  const data = await res.json();
+  const rawList: unknown[] = Array.isArray(data) ? data : (data.keys ?? []);
 
-  // Debug: log actual response shape to identify the key identifier field
-  if (listResponse.keys.length > 0) {
-    console.log('[listKeysWithInfo] /key/list response sample:', JSON.stringify(listResponse.keys[0], null, 2));
-    console.log('[listKeysWithInfo] Available fields:', Object.keys(listResponse.keys[0]));
-  }
+  // Extract tokens — may be plain strings or objects with a token field
+  const tokens: string[] = rawList.map((item) => {
+    if (typeof item === 'string') return item;
+    if (item && typeof item === 'object') {
+      const obj = item as Record<string, unknown>;
+      return (obj.token ?? obj.key ?? obj.key_hash ?? '') as string;
+    }
+    return '';
+  }).filter(Boolean);
 
-  // Extract token identifiers — LiteLLM may use any of these field names
-  const tokens: string[] = [];
-  for (const k of listResponse.keys) {
-    const record = k as Record<string, unknown>;
-    const id = record.token ?? record.key ?? record.key_hash ?? record.api_key;
-    if (typeof id === 'string' && id) tokens.push(id);
-    else tokens.push('');
-  }
+  if (tokens.length === 0) return { keys: [], total_count: 0 };
 
-  const validTokens = tokens.filter(Boolean);
-  if (validTokens.length === 0) return listResponse;
-
-  // Fetch all key info in parallel
   const infoResults = await Promise.allSettled(
-    tokens.map((token) => token ? getKeyInfo(baseUrl, masterKey, token) : Promise.reject('no token')),
+    tokens.map((token) => getKeyInfo(baseUrl, masterKey, token)),
   );
 
-  // Merge: use info data as base, overlay with any extra fields from list
-  const enriched: KeyInfo[] = infoResults.map((result, i) => {
+  const keys: KeyInfo[] = infoResults.map((result, i) => {
     if (result.status === 'fulfilled' && result.value) {
       const raw = result.value as Record<string, unknown>;
-      // LiteLLM /key/info may wrap data in { key: "...", info: {...} } or return flat
+      // /key/info may wrap in { key: "...", info: {...} } or return flat
       const keyData = (raw.info && typeof raw.info === 'object' ? raw.info : raw) as KeyInfo;
-      return { ...listResponse.keys[i], ...keyData };
+      return { ...keyData, token: tokens[i] };
     }
-    return listResponse.keys[i];
+    return { token: tokens[i] } as KeyInfo;
   });
 
-  return { keys: enriched, total_count: listResponse.total_count ?? enriched.length };
+  return { keys, total_count: keys.length };
 }
 
 export async function deleteKey(
