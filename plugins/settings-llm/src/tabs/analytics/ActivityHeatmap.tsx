@@ -18,7 +18,7 @@ export interface ActivityHeatmapProps {
 
 const WEEKS = 52;
 const DAYS_PER_WEEK = 7;
-const CELL_SIZE = 12;
+const CELL_SIZE = 14;
 const CELL_GAP = 2;
 
 // row index: 0 = Sunday, 1 = Monday, ... 6 = Saturday (JS getDay())
@@ -414,8 +414,8 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
   const mostActiveDay = useMemo(() => findMostActiveDay(dailyData.filter((d) => d.tokens > 0)), [dailyData]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 12, alignItems: 'start' }}>
-      {/* LEFT: Main heatmap card */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 12, alignItems: 'stretch' }}>
+      {/* LEFT: Main heatmap card — stretches to match right column height */}
       <div
         style={{
           background: 'var(--bg-default)',
