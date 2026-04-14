@@ -22,6 +22,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   getMasterKey: () => mockGetMasterKey(),
   getSpendSummary: (...args: unknown[]) => mockGetSpendSummary(...args),
   getSpendReport: (...args: unknown[]) => mockGetSpendReport(...args),
+  getDailyActivity: () => Promise.resolve([]),
 }));
 
 const SAMPLE_SUMMARY = {
@@ -89,10 +90,10 @@ describe('A013/UI/AnalyticsTab', () => {
     render(<AnalyticsTab />);
 
     await waitFor(() => {
-      expect(screen.getByText('Model Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('MODEL BREAKDOWN')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('openai/gpt-4o')).toBeInTheDocument();
+    expect(screen.getAllByText('openai/gpt-4o').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('anthropic/claude-sonnet')).toBeInTheDocument();
   });
 
@@ -101,7 +102,7 @@ describe('A013/UI/AnalyticsTab', () => {
     render(<AnalyticsTab />);
 
     await waitFor(() => {
-      expect(screen.getByText('Provider Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('PROVIDER BREAKDOWN')).toBeInTheDocument();
     });
 
     expect(screen.getAllByText('openai').length).toBeGreaterThanOrEqual(1);

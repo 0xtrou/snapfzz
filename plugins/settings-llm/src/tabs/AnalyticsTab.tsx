@@ -1,118 +1,46 @@
-// A013/Analytics: LLM usage analytics dashboard — uses server-side aggregation.
-// No client-side log processing. All data comes pre-computed from LiteLLM endpoints:
-//   GET /spend/logs?summarize=true  — overview totals
-//   GET /global/spend/report        — provider/model/key breakdowns
+// A013/Analytics: LLM usage analytics dashboard — server-side aggregation.
+// Composes analytics sub-components from ./analytics/.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Empty, message, Radio, Skeleton, Statistic, Table, Typography } from 'antd';
-import type { TableColumnsType } from 'antd';
+import { Empty, message, Radio, Skeleton } from 'antd';
 import {
   getBaseUrl,
   getMasterKey,
   getSpendSummary,
   getSpendReport,
+  getDailyActivity,
   type SpendSummary,
   type SpendReportEntry,
+  type DailyActivity,
 } from '../hooks/useLlmCommands';
+import {
+  OverviewCards,
+  MetricRows,
+  ActivityHeatmap,
+  TokenCostTrend,
+  DonutChart,
+  ModelUsageChart,
+  BreakdownTable,
+  BreakdownDonut,
+} from './analytics';
+import { formatTokens, formatCost, SHARE_COLORS } from './analytics/shared';
 
-const { Text } = Typography;
-
-type TimeRange = '1D' | '7D' | '30D' | 'All';
-
-function formatTokens(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '$0.00';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
+type TimeRange = '1D' | '30D' | 'YTD' | 'All';
 
 function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } {
   if (range === 'All') return {};
-  const days = range === '1D' ? 1 : range === '7D' ? 7 : 30;
   const end = new Date();
-  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
-  return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
-  };
+  let start: Date;
+  if (range === 'YTD') {
+    start = new Date(end.getFullYear(), 0, 1);
+  } else {
+    const days = range === '1D' ? 1 : 30;
+    start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+  }
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
-// -- Share bar --
-
-const SHARE_COLORS = [
-  'var(--color-info)',
-  'var(--color-success)',
-  'var(--color-cyan)',
-  'var(--color-gold)',
-  'var(--color-warning)',
-  'var(--color-error)',
-];
-
-function ShareBar({ pct, colorIndex }: { pct: number; colorIndex: number }) {
-  const color = SHARE_COLORS[colorIndex % SHARE_COLORS.length];
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-      <div style={{ width: `${Math.max(pct, 2)}%`, maxWidth: 80, height: 6, borderRadius: 3, background: color }} />
-      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{pct.toFixed(1)}%</span>
-    </div>
-  );
-}
-
-// -- Stat card --
-
-function StatCard({ label, value, subtitle, valueColor }: {
-  label: string;
-  value: string;
-  subtitle?: string;
-  valueColor?: string;
-}) {
-  return (
-    <div style={{
-      background: 'var(--bg-default)',
-      border: '1px solid var(--border-default)',
-      borderRadius: 8,
-      padding: '16px 20px',
-      flex: 1,
-      minWidth: 0,
-    }}>
-      <div style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-        {label}
-      </div>
-      <Statistic
-        value={value}
-        valueStyle={{ fontSize: 24, fontWeight: 700, color: valueColor || 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}
-      />
-      {subtitle && <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>{subtitle}</div>}
-    </div>
-  );
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <div style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, paddingBottom: 4, borderBottom: '1px solid var(--border-default)' }}>
-      {title}
-    </div>
-  );
-}
-
-// -- Breakdown row types --
-
-interface BreakdownRow {
-  name: string;
-  requests: number;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  cost: number;
-  share: number;
-}
-
-function buildBreakdownRows(data: Record<string, { spend: number; total_tokens?: number; prompt_tokens?: number; completion_tokens?: number; api_requests?: number }> | undefined): BreakdownRow[] {
+function buildBreakdownRows(data: Record<string, { spend: number; total_tokens?: number; prompt_tokens?: number; completion_tokens?: number; api_requests?: number }> | undefined) {
   if (!data) return [];
   const entries = Object.entries(data).map(([name, v]) => ({
     name,
@@ -130,27 +58,28 @@ function buildBreakdownRows(data: Record<string, { spend: number; total_tokens?:
   return entries.sort((a, b) => b.totalTokens - a.totalTokens);
 }
 
-// -- Main component --
-
 export default function AnalyticsTab() {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [summary, setSummary] = useState<SpendSummary | null>(null);
   const [report, setReport] = useState<SpendReportEntry[]>([]);
+  const [dailyData, setDailyData] = useState<DailyActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<TimeRange>('All');
+  const [timeRange, setTimeRange] = useState<TimeRange>('30D');
 
   const loadData = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
     try {
       const { start, end } = dateRangeForFilter(timeRange);
-      const [summaryResult, reportResult] = await Promise.all([
+      const [s, r, d] = await Promise.all([
         getSpendSummary(baseUrl, masterKey, start, end).catch(() => null),
         getSpendReport(baseUrl, masterKey, start, end).catch(() => []),
+        getDailyActivity(baseUrl, masterKey, start || '2025-01-01', end || new Date().toISOString().slice(0, 10)).catch(() => []),
       ]);
-      setSummary(summaryResult);
-      setReport(reportResult);
+      setSummary(s);
+      setReport(r);
+      setDailyData(d);
     } catch (err) {
       console.error('[AnalyticsTab] Failed to load analytics:', err);
       message.error('Failed to load usage data');
@@ -167,64 +96,115 @@ export default function AnalyticsTab() {
 
   useEffect(() => { void loadData(); }, [loadData]);
 
-  // Build breakdown rows from summary's per_model / per_provider / per_api_key
+  // Breakdowns from summary
   const modelRows = useMemo(() => buildBreakdownRows(summary?.per_model), [summary]);
   const providerRows = useMemo(() => buildBreakdownRows(summary?.per_provider), [summary]);
   const keyRows = useMemo(() => buildBreakdownRows(summary?.per_api_key), [summary]);
 
-  // Fallback: if summary doesn't have breakdowns, try from report entries
-  const reportRows = useMemo<BreakdownRow[]>(() => {
+  // Fallback from report if summary lacks breakdowns
+  const reportRows = useMemo(() => {
     if (modelRows.length > 0 || report.length === 0) return [];
-    const entries = report
-      .filter((r) => r.model || r.provider)
-      .map((r) => ({
-        name: r.model || r.provider || 'unknown',
-        requests: r.api_requests ?? 0,
-        inputTokens: r.prompt_tokens ?? 0,
-        outputTokens: r.completion_tokens ?? 0,
-        totalTokens: r.total_tokens ?? 0,
-        cost: r.spend ?? 0,
-        share: 0,
-      }));
-    const grandTotal = entries.reduce((sum, e) => sum + e.totalTokens, 0);
-    for (const e of entries) {
-      e.share = grandTotal > 0 ? (e.totalTokens / grandTotal) * 100 : 0;
-    }
-    return entries.sort((a, b) => b.totalTokens - a.totalTokens);
+    return buildBreakdownRows(
+      Object.fromEntries(
+        report.filter((r) => r.model || r.provider).map((r) => [
+          r.model || r.provider || 'unknown',
+          { spend: r.spend, total_tokens: r.total_tokens, prompt_tokens: r.prompt_tokens, completion_tokens: r.completion_tokens, api_requests: r.api_requests },
+        ]),
+      ),
+    );
   }, [modelRows, report]);
 
+  // Heatmap data
+  const heatmapData = useMemo(() =>
+    dailyData.map((d) => ({ date: d.date, tokens: d.total_tokens, requests: d.api_requests })),
+    [dailyData],
+  );
+
+  // Token & Cost trend
+  const trendData = useMemo(() =>
+    dailyData.map((d) => ({ date: d.date, inputTokens: d.prompt_tokens, outputTokens: d.completion_tokens, cost: d.spend })),
+    [dailyData],
+  );
+
+  // Model usage over time (for stacked area chart)
+  const modelTimeData = useMemo(() => {
+    if (!dailyData.length) return [];
+    // Group by date, collect per-model tokens
+    const byDate = new Map<string, Record<string, number>>();
+    for (const d of dailyData) {
+      const key = d.date;
+      if (!byDate.has(key)) byDate.set(key, {});
+      const models = byDate.get(key)!;
+      const modelName = d.model || 'unknown';
+      models[modelName] = (models[modelName] || 0) + d.total_tokens;
+    }
+    return [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, models]) => ({ date, models }));
+  }, [dailyData]);
+
+  // Donut data for cost by provider
+  const providerDonutSlices = useMemo(() =>
+    providerRows.map((r, i) => ({ label: r.name, value: r.cost, color: SHARE_COLORS[i % SHARE_COLORS.length] })),
+    [providerRows],
+  );
+
+  // Donut data for by account / by API key
+  const accountEntries = useMemo(() =>
+    keyRows.map((r) => ({ label: r.name.length > 20 ? `${r.name.slice(0, 8)}...${r.name.slice(-4)}` : r.name, value: r.totalTokens })),
+    [keyRows],
+  );
+
+  // Computed metrics
   const totalRequests = summary?.api_requests ?? 0;
   const totalTokens = summary?.total_tokens ?? 0;
   const inputTokens = summary?.prompt_tokens ?? 0;
   const outputTokens = summary?.completion_tokens ?? 0;
   const totalSpend = summary?.total_spend ?? 0;
 
-  const breakdownColumns: TableColumnsType<BreakdownRow> = [
-    {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      render: (v: string, _: BreakdownRow, index: number) => (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: SHARE_COLORS[index % SHARE_COLORS.length], display: 'inline-block', flexShrink: 0 }} />
-          <Text strong>{v}</Text>
-        </span>
-      ),
-    },
-    { title: 'Requests', dataIndex: 'requests', key: 'requests', align: 'right' },
-    { title: 'Input', dataIndex: 'inputTokens', key: 'inputTokens', align: 'right', render: (v: number) => formatTokens(v) },
-    { title: 'Output', dataIndex: 'outputTokens', key: 'outputTokens', align: 'right', render: (v: number) => formatTokens(v) },
-    { title: 'Total', dataIndex: 'totalTokens', key: 'totalTokens', align: 'right', render: (v: number) => formatTokens(v) },
-    { title: 'Cost', dataIndex: 'cost', key: 'cost', align: 'right', render: (v: number) => <Text style={{ fontFamily: 'var(--font-mono)' }}>{formatCost(v)}</Text> },
-    {
-      title: 'Share',
-      dataIndex: 'share',
-      key: 'share',
-      width: 140,
-      align: 'right' as const,
-      render: (pct: number, _: BreakdownRow, index: number) => <ShareBar pct={pct} colorIndex={index} />,
-    },
-  ];
+  const metrics = useMemo(() => {
+    const uniqueProviders = providerRows.length;
+    const uniqueModels = modelRows.length || reportRows.length;
+    const uniqueKeys = keyRows.length;
+    const avgTokens = totalRequests > 0 ? totalTokens / totalRequests : 0;
+    const costPerReq = totalRequests > 0 ? totalSpend / totalRequests : 0;
+    const ioRatio = outputTokens > 0 ? inputTokens / outputTokens : 0;
+    const topModel = modelRows[0]?.name || reportRows[0]?.name || '—';
+    const topProvider = providerRows[0]?.name || '—';
+
+    // Find busiest day
+    let busiestDay = '—';
+    let maxTokens = 0;
+    for (const d of dailyData) {
+      if (d.total_tokens > maxTokens) {
+        maxTokens = d.total_tokens;
+        busiestDay = d.date;
+      }
+    }
+
+    // Diversity: how evenly distributed across models (Shannon entropy normalized)
+    const modelTokens = (modelRows.length > 0 ? modelRows : reportRows).map((r) => r.totalTokens);
+    const total = modelTokens.reduce((a, b) => a + b, 0);
+    let diversity = 0;
+    if (total > 0 && modelTokens.length > 1) {
+      let entropy = 0;
+      for (const t of modelTokens) {
+        if (t > 0) {
+          const p = t / total;
+          entropy -= p * Math.log2(p);
+        }
+      }
+      diversity = (entropy / Math.log2(modelTokens.length)) * 100;
+    } else if (modelTokens.length === 1) {
+      diversity = 100;
+    }
+
+    return {
+      infrastructure: { accounts: uniqueKeys, providers: uniqueProviders, apiKeys: uniqueKeys, models: uniqueModels },
+      performance: { avgTokensPerReq: avgTokens, costPerReq, ioRatio, fallbackRate: 100 },
+      highlights: { topModel, topProvider, busiestDay, diversity },
+    };
+  }, [totalRequests, totalTokens, totalSpend, inputTokens, outputTokens, modelRows, providerRows, keyRows, reportRows, dailyData]);
 
   if (loading) {
     return <Skeleton active paragraph={{ rows: 12 }} />;
@@ -235,66 +215,64 @@ export default function AnalyticsTab() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
       {/* Time range selector */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Usage Analytics</div>
         <Radio.Group value={timeRange} onChange={(e) => setTimeRange(e.target.value)} size="small">
           <Radio.Button value="1D">1D</Radio.Button>
-          <Radio.Button value="7D">7D</Radio.Button>
           <Radio.Button value="30D">30D</Radio.Button>
+          <Radio.Button value="YTD">YTD</Radio.Button>
           <Radio.Button value="All">All</Radio.Button>
         </Radio.Group>
       </div>
 
       {/* Overview cards */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <StatCard label="TOTAL TOKENS" value={formatTokens(totalTokens)} subtitle={`${totalRequests} requests`} />
-        <StatCard label="INPUT TOKENS" value={formatTokens(inputTokens)} valueColor="var(--color-success)" />
-        <StatCard label="OUTPUT TOKENS" value={formatTokens(outputTokens)} valueColor="var(--color-cyan)" />
-        <StatCard label="EST. COST" value={formatCost(totalSpend)} valueColor="var(--color-gold)" />
+      <OverviewCards
+        totalTokens={totalTokens}
+        inputTokens={inputTokens}
+        outputTokens={outputTokens}
+        totalSpend={totalSpend}
+        requestCount={totalRequests}
+      />
+
+      {/* Metric rows */}
+      <MetricRows
+        infrastructure={metrics.infrastructure}
+        performance={metrics.performance}
+        highlights={metrics.highlights}
+      />
+
+      {/* Activity heatmap */}
+      <ActivityHeatmap dailyData={heatmapData} />
+
+      {/* Charts row: Token & Cost Trend + Cost by Provider */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+        <TokenCostTrend data={trendData} />
+        <DonutChart title="COST BY PROVIDER" slices={providerDonutSlices} totalLabel={formatCost(totalSpend)} />
       </div>
 
-      {/* Model Breakdown */}
-      {(modelRows.length > 0 || reportRows.length > 0) && (
-        <div>
-          <SectionHeader title="Model Breakdown" />
-          <Table<BreakdownRow>
-            rowKey="name"
-            columns={breakdownColumns}
-            dataSource={modelRows.length > 0 ? modelRows : reportRows}
-            pagination={false}
-            size="small"
-          />
-        </div>
-      )}
+      {/* Model Usage Over Time */}
+      <ModelUsageChart data={modelTimeData} />
+
+      {/* Donut row: By Account + By API Key */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <BreakdownDonut title="BY ACCOUNT" entries={accountEntries} />
+        <BreakdownDonut title="BY API KEY" entries={accountEntries} />
+      </div>
 
       {/* Provider Breakdown */}
-      {providerRows.length > 0 && (
-        <div>
-          <SectionHeader title="Provider Breakdown" />
-          <Table<BreakdownRow>
-            rowKey="name"
-            columns={breakdownColumns}
-            dataSource={providerRows}
-            pagination={false}
-            size="small"
-          />
-        </div>
-      )}
+      <BreakdownTable title="PROVIDER BREAKDOWN" rows={providerRows} nameHeader="PROVIDER" />
+
+      {/* Model Breakdown */}
+      <BreakdownTable
+        title="MODEL BREAKDOWN"
+        rows={modelRows.length > 0 ? modelRows : reportRows}
+        nameHeader="MODEL"
+      />
 
       {/* API Key Breakdown */}
-      {keyRows.length > 0 && (
-        <div>
-          <SectionHeader title="API Key Breakdown" />
-          <Table<BreakdownRow>
-            rowKey="name"
-            columns={breakdownColumns}
-            dataSource={keyRows}
-            pagination={false}
-            size="small"
-          />
-        </div>
-      )}
+      <BreakdownTable title="API KEY BREAKDOWN" rows={keyRows} nameHeader="API KEY" filterPlaceholder="Filter API key..." />
     </div>
   );
 }

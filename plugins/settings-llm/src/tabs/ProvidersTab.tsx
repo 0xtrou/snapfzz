@@ -1018,8 +1018,8 @@ function AvailableModels({
               renderItem={renderModelItem}
               keyExtractor={modelKeyExtractor}
               columnMinWidth={240}
-              rowHeight={100}
-              gap={6}
+              rowHeight={110}
+              gap={8}
               scroll={false}
             />
           )}

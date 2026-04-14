@@ -24,6 +24,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   getMasterKey: () => mockGetMasterKey(),
   getSpendSummary: (...args: unknown[]) => mockGetSpendSummary(...args),
   getSpendReport: (...args: unknown[]) => mockGetSpendReport(...args),
+  getDailyActivity: () => Promise.resolve([]),
 }));
 
 describe('A013/UI/AnalyticsTab/Extra', () => {
@@ -90,8 +91,8 @@ describe('A013/UI/AnalyticsTab/Extra', () => {
       expect(screen.getByText('TOTAL TOKENS')).toBeInTheDocument();
     });
 
-    // Switch to 7D — should trigger a new fetch
-    await user.click(screen.getByText('7D'));
+    // Switch to YTD — should trigger a new fetch
+    await user.click(screen.getByText('YTD'));
 
     await waitFor(() => {
       // getSpendSummary called again with date range params
@@ -115,11 +116,11 @@ describe('A013/UI/AnalyticsTab/Extra', () => {
     render(<AnalyticsTab />);
 
     await waitFor(() => {
-      expect(screen.getByText('Model Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('MODEL BREAKDOWN')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('openai/gpt-4o')).toBeInTheDocument();
-    expect(screen.getByText('anthropic/claude')).toBeInTheDocument();
+    expect(screen.getAllByText('openai/gpt-4o').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('anthropic/claude').length).toBeGreaterThanOrEqual(1);
   });
 
   it('A013/analytics/summary-error: handles getSpendSummary failure gracefully', async () => {
