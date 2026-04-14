@@ -109,6 +109,14 @@ export interface SpendLog {
   prompt_tokens?: number;
   completion_tokens?: number;
   startTime?: string;
+  // A013/AuditLog: Request/response details from LiteLLM spend/logs
+  status?: string;
+  request_body?: string;
+  response?: string;
+  cache_hit?: string;
+  api_base?: string;
+  model_group?: string;
+  custom_llm_provider?: string;
 }
 
 export interface KeySpend {

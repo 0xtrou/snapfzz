@@ -14,6 +14,23 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  PretextList: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-list">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item, i)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
+  ),
+  PretextPaginatedList: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-paginated-list">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item, i)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
+  ),
+  AppButton: ({ children, onClick, ...props }: any) => (
+    <button type="button" onClick={onClick} {...props}>{children}</button>
+  ),
 }));
 
 vi.mock('../../hooks/useLlmCommands', () => ({

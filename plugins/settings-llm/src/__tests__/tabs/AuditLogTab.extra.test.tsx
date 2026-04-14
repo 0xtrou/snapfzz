@@ -14,6 +14,23 @@ vi.mock('@snapfzz/shared', () => ({
   createTauriBridge: () => ({
     invoke: vi.fn(),
   }),
+  PretextList: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-list">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item, i)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
+  ),
+  PretextPaginatedList: ({ items, renderItem, keyExtractor }: any) => (
+    <div data-testid="pretext-paginated-list">
+      {(items ?? []).map((item: any, i: number) => (
+        <div key={keyExtractor(item, i)}>{renderItem(item, i)}</div>
+      ))}
+    </div>
+  ),
+  AppButton: ({ children, onClick, ...props }: any) => (
+    <button type="button" onClick={onClick} {...props}>{children}</button>
+  ),
 }));
 
 vi.mock('../../hooks/useLlmCommands', () => ({
@@ -127,8 +144,7 @@ describe('A013/UI/AuditLogTab/Extra', () => {
     }
   });
 
-  it('renders pagination component when many logs are present', async () => {
-    // Create 25 logs to trigger pagination (pageSize=20)
+  it('renders all logs in PretextList when many logs are present', async () => {
     const logs = Array.from({ length: 25 }, (_, i) => ({
       request_id: `req-${i}`,
       api_key: 'sk-very-long-key-abc',
@@ -142,8 +158,9 @@ describe('A013/UI/AuditLogTab/Extra', () => {
     render(<AuditLogTab />);
 
     await waitFor(() => {
-      // Pagination is present when there are more items than pageSize
-      expect(document.querySelector('.ant-pagination')).toBeTruthy();
+      // PretextList renders all items (mocked as flat list in tests)
+      expect(screen.getByTestId('pretext-paginated-list')).toBeTruthy();
+      expect(screen.getByText('25 requests')).toBeInTheDocument();
     });
   });
 
@@ -165,7 +182,7 @@ describe('A013/UI/AuditLogTab/Extra', () => {
     });
   });
 
-  it('renders timestamp as localized date string in table', async () => {
+  it('renders timestamp as localized date string in log row', async () => {
     mockGetSpendLogs.mockResolvedValue([
       {
         request_id: 'req-ts',
@@ -179,9 +196,11 @@ describe('A013/UI/AuditLogTab/Extra', () => {
     render(<AuditLogTab />);
 
     await waitFor(() => {
-      // The timestamp column renders toLocaleString() — check it's not empty
-      // Timestamp col should have something other than the raw ISO string
-      expect(screen.getByText('req-ts')).toBeInTheDocument();
+      // The row renders the model name and spend — verify the log rendered
+      expect(screen.getByText('gpt-4o')).toBeInTheDocument();
+      expect(screen.getByText('$0.001000')).toBeInTheDocument();
+      // Raw ISO string should NOT appear — it's converted via toLocaleString()
+      expect(screen.queryByText('2026-04-10T10:30:00Z')).not.toBeInTheDocument();
     });
   });
 });
