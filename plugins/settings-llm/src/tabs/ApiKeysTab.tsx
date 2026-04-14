@@ -193,7 +193,7 @@ export default function ApiKeysTab() {
       dataIndex: 'max_budget',
       key: 'max_budget',
       width: 100,
-      render: (budget: number | null | undefined) => (budget != null && budget > 0 ? `$${budget.toFixed(2)}` : 'Unlimited'),
+      render: (budget: number | null | undefined) => (budget != null ? `$${budget.toFixed(2)}` : 'Unlimited'),
     },
     {
       title: 'Actions',
@@ -252,7 +252,7 @@ export default function ApiKeysTab() {
           <div>
             <Text type="secondary">Budget: </Text>
             <Text>
-              ${spent.toFixed(2)} / {budget ? `$${budget.toFixed(2)}` : 'Unlimited'}
+              ${spent.toFixed(2)} / {budget != null ? `$${budget.toFixed(2)}` : 'Unlimited'}
             </Text>
           </div>
           <div>
@@ -285,7 +285,8 @@ export default function ApiKeysTab() {
     const { generateKey } = await import('../hooks/useLlmCommands');
     const params: KeyGenerateParams = {
       models: values.models,
-      max_budget: values.max_budget || 0,
+      // null = unlimited in LiteLLM. 0 means "zero budget" (blocked).
+      max_budget: values.max_budget != null && values.max_budget > 0 ? values.max_budget : null as unknown as number,
       budget_duration: values.budget_duration || '30d',
       metadata: {},
     };
@@ -406,7 +407,7 @@ export default function ApiKeysTab() {
               />
             </Form.Item>
             <Form.Item name="max_budget" label="Max Budget ($)">
-              <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="0 = unlimited" />
+              <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="Leave empty for unlimited" />
             </Form.Item>
             <Form.Item name="budget_duration" label="Budget Duration" initialValue="30d">
               <Select>

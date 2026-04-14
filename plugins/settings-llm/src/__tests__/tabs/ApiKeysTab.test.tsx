@@ -129,7 +129,7 @@ describe('A013/UI/ApiKeysTab', () => {
           key: 'short',
           models: ['gpt-4o'],
           spend: 0,
-          max_budget: 0,
+          max_budget: null,
           budget_duration: '',
         },
       ],

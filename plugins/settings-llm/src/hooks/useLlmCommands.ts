@@ -44,7 +44,7 @@ export interface GatewayConfig {
 
 export interface KeyGenerateParams {
   models: string[];
-  max_budget: number;
+  max_budget: number | null;
   budget_duration: string;
   metadata: Record<string, string>;
   key_alias?: string;

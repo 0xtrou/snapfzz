@@ -661,7 +661,7 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
     });
     await user.click(screen.getByTitle('openai/gpt-4o'));
 
-    // Clear max_budget so values.max_budget is undefined/null → || 0 branch fires
+    // Clear max_budget so values.max_budget is undefined/null → null (unlimited) branch fires
     const budgetInput = screen.getByRole('spinbutton', { name: 'Max Budget ($)' });
     await user.clear(budgetInput);
 
@@ -672,7 +672,7 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
         'http://127.0.0.1:4000',
         'sk-master-test',
         expect.objectContaining({
-          max_budget: 0,
+          max_budget: null,
         }),
       );
     });
