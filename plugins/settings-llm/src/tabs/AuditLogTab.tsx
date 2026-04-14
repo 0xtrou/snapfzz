@@ -35,6 +35,33 @@ function tryFormatJson(raw?: string): string {
   }
 }
 
+// A013/AuditLog: LiteLLM returns timestamps in varying formats —
+// ISO string, Unix epoch (seconds), Unix epoch (ms), or startTime field.
+function parseTimestamp(log: SpendLog): Date {
+  // Try startTime first (often more reliable than timestamp)
+  const raw = log.startTime || log.timestamp;
+  if (!raw) return new Date(0);
+
+  // If it's a number or numeric string, treat as epoch
+  const num = typeof raw === 'number' ? raw : Number(raw);
+  if (!isNaN(num) && num > 0) {
+    // Epoch in seconds (< 1e12) vs milliseconds (>= 1e12)
+    return new Date(num < 1e12 ? num * 1000 : num);
+  }
+
+  // Try as ISO/date string
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  return new Date(0);
+}
+
+function formatTimestamp(log: SpendLog): string {
+  const date = parseTimestamp(log);
+  if (date.getTime() === 0) return '—';
+  return date.toLocaleString();
+}
+
 function maskKey(key?: string): string {
   if (!key) return '—';
   if (key.length > 12) return `${key.slice(0, 4)}...${key.slice(-4)}`;
@@ -46,13 +73,17 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
   const details = [
     { label: 'Request ID', value: record.request_id },
     { label: 'Status', value: record.status ?? '—' },
+    { label: 'Call Type', value: record.call_type ?? '—' },
     { label: 'Model Group', value: record.model_group ?? '—' },
     { label: 'Provider', value: record.custom_llm_provider ?? '—' },
     { label: 'API Base', value: record.api_base ?? '—' },
+    { label: 'Duration', value: record.request_duration_ms != null ? `${record.request_duration_ms}ms` : '—' },
     { label: 'Cache Hit', value: record.cache_hit ?? '—' },
     { label: 'Prompt Tokens', value: record.prompt_tokens != null ? String(record.prompt_tokens) : '—' },
     { label: 'Completion Tokens', value: record.completion_tokens != null ? String(record.completion_tokens) : '—' },
     { label: 'Total Tokens', value: record.total_tokens != null ? String(record.total_tokens) : '—' },
+    { label: 'Start', value: record.startTime ?? '—' },
+    { label: 'End', value: record.endTime ?? '—' },
   ];
 
   const preStyle: React.CSSProperties = {
@@ -79,16 +110,16 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
           </div>
         ))}
       </div>
-      {record.request_body && (
+      {record.messages && (
         <div>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Request Body</Text>
-          <pre style={preStyle}>{tryFormatJson(record.request_body)}</pre>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Messages (Request)</Text>
+          <pre style={preStyle}>{tryFormatJson(typeof record.messages === 'string' ? record.messages : JSON.stringify(record.messages))}</pre>
         </div>
       )}
       {record.response && (
         <div>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response</Text>
-          <pre style={preStyle}>{tryFormatJson(record.response)}</pre>
+          <pre style={preStyle}>{tryFormatJson(typeof record.response === 'string' ? record.response : JSON.stringify(record.response))}</pre>
         </div>
       )}
     </div>
@@ -124,7 +155,7 @@ const LogRow = React.memo(function LogRow({
           borderBottom: '1px solid var(--border-default)',
         }}
       >
-        <Text style={{ fontSize: 12 }}>{new Date(log.timestamp).toLocaleString()}</Text>
+        <Text style={{ fontSize: 12 }}>{formatTimestamp(log)}</Text>
         {statusTag(log.status)}
         <Text ellipsis style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{log.model}</Text>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{maskKey(log.api_key)}</Text>
@@ -183,7 +214,7 @@ export default function AuditLogTab() {
   const handleClearLogs = useCallback(async (keepDays: number) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - keepDays);
-    const remaining = logs.filter((l) => new Date(l.timestamp) >= cutoff);
+    const remaining = logs.filter((l) => parseTimestamp(l) >= cutoff);
     const removed = logs.length - remaining.length;
     setLogs(remaining);
     message.success(`Cleared ${removed} log${removed !== 1 ? 's' : ''} older than ${keepDays} day${keepDays !== 1 ? 's' : ''}`);
@@ -193,7 +224,7 @@ export default function AuditLogTab() {
 
   const filteredLogs = useMemo(() => {
     const list = modelFilter ? logs.filter((log) => log.model === modelFilter) : logs;
-    return [...list].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return [...list].sort((a, b) => parseTimestamp(b).getTime() - parseTimestamp(a).getTime());
   }, [logs, modelFilter]);
 
   const estimateHeight = useCallback(

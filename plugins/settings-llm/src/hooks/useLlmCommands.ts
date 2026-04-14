@@ -98,25 +98,36 @@ export interface SpendFilters {
   size?: number;
 }
 
+// A013/AuditLog: Matches LiteLLM_SpendLogs PostgreSQL schema exactly.
+// Primary timestamp field is startTime (camelCase), not "timestamp".
 export interface SpendLog {
   request_id: string;
+  call_type?: string;
   api_key: string;
   model: string;
   spend: number;
-  timestamp: string;
-  // A013/Analytics: Token breakdown fields returned by LiteLLM spend/logs
   total_tokens?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
   startTime?: string;
-  // A013/AuditLog: Request/response details from LiteLLM spend/logs
-  status?: string;
-  request_body?: string;
-  response?: string;
-  cache_hit?: string;
-  api_base?: string;
+  endTime?: string;
+  request_duration_ms?: number;
+  model_id?: string;
   model_group?: string;
   custom_llm_provider?: string;
+  api_base?: string;
+  user?: string;
+  metadata?: Record<string, unknown>;
+  cache_hit?: string;
+  cache_key?: string;
+  request_tags?: unknown[];
+  team_id?: string;
+  end_user?: string;
+  messages?: unknown;
+  response?: unknown;
+  status?: string;
+  // Some LiteLLM versions return "timestamp" instead of "startTime"
+  timestamp?: string;
 }
 
 export interface KeySpend {
