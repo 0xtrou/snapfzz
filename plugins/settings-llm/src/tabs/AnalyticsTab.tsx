@@ -7,7 +7,9 @@ import {
   getBaseUrl,
   getMasterKey,
   getSpendLogs,
+  loadCustomProviders,
   type SpendLog,
+  type CustomProvider,
 } from '../hooks/useLlmCommands';
 import {
   OverviewCards,
@@ -40,10 +42,35 @@ function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } 
 }
 
 
+// Build a lookup from api_base URL → provider name using custom providers config
+function buildProviderLookup(providers: CustomProvider[]): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const p of providers) {
+    // Normalize: strip trailing slashes and /v1
+    const base = p.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+    lookup.set(base, p.name);
+    lookup.set(base + '/', p.name);
+    lookup.set(base + '/v1', p.name);
+    lookup.set(base + '/v1/', p.name);
+  }
+  return lookup;
+}
+
+function resolveProviderName(apiBase: string | undefined, lookup: Map<string, string>): string {
+  if (!apiBase) return 'unknown';
+  // Try exact match first
+  const normalized = apiBase.replace(/\/+$/, '');
+  if (lookup.has(normalized)) return lookup.get(normalized)!;
+  if (lookup.has(apiBase)) return lookup.get(apiBase)!;
+  // Fallback: extract hostname
+  try { return new URL(apiBase).hostname.replace(/^(api|llm)\./, ''); } catch { return apiBase; }
+}
+
 export default function AnalyticsTab() {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
+  const [providerLookup, setProviderLookup] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<TimeRange>('30D');
 
@@ -55,7 +82,11 @@ export default function AnalyticsTab() {
       // /spend/logs with date filters — the only analytics endpoint available
       // without LiteLLM Enterprise. Fetch ALL logs (LiteLLM date filter is
       // unreliable) then filter client-side by date + non-empty model.
-      const raw = await getSpendLogs(baseUrl, masterKey, {});
+      const [raw, customProviders] = await Promise.all([
+        getSpendLogs(baseUrl, masterKey, {}),
+        loadCustomProviders().catch(() => []),
+      ]);
+      setProviderLookup(buildProviderLookup(customProviders));
       const withModel = raw.filter((l) => l.model && l.model.trim() !== '');
       if (start) {
         const startMs = new Date(start).getTime();
@@ -106,14 +137,18 @@ export default function AnalyticsTab() {
       totalTokens += tt;
       totalSpend += spend;
 
-      // Model breakdown
-      const model = log.model_group || log.model || 'unknown';
-      const me = modelMap.get(model) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
-      me.requests++; me.inputTokens += pt; me.outputTokens += ct; me.totalTokens += tt; me.cost += spend;
-      modelMap.set(model, me);
+      // Provider name from custom providers config (custom_llm_provider is just the SDK adapter e.g. "openai")
+      const providerName = resolveProviderName(log.api_base, providerLookup);
 
-      // Provider breakdown
-      const provider = log.custom_llm_provider || (model.includes('/') ? model.split('/')[0] : model);
+      // Model breakdown — show as provider/model format
+      const modelGroup = log.model_group || log.model || 'unknown';
+      const modelLabel = `${providerName}/${modelGroup}`;
+      const me = modelMap.get(modelLabel) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
+      me.requests++; me.inputTokens += pt; me.outputTokens += ct; me.totalTokens += tt; me.cost += spend;
+      modelMap.set(modelLabel, me);
+
+      // Provider breakdown — use api_base-derived name
+      const provider = providerName;
       const pe = providerMap.get(provider) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       pe.requests++; pe.inputTokens += pt; pe.outputTokens += ct; pe.totalTokens += tt; pe.cost += spend;
       providerMap.set(provider, pe);
@@ -125,16 +160,8 @@ export default function AnalyticsTab() {
       ke.requests++; ke.inputTokens += pt; ke.outputTokens += ct; ke.totalTokens += tt; ke.cost += spend;
       keyMap.set(maskedKey, ke);
 
-      // Account breakdown (by provider endpoint / api_base)
-      const apiBase = log.api_base || 'unknown';
-      // Extract a readable account name from the api_base URL
-      let accountName: string;
-      try {
-        const host = new URL(apiBase).hostname;
-        accountName = host.replace(/^(api|llm)\./, '').replace(/\.(com|ai|io|org|engineer).*$/, '');
-      } catch {
-        accountName = apiBase;
-      }
+      // Account breakdown (by provider name)
+      const accountName = providerName;
       const ae = accountMap.get(accountName) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       ae.requests++; ae.inputTokens += pt; ae.outputTokens += ct; ae.totalTokens += tt; ae.cost += spend;
       accountMap.set(accountName, ae);
@@ -157,7 +184,7 @@ export default function AnalyticsTab() {
     };
 
     return { totalTokens, inputTokens, outputTokens, totalSpend, modelRows: toRows(modelMap), providerRows: toRows(providerMap), keyRows: toRows(keyMap), accountRows: toRows(accountMap), dayMap };
-  }, [logs]);
+  }, [logs, providerLookup]);
 
   const { totalTokens, inputTokens, outputTokens, totalSpend, modelRows, providerRows, keyRows, accountRows } = computed;
   const totalRequests = logs.length;
@@ -185,11 +212,13 @@ export default function AnalyticsTab() {
       if (!day) continue;
       if (!byDate.has(day)) byDate.set(day, {});
       const models = byDate.get(day)!;
-      const model = log.model_group || log.model || 'unknown';
-      models[model] = (models[model] || 0) + (log.total_tokens ?? 0);
+      const pName = resolveProviderName(log.api_base, providerLookup);
+      const mGroup = log.model_group || log.model || 'unknown';
+      const mLabel = `${pName}/${mGroup}`;
+      models[mLabel] = (models[mLabel] || 0) + (log.total_tokens ?? 0);
     }
     return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, models]) => ({ date, models }));
-  }, [logs]);
+  }, [logs, providerLookup]);
 
   // Donut slices
   const providerDonutSlices = useMemo(() =>

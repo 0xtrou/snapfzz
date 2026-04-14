@@ -18,7 +18,7 @@ export interface ActivityHeatmapProps {
 
 const WEEKS = 52;
 const DAYS_PER_WEEK = 7;
-const CELL_SIZE = 10;
+const CELL_SIZE = 8;
 const CELL_GAP = 2;
 
 // row index: 0 = Sunday, 1 = Monday, ... 6 = Saturday (JS getDay())

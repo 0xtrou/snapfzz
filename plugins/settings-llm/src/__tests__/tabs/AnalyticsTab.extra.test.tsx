@@ -20,6 +20,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
   getMasterKey: () => mockGetMasterKey(),
   getSpendLogs: (...args: unknown[]) => mockGetSpendLogs(...args),
+  loadCustomProviders: () => Promise.resolve([]),
 }));
 
 describe('A013/UI/AnalyticsTab/Extra', () => {
