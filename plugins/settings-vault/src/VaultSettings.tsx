@@ -16,8 +16,8 @@ interface SecretEntry {
 type VaultStatus = 'healthy' | 'missing';
 
 // Per A011/SecretVault: secret values are fully masked — no characters revealed.
-function maskSecretValue(raw: string): string {
-  return '•'.repeat(Math.max(raw.length, 8));
+function maskSecretValue(_raw: string): string {
+  return '•'.repeat(8);
 }
 
 // Per A011/SecretVault: raw secret values are read only long enough to compute a masked display string.
