@@ -53,12 +53,22 @@ export default function AnalyticsTab() {
     try {
       const { start, end } = dateRangeForFilter(timeRange);
       // /spend/logs with date filters — the only analytics endpoint available
-      // without LiteLLM Enterprise. Filter out empty-model internal probes.
-      const raw = await getSpendLogs(baseUrl, masterKey, {
-        start_date: start,
-        end_date: end,
-      });
-      setLogs(raw.filter((l) => l.model && l.model.trim() !== ''));
+      // without LiteLLM Enterprise. Fetch ALL logs (LiteLLM date filter is
+      // unreliable) then filter client-side by date + non-empty model.
+      const raw = await getSpendLogs(baseUrl, masterKey, {});
+      const withModel = raw.filter((l) => l.model && l.model.trim() !== '');
+      if (start) {
+        const startMs = new Date(start).getTime();
+        const endMs = end ? new Date(end).getTime() : Date.now();
+        setLogs(withModel.filter((l) => {
+          const ts = l.startTime || l.timestamp;
+          if (!ts) return false;
+          const t = new Date(ts).getTime();
+          return t >= startMs && t <= endMs;
+        }));
+      } else {
+        setLogs(withModel);
+      }
     } catch (err) {
       console.error('[AnalyticsTab] Failed to load analytics:', err);
       message.error('Failed to load usage data');
