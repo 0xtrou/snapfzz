@@ -628,8 +628,8 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
         // models || [] → empty array → 'All models' tag inside expanded row
         const allModelsEls = screen.getAllByText('All models');
         expect(allModelsEls.length).toBeGreaterThan(0);
-        // budget_duration || '-' → Duration row shows '-'
-        expect(screen.getByText('Duration:')).toBeInTheDocument();
+        // budget_duration || '-' → Budget Cycle row shows '-'
+        expect(screen.getByText('Budget Cycle:')).toBeInTheDocument();
         // spend || 0 → $0.00 shown next to Budget label
         expect(screen.getByText('Budget:')).toBeInTheDocument();
       });

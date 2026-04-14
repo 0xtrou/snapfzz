@@ -230,7 +230,7 @@ export default function ApiKeysTab() {
     const spent = record.spend || 0;
     const budget = record.max_budget;
     const duration = record.budget_duration || '-';
-    const expires = formatDate(record.budget_reset_at ?? record.expires ?? undefined);
+    const expires = formatDate(record.expires ?? undefined);
 
     return (
       <div style={{ padding: '8px 0' }}>
@@ -256,12 +256,15 @@ export default function ApiKeysTab() {
             </Text>
           </div>
           <div>
-            <Text type="secondary">Duration: </Text>
+            <Text type="secondary">Budget Cycle: </Text>
             <Text>{duration}</Text>
+            {record.budget_reset_at && (
+              <Text type="secondary"> (resets {formatDate(record.budget_reset_at)})</Text>
+            )}
           </div>
           <div>
             <Text type="secondary">Expires: </Text>
-            <Text>{expires}</Text>
+            <Text>{expires === '-' ? 'Never' : expires}</Text>
           </div>
         </Space>
       </div>
