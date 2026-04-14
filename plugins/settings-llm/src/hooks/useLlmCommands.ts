@@ -309,22 +309,31 @@ export async function listKeysWithInfo(
   masterKey: string,
 ): Promise<KeyListResponse> {
   const listResponse = await listKeys(baseUrl, masterKey);
-  const tokens = listResponse.keys.map((k) => k.token || k.key).filter(Boolean) as string[];
 
-  if (tokens.length === 0) return listResponse;
+  // Extract token identifiers — LiteLLM may use any of these field names
+  const tokens: string[] = [];
+  for (const k of listResponse.keys) {
+    const record = k as Record<string, unknown>;
+    const id = record.token ?? record.key ?? record.key_hash ?? record.api_key;
+    if (typeof id === 'string' && id) tokens.push(id);
+    else tokens.push('');
+  }
+
+  const validTokens = tokens.filter(Boolean);
+  if (validTokens.length === 0) return listResponse;
 
   // Fetch all key info in parallel
   const infoResults = await Promise.allSettled(
-    tokens.map((token) => getKeyInfo(baseUrl, masterKey, token)),
+    tokens.map((token) => token ? getKeyInfo(baseUrl, masterKey, token) : Promise.reject('no token')),
   );
 
   // Merge: use info data as base, overlay with any extra fields from list
   const enriched: KeyInfo[] = infoResults.map((result, i) => {
-    if (result.status === 'fulfilled') {
-      const info = result.value;
-      // LiteLLM /key/info wraps in { key, info } or returns flat — handle both
-      const keyData = (info as Record<string, unknown>).info ?? (info as Record<string, unknown>).key ?? info;
-      return { ...listResponse.keys[i], ...(keyData as KeyInfo) };
+    if (result.status === 'fulfilled' && result.value) {
+      const raw = result.value as Record<string, unknown>;
+      // LiteLLM /key/info may wrap data in { key: "...", info: {...} } or return flat
+      const keyData = (raw.info && typeof raw.info === 'object' ? raw.info : raw) as KeyInfo;
+      return { ...listResponse.keys[i], ...keyData };
     }
     return listResponse.keys[i];
   });
