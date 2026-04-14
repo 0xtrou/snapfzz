@@ -58,33 +58,6 @@ impl LiteLLMFactory {
             env.insert("LITELLM_SALT_KEY".to_string(), salt_key);
         }
 
-        // Inject ALL provider keys from the vault — built-in and custom providers.
-        // Vault keys follow the pattern litellm:provider:{id}:{name}.
-        // We enumerate all secrets and extract provider IDs dynamically.
-        if let Ok(all_secrets) = guard.list() {
-            let mut seen_providers = std::collections::HashSet::new();
-            for secret_name in &all_secrets {
-                if let Some(rest) = secret_name.strip_prefix("litellm:provider:") {
-                    if let Some(provider) = rest.split(':').next() {
-                        seen_providers.insert(provider.to_string());
-                    }
-                }
-            }
-            for provider in &seen_providers {
-                if let Ok(keys) = snapfzz_llm::vault::list_provider_keys(&mut guard, provider) {
-                    for key_name in keys {
-                        if let Ok(key_value) =
-                            snapfzz_llm::vault::read_provider_key(&mut guard, provider, &key_name)
-                        {
-                            let env_var =
-                                snapfzz_llm::vault::provider_key_to_env_var(provider, &key_name);
-                            env.insert(env_var, key_value);
-                        }
-                    }
-                }
-            }
-        }
-
         SpawnSecrets { env }
     }
 }
