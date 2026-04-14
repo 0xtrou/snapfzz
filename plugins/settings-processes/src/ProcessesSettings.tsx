@@ -7,6 +7,7 @@ import {
   Space,
   Typography,
   Tooltip,
+  message,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -102,8 +103,8 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
     try {
       const result = await bridge.invoke<string[]>('get_process_logs', { name: process.name, tailN: 100 });
       setLogs(result);
-    } catch {
-      void 0;
+    } catch (err) {
+      console.error('[ProcessesSettings] fetchLogs failed:', err);
     }
   }, [process.name]);
 
@@ -120,8 +121,9 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
     try {
       await bridge.invoke<void>('restart_process', { name: process.name });
       onAction();
-    } catch {
-      void 0;
+      void message.success('Process restarted');
+    } catch (err) {
+      void message.error('Failed to restart process');
     }
   };
 
@@ -129,8 +131,9 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
     try {
       await bridge.invoke<void>('kill_process', { name: process.name });
       onAction();
-    } catch {
-      void 0;
+      void message.success('Process killed');
+    } catch (err) {
+      void message.error('Failed to kill process');
     }
   };
 
@@ -138,8 +141,9 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
     try {
       await bridge.invoke<void>('clear_process_logs', { name: process.name });
       setLogs([]);
-    } catch {
-      void 0;
+      void message.success('Logs cleared');
+    } catch (err) {
+      void message.error('Failed to clear logs');
     }
   };
 
@@ -286,7 +290,9 @@ function DetailPanel({ process, appTotalMb, totalRssMb, onAction }: DetailPanelP
             try {
               const dataDir = await bridge.invoke<string>('get_data_dir');
               void bridge.invoke<void>('open_path', { path: `${dataDir}/runtime/${process.name}` });
-            } catch { void 0; }
+            } catch (err) {
+              void message.error('Failed to open folder');
+            }
           }}
           data-testid={`btn-open-log-file-${process.name}`}
         >
@@ -314,8 +320,8 @@ export default function ProcessesSettings() {
       const result = await bridge.invoke<BudgetMetrics>('budget_snapshot');
       setMetrics(result);
       setHasData(true);
-    } catch {
-      void 0;
+    } catch (err) {
+      console.error('[ProcessesSettings] fetchMetrics failed:', err);
     }
   }, []);
 

@@ -1,7 +1,7 @@
 // A008/BudgetMetrics: Zone 3 render — reads live metrics from Rust via shared bridge IPC,
 // refreshes every 2s, displays preset selector and budget table.
 import { useEffect, useState } from 'react';
-import { Card, Progress, Radio, Space, Typography } from 'antd';
+import { Card, message, Progress, Radio, Space, Typography } from 'antd';
 import { AntIcon, createTauriBridge, SettingsHeader } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -175,7 +175,7 @@ export default function PerformanceSettings() {
   useEffect(() => {
     bridge.invoke<HardwareInfo>('get_hardware_info')
       .then(setHwInfo)
-      .catch(() => {});
+      .catch((err) => { console.error(err); });
   }, []);
 
   useEffect(() => {
@@ -239,9 +239,10 @@ export default function PerformanceSettings() {
               const snap = await bridge.invoke<BudgetMetrics>('budget_snapshot');
               setMetrics(snap);
             } catch { void 0; }
+            void message.success('Preset applied');
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2500);
-          } catch { void 0; }
+          } catch { void message.error('Failed to apply preset'); }
           setSaving(false);
         }}
         onDiscard={() => setPendingPreset(null)}

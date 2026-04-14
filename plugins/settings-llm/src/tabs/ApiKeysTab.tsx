@@ -205,8 +205,13 @@ export default function ApiKeysTab() {
           description="This permanently removes the virtual key."
           onConfirm={async () => {
             if (!baseUrl || !masterKey) return;
-            await deleteKey(baseUrl, masterKey, resolveKey(record));
-            await loadKeys();
+            try {
+              await deleteKey(baseUrl, masterKey, resolveKey(record));
+              message.success('Key deleted');
+              await loadKeys();
+            } catch {
+              message.error('Failed to delete key');
+            }
           }}
           okText="Delete"
           danger
@@ -288,6 +293,7 @@ export default function ApiKeysTab() {
       }
       const result = await generateKey(baseUrl, masterKey, params);
       setGeneratedKey(result.key);
+      message.success('Key created successfully');
       await loadKeys();
     } catch (err) {
       message.error(`Failed to create key: ${err instanceof Error ? err.message : String(err)}`);

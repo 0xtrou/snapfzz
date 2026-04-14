@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Input, Modal, Space, Typography } from 'antd';
+import { Input, message, Modal, Space, Typography } from 'antd';
 import { createTauriBridge, SettingsHeader, ConfirmAction, AppButton } from '@snapfzz/shared';
 
 const { Text } = Typography;
@@ -40,8 +40,9 @@ export default function AdvancedSettings(): React.ReactElement {
         },
       });
       window.dispatchEvent(new CustomEvent('snapfzz:settings-changed'));
+      void message.success('Settings reset to defaults');
     } catch {
-      void 0;
+      void message.error('Failed to reset settings');
     }
   }
 
@@ -74,7 +75,7 @@ export default function AdvancedSettings(): React.ReactElement {
                       content: 'Data directory changed. Please restart for changes to take effect.',
                     });
                   }
-                } catch { void 0; }
+                } catch { void message.error('Failed to change data directory'); }
               }}>
                 Browse...
               </AppButton>

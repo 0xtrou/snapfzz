@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Empty, Input, Skeleton, Space, Table, Tag, Typography } from 'antd';
+import { Empty, Input, message, Skeleton, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { createTauriBridge, ConfirmAction, SettingsHeader, AppButton } from '@snapfzz/shared';
@@ -109,7 +109,10 @@ export default function VaultSettings() {
               setDeletingName(record.name);
               try {
                 await bridge.invoke<void>('vault_delete', { key: record.name });
+                message.success('Secret deleted');
                 await loadSecrets();
+              } catch {
+                message.error('Failed to delete secret');
               } finally {
                 setDeletingName(null);
               }
@@ -141,10 +144,13 @@ export default function VaultSettings() {
     setSubmitting(true);
     try {
       await bridge.invoke<void>('vault_store', { key: trimmedName, value: newValue });
+      message.success('Secret stored');
       setNewName('');
       setNewValue('');
       setNameError(null);
       await loadSecrets();
+    } catch {
+      message.error('Failed to store secret');
     } finally {
       setSubmitting(false);
     }
