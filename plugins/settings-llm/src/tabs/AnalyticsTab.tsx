@@ -93,6 +93,7 @@ export default function AnalyticsTab() {
     const modelMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
     const providerMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
     const keyMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
+    const accountMap = new Map<string, { requests: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number }>();
     const dayMap = new Map<string, { tokens: number; requests: number; inputTokens: number; outputTokens: number; cost: number }>();
 
     for (const log of logs) {
@@ -117,12 +118,26 @@ export default function AnalyticsTab() {
       pe.requests++; pe.inputTokens += pt; pe.outputTokens += ct; pe.totalTokens += tt; pe.cost += spend;
       providerMap.set(provider, pe);
 
-      // Key breakdown
+      // Virtual key breakdown (by api_key hash)
       const key = log.api_key || 'unknown';
       const maskedKey = key.length > 12 ? `${key.slice(0, 4)}...${key.slice(-4)}` : key;
       const ke = keyMap.get(maskedKey) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       ke.requests++; ke.inputTokens += pt; ke.outputTokens += ct; ke.totalTokens += tt; ke.cost += spend;
       keyMap.set(maskedKey, ke);
+
+      // Account breakdown (by provider endpoint / api_base)
+      const apiBase = log.api_base || 'unknown';
+      // Extract a readable account name from the api_base URL
+      let accountName: string;
+      try {
+        const host = new URL(apiBase).hostname;
+        accountName = host.replace(/^(api|llm)\./, '').replace(/\.(com|ai|io|org|engineer).*$/, '');
+      } catch {
+        accountName = apiBase;
+      }
+      const ae = accountMap.get(accountName) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
+      ae.requests++; ae.inputTokens += pt; ae.outputTokens += ct; ae.totalTokens += tt; ae.cost += spend;
+      accountMap.set(accountName, ae);
 
       // Daily breakdown
       const ts = log.startTime || log.timestamp;
@@ -141,10 +156,10 @@ export default function AnalyticsTab() {
       return entries.sort((a, b) => b.totalTokens - a.totalTokens);
     };
 
-    return { totalTokens, inputTokens, outputTokens, totalSpend, modelRows: toRows(modelMap), providerRows: toRows(providerMap), keyRows: toRows(keyMap), dayMap };
+    return { totalTokens, inputTokens, outputTokens, totalSpend, modelRows: toRows(modelMap), providerRows: toRows(providerMap), keyRows: toRows(keyMap), accountRows: toRows(accountMap), dayMap };
   }, [logs]);
 
-  const { totalTokens, inputTokens, outputTokens, totalSpend, modelRows, providerRows, keyRows } = computed;
+  const { totalTokens, inputTokens, outputTokens, totalSpend, modelRows, providerRows, keyRows, accountRows } = computed;
   const totalRequests = logs.length;
 
   // Heatmap data
@@ -182,7 +197,14 @@ export default function AnalyticsTab() {
     [providerRows],
   );
 
-  const accountEntries = useMemo(() =>
+  // BY ACCOUNT: provider endpoints (from api_base)
+  const accountDonutEntries = useMemo(() =>
+    accountRows.map((r) => ({ label: r.name, value: r.totalTokens })),
+    [accountRows],
+  );
+
+  // BY VIRTUAL KEY: virtual key hashes
+  const keyDonutEntries = useMemo(() =>
     keyRows.map((r) => ({ label: r.name, value: r.totalTokens })),
     [keyRows],
   );
@@ -260,8 +282,8 @@ export default function AnalyticsTab() {
 
       {/* Donut row: By Account + By API Key */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
-        <div style={{ minHeight: 0 }}><BreakdownDonut title="BY ACCOUNT" entries={accountEntries} /></div>
-        <div style={{ minHeight: 0 }}><BreakdownDonut title="BY API KEY" entries={accountEntries} /></div>
+        <div style={{ minHeight: 0 }}><BreakdownDonut title="BY ACCOUNT" entries={accountDonutEntries} /></div>
+        <div style={{ minHeight: 0 }}><BreakdownDonut title="BY VIRTUAL KEY" entries={keyDonutEntries} /></div>
       </div>
 
       {/* Provider Breakdown */}
