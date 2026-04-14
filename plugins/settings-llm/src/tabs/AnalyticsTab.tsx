@@ -7,6 +7,7 @@ import {
   getBaseUrl,
   getMasterKey,
   getSpendLogs,
+  getModelInfo,
   loadCustomProviders,
   type SpendLog,
   type CustomProvider,
@@ -42,35 +43,73 @@ function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } 
 }
 
 
-// Build a lookup from api_base URL → provider name using custom providers config
-function buildProviderLookup(providers: CustomProvider[]): Map<string, string> {
-  const lookup = new Map<string, string>();
-  for (const p of providers) {
-    // Normalize: strip trailing slashes and /v1
-    const base = p.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
-    lookup.set(base, p.name);
-    lookup.set(base + '/', p.name);
-    lookup.set(base + '/v1', p.name);
-    lookup.set(base + '/v1/', p.name);
-  }
-  return lookup;
+// Build a lookup from model_id → provider name.
+// Uses: model_info.snapfzz_provider_id (set at import time) → custom providers config.
+// Fallback: api_base → custom provider name match.
+interface ProviderLookup {
+  byModelId: Map<string, string>;    // model_id UUID → provider name
+  byApiBase: Map<string, string>;    // api_base URL → provider name (fallback)
 }
 
-function resolveProviderName(apiBase: string | undefined, lookup: Map<string, string>): string {
-  if (!apiBase) return 'unknown';
-  // Try exact match first
-  const normalized = apiBase.replace(/\/+$/, '');
-  if (lookup.has(normalized)) return lookup.get(normalized)!;
-  if (lookup.has(apiBase)) return lookup.get(apiBase)!;
-  // Fallback: extract hostname
-  try { return new URL(apiBase).hostname.replace(/^(api|llm)\./, ''); } catch { return apiBase; }
+function buildProviderLookup(
+  providers: CustomProvider[],
+  modelInfos: Array<{ model_name: string; model_info?: Record<string, unknown>; litellm_params?: { api_base?: string } }>,
+): ProviderLookup {
+  // Provider ID → name from custom providers config
+  const idToName = new Map<string, string>();
+  const baseToName = new Map<string, string>();
+  for (const p of providers) {
+    idToName.set(`custom-${p.id}`, p.name);
+    const base = p.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+    // Don't overwrite — first provider with this base wins
+    if (!baseToName.has(base)) {
+      baseToName.set(base, p.name);
+      baseToName.set(base + '/', p.name);
+      baseToName.set(base + '/v1', p.name);
+      baseToName.set(base + '/v1/', p.name);
+    }
+  }
+
+  // model_id → provider name from model_info.snapfzz_provider_id
+  const byModelId = new Map<string, string>();
+  for (const m of modelInfos) {
+    const modelId = (m.model_info as Record<string, unknown>)?.id as string;
+    const providerId = (m.model_info as Record<string, unknown>)?.snapfzz_provider_id as string;
+    if (modelId && providerId && idToName.has(providerId)) {
+      byModelId.set(modelId, idToName.get(providerId)!);
+    } else if (modelId && m.litellm_params?.api_base) {
+      // Fallback: resolve from api_base
+      const base = m.litellm_params.api_base.replace(/\/+$/, '');
+      if (baseToName.has(base)) byModelId.set(modelId, baseToName.get(base)!);
+    }
+  }
+
+  return { byModelId, byApiBase: baseToName };
+}
+
+function resolveProviderName(log: SpendLog, lookup: ProviderLookup): string {
+  // 1. Try model_id → provider name (most accurate)
+  if (log.model_id && lookup.byModelId.has(log.model_id)) {
+    return lookup.byModelId.get(log.model_id)!;
+  }
+  // 2. Fallback: api_base → provider name
+  if (log.api_base) {
+    const base = log.api_base.replace(/\/+$/, '');
+    if (lookup.byApiBase.has(base)) return lookup.byApiBase.get(base)!;
+    if (lookup.byApiBase.has(log.api_base)) return lookup.byApiBase.get(log.api_base)!;
+  }
+  // 3. Last resort: hostname
+  if (log.api_base) {
+    try { return new URL(log.api_base).hostname.replace(/^(api|llm)\./, ''); } catch { /* */ }
+  }
+  return 'unknown';
 }
 
 export default function AnalyticsTab() {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
-  const [providerLookup, setProviderLookup] = useState<Map<string, string>>(new Map());
+  const [providerLookup, setProviderLookup] = useState<ProviderLookup>({ byModelId: new Map(), byApiBase: new Map() });
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<TimeRange>('30D');
 
@@ -82,11 +121,12 @@ export default function AnalyticsTab() {
       // /spend/logs with date filters — the only analytics endpoint available
       // without LiteLLM Enterprise. Fetch ALL logs (LiteLLM date filter is
       // unreliable) then filter client-side by date + non-empty model.
-      const [raw, customProviders] = await Promise.all([
+      const [raw, customProviders, modelInfoRes] = await Promise.all([
         getSpendLogs(baseUrl, masterKey, {}),
         loadCustomProviders().catch(() => []),
+        getModelInfo(baseUrl, masterKey).catch(() => ({ data: [] })),
       ]);
-      setProviderLookup(buildProviderLookup(customProviders));
+      setProviderLookup(buildProviderLookup(customProviders, modelInfoRes.data ?? []));
       const withModel = raw.filter((l) => l.model && l.model.trim() !== '');
       if (start) {
         const startMs = new Date(start).getTime();
@@ -138,7 +178,7 @@ export default function AnalyticsTab() {
       totalSpend += spend;
 
       // Provider name from custom providers config (custom_llm_provider is just the SDK adapter e.g. "openai")
-      const providerName = resolveProviderName(log.api_base, providerLookup);
+      const providerName = resolveProviderName(log, providerLookup);
 
       // Model breakdown — show as provider/model format
       const modelGroup = log.model_group || log.model || 'unknown';
@@ -212,7 +252,7 @@ export default function AnalyticsTab() {
       if (!day) continue;
       if (!byDate.has(day)) byDate.set(day, {});
       const models = byDate.get(day)!;
-      const pName = resolveProviderName(log.api_base, providerLookup);
+      const pName = resolveProviderName(log, providerLookup);
       const mGroup = log.model_group || log.model || 'unknown';
       const mLabel = `${pName}/${mGroup}`;
       models[mLabel] = (models[mLabel] || 0) + (log.total_tokens ?? 0);

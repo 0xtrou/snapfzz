@@ -20,6 +20,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
   getMasterKey: () => mockGetMasterKey(),
   getSpendLogs: (...args: unknown[]) => mockGetSpendLogs(...args),
+  getModelInfo: () => Promise.resolve({ data: [] }),
   loadCustomProviders: () => Promise.resolve([]),
 }));
 

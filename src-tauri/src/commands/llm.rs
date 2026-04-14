@@ -239,6 +239,9 @@ pub async fn llm_import_model(
             "model": litellm_model,
             "api_key": api_key_value,
             "api_base": base_url,
+        },
+        "model_info": {
+            "snapfzz_provider_id": provider_id,
         }
     });
 
