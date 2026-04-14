@@ -53,6 +53,7 @@ export default function DonutChart({ title, slices, totalLabel }: DonutChartProp
         border: '1px solid var(--border-default)',
         borderRadius: 8,
         padding: 16,
+        flex: 1,
       }}
     >
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

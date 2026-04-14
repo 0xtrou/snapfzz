@@ -272,9 +272,9 @@ export default function AnalyticsTab() {
       <ActivityHeatmap dailyData={heatmapData} />
 
       {/* Charts row: Token & Cost Trend + Cost by Provider */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 16 }}>
-        <div style={{ minHeight: 0 }}><TokenCostTrend data={trendData} /></div>
-        <div style={{ minHeight: 0 }}><DonutChart title="COST BY PROVIDER" slices={providerDonutSlices} totalLabel={formatCost(totalSpend)} /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 16, alignItems: 'stretch' }}>
+        <div style={{ minHeight: 0, display: 'flex' }}><TokenCostTrend data={trendData} /></div>
+        <div style={{ minHeight: 0, display: 'flex' }}><DonutChart title="COST BY PROVIDER" slices={providerDonutSlices} totalLabel={formatCost(totalSpend)} /></div>
       </div>
 
       {/* Model Usage Over Time */}

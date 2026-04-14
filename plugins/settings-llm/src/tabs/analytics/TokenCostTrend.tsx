@@ -82,6 +82,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
           borderRadius: 8,
           padding: 16,
           minHeight: 200,
+          flex: 1,
         }}
       >
         <div
@@ -119,6 +120,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
         border: '1px solid var(--border-default)',
         borderRadius: 8,
         padding: 16,
+        flex: 1,
       }}
     >
       <div
