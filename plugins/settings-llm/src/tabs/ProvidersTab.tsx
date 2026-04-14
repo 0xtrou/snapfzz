@@ -8,6 +8,7 @@ import {
   Skeleton,
   Switch,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -498,6 +499,7 @@ const DiscoveredModelChip = React.memo(function DiscoveredModelChip({
   model,
   imported,
   importing,
+  disabled,
   onImport,
   onDisable,
   onCopy,
@@ -507,6 +509,8 @@ const DiscoveredModelChip = React.memo(function DiscoveredModelChip({
   model: DiscoveredModel;
   imported: boolean;
   importing: boolean;
+  /** When true, the toggle is greyed out (no API key configured). */
+  disabled?: boolean;
   onImport: (id: string) => void;
   onDisable: (id: string) => void;
   onCopy: (id: string) => void;
@@ -570,13 +574,16 @@ const DiscoveredModelChip = React.memo(function DiscoveredModelChip({
             onClick={() => onCopy(model.id)}
             aria-label={`Copy ${model.id}`}
           />
-          <Switch
-            size="small"
-            checked={imported}
-            loading={importing}
-            onChange={() => { imported ? onDisable(model.id) : onImport(model.id); }}
-            aria-label={`Enable ${model.id}`}
-          />
+          <Tooltip title={disabled ? 'Add an API key for this provider first' : undefined}>
+            <Switch
+              size="small"
+              checked={imported}
+              loading={importing}
+              disabled={disabled}
+              onChange={() => { imported ? onDisable(model.id) : onImport(model.id); }}
+              aria-label={`Enable ${model.id}`}
+            />
+          </Tooltip>
         </div>
       </div>
 
@@ -875,6 +882,7 @@ function AvailableModels({
         model={model}
         imported={importedIds.has(model.id)}
         importing={importingId === model.id}
+        disabled={usingCatalog}
         onImport={handleImport}
         onDisable={handleDisable}
         onCopy={handleCopy}
@@ -882,7 +890,7 @@ function AvailableModels({
         catalogInfo={catalogLookup[model.id]}
       />
     ),
-    [importedIds, importingId, handleImport, handleDisable, handleCopy, registeredInfoMap, catalogLookup],
+    [importedIds, importingId, usingCatalog, handleImport, handleDisable, handleCopy, registeredInfoMap, catalogLookup],
   );
 
   return (
