@@ -77,20 +77,62 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
     return (
       <div
         style={{
-          height: CHART_HEIGHT + AXIS_LABEL_HEIGHT,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--text-muted)',
-          fontSize: 13,
+          background: 'var(--bg-default)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 8,
+          padding: 16,
+          minHeight: 200,
         }}
       >
-        No data
+        <div
+          style={{
+            color: 'var(--text-primary)',
+            fontSize: 13,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            marginBottom: 12,
+          }}
+        >
+          Token &amp; Cost Trend
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 160,
+            color: 'var(--text-muted)',
+            fontSize: 13,
+          }}
+        >
+          No data available
+        </div>
       </div>
     );
   }
 
   return (
+    <div
+      style={{
+        background: 'var(--bg-default)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 8,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          color: 'var(--text-primary)',
+          fontSize: 13,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          marginBottom: 12,
+        }}
+      >
+        Token &amp; Cost Trend
+      </div>
     <div ref={containerRef} style={{ width: '100%' }}>
       {/* Legend */}
       <div
@@ -347,6 +389,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
           ))}
         </div>
       </div>
+    </div>
     </div>
   );
 }

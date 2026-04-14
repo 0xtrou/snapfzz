@@ -47,15 +47,24 @@ export default function DonutChart({ title, slices, totalLabel }: DonutChartProp
   const isEmpty = total === 0 || slices.length === 0;
 
   return (
+    <div
+      style={{
+        background: 'var(--bg-default)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 8,
+        padding: 16,
+      }}
+    >
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* Title */}
       <div
         style={{
-          fontSize: 11,
-          fontWeight: 600,
+          color: 'var(--text-primary)',
+          fontSize: 13,
+          fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: 0.5,
-          color: 'var(--text-muted)',
+          marginBottom: 12,
         }}
       >
         {title}
@@ -219,6 +228,7 @@ export default function DonutChart({ title, slices, totalLabel }: DonutChartProp
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No data</span>
         )}
       </div>
+    </div>
     </div>
   );
 }

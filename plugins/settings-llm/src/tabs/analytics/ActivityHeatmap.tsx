@@ -279,11 +279,12 @@ function MostActiveDayCard({
     >
       <div
         style={{
-          color: 'var(--text-muted)',
-          fontSize: 10,
-          fontWeight: 600,
+          color: 'var(--text-primary)',
+          fontSize: 13,
+          fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: 0.5,
+          marginBottom: 0,
         }}
       >
         Most Active Day
@@ -336,6 +337,72 @@ function MostActiveDayCard({
   );
 }
 
+// -- Weekly card sub-component --
+
+function WeeklyCard({ weeklyRequests }: { weeklyRequests: number[] }) {
+  const maxWeekly = Math.max(...weeklyRequests, 1);
+  // Show the last 7 days of the week (last 7 columns map to Sun-Sat)
+  // We display a simplified 7-square row for the current week
+  const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // Use last 7 weekly bucket values as a proxy for the weekly pattern
+  const last7 = weeklyRequests.slice(-7);
+
+  return (
+    <div
+      style={{
+        background: 'var(--bg-default)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 8,
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          color: 'var(--text-primary)',
+          fontSize: 13,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          marginBottom: 0,
+        }}
+      >
+        Weekly
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+        {last7.map((req, i) => {
+          const bg = weeklyBarColor(req, maxWeekly);
+          return (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div
+                title={`${DAY_LABELS[i]}: ${req} requests`}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  background: bg,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-mono)',
+                  textAlign: 'center',
+                }}
+              >
+                {DAY_LABELS[i]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // -- Main component --
 
 export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
@@ -347,90 +414,121 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
   const mostActiveDay = useMemo(() => findMostActiveDay(dailyData.filter((d) => d.tokens > 0)), [dailyData]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Section header row */}
+    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
+      {/* LEFT: Main heatmap card */}
       <div
         style={{
+          background: 'var(--bg-default)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 8,
+          padding: 16,
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid var(--border-default)',
-          paddingBottom: 6,
+          flexDirection: 'column',
+          gap: 12,
         }}
       >
-        <span
+        {/* Section header row */}
+        <div
           style={{
-            color: 'var(--text-muted)',
-            fontSize: 11,
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
         >
-          Activity
-        </span>
-        <span
+          <span
+            style={{
+              color: 'var(--text-primary)',
+              fontSize: 13,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+            }}
+          >
+            Activity
+          </span>
+          <span
+            style={{
+              color: 'var(--text-secondary)',
+              fontSize: 12,
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            {activeDays} active days · {formatTokens(totalTokens)} tokens · {WEEKS * DAYS_PER_WEEK} days
+          </span>
+        </div>
+
+        {/* Day labels + grid */}
+        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+          <DayLabels />
+          <HeatmapGrid cells={cells} p25={p25} p75={p75} />
+        </div>
+
+        {/* Color scale legend */}
+        <div
           style={{
-            color: 'var(--text-secondary)',
-            fontSize: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 10,
+            color: 'var(--text-muted)',
             fontFamily: 'var(--font-mono)',
           }}
         >
-          {activeDays} active days · {formatTokens(totalTokens)} tokens · {WEEKS * DAYS_PER_WEEK} days
-        </span>
+          <span>Less</span>
+          {[
+            'var(--bg-subtle)',
+            'color-mix(in srgb, var(--color-success) 20%, transparent)',
+            'color-mix(in srgb, var(--color-success) 50%, transparent)',
+            'var(--color-success)',
+          ].map((bg, i) => (
+            <div
+              key={i}
+              style={{ width: 12, height: 12, borderRadius: 2, background: bg }}
+            />
+          ))}
+          <span>More</span>
+        </div>
       </div>
 
-      {/* Heatmap + most active day */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* Grid area */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minWidth: 0 }}>
-          {/* Day labels + grid */}
-          <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-            <DayLabels />
-            <HeatmapGrid cells={cells} p25={p25} p75={p75} />
-          </div>
-          {/* Weekly summary bar — offset by day-label column width */}
-          <div style={{ display: 'flex' }}>
-            <div style={{ width: 28, flexShrink: 0 }} />
-            <WeeklySummaryBar weeklyRequests={weeklyRequests} />
-          </div>
-        </div>
-
-        {/* Most active day card */}
-        {mostActiveDay && (
+      {/* RIGHT: Two stacked cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Most Active Day card */}
+        {mostActiveDay ? (
           <MostActiveDayCard
             day={mostActiveDay}
             weeklyRequests={weeklyRequests}
             p25={p25}
             p75={p75}
           />
-        )}
-      </div>
-
-      {/* Color scale legend */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          fontSize: 10,
-          color: 'var(--text-muted)',
-          fontFamily: 'var(--font-mono)',
-        }}
-      >
-        <span>Less</span>
-        {[
-          'var(--bg-subtle)',
-          'color-mix(in srgb, var(--color-success) 20%, transparent)',
-          'color-mix(in srgb, var(--color-success) 50%, transparent)',
-          'var(--color-success)',
-        ].map((bg, i) => (
+        ) : (
           <div
-            key={i}
-            style={{ width: 12, height: 12, borderRadius: 2, background: bg }}
-          />
-        ))}
-        <span>More</span>
+            style={{
+              background: 'var(--bg-default)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 8,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                color: 'var(--text-primary)',
+                fontSize: 13,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              Most Active Day
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No data</span>
+          </div>
+        )}
+
+        {/* Weekly card */}
+        <WeeklyCard weeklyRequests={weeklyRequests} />
       </div>
     </div>
   );
