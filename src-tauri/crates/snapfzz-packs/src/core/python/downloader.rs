@@ -115,23 +115,15 @@ impl SystemComponent for PythonDownloader {
             }
         }
 
-        let info = ComponentInfo {
-            id: "python".into(),
-            name: format!("Python {}", constants::versions::PYTHON),
-            description: "Python runtime managed by uv. Required for AgentScope and Python-based packs.".into(),
-            license: "PSF-2.0".into(),
-            version: self.version.clone(),
-            platform: self.platform.platform.clone(),
-            platform_display: self.platform.display.to_string(),
-            download_url: String::new(),
-            install_path: self.install_dir.to_string_lossy().into_owned(),
-            size: 0,
-            checksum: String::new(),
-            checksum_algorithm: String::new(),
-            is_installed: self.is_installed(),
-            repository_url: "https://github.com/python/cpython".into(),
-            website_url: "https://www.python.org/".into(),
-        };
+        let meta = constants::pack_metadata("python")
+            .expect("python metadata must exist in constants");
+        let info = meta.to_component_info(
+            self.version.clone(),
+            self.platform.platform.clone(),
+            self.platform.display.to_string(),
+            self.install_dir.to_string_lossy().into_owned(),
+            is_installed,
+        );
 
         {
             let mut cache = self.cached_info.lock().await;

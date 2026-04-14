@@ -153,6 +153,32 @@ impl SystemComponent for UvDownloader {
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
         let is_installed = self.is_installed();
+        let meta = constants::pack_metadata("uv")
+            .expect("uv metadata must exist in constants");
+
+        // Fast path: if installed, return local info without hitting GitHub API.
+        // Get version by running the binary — avoids network round-trip.
+        if is_installed {
+            let version = Command::new(self.binary_path())
+                .arg("--version")
+                .output()
+                .ok()
+                .and_then(|out| String::from_utf8(out.stdout).ok())
+                .map(|s| s.trim().replace("uv ", ""))
+                .unwrap_or_else(|| constants::versions::UV.to_string());
+
+            let info = meta.to_component_info(
+                version,
+                self.platform.platform.clone(),
+                self.platform.display.to_string(),
+                self.install_dir.to_string_lossy().into_owned(),
+                true,
+            );
+
+            let mut cache = self.cached_info.lock().await;
+            *cache = Some(info.clone());
+            return Ok(info);
+        }
 
         {
             let cache = self.cached_info.lock().await;
@@ -174,7 +200,7 @@ impl SystemComponent for UvDownloader {
             Ok(resp) if resp.status().is_success() => {
                 let release: GithubRelease = resp.json().await
                     .map_err(|error| ComponentError::network(format!("failed to parse uv release: {error}")))?;
-                
+
                 let asset_name = self.asset_name();
                 let asset = release
                     .assets
@@ -187,7 +213,7 @@ impl SystemComponent for UvDownloader {
             _ => {
                 let base_url = format!("{}/{}", constants::urls::UV_DOWNLOAD_BASE, constants::versions::UV);
                 let download_url = format!("{}/{}", base_url, self.asset_name());
-                
+
                 let size = match self.platform.platform.as_str() {
                     "macos-arm64" => 11_000_000,
                     "macos-x64" => 11_500_000,
@@ -202,23 +228,15 @@ impl SystemComponent for UvDownloader {
             }
         };
 
-        let info = ComponentInfo {
-            id: "uv".into(),
-            name: "uv (Python Package Manager)".into(),
-            description: "Fast Python package manager. Required for all Python runtimes.".into(),
-            license: "Apache-2.0 / MIT".into(),
+        let mut info = meta.to_component_info(
             version,
-            platform: self.platform.platform.clone(),
-            platform_display: self.platform.display.to_string(),
-            download_url,
-            install_path: self.binary_path().to_string_lossy().into_owned(),
-            size,
-            checksum: String::new(),
-            checksum_algorithm: String::new(),
-            is_installed: self.is_installed(),
-            repository_url: "https://github.com/astral-sh/uv".into(),
-            website_url: "https://docs.astral.sh/uv".into(),
-        };
+            self.platform.platform.clone(),
+            self.platform.display.to_string(),
+            self.binary_path().to_string_lossy().into_owned(),
+            self.is_installed(),
+        );
+        info.download_url = download_url;
+        info.size = size;
 
         {
             let mut cache = self.cached_info.lock().await;
@@ -487,7 +505,7 @@ mod tests {
 
         assert_eq!(info.id, "uv");
         assert_eq!(info.name, "uv (Python Package Manager)");
-        assert_eq!(info.license, "Apache-2.0 / MIT");
+        assert_eq!(info.license, "MIT");
         assert_eq!(
             info.description,
             "Fast Python package manager. Required for all Python runtimes."

@@ -42,15 +42,33 @@ impl CefDownloader {
     }
 
     pub fn is_installed(&self) -> bool {
-        std::fs::read_dir(&self.install_dir)
-            .ok()
-            .map(|entries| {
-                entries.filter_map(|entry| entry.ok()).any(|entry| {
-                    entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
-                        && entry.file_name().to_string_lossy().starts_with("cef_binary")
-                })
+        self.installed_cef_dir_name().is_some()
+    }
+
+    /// Returns the `cef_binary_*` directory name if installed, None otherwise.
+    fn installed_cef_dir_name(&self) -> Option<String> {
+        std::fs::read_dir(&self.install_dir).ok()?.filter_map(|e| e.ok()).find_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if entry.file_type().map(|k| k.is_dir()).unwrap_or(false)
+                && name.starts_with("cef_binary")
+            {
+                Some(name)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Extract CEF version from the installed directory name.
+    /// Format: `cef_binary_146.0.10+g1234567+chromium-146.0.7423.3_macosarm64`
+    /// Returns the part between `cef_binary_` and the first `+`.
+    fn installed_version(&self) -> String {
+        self.installed_cef_dir_name()
+            .and_then(|name| {
+                let stripped = name.strip_prefix("cef_binary_")?;
+                Some(stripped.split('+').next().unwrap_or(stripped).to_string())
             })
-            .unwrap_or(false)
+            .unwrap_or_default()
     }
 
     pub fn cancel_download(&self) {
@@ -398,28 +416,36 @@ impl SystemComponent for CefDownloader {
     }
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
+        let meta = crate::core::constants::cef_metadata();
+
+        // Fast path: if already installed, return local info without hitting CDN.
+        if self.is_installed() {
+            return Ok(meta.to_component_info(
+                self.installed_version(),
+                self.platform.clone(),
+                platform_display_name(&self.platform).to_string(),
+                self.install_dir.to_string_lossy().into(),
+                true,
+            ));
+        }
+
         let build = self
             .resolve_latest_build()
             .await
             .map_err(|e| ComponentError::network(e.to_string()))?;
 
-        Ok(ComponentInfo {
-            id: "cef".into(),
-            name: "Chromium Embedded Framework".into(),
-            description: "Full Chromium browser engine for running mini apps with WebRTC, WebGL, service workers, and DevTools support.".into(),
-            license: "BSD-3-Clause".into(),
-            version: build.cef_version,
-            platform: self.platform.clone(),
-            platform_display: platform_display_name(&self.platform).to_string(),
-            download_url: build.download_url,
-            install_path: self.install_dir.to_string_lossy().into(),
-            size: build.size,
-            checksum: build.sha1,
-            checksum_algorithm: "sha1".into(),
-            is_installed: self.is_installed(),
-            repository_url: "https://github.com/chromiumembedded/cef".into(),
-            website_url: "https://chromiumembedded.github.io/cef/".into(),
-        })
+        let mut info = meta.to_component_info(
+            build.cef_version,
+            self.platform.clone(),
+            platform_display_name(&self.platform).to_string(),
+            self.install_dir.to_string_lossy().into(),
+            false,
+        );
+        info.download_url = build.download_url;
+        info.size = build.size;
+        info.checksum = build.sha1;
+        info.checksum_algorithm = "sha1".into();
+        Ok(info)
     }
 
     async fn download(&self) -> Result<Vec<KernelProgress>, ComponentError> {

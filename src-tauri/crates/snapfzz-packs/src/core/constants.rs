@@ -31,6 +31,37 @@ pub struct PythonPackMetadata {
     pub website_url: String,
 }
 
+impl PythonPackMetadata {
+    /// Build a `ComponentInfo` from this metadata + runtime state.
+    /// Used by resolve() fast paths to avoid hardcoding strings.
+    pub fn to_component_info(
+        &self,
+        version: String,
+        platform: String,
+        platform_display: String,
+        install_path: String,
+        is_installed: bool,
+    ) -> crate::core::component::ComponentInfo {
+        crate::core::component::ComponentInfo {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            description: self.description.clone(),
+            license: self.license.clone(),
+            version,
+            platform,
+            platform_display,
+            download_url: String::new(),
+            install_path,
+            size: 0,
+            checksum: String::new(),
+            checksum_algorithm: String::new(),
+            is_installed,
+            repository_url: self.repository_url.clone(),
+            website_url: self.website_url.clone(),
+        }
+    }
+}
+
 /// Returns metadata for all Python ecosystem packs
 pub fn python_packs() -> Vec<PythonPackMetadata> {
     vec![
@@ -82,6 +113,14 @@ pub fn python_packs() -> Vec<PythonPackMetadata> {
             website_url: "https://litellm.ai/".into(),
         },
     ]
+}
+
+/// Look up a pack's metadata by ID.
+pub fn pack_metadata(id: &str) -> Option<PythonPackMetadata> {
+    if id == "cef" {
+        return Some(cef_metadata());
+    }
+    python_packs().into_iter().find(|p| p.id == id)
 }
 
 /// CEF (Chromium Embedded Framework) metadata
