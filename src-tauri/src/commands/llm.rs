@@ -262,3 +262,65 @@ pub async fn llm_import_model(
     Ok(result)
 }
 
+// A013/AuditLog: Delete spend logs older than N days directly from PostgreSQL.
+// LiteLLM has no admin API for on-demand cleanup — only config-based auto-retention.
+// See: https://docs.litellm.ai/docs/proxy/spend_logs_deletion
+// We use the embedded psql binary to run the DELETE directly.
+#[tauri::command]
+pub async fn llm_cleanup_spend_logs(
+    keep_days: u32,
+    registry: tauri::State<'_, Arc<Mutex<snapfzz_kernel::process::ProcessFactoryRegistry>>>,
+) -> Result<u64, String> {
+    let db_url = {
+        let guard = registry.lock().unwrap();
+        guard.database_url()
+            .cloned()
+            .ok_or("Database not available")?
+    };
+
+    let data_dir = crate::helpers::resolve_data_dir();
+    let psql = find_psql(&data_dir)?;
+
+    let sql = format!(
+        r#"DELETE FROM "LiteLLM_SpendLogs" WHERE "startTime" < NOW() - INTERVAL '{keep_days} days'"#,
+    );
+
+    let output = tokio::process::Command::new(&psql)
+        .arg(&db_url)
+        .arg("-t")
+        .arg("-c")
+        .arg(&sql)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run psql: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("psql failed: {stderr}"));
+    }
+
+    // psql output is "DELETE N\n" — parse the count
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let count = stdout
+        .split_whitespace()
+        .last()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    Ok(count)
+}
+
+fn find_psql(data_dir: &std::path::Path) -> Result<PathBuf, String> {
+    // Embedded PG lives at ~/.snapfzz/runtime/postgres/{version}/bin/psql
+    let runtime_dir = data_dir.join("runtime").join("postgres");
+    if let Ok(entries) = std::fs::read_dir(&runtime_dir) {
+        for entry in entries.flatten() {
+            let psql = entry.path().join("bin").join("psql");
+            if psql.exists() {
+                return Ok(psql);
+            }
+        }
+    }
+    Err("psql binary not found in embedded PostgreSQL installation".into())
+}
+

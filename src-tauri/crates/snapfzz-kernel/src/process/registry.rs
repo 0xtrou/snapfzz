@@ -57,6 +57,10 @@ impl ProcessFactoryRegistry {
         self.database_url = Some(url);
     }
 
+    pub fn database_url(&self) -> Option<&String> {
+        self.database_url.as_ref()
+    }
+
     pub async fn spawn(&mut self, name: &str) -> Result<(), ProcessError> {
         if !self.processes.contains_key(name) {
             let factory = self.factories.get(name).cloned().ok_or_else(|| {

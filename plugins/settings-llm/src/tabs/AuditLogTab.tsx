@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Empty, message, Popconfirm, Select, Skeleton, Tag, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { AppButton, PretextPaginatedList } from '@snapfzz/shared';
+import { createTauriBridge } from '@snapfzz/shared';
 import { getSpendLogs, getBaseUrl, getMasterKey, type SpendLog } from '../hooks/useLlmCommands';
+
+const bridge = createTauriBridge();
 
 const { Text } = Typography;
 
@@ -212,19 +215,27 @@ export default function AuditLogTab() {
   }, []);
 
   const handleClearLogs = useCallback(async (keepDays: number) => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - keepDays);
-    const remaining = logs.filter((l) => parseTimestamp(l) >= cutoff);
-    const removed = logs.length - remaining.length;
-    setLogs(remaining);
-    message.success(`Cleared ${removed} log${removed !== 1 ? 's' : ''} older than ${keepDays} day${keepDays !== 1 ? 's' : ''}`);
-  }, [logs]);
+    try {
+      const deleted = await bridge.invoke<number>('llm_cleanup_spend_logs', { keepDays });
+      message.success(`Cleared ${deleted} log${deleted !== 1 ? 's' : ''} older than ${keepDays} day${keepDays !== 1 ? 's' : ''}`);
+      await loadLogs();
+    } catch (err) {
+      message.error(`Failed to clear logs: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [loadLogs]);
 
-  const uniqueModels = useMemo(() => [...new Set(logs.map((l) => l.model))].sort(), [logs]);
+  const uniqueModels = useMemo(
+    () => [...new Set(logs.map((l) => l.model).filter((m) => m && m.trim() !== ''))].sort(),
+    [logs],
+  );
 
   const filteredLogs = useMemo(() => {
-    const list = modelFilter ? logs.filter((log) => log.model === modelFilter) : logs;
-    return [...list].sort((a, b) => parseTimestamp(b).getTime() - parseTimestamp(a).getTime());
+    // Filter out empty-model entries (LiteLLM internal probes/health checks)
+    let list = logs.filter((log) => log.model && log.model.trim() !== '');
+    if (modelFilter) {
+      list = list.filter((log) => log.model === modelFilter);
+    }
+    return list.sort((a, b) => parseTimestamp(b).getTime() - parseTimestamp(a).getTime());
   }, [logs, modelFilter]);
 
   const estimateHeight = useCallback(
