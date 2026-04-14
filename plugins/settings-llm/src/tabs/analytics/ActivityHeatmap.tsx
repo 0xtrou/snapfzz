@@ -414,7 +414,7 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
   const mostActiveDay = useMemo(() => findMostActiveDay(dailyData.filter((d) => d.tokens > 0)), [dailyData]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 12, alignItems: 'start' }}>
       {/* LEFT: Main heatmap card */}
       <div
         style={{
@@ -458,7 +458,7 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
         </div>
 
         {/* Day labels + grid */}
-        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', overflowX: 'auto' }}>
           <DayLabels />
           <HeatmapGrid cells={cells} p25={p25} p75={p75} />
         </div>

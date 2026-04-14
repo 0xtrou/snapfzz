@@ -96,13 +96,13 @@ export default function AnalyticsTab() {
       totalSpend += spend;
 
       // Model breakdown
-      const model = log.model || 'unknown';
+      const model = log.model_group || log.model || 'unknown';
       const me = modelMap.get(model) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       me.requests++; me.inputTokens += pt; me.outputTokens += ct; me.totalTokens += tt; me.cost += spend;
       modelMap.set(model, me);
 
       // Provider breakdown
-      const provider = model.includes('/') ? model.split('/')[0] : model;
+      const provider = log.custom_llm_provider || (model.includes('/') ? model.split('/')[0] : model);
       const pe = providerMap.get(provider) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       pe.requests++; pe.inputTokens += pt; pe.outputTokens += ct; pe.totalTokens += tt; pe.cost += spend;
       providerMap.set(provider, pe);
@@ -160,7 +160,7 @@ export default function AnalyticsTab() {
       if (!day) continue;
       if (!byDate.has(day)) byDate.set(day, {});
       const models = byDate.get(day)!;
-      const model = log.model || 'unknown';
+      const model = log.model_group || log.model || 'unknown';
       models[model] = (models[model] || 0) + (log.total_tokens ?? 0);
     }
     return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, models]) => ({ date, models }));
@@ -208,7 +208,7 @@ export default function AnalyticsTab() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, overflow: 'hidden' }}>
       {/* Time range selector */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Usage Analytics</div>
@@ -240,18 +240,18 @@ export default function AnalyticsTab() {
       <ActivityHeatmap dailyData={heatmapData} />
 
       {/* Charts row: Token & Cost Trend + Cost by Provider */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-        <TokenCostTrend data={trendData} />
-        <DonutChart title="COST BY PROVIDER" slices={providerDonutSlices} totalLabel={formatCost(totalSpend)} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 16 }}>
+        <div style={{ minHeight: 0 }}><TokenCostTrend data={trendData} /></div>
+        <div style={{ minHeight: 0 }}><DonutChart title="COST BY PROVIDER" slices={providerDonutSlices} totalLabel={formatCost(totalSpend)} /></div>
       </div>
 
       {/* Model Usage Over Time */}
       <ModelUsageChart data={modelTimeData} />
 
       {/* Donut row: By Account + By API Key */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <BreakdownDonut title="BY ACCOUNT" entries={accountEntries} />
-        <BreakdownDonut title="BY API KEY" entries={accountEntries} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+        <div style={{ minHeight: 0 }}><BreakdownDonut title="BY ACCOUNT" entries={accountEntries} /></div>
+        <div style={{ minHeight: 0 }}><BreakdownDonut title="BY API KEY" entries={accountEntries} /></div>
       </div>
 
       {/* Provider Breakdown */}
