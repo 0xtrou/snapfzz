@@ -19,7 +19,7 @@ import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { AppButton, ConfirmAction, fetchWithToast } from '@snapfzz/shared';
 import {
-  listKeys,
+  listKeysWithInfo,
   deleteKey,
   getBaseUrl,
   getMasterKey,
@@ -114,7 +114,7 @@ export default function ApiKeysTab() {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
     const { data } = await fetchWithToast(
-      () => listKeys(baseUrl, masterKey),
+      () => listKeysWithInfo(baseUrl, masterKey),
       { errorMessage: 'Failed to load keys', showSuccessToast: false },
     );
     if (data) setKeys(data.keys || []);

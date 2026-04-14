@@ -302,6 +302,36 @@ export async function listKeys(
   return { keys: data.keys ?? [], total_count: data.total_count };
 }
 
+// A013/Keys: /key/list returns minimal data (no alias, models, budget_duration).
+// Fetch /key/info per key in parallel to get the full picture.
+export async function listKeysWithInfo(
+  baseUrl: string,
+  masterKey: string,
+): Promise<KeyListResponse> {
+  const listResponse = await listKeys(baseUrl, masterKey);
+  const tokens = listResponse.keys.map((k) => k.token || k.key).filter(Boolean) as string[];
+
+  if (tokens.length === 0) return listResponse;
+
+  // Fetch all key info in parallel
+  const infoResults = await Promise.allSettled(
+    tokens.map((token) => getKeyInfo(baseUrl, masterKey, token)),
+  );
+
+  // Merge: use info data as base, overlay with any extra fields from list
+  const enriched: KeyInfo[] = infoResults.map((result, i) => {
+    if (result.status === 'fulfilled') {
+      const info = result.value;
+      // LiteLLM /key/info wraps in { key, info } or returns flat — handle both
+      const keyData = (info as Record<string, unknown>).info ?? (info as Record<string, unknown>).key ?? info;
+      return { ...listResponse.keys[i], ...(keyData as KeyInfo) };
+    }
+    return listResponse.keys[i];
+  });
+
+  return { keys: enriched, total_count: listResponse.total_count ?? enriched.length };
+}
+
 export async function deleteKey(
   baseUrl: string,
   masterKey: string,

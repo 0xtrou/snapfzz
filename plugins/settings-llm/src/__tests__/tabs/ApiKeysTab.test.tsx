@@ -47,6 +47,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
   getMasterKey: () => mockGetMasterKey(),
   listKeys: (...args: unknown[]) => mockListKeys(...args),
+  listKeysWithInfo: (...args: unknown[]) => mockListKeys(...args),
   deleteKey: (...args: unknown[]) => mockDeleteKey(...args),
   generateKey: (...args: unknown[]) => mockGenerateKey(...args),
   getModels: (...args: unknown[]) => mockGetModels(...args),
