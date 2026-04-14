@@ -177,18 +177,17 @@ export default function AnalyticsTab() {
       totalTokens += tt;
       totalSpend += spend;
 
-      // Provider name from custom providers config (custom_llm_provider is just the SDK adapter e.g. "openai")
-      const providerName = resolveProviderName(log, providerLookup);
-
-      // Model breakdown — show as provider/model format
+      // Model breakdown — model_group already contains provider/model (e.g. "solo-engineer/coder")
       const modelGroup = log.model_group || log.model || 'unknown';
-      const modelLabel = `${providerName}/${modelGroup}`;
-      const me = modelMap.get(modelLabel) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
+      const me = modelMap.get(modelGroup) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       me.requests++; me.inputTokens += pt; me.outputTokens += ct; me.totalTokens += tt; me.cost += spend;
-      modelMap.set(modelLabel, me);
+      modelMap.set(modelGroup, me);
 
-      // Provider breakdown — use api_base-derived name
-      const provider = providerName;
+      // Provider breakdown — extract from model_group (first segment before /)
+      // or resolve from custom providers config
+      const provider = modelGroup.includes('/')
+        ? modelGroup.split('/')[0]
+        : resolveProviderName(log, providerLookup);
       const pe = providerMap.get(provider) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       pe.requests++; pe.inputTokens += pt; pe.outputTokens += ct; pe.totalTokens += tt; pe.cost += spend;
       providerMap.set(provider, pe);
@@ -200,8 +199,8 @@ export default function AnalyticsTab() {
       ke.requests++; ke.inputTokens += pt; ke.outputTokens += ct; ke.totalTokens += tt; ke.cost += spend;
       keyMap.set(maskedKey, ke);
 
-      // Account breakdown (by provider name)
-      const accountName = providerName;
+      // Account breakdown (same as provider)
+      const accountName = provider;
       const ae = accountMap.get(accountName) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       ae.requests++; ae.inputTokens += pt; ae.outputTokens += ct; ae.totalTokens += tt; ae.cost += spend;
       accountMap.set(accountName, ae);
@@ -252,10 +251,8 @@ export default function AnalyticsTab() {
       if (!day) continue;
       if (!byDate.has(day)) byDate.set(day, {});
       const models = byDate.get(day)!;
-      const pName = resolveProviderName(log, providerLookup);
       const mGroup = log.model_group || log.model || 'unknown';
-      const mLabel = `${pName}/${mGroup}`;
-      models[mLabel] = (models[mLabel] || 0) + (log.total_tokens ?? 0);
+      models[mGroup] = (models[mGroup] || 0) + (log.total_tokens ?? 0);
     }
     return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, models]) => ({ date, models }));
   }, [logs, providerLookup]);

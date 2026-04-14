@@ -120,7 +120,7 @@ export function BreakdownTable({ title, rows, nameHeader = 'NAME', filterPlaceho
     return [...filtered].sort((a, b) => {
       const diff = (a[sortKey] as number) - (b[sortKey] as number);
       return sortAsc ? diff : -diff;
-    });
+    }).slice(0, 10);
   }, [rows, filter, sortKey, sortAsc]);
 
   const colHeader = (label: string, key: SortKey) => (
