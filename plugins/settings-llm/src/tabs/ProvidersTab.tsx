@@ -743,7 +743,15 @@ function AvailableModels({
           })(),
           getModelInfo(url, key).catch(() => ({ data: [] })),
         ]);
-        const registered = new Set((modelsRes?.data ?? []).map((m: { id: string }) => m.id));
+        // Model IDs from gateway may be "provider-slug/model-id" — extract the
+        // base model-id so it matches discovered model IDs from the provider API.
+        const registered = new Set<string>();
+        for (const m of (modelsRes?.data ?? []) as { id: string }[]) {
+          registered.add(m.id);
+          // Also add the bare model ID (after last slash) for matching
+          const bare = m.id.includes('/') ? m.id.split('/').pop()! : m.id;
+          registered.add(bare);
+        }
         setImportedIds(registered);
 
         // Build a lookup from model_name -> model_info for capability tags
@@ -850,7 +858,9 @@ function AvailableModels({
           const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
           // Get the model's DB ID from model/info
           const infoRes = await getModelInfo(url, key);
-          const entry = (infoRes.data ?? []).find((e: { model_name: string }) => e.model_name === modelId);
+          // model_name may be "provider-slug/model-id" or just "model-id"
+          const entry = (infoRes.data ?? []).find((e: { model_name: string }) =>
+            e.model_name === modelId || e.model_name.endsWith(`/${modelId}`));
           const dbId = entry?.model_info?.id;
           if (!dbId) throw new Error('Model not found in gateway');
           const { deleteModel } = await import('../hooks/useLlmCommands');
