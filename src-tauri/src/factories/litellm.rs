@@ -44,13 +44,19 @@ impl LiteLLMFactory {
         // Without this, LiteLLM generates a random salt per restart and can't
         // decrypt previously stored models → they're silently lost.
         let salt_key = match guard.read("litellm:salt_key") {
-            Ok(existing) => String::from_utf8(existing).unwrap_or_default(),
-            Err(_) => {
-                let generated = format!("sk-salt-{:x}", std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_nanos());
+            Ok(existing) => {
+                let key = String::from_utf8(existing).unwrap_or_default();
+                eprintln!("[litellm] using existing salt key: {}...", &key[..key.len().min(12)]);
+                key
+            }
+            Err(e) => {
+                eprintln!("[litellm] salt key not found ({e}), generating new one");
+                let generated = format!("sk-salt-{:x}{:x}",
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(),
+                    std::process::id() as u128,
+                );
                 let _ = guard.store("litellm:salt_key", generated.as_bytes());
+                eprintln!("[litellm] stored new salt key: {}...", &generated[..generated.len().min(12)]);
                 generated
             }
         };

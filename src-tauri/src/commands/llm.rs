@@ -224,17 +224,24 @@ pub async fn llm_import_model(
     };
     let litellm_url = format!("http://{}:{}", litellm_host, litellm_port);
 
-    // A013/ImportModel: For custom providers (custom-*), use openai/ prefix since
-    // they're OpenAI-compatible endpoints. For built-in providers, use their ID as prefix.
-    let litellm_model = if provider_id.starts_with("custom-") {
-        // Custom provider — model ID already includes any prefix from the provider API
-        format!("openai/{}", model_id)
+    // A013/ImportModel: model_name = <provider-slug>/<model-id> for unique routing.
+    // litellm_params.model = <sdk-prefix>/<model-id> for LiteLLM SDK routing.
+    // LiteLLM strips the sdk prefix before sending to the endpoint.
+    let (sdk_prefix, provider_slug) = if provider_id.starts_with("custom-") {
+        // Custom providers: determine SDK from variant, use provider name as slug
+        let slug = provider_id.strip_prefix("custom-").unwrap_or(&provider_id);
+        // All custom providers are OpenAI-compatible for now
+        ("openai", slug.to_string())
     } else {
-        format!("{}/{}", provider_id, model_id)
+        // Built-in providers: use provider ID as both SDK prefix and slug
+        (provider_id.as_str(), provider_id.clone())
     };
 
+    let litellm_model = format!("{}/{}", sdk_prefix, model_id);
+    let display_name = model_name.unwrap_or_else(|| format!("{}/{}", provider_slug, model_id));
+
     let body = serde_json::json!({
-        "model_name": model_name.unwrap_or_else(|| model_id.clone()),
+        "model_name": display_name,
         "litellm_params": {
             "model": litellm_model,
             "api_key": api_key_value,
