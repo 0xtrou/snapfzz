@@ -3,9 +3,9 @@
 //          "1 connection" vs "0 connections" text, AvailableModels loading skeleton,
 //          model "Enable All" with no unimported models (no-op), gateway unreachable error
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { message } from 'antd';
 import ProvidersTab from '../../tabs/ProvidersTab';
 
@@ -103,6 +103,7 @@ vi.mock('../../catalog', () => {
 
 describe('A013/UI/ProvidersTab/Coverage', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     mockInvoke.mockReset();
     mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
       if (command === 'llm_list_provider_keys') {
@@ -125,6 +126,10 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
       ok: true,
       json: async () => ({ data: [] }),
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // ─── ProviderDetail: connection count pluralization ─────────────────────
@@ -453,6 +458,222 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     expect(screen.getByText('DeepSeek')).toBeInTheDocument();
   });
 
+  // ─── handleDeleteCustomProvider ───────────────────────────────────────
+
+  it('A013/CustomProvider: delete button calls saveCustomProviders, listProviderKeys, deleteProviderKey', async () => {
+    const customProviders = [
+      { id: 'my-provider', name: 'My Provider', baseUrl: 'http://localhost:9000', variant: 'openai' },
+    ];
+
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'vault_read') {
+        if (args.key === 'litellm:custom_providers') {
+          return JSON.stringify(customProviders);
+        }
+        return null;
+      }
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'custom-my-provider') return ['default'];
+        return [];
+      }
+      if (command === 'vault_store') return undefined;
+      if (command === 'llm_delete_provider_key') return undefined;
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<ProvidersTab />);
+
+    // Wait for the custom provider card to appear
+    await screen.findByText('My Provider');
+
+    // The ConfirmAction mock wraps AppButton in a button that calls onConfirm.
+    // The AppButton stops propagation, so we must click the outer ConfirmAction button.
+    const appBtn = screen.getByRole('button', { name: /Delete custom provider My Provider/i });
+    // appBtn.parentElement is the ConfirmAction <button onClick={onConfirm}>
+    const confirmBtn = appBtn.parentElement as HTMLElement;
+    await user.click(confirmBtn);
+
+    // saveCustomProviders → vault_store with updated (empty) list
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: 'litellm:custom_providers',
+        value: JSON.stringify([]),
+      });
+    });
+
+    // listProviderKeys for the deleted provider
+    expect(mockInvoke).toHaveBeenCalledWith('llm_list_provider_keys', {
+      providerId: 'custom-my-provider',
+    });
+
+    // deleteProviderKey for each key returned by listProviderKeys
+    expect(mockInvoke).toHaveBeenCalledWith('llm_delete_provider_key', {
+      providerId: 'custom-my-provider',
+      keyName: 'default',
+    });
+  });
+
+  it('A013/CustomProvider: delete removes provider card from UI', async () => {
+    const initialProviders = [
+      { id: 'rm-me', name: 'Remove Me', baseUrl: 'http://localhost:8000', variant: 'anthropic' },
+    ];
+    // Track vault state so loadKeyCounts sees the updated list after delete
+    let storedProviders = JSON.stringify(initialProviders);
+
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'vault_read') {
+        if (args.key === 'litellm:custom_providers') return storedProviders;
+        return null;
+      }
+      if (command === 'vault_store') {
+        if (args.key === 'litellm:custom_providers') storedProviders = args.value as string;
+        return undefined;
+      }
+      if (command === 'llm_list_provider_keys') return [];
+      if (command === 'llm_delete_provider_key') return undefined;
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<ProvidersTab />);
+
+    await screen.findByText('Remove Me');
+
+    // Click the outer ConfirmAction button (AppButton stops propagation)
+    const appBtn = screen.getByRole('button', { name: /Delete custom provider Remove Me/i });
+    const confirmBtn = appBtn.parentElement as HTMLElement;
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Remove Me')).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Branch coverage: custom provider key count display ───────────────
+
+  it('A013/CustomProvider: shows "2 keys" (plural) when keyCount is 2', async () => {
+    const customProviders = [
+      { id: 'two-keys', name: 'Two Keys Provider', baseUrl: 'http://localhost:6000', variant: 'openai' },
+    ];
+
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'vault_read') {
+        if (args.key === 'litellm:custom_providers') return JSON.stringify(customProviders);
+        return null;
+      }
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'custom-two-keys') return ['primary', 'secondary'];
+        return [];
+      }
+      if (command === 'vault_store') return undefined;
+      return undefined;
+    });
+
+    render(<ProvidersTab />);
+
+    // "● 2 keys" — plural form — covers the `keyCount !== 1 ? 's' : ''` branch with keyCount > 1
+    await screen.findByText('● 2 keys');
+  });
+
+  it('A013/CustomProvider: shows "1 key" (singular) when keyCount is exactly 1', async () => {
+    const customProviders = [
+      { id: 'single-key', name: 'Single Key Provider', baseUrl: 'http://localhost:7000', variant: 'openai' },
+    ];
+
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'vault_read') {
+        if (args.key === 'litellm:custom_providers') return JSON.stringify(customProviders);
+        return null;
+      }
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'custom-single-key') return ['primary'];
+        return [];
+      }
+      if (command === 'vault_store') return undefined;
+      return undefined;
+    });
+
+    render(<ProvidersTab />);
+
+    // "● 1 key" — singular form — the `keyCount !== 1 ? 's' : ''` branch with keyCount=1
+    await screen.findByText('● 1 key');
+  });
+
+  // ─── Branch coverage: clearDiscoveryCache with empty localStorage ──────
+
+  it('A013/Cache: Refresh works when no discovery cache exists in localStorage', async () => {
+    // localStorage is empty (cleared in beforeEach)
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'openai') return ['primary'];
+        return [];
+      }
+      if (command === 'vault_read') return null;
+      if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+      if (command === 'llm_get_master_key') return 'sk-master-test';
+      if (command === 'llm_discover_models') return { data: [{ id: 'gpt-fresh', object: 'model' }] };
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<ProvidersTab />);
+
+    const card = await screen.findByRole('button', { name: 'View OpenAI details' });
+    await user.click(card);
+    await screen.findByText('Back to Providers');
+    await screen.findByText('gpt-fresh');
+
+    // Clicking Refresh with empty localStorage exercises the `if (!raw) return` branch in clearDiscoveryCache
+    const refreshBtn = screen.getByRole('button', { name: /Refresh/i });
+    await user.click(refreshBtn);
+
+    // Model should still appear after refresh
+    expect(await screen.findByText('gpt-fresh')).toBeInTheDocument();
+  });
+
+  // ─── Branch coverage: fetchModels throws a non-Error value ────────────
+
+  it('A013/Discovery: handles non-Error throw from discoverModels (covers String(err) and clearDiscoveryCache empty-cache branches)', async () => {
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'openai') return ['primary'];
+        return [];
+      }
+      if (command === 'vault_read') return null;
+      if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+      if (command === 'llm_get_master_key') return 'sk-master-test';
+      if (command === 'llm_discover_models') {
+        // Throw a plain string (non-Error) to exercise `String(err)` branch on line 711
+        throw 'network timeout';
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<ProvidersTab />);
+
+    const card = await screen.findByRole('button', { name: 'View OpenAI details' });
+    await user.click(card);
+
+    await screen.findByText('Back to Providers');
+
+    // When fetchModels throws a non-Error, the error state is set and "Unable to fetch models" is shown
+    await waitFor(() => {
+      expect(screen.getByText('Unable to fetch models')).toBeInTheDocument();
+    });
+
+    // Clicking Retry calls handleRefresh → clearDiscoveryCache with empty localStorage (no cache written
+    // since discovery failed) → covers the `if (!raw) return` branch in clearDiscoveryCache
+    const retryBtn = screen.getByRole('button', { name: /Retry/i });
+    await user.click(retryBtn);
+
+    // Error should still show (discovery still fails)
+    await waitFor(() => {
+      expect(screen.getByText('Unable to fetch models')).toBeInTheDocument();
+    });
+  });
+
   it('A013/CustomModal: cancel closes the modal', async () => {
     const user = userEvent.setup();
     render(<ProvidersTab />);
@@ -474,5 +695,88 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
         !modalWrap || modalWrap.getAttribute('style')?.includes('display: none')
       ).toBe(true);
     });
+  });
+
+  // ─── Branch coverage: onClear callback (line 983) ─────────────────────
+
+  it('A013/Filter: clear button resets filter immediately without debounce', async () => {
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'openai') return ['primary'];
+        return [];
+      }
+      if (command === 'vault_read') return null;
+      if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
+      if (command === 'llm_get_master_key') return 'sk-master-test';
+      if (command === 'llm_discover_models') {
+        return { data: [{ id: 'gpt-4o', object: 'model' }, { id: 'gpt-mini', object: 'model' }] };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<ProvidersTab />);
+
+    const card = await screen.findByRole('button', { name: 'View OpenAI details' });
+    await user.click(card);
+    await screen.findByText('gpt-4o');
+
+    // Type a filter
+    const filterInput = screen.getByLabelText('Filter models');
+    await user.type(filterInput, 'mini');
+
+    // Flush debounce to apply filter
+    await act(() => { vi.advanceTimersByTime(1000); });
+
+    expect(screen.getByText('gpt-mini')).toBeInTheDocument();
+
+    // Click clear (allowClear) — should reset immediately
+    const clearBtn = filterInput.parentElement?.querySelector('.ant-input-clear-icon') as HTMLElement;
+    if (clearBtn) {
+      await user.click(clearBtn);
+    } else {
+      // Fallback: clear manually
+      await user.clear(filterInput);
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText('gpt-4o')).toBeInTheDocument();
+    });
+  });
+
+  // ─── Branch coverage: loadKeys error (lines 1059-1060) ────────────────
+
+  it('A013/Detail: loadKeys error sets empty keys array', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
+      if (command === 'llm_list_provider_keys') {
+        if (args.providerId === 'openai') {
+          throw new Error('vault unavailable');
+        }
+        return [];
+      }
+      if (command === 'vault_read') return null;
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<ProvidersTab />);
+
+    const card = await screen.findByRole('button', { name: 'View OpenAI details' });
+    await user.click(card);
+
+    // The detail view should still render despite the error
+    await screen.findByText('Back to Providers');
+
+    // The error should have been logged
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[ProviderDetail] Failed to load keys'),
+        expect.any(Error),
+      );
+    });
+
+    consoleSpy.mockRestore();
   });
 });

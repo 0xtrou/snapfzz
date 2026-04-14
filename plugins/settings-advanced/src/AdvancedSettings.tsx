@@ -51,7 +51,7 @@ export default function AdvancedSettings(): React.ReactElement {
         title="Advanced"
         subtitle="Low-level configuration options for data storage location and factory reset operations."
       />
-      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
+      <div style={{ padding: '16px 32px' }}>
         <Space direction="vertical" size={32} style={{ width: '100%' }}>
           <section>
             <Text strong style={{ display: 'block', marginBottom: 'var(--spacing-3, 12px)' }}>

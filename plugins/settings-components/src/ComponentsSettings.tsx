@@ -464,7 +464,7 @@ export default function ComponentsSettings(): React.ReactElement {
         title="System Packs"
         subtitle="Install and manage runtime dependencies for AI agent development, including Python environments and the CEF browser engine."
       />
-      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
+      <div style={{ padding: '16px 32px' }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Input.Search
             allowClear

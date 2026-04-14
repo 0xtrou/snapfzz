@@ -162,7 +162,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
         title="Diagnostics"
         subtitle="System health overview displaying hardware configuration, runtime status, and component verification results."
       />
-      <div style={{ padding: '16px 32px', maxWidth: 800 }}>
+      <div style={{ padding: '16px 32px' }}>
         <Space direction="vertical" size={24} style={{ width: '100%' }}>
           <section>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -176,7 +176,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
               bordered
               locale={{ emptyText: 'No system status data available.' }}
               dataSource={checks}
-              style={{ maxWidth: 800 }}
+              style={{ maxWidth: '100%' }}
               renderItem={(check) => {
                 const indicator = checkIndicator(check);
                 return (
@@ -214,7 +214,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
               size="small"
               bordered
               column={1}
-              style={{ maxWidth: 800 }}
+              style={{ maxWidth: '100%' }}
               labelStyle={{ width: 140 }}
               items={[
                 { key: 'cores', label: 'CPU Cores', children: <div style={{ textAlign: 'right' }}>{hardware?.cores ?? '—'}</div> },
@@ -232,7 +232,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
                 size="small"
                 bordered
                 column={1}
-                style={{ maxWidth: 800 }}
+                style={{ maxWidth: '100%' }}
                 labelStyle={{ width: 140 }}
                 items={[
                   {
@@ -299,7 +299,7 @@ export default function DiagnosticsSettings(): React.ReactElement {
             <List
               size="small"
               bordered
-              style={{ maxWidth: 800 }}
+              style={{ maxWidth: '100%' }}
               dataSource={cefRuntime ? [cefRuntime] : []}
               locale={{ emptyText: 'No system packs detected.' }}
               renderItem={(component) => (
