@@ -299,8 +299,12 @@ export default function AnalyticsTab() {
     void loadLogs();
   }, [loadLogs]);
 
-  // Per A002/Zone3: aggregate data in useMemo, not in render path
-  const filteredLogs = useMemo(() => filterByTimeRange(allLogs, timeRange), [allLogs, timeRange]);
+  // Per A002/Zone3: aggregate data in useMemo, not in render path.
+  // Filter out empty-model entries (LiteLLM internal probes, not actual model calls).
+  const filteredLogs = useMemo(() => {
+    const withModel = allLogs.filter((log) => log.model && log.model.trim() !== '');
+    return filterByTimeRange(withModel, timeRange);
+  }, [allLogs, timeRange]);
   const overview = useMemo(() => computeOverview(filteredLogs), [filteredLogs]);
   const providerData = useMemo(() => aggregateByProvider(filteredLogs), [filteredLogs]);
   const modelData = useMemo(() => aggregateByModel(filteredLogs), [filteredLogs]);
