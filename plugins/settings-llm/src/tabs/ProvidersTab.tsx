@@ -1219,16 +1219,6 @@ function ProviderDetail({
               </Text>
             </div>
 
-            <Text
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--text-sm, 13px)',
-                color: 'var(--text-muted)',
-              }}
-            >
-              ENV: os.environ/{entry.envVar}
-            </Text>
-
             <div
               style={{
                 display: 'flex',

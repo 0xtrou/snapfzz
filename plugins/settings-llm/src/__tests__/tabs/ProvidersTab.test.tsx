@@ -361,7 +361,7 @@ describe('A013/UI/ProvidersTab', () => {
       expect(screen.getByText('OpenAI')).toBeInTheDocument();
       expect(screen.getByText('1 connection')).toBeInTheDocument();
       expect(screen.getByText('primary')).toBeInTheDocument();
-      expect(screen.getByText('ENV: os.environ/PROVIDER_OPENAI_PRIMARY')).toBeInTheDocument();
+      expect(screen.queryByText(/ENV: os\.environ/)).not.toBeInTheDocument();
     });
 
     it('A013/Detail: does not show base URL for built-in providers', async () => {

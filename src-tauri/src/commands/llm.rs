@@ -162,10 +162,12 @@ pub async fn llm_discover_models(
             .to_string(),
     };
 
-    // 3. Call the provider's /v1/models endpoint
+    // 3. Call the provider's /v1/models endpoint.
+    // Strip trailing /v1 if present — custom providers may include it in base_url.
+    let base = url.trim_end_matches('/').trim_end_matches("/v1");
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/v1/models", url.trim_end_matches('/')))
+        .get(format!("{}/v1/models", base))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
