@@ -138,7 +138,7 @@ describe('A013/UI/ApiKeysTab', () => {
     render(<ApiKeysTab />);
 
     await waitFor(() => {
-      expect(screen.getByText('\u2022\u2022\u2022\u2022\u2022')).toBeInTheDocument();
+      expect(screen.getByText('\u2022'.repeat(8))).toBeInTheDocument();
     });
     expect(screen.getByText('Unlimited')).toBeInTheDocument();
   });

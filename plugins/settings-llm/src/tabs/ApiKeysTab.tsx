@@ -46,14 +46,13 @@ function resolveKey(record: KeyInfo): string {
 
 function maskKey(key: string): string {
   if (!key) return '\u2022\u2022\u2022\u2022';
-  // Fully mask — show only bullet points, no partial reveal
-  return '\u2022'.repeat(Math.min(key.length, 20));
+  return '\u2022'.repeat(8);
 }
 
 function resolveAlias(record: KeyInfo): string {
-  // key_alias may be empty string — treat as unset
-  if (record.key_alias && record.key_alias.trim()) return record.key_alias;
-  if (record.key_name && record.key_name.trim()) return record.key_name;
+  // key_alias may be null or empty string — treat as unset
+  if (record.key_alias && String(record.key_alias).trim()) return String(record.key_alias);
+  if (record.key_name && String(record.key_name).trim()) return String(record.key_name);
   return '-';
 }
 
@@ -194,7 +193,7 @@ export default function ApiKeysTab() {
       dataIndex: 'max_budget',
       key: 'max_budget',
       width: 100,
-      render: (budget: number) => (budget ? `$${budget.toFixed(2)}` : 'Unlimited'),
+      render: (budget: number | null | undefined) => (budget != null && budget > 0 ? `$${budget.toFixed(2)}` : 'Unlimited'),
     },
     {
       title: 'Actions',
@@ -231,7 +230,7 @@ export default function ApiKeysTab() {
     const spent = record.spend || 0;
     const budget = record.max_budget;
     const duration = record.budget_duration || '-';
-    const expires = formatDate(record.expires);
+    const expires = formatDate(record.budget_reset_at ?? record.expires ?? undefined);
 
     return (
       <div style={{ padding: '8px 0' }}>

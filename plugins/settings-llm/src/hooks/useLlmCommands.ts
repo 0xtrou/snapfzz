@@ -72,15 +72,17 @@ export interface KeyInfo {
   key?: string;
   token?: string;
   key_name?: string;
-  key_alias?: string;
+  key_alias?: string | null;
   models?: string[];
   spend?: number;
   max_budget?: number;
   budget_duration?: string;
-  expires?: string;
+  budget_reset_at?: string | null;
+  expires?: string | null;
   user_id?: string;
   team_id?: string;
   metadata?: Record<string, string>;
+  created_at?: string;
 }
 
 export interface KeyListResponse {
