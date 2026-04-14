@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Empty, message, Popconfirm, Select, Skeleton, Tag, Typography } from 'antd';
+import { Empty, message, Popconfirm, Radio, Select, Skeleton, Tag, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { AppButton, fetchWithToast, PretextPaginatedList } from '@snapfzz/shared';
 import { createTauriBridge } from '@snapfzz/shared';
@@ -113,13 +113,13 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
           </div>
         ))}
       </div>
-      {record.messages && (
+      {record.messages && !(typeof record.messages === 'object' && Object.keys(record.messages).length === 0) && !(record.messages === '{}') && (
         <div>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Messages (Request)</Text>
           <pre style={preStyle}>{tryFormatJson(typeof record.messages === 'string' ? record.messages : JSON.stringify(record.messages))}</pre>
         </div>
       )}
-      {record.response && (
+      {record.response && !(typeof record.response === 'object' && Object.keys(record.response).length === 0) && !(record.response === '{}') && (
         <div>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response</Text>
           <pre style={preStyle}>{tryFormatJson(typeof record.response === 'string' ? record.response : JSON.stringify(record.response))}</pre>
@@ -160,7 +160,7 @@ const LogRow = React.memo(function LogRow({
       >
         <Text style={{ fontSize: 12 }}>{formatTimestamp(log)}</Text>
         {statusTag(log.status)}
-        <Text ellipsis style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{log.model}</Text>
+        <Text ellipsis style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{log.model_group || log.model || '—'}</Text>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{maskKey(log.api_key)}</Text>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{formatTokens(log.total_tokens)}</Text>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>${(log.spend || 0).toFixed(6)}</Text>
@@ -175,6 +175,7 @@ export default function AuditLogTab() {
   const [masterKey, setMasterKey] = useState<string>('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
   const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failure'>('all');
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -224,7 +225,7 @@ export default function AuditLogTab() {
   }, [loadLogs]);
 
   const uniqueModels = useMemo(
-    () => [...new Set(logs.map((l) => l.model).filter((m) => m && m.trim() !== ''))].sort(),
+    () => [...new Set(logs.map((l) => l.model_group || l.model).filter((m): m is string => !!m && m.trim() !== ''))].sort(),
     [logs],
   );
 
@@ -232,10 +233,15 @@ export default function AuditLogTab() {
     // Filter out empty-model entries (LiteLLM internal probes/health checks)
     let list = logs.filter((log) => log.model && log.model.trim() !== '');
     if (modelFilter) {
-      list = list.filter((log) => log.model === modelFilter);
+      list = list.filter((log) => (log.model_group || log.model) === modelFilter);
+    }
+    if (statusFilter === 'success') {
+      list = list.filter((log) => log.status?.toLowerCase() === 'success' || log.status === '200');
+    } else if (statusFilter === 'failure') {
+      list = list.filter((log) => log.status?.toLowerCase() !== 'success' && log.status !== '200');
     }
     return list.sort((a, b) => parseTimestamp(b).getTime() - parseTimestamp(a).getTime());
-  }, [logs, modelFilter]);
+  }, [logs, modelFilter, statusFilter]);
 
   const estimateHeight = useCallback(
     (log: SpendLog) => expandedIds.has(log.request_id) ? ROW_HEIGHT + EXPANDED_HEIGHT : ROW_HEIGHT,
@@ -272,6 +278,18 @@ export default function AuditLogTab() {
             </Select.Option>
           ))}
         </Select>
+
+        <Radio.Group
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as 'all' | 'success' | 'failure')}
+          optionType="button"
+          buttonStyle="solid"
+          size="small"
+        >
+          <Radio.Button value="all">All</Radio.Button>
+          <Radio.Button value="success">Success</Radio.Button>
+          <Radio.Button value="failure">Failure</Radio.Button>
+        </Radio.Group>
 
         <Text type="secondary" style={{ fontSize: 12 }}>
           {filteredLogs.length} request{filteredLogs.length !== 1 ? 's' : ''}
