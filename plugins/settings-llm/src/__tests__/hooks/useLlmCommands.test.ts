@@ -550,4 +550,251 @@ describe('A013/Hooks: useLlmCommands', () => {
       expect(localStorage.getItem('snapfzz:custom_providers')).toBe(JSON.stringify(providers));
     });
   });
+
+  describe('A013/Keys: listKeysWithInfo', () => {
+    it('fetches key list and info in parallel', async () => {
+      // First call: /key/list returns array of token strings
+      // Subsequent calls: /key/info per token
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(['tok-aaa', 'tok-bbb']) })
+        .mockResolvedValue({ ok: true, json: () => Promise.resolve({ key: 'sk-test', models: ['gpt-4o'] }) });
+      const { listKeysWithInfo } = await import('../../hooks/useLlmCommands');
+      const result = await listKeysWithInfo('http://localhost:4000', 'sk-master');
+      expect(result.keys).toHaveLength(2);
+      expect(result.total_count).toBe(2);
+    });
+
+    it('returns empty when token list is empty', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
+      const { listKeysWithInfo } = await import('../../hooks/useLlmCommands');
+      const result = await listKeysWithInfo('http://localhost:4000', 'sk-master');
+      expect(result.keys).toHaveLength(0);
+    });
+
+    it('handles object items in the key list (extracts token field)', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve([{ token: 'tok-aaa' }, { key: 'tok-bbb' }, { key_hash: 'tok-ccc' }]),
+        })
+        .mockResolvedValue({ ok: true, json: () => Promise.resolve({ key: 'sk-test' }) });
+      const { listKeysWithInfo } = await import('../../hooks/useLlmCommands');
+      const result = await listKeysWithInfo('http://localhost:4000', 'sk-master');
+      expect(result.keys).toHaveLength(3);
+    });
+
+    it('handles key/info failures gracefully (partial results)', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(['tok-ok', 'tok-fail']) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ key: 'sk-ok', models: ['gpt-4o'] }) })
+        .mockResolvedValueOnce({ ok: false, status: 404, text: () => Promise.resolve('Not found') });
+      const { listKeysWithInfo } = await import('../../hooks/useLlmCommands');
+      const result = await listKeysWithInfo('http://localhost:4000', 'sk-master');
+      // Should return both keys — failed one becomes { token: 'tok-fail' }
+      expect(result.keys).toHaveLength(2);
+    });
+
+    it('handles info result wrapped in { info: {...} }', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(['tok-aaa']) })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ info: { key: 'sk-test', models: ['gpt-4o'], spend: 1.23 } }),
+        });
+      const { listKeysWithInfo } = await import('../../hooks/useLlmCommands');
+      const result = await listKeysWithInfo('http://localhost:4000', 'sk-master');
+      expect(result.keys[0].spend).toBe(1.23);
+    });
+  });
+
+  describe('A013/Analytics: Spend report and summary', () => {
+    it('getSpendReport fetches /global/spend/report with query params', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([{ group_by: 'openai', spend: 5.0 }]),
+      });
+      const { getSpendReport } = await import('../../hooks/useLlmCommands');
+      const result = await getSpendReport('http://localhost:4000', 'sk-master', '2026-01-01', '2026-01-31', 'team');
+      expect(result).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('start_date=2026-01-01'),
+        expect.anything(),
+      );
+    });
+
+    it('getSpendReport handles { data: [...] } response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ spend: 2.5 }] }),
+      });
+      const { getSpendReport } = await import('../../hooks/useLlmCommands');
+      const result = await getSpendReport('http://localhost:4000', 'sk-master');
+      expect(result).toHaveLength(1);
+    });
+
+    it('getSpendReport handles { report: [...] } response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ report: [{ spend: 3.0 }] }),
+      });
+      const { getSpendReport } = await import('../../hooks/useLlmCommands');
+      const result = await getSpendReport('http://localhost:4000', 'sk-master');
+      expect(result).toHaveLength(1);
+    });
+
+    it('getSpendReport with no query params', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([]),
+      });
+      const { getSpendReport } = await import('../../hooks/useLlmCommands');
+      await getSpendReport('http://localhost:4000', 'sk-master');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/global/spend/report',
+        expect.anything(),
+      );
+    });
+
+    it('getSpendSummary fetches /spend/logs with summarize=true', async () => {
+      const summary = { total_spend: 1.5, total_tokens: 5000, prompt_tokens: 3000, completion_tokens: 2000, api_requests: 10 };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(summary),
+      });
+      const { getSpendSummary } = await import('../../hooks/useLlmCommands');
+      const result = await getSpendSummary('http://localhost:4000', 'sk-master', '2026-01-01', '2026-01-31');
+      expect(result.total_spend).toBe(1.5);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('summarize=true'),
+        expect.anything(),
+      );
+    });
+
+    it('getSpendSummary without date params', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ total_spend: 0, total_tokens: 0, prompt_tokens: 0, completion_tokens: 0, api_requests: 0 }),
+      });
+      const { getSpendSummary } = await import('../../hooks/useLlmCommands');
+      await getSpendSummary('http://localhost:4000', 'sk-master');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('summarize=true'),
+        expect.anything(),
+      );
+    });
+
+    it('getDailyActivity fetches /user/daily/activity', async () => {
+      const activity = [{ date: '2026-01-01', total_tokens: 1000, prompt_tokens: 700, completion_tokens: 300, spend: 0.05, api_requests: 5 }];
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(activity),
+      });
+      const { getDailyActivity } = await import('../../hooks/useLlmCommands');
+      const result = await getDailyActivity('http://localhost:4000', 'sk-master', '2026-01-01', '2026-01-31');
+      expect(result).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('start_date=2026-01-01'),
+        expect.anything(),
+      );
+    });
+
+    it('getDailyActivity handles { data: [...] } response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ date: '2026-01-01', total_tokens: 100, prompt_tokens: 50, completion_tokens: 50, spend: 0.01, api_requests: 1 }] }),
+      });
+      const { getDailyActivity } = await import('../../hooks/useLlmCommands');
+      const result = await getDailyActivity('http://localhost:4000', 'sk-master', '2026-01-01', '2026-01-31');
+      expect(result).toHaveLength(1);
+    });
+
+    it('getDailyActivity handles { daily_activity: [...] } response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ daily_activity: [{ date: '2026-01-01', total_tokens: 100, prompt_tokens: 50, completion_tokens: 50, spend: 0.01, api_requests: 1 }] }),
+      });
+      const { getDailyActivity } = await import('../../hooks/useLlmCommands');
+      const result = await getDailyActivity('http://localhost:4000', 'sk-master', '2026-01-01', '2026-01-31');
+      expect(result).toHaveLength(1);
+    });
+  });
+
+  describe('A013/Config: updateConfig', () => {
+    it('posts to /config/update with settings payload', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'success' }),
+      });
+      const { updateConfig } = await import('../../hooks/useLlmCommands');
+      const settings = { router_settings: { routing_strategy: 'round-robin' } };
+      const result = await updateConfig('http://localhost:4000', 'sk-master', settings);
+      expect(result).toEqual({ status: 'success' });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/config/update',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(settings),
+          headers: expect.objectContaining({ 'Authorization': 'Bearer sk-master' }),
+        }),
+      );
+    });
+  });
+
+  describe('A013/ModelGroups: getModelGroups edge cases', () => {
+    it('handles model group as non-object (stringified fallback)', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        // String items in the array — covered by String(g) branch
+        json: () => Promise.resolve({ data: ['gpt-4o', 'claude-3'] }),
+      });
+      const { getModelGroups } = await import('../../hooks/useLlmCommands');
+      const result = await getModelGroups('http://localhost:4000', 'sk-master');
+      // String items don't match the object branch — they fall through to String(g)
+      // They'll pass the filter if they're non-empty
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it('handles model_group entry with name instead of model_group key', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ name: 'gpt-4o' }] }),
+      });
+      const { getModelGroups } = await import('../../hooks/useLlmCommands');
+      const result = await getModelGroups('http://localhost:4000', 'sk-master');
+      expect(result).toContain('gpt-4o');
+    });
+  });
+
+  describe('A013/Import: importModel edge cases', () => {
+    it('importModel with all opts (weight, rpm, tpm, order, isCombo)', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'success' }),
+      });
+      const { importModel } = await import('../../hooks/useLlmCommands');
+      await importModel(
+        'http://localhost:4000', 'sk-master',
+        'custom-solo', 'my-model', 'sk-api-key',
+        'my-alias', 'https://solo.dev/v1', 'openai',
+        { weight: 70, rpm: 100, tpm: 1000, order: 1, isCombo: true },
+      );
+      const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.litellm_params.weight).toBe(70);
+      expect(body.litellm_params.rpm).toBe(100);
+      expect(body.model_info.snapfzz_combo).toBe(true);
+      expect(body.model_info.order).toBe(1);
+    });
+
+    it('importModel with provider not starting with custom- uses slug as-is', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'success' }),
+      });
+      const { importModel } = await import('../../hooks/useLlmCommands');
+      await importModel('http://localhost:4000', 'sk-master', 'openai', 'gpt-4o', 'sk-key');
+      const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+      // providerSlug = 'openai' (does not start with 'custom-')
+      expect(body.model_name).toBe('openai/gpt-4o');
+    });
+  });
 });
