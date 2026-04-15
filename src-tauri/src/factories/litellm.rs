@@ -3,15 +3,8 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Default LiteLLM config template. Uses os.environ references for secrets
-/// that are injected via SpawnSecrets at process startup.
-const DEFAULT_CONFIG_TEMPLATE: &str = "\
-general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY
-  database_url: os.environ/DATABASE_URL
-  store_model_in_db: True
-  store_prompts_in_spend_logs: True
-";
+// NOTE: Config is generated dynamically in pre_run_setup to include the
+// disk_cache_dir path. DEFAULT_CONFIG_TEMPLATE is no longer used.
 
 const ENV_LITELLM_MASTER_KEY: &str = "LITELLM_MASTER_KEY";
 const ENV_LITELLM_SALT_KEY: &str = "LITELLM_SALT_KEY";
@@ -113,17 +106,36 @@ impl ProcessFactory for LiteLLMFactory {
             .as_ref()
             .ok_or_else(|| ServiceError::SpawnFailed("PostgreSQL URL not available".to_string()))?;
 
-        // A013/ModelDB: Auto-create minimal config.yaml with store_model_in_db=true
-        // so models added via the UI persist in PostgreSQL.
+        // A013/ModelDB: Always regenerate config.yaml — it's fully managed, not user-edited.
+        // Includes disk cache settings so LiteLLM caches responses locally without any
+        // user configuration.
         let config_path = self.service.config_path();
-        if !config_path.exists() {
-            let config_content = DEFAULT_CONFIG_TEMPLATE;
-            if let Some(parent) = config_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&config_path, config_content);
-            eprintln!("[litellm] created config.yaml with store_model_in_db=true");
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
         }
+        let cache_dir = config_path
+            .parent()
+            .unwrap_or(config_path.as_path())
+            .join(".litellm_cache");
+        let _ = std::fs::create_dir_all(&cache_dir);
+        let config_content = format!(
+            "general_settings:\n\
+             \x20 master_key: os.environ/{}\n\
+             \x20 database_url: os.environ/{}\n\
+             \x20 store_model_in_db: True\n\
+             \x20 store_prompts_in_spend_logs: True\n\
+             \n\
+             litellm_settings:\n\
+             \x20 cache: True\n\
+             \x20 cache_params:\n\
+             \x20   type: \"disk\"\n\
+             \x20   disk_cache_dir: \"{}\"\n",
+            ENV_LITELLM_MASTER_KEY,
+            ENV_DATABASE_URL,
+            cache_dir.to_string_lossy(),
+        );
+        let _ = std::fs::write(&config_path, &config_content);
+        eprintln!("[litellm] wrote config.yaml with disk cache at {}", cache_dir.display());
 
         let working_dir = self
             .service
