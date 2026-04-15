@@ -168,6 +168,7 @@ Zone 1 (Rust — tokio async)           Zone 3 (Main thread — React)
 │ Vault encryption        │←invoke()──│ TauriBridge (cached)    │
 │ LLM config generation   │           │ ConfirmAction, AppButton│
 │ Component downloads     │           │ SystemComponentCard     │
+│                         │           │ Model import/discovery  │
 └─────────────────────────┘           └─────────────────────────┘
 
 Zone 2 (Web Workers — future Beta scope)
@@ -176,7 +177,7 @@ Zone 2 (Web Workers — future Beta scope)
 
 ---
 
-## Boot Sequence (A012 + A039)
+## Boot Sequence (A012)
 
 ### Sync Phase (<25ms)
 
@@ -194,7 +195,7 @@ main()
       └── metrics::run_metrics_loop()    2s emission loop
 ```
 
-### Async Phase (A039 — three independent tasks)
+### Async Phase (three independent tasks, concurrent via tokio::spawn)
 
 ```
 Phase 1: Python Runtime                 Phase 2: PostgreSQL
@@ -217,7 +218,7 @@ Phase 1: Python Runtime                 Phase 2: PostgreSQL
                       └── emit supervisor events per service
 ```
 
-**Performance (A039):**
+**Performance:**
 - Prisma schema cached — skip `generate` + `db push` on warm boot (saves 4-8s)
 - Health polls every 250ms (not 1s) — service detected healthy in <1s
 - Services spawn concurrently via `tokio::spawn` — scales with service count
@@ -228,7 +229,7 @@ Phase 1: Python Runtime                 Phase 2: PostgreSQL
 ## Runtime Lifecycle (A016)
 
 ```
-ProcessFactoryRegistry
+ProcessFactoryRegistry  (guarded by RwLock — concurrent reads during boot)
   ├── LiteLLM      port dynamic  health: /health/liveliness
   ├── AgentScope    port dynamic  health: /health (disabled)
   └── PostgreSQL    port dynamic  managed by postgresql_embedded
@@ -255,10 +256,11 @@ Each service implements ProcessFactory:
 │   │   └── venv/              virtual environment (pip packages)
 │   └── postgres/              PostgreSQL binaries (postgresql_embedded)
 ├── data/
-│   └── postgres/              PostgreSQL data directory + postmaster.pid
+│   ├── postgres/              PostgreSQL data directory + postmaster.pid
+│   └── litellm/               LiteLLM config (config.yaml)
 └── processes/
     ├── agentscope/            AgentScope CWD
-    └── litellm/               LiteLLM CWD (config.yaml, .prisma_hash)
+    └── litellm/               LiteLLM CWD (.prisma_hash)
 ```
 
 ---
@@ -268,7 +270,7 @@ Each service implements ProcessFactory:
 ```
 LiteLLM Proxy (managed child process, dynamic port)
   CWD: ~/.snapfzz/processes/litellm/
-  Config: ~/.snapfzz/processes/litellm/config.yaml
+  Config: ~/.snapfzz/data/litellm/config.yaml
   Database: PostgreSQL (embedded, connection via DATABASE_URL)
   ├── /v1/chat/completions     OpenAI-compatible
   ├── /v1/messages             Anthropic-compatible
@@ -333,7 +335,7 @@ Rust → Frontend:  app.emit("event-name", payload) → bridge.listen('event-nam
 | Plugin | Icon | Order | What |
 |---|---|---|---|
 | `settings-general` | SettingOutlined | 10 | Theme, font, AgentScope host/port |
-| `settings-llm-providers` | ApiOutlined | 25 | LLM providers, keys, routing, audit |
+| `settings-llm` | ApiOutlined | 25 | LLM providers, keys, routing, audit |
 | `settings-performance` | DashboardOutlined | 30 | Preset selector, batch interval |
 | `settings-processes` | SearchOutlined | 40 | Process list, logs, restart/kill |
 | `settings-vault` | LockOutlined | 50 | Secret vault, stored secrets |
@@ -388,11 +390,10 @@ Presets: Performance (80% hardware) / Balanced / Battery
 
 | Metric | Value |
 |---|---|
-| Total Rust LOC | ~21,000 |
-| Total Tests | 462+ |
 | Crates | 8 |
-| Tauri Commands | 95 |
-| main.rs | 236 lines |
+| Tauri Commands | ~95 (see invoke_handler in main.rs) |
+| Total Rust LOC | see `tokei` for current count |
+| Total Tests | see `cargo test` for current count |
 
 ---
 
@@ -418,6 +419,6 @@ All specs live in `docs/plans/` and `docs/ui-specs/`. They reference this file f
 | A016 | Runtime Architecture | Runtime trait, RuntimeManager, is_runtime_ready |
 | A017 | MicroVM Sandbox | SandboxBackend trait, FirecrackerPack, MicrovmRuntime lifecycle |
 | A018 | Packs Refactoring | Vertical domain slices, core/ + service packs |
-| A039 | Phased Boot | Parallel async boot, prisma cache, fast health poll |
+| *(A039)* | Phased Boot | Merged into A012 — see Boot Sequence section above |
 | U001-U010 | UI Specs | Navigation, responsive, design system, etc. |
 | U011 | Vault Settings | Vault management UI |

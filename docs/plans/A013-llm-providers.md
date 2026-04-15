@@ -8,7 +8,7 @@ LLM provider management backed by LiteLLM proxy. Snapfzz manages LiteLLM as a ch
 
 LiteLLM provides: 100+ providers, virtual keys with budgets, model routing/combos, spend tracking, Prometheus metrics, OpenAI + Anthropic API compatibility — all MIT licensed.
 
-Snapfzz builds: config generator, process lifecycle (via snapfzz-runtime), settings UI plugin, audit log UI that reads LiteLLM's spend API.
+Snapfzz builds: config generator, process lifecycle (via snapfzz-kernel), settings UI plugin, audit log / analytics UI that reads LiteLLM's spend API.
 
 ---
 
@@ -18,8 +18,8 @@ Snapfzz builds: config generator, process lifecycle (via snapfzz-runtime), setti
 
 ```
 Snapfzz App
-├── snapfzz-runtime (A016)
-│   ├── LiteLLM Gateway  (port 4000)
+├── snapfzz-kernel (A016)
+│   ├── LiteLLM Gateway  (dynamic port via find_available_port())
 │   │   ├── /v1/chat/completions  (OpenAI compat)
 │   │   ├── /v1/messages          (Anthropic compat)
 │   │   ├── /v1/models            (model discovery)
@@ -27,10 +27,10 @@ Snapfzz App
 │   │   ├── /spend/*              (spend tracking)
 │   │   └── /health               (health check)
 │   ├── AgentScope Runtime (port 8090)
-│   │   └── uses gateway at localhost:4000
+│   │   └── uses gateway at localhost:{dynamic_port}
 │   └── CEF Runtime (on demand)
 │
-│ External tools also use localhost:4000:
+│ External tools also use localhost:{dynamic_port}:
 │   Cursor, Claude Code, Aider, any OpenAI-compat client
 ```
 
@@ -53,9 +53,9 @@ Dependencies: `reqwest`, `serde`, `serde_yaml`, `serde_json`, `uuid`
 
 ---
 
-## 1. Config Generation
+## 1. Config Generation ✅
 
-Snapfzz generates `~/.snapfzz/gateway/config.yaml` from user settings, then LiteLLM reads it.
+Snapfzz generates `~/.snapfzz/data/litellm/config.yaml` from user settings, then LiteLLM reads it.
 
 ### Config Structure
 
@@ -136,16 +136,17 @@ general_settings:
 
 ```
 User saves provider settings in UI
+  -> llm_save_config Tauri command
   -> Rust generates GatewayConfig struct
   -> Serialize to YAML
-  -> Write atomically to ~/.snapfzz/gateway/config.yaml
-  -> snapfzz-runtime restarts LiteLLM process
+  -> Write atomically to ~/.snapfzz/data/litellm/config.yaml
+  -> snapfzz-kernel restarts LiteLLM process
   -> LiteLLM picks up new config
 ```
 
 ---
 
-## 2. Virtual Key Management
+## 2. Virtual Key Management ✅
 
 Proxy calls to LiteLLM /key/* endpoints. Each key = one API account with its own budget.
 
@@ -187,7 +188,7 @@ pub struct KeyGenerateParams {
 
 ---
 
-## 3. Spend Tracking & Audit Log
+## 3. Spend Tracking & Audit Log ✅
 
 Read-only proxy to LiteLLM spend API. No custom storage.
 
@@ -197,12 +198,12 @@ Read-only proxy to LiteLLM spend API. No custom storage.
 #[tauri::command] async fn llm_get_spend_logs(filters: SpendFilters) -> Result<Vec<SpendLog>, String>
 #[tauri::command] async fn llm_get_key_spend(key: String) -> Result<KeySpend, String>
 #[tauri::command] async fn llm_get_global_spend() -> Result<GlobalSpend, String>
-#[tauri::command] async fn llm_get_models() -> Result<Vec<Model>, String>
+#[tauri::command] async fn llm_cleanup_spend_logs() -> Result<(), String>
 ```
 
 ---
 
-## 4. Settings Plugin UI
+## 4. Settings Plugin UI ✅
 
 ### UI Tabs
 
@@ -210,13 +211,125 @@ Read-only proxy to LiteLLM spend API. No custom storage.
 LLM Providers
 ├── [Providers]  — model deployments (writes config.yaml)
 ├── [API Keys]   — virtual keys with budgets (/key/* API)
-├── [Routing]    — model groups, aliases, strategies
-└── [Audit Log]  — request log from /spend/logs
+├── [Combos]     — strategy composer, combo routing wizard
+├── [Audit Log]  — request log from /spend/logs
+├── [Analytics]  — client-side aggregated spend charts
+└── [Cache]      — SQLite diskcache config, provider cache settings
 ```
 
 ---
 
-## 5. What LiteLLM Handles (NOT our code)
+## 5. Model Management (Frontend) ✅
+
+Model import and discovery are pure frontend operations — no Tauri commands involved.
+
+```typescript
+// plugins/llm-providers/src/hooks/useLlmCommands.ts
+//
+// llm_import_model(model)   — calls LiteLLM /model/new directly via fetch()
+// llm_discover_models()     — calls provider APIs (OpenAI /models, Anthropic, etc.) via fetch()
+//
+// Uses fetchWithToast() for unified error/toast handling
+```
+
+Frontend calls LiteLLM and provider APIs directly. Tauri is only involved for config I/O and secrets.
+
+---
+
+## 6. Strategy Composer / Combo System ✅
+
+Combos are named routing strategies that group models under a single virtual model name.
+
+### Architecture
+
+```
+ComboBuilder (wizard)
+  -> user picks name + strategy + models
+  -> writes to combo list in config
+  -> llm_save_config persists to config.yaml
+
+ComboList
+  -> displays saved combos
+  -> inline enable/disable/delete
+
+routing/composer.ts
+  -> builds LiteLLM router_settings from combo definitions
+  -> supports 7 strategies:
+       simple-shuffle         (default, random)
+       least-busy             (lowest active requests)
+       latency-based-routing  (fastest p50)
+       cost-based-routing     (cheapest per token)
+       usage-based-routing    (load balanced by usage)
+       weighted               (explicit weight per model)
+       priority               (ordered fallback list)
+```
+
+Combos are stored in config.yaml under `router_settings.model_group_alias` + strategy annotations. The combo name becomes a virtual model name accessible to any OpenAI-compat client.
+
+---
+
+## 7. Disk Caching ✅
+
+### Architecture
+
+```
+CacheTab (UI)
+  -> toggle response cache on/off
+  -> configure TTL and cache size limits
+  -> view cache hit/miss stats
+
+SQLite diskcache
+  -> LiteLLM disk_cache backend
+  -> stores serialized responses keyed by (model, messages hash)
+  -> file: ~/.snapfzz/data/litellm/cache.db
+
+Two cache layers:
+  provider prompt cache   — prefix caching at provider level (Anthropic, OpenAI)
+                            enabled via litellm_settings.cache_prompt_injections
+  response cache          — full response deduplication by Snapfzz diskcache
+                            enabled via litellm_settings.cache = true
+```
+
+Config is written by `llm_save_config`. No separate Tauri commands for cache operations.
+
+---
+
+## 8. Analytics ✅
+
+### Architecture
+
+```
+AnalyticsTab (UI)
+  -> reads spend logs via llm_get_spend_logs
+  -> aggregates client-side (no backend computation):
+       cost by provider
+       cost by model
+       cost by key
+       requests per day (bar chart)
+       token usage over time
+  -> time range filter: 7d / 30d / 90d / all
+```
+
+All aggregation is pure TypeScript on spend log data already fetched for the Audit Log. No additional API calls.
+
+---
+
+## 9. Shared Frontend Utilities ✅
+
+```typescript
+// modelNames.ts
+buildProviderLookup(models)    // index LiteLLM model list by provider
+resolveProviderName(model)     // "openai/gpt-4o" -> "OpenAI"
+resolveModelName(model)        // "openai/gpt-4o" -> "GPT-4o"
+
+// fetchWithToast.ts
+fetchWithToast(url, opts)      // fetch() wrapper that shows toast on error/success
+                               // used by all direct LiteLLM API calls from frontend
+```
+
+---
+
+## 10. What LiteLLM Handles (NOT our code)
 
 | Feature | LiteLLM Component |
 |---|---|
@@ -230,50 +343,64 @@ LLM Providers
 | Model discovery (/v1/models) | Proxy server |
 | Rate limiting (RPM/TPM per key) | Key enforcement |
 | 100+ provider support | Provider adapters |
+| Provider API key storage + encryption | LiteLLM encrypted DB |
 
 ---
 
-## 6. Zone Boundaries
+## 11. Zone Boundaries
 
 | Concern | Zone | Why |
 |---|---|---|
 | Config YAML generation | Zone 1 | File I/O |
 | HTTP calls to LiteLLM API | Zone 1 | Network I/O |
-| Process lifecycle | Zone 1 (snapfzz-runtime) | Process management |
+| Process lifecycle | Zone 1 (snapfzz-kernel) | Process management |
 | Plugin manifest | Zone 2 | Worker lifecycle |
 | React components | Zone 3 | Render only |
+| Model import / discovery | Zone 3 (frontend fetch) | Direct provider API calls |
 
 ---
 
-## 7. Dependencies
+## 12. Dependencies
 
 - `litellm[proxy]` Python package (MIT) — installed via snapfzz-packs
 - `reqwest` — HTTP client for LiteLLM API calls
 - `serde_yaml` — config.yaml generation
-- snapfzz-runtime (A016) — process lifecycle
+- snapfzz-kernel (A016) — process lifecycle
 - snapfzz-packs — LiteLLM installation
-- snapfzz-vault (A011) — provider API keys in vault, injected as env vars
+- snapfzz-vault (A011) — master key + custom_providers config blob only
 
 ---
 
-## 8. Security
+## 13. Security
 
-- Provider API keys in vault (A011), injected as env vars to LiteLLM process
-- LiteLLM master key generated on first boot, stored in vault
+- Provider API keys stored and encrypted in LiteLLM's own DB (not Snapfzz vault)
+- Snapfzz vault holds only: LiteLLM master key + custom_providers config blob
+- LiteLLM master key generated on first boot, stored in vault, referenced as `os.environ/LITELLM_MASTER_KEY`
 - Virtual keys created via master key — never exposed to frontend
 - LiteLLM binds to 127.0.0.1 only (not exposed to network)
 - Config.yaml contains env var references, not raw keys
 
+### Tauri Commands (Secrets / Config I/O only)
+
+```rust
+#[tauri::command] async fn llm_get_master_key() -> Result<String, String>
+#[tauri::command] async fn llm_get_base_url() -> Result<String, String>
+#[tauri::command] async fn llm_save_config(config: GatewayConfig) -> Result<(), String>
+#[tauri::command] async fn llm_get_config_path() -> Result<String, String>
+```
+
+All other LiteLLM interactions (model import, discovery, spend logs, keys) go through direct HTTP from frontend or Rust HTTP client in snapfzz-llm.
+
 ---
 
-## 9. Tests
+## 14. Tests
 
 ```rust
 // A013/Config: generate_config produces valid YAML
 // A013/Config: model_list includes all enabled providers
 // A013/Config: router_settings includes strategy and aliases
 // A013/Config: master_key uses env var reference
-// A013/Config: config written atomically
+// A013/Config: config written atomically to ~/.snapfzz/data/litellm/config.yaml
 
 // A013/Keys: generate_key calls POST /key/generate
 // A013/Keys: list_keys calls GET /key/list with pagination
@@ -283,11 +410,15 @@ LLM Providers
 // A013/Spend: get_spend_logs calls /spend/logs with date filters
 // A013/Spend: get_key_spend returns per-key spend
 // A013/Spend: get_global_spend returns total spend
+// A013/Spend: cleanup_spend_logs prunes old records
+
+// A013/Combos: composer builds valid router_settings for all 7 strategies
+// A013/Combos: weighted strategy normalizes weights to 1.0
 ```
 
 ---
 
-## 10. Performance
+## 15. Performance
 
 | Operation | Owner | Target |
 |---|---|---|
@@ -296,3 +427,5 @@ LLM Providers
 | Config generation | snapfzz-llm | < 10ms |
 | Key management API | snapfzz-llm -> LiteLLM | < 100ms |
 | Spend query | snapfzz-llm -> LiteLLM | < 500ms |
+| Cache hit (diskcache) | LiteLLM diskcache | < 5ms |
+| Analytics aggregation | Frontend (client-side) | < 50ms for 30d window |

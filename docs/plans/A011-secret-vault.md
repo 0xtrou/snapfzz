@@ -38,7 +38,7 @@ Header (16 bytes):
 
 Per entry:
   key_len:    u16 LE
-  key_bytes:  [u8; key_len]     (UTF-8 entry name, e.g. "provider:openai:apiKey")
+  key_bytes:  [u8; key_len]     (UTF-8 entry name, e.g. "litellm:master_key")
   nonce:      [u8; 12]          (unique per entry, regenerated on every write)
   ciphertext_len: u32 LE
   ciphertext: [u8; ciphertext_len]  (AES-256-GCM encrypted value + 16-byte auth tag)
@@ -48,11 +48,12 @@ On every write: rebuild entire file (entries are small, count is low — <100 en
 
 ### Entry Naming Convention
 
+> **Scope note**: The vault now stores gateway-level secrets only — the LiteLLM master key and custom provider config blob. Individual per-provider API keys are NOT stored here; they are written directly into LiteLLM's `config.yaml` and managed by the `settings-llm` plugin.
+
 ```
-provider:{provider_id}:apiKey     — LLM provider API key
-provider:{provider_id}:orgId      — optional org/team identifier
-webhook:{name}:secret             — webhook signing secrets
-custom:{name}                     — user-defined secrets
+litellm:master_key            — LiteLLM gateway master key (used to authenticate /key/* calls)
+litellm:custom_providers      — JSON blob of custom provider configs (base URL, headers, etc.)
+custom:{name}                 — user-defined secrets (future extensibility)
 ```
 
 Note: process auth tokens (e.g., AgentScope IPC tokens) are NOT stored in the vault. They are ephemeral — held in Rust process memory, regenerated every boot, passed as env vars. See A012 for details.
@@ -125,15 +126,15 @@ async fn vault_has(vault: State<'_, Mutex<SecretVault>>, key: String) -> Result<
 ### Frontend Usage Pattern
 
 ```typescript
-// Store API key (settings plugin save handler)
-await tauriInvoke('vault_store', { key: 'provider:openai:apiKey', value: apiKeyInput });
+// Store LiteLLM master key
+await tauriInvoke('vault_store', { key: 'litellm:master_key', value: masterKey });
 
 // Read for display (masked — frontend shows only last 4 chars)
-const raw = await tauriInvoke('vault_read', { key: 'provider:openai:apiKey' }) as string;
+const raw = await tauriInvoke('vault_read', { key: 'litellm:master_key' }) as string;
 const masked = '•'.repeat(raw.length - 4) + raw.slice(-4);
 
 // Check existence without reading value
-const hasKey = await tauriInvoke('vault_has', { key: 'provider:openai:apiKey' }) as boolean;
+const hasKey = await tauriInvoke('vault_has', { key: 'litellm:master_key' }) as boolean;
 
 // List all stored secret names
 const names = await tauriInvoke('vault_list') as string[];
@@ -141,10 +142,11 @@ const names = await tauriInvoke('vault_list') as string[];
 
 ---
 
-## Migration
+## Migration (completed — historical reference)
 
-On first boot after vault is introduced:
-1. Preflight (A012) initializes vault
+This migration ran on first boot when the vault was introduced. It is now complete and the migration code has been removed.
+
+1. Preflight (A012) initialized vault
 2. Read existing `settings.json` for `apiKey` field
 3. If non-empty: `vault.store("provider:openai:apiKey", apiKey)`, then set `settings.json.apiKey = ""`
 4. Log migration: `[preflight] Migrated 1 API key to vault`
