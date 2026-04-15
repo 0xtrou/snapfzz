@@ -15,12 +15,17 @@ vi.mock('@snapfzz/shared', () => ({
   fetchWithToast: async (fn: () => Promise<unknown>) => {
     try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
   },
+  AppButton: ({ children, onClick, loading, ...props }: any) => (
+    <button type="button" onClick={onClick} disabled={loading} {...props}>{children}</button>
+  ),
 }));
 
 vi.mock('../../hooks/useLlmCommands', () => ({
   getBaseUrl: () => mockGetBaseUrl(),
   getMasterKey: () => mockGetMasterKey(),
   getSpendLogs: (...args: unknown[]) => mockGetSpendLogs(...args),
+  getModelInfo: () => Promise.resolve({ data: [] }),
+  loadCustomProviders: () => Promise.resolve([]),
 }));
 
 // Helper: build a mock Response for global.fetch

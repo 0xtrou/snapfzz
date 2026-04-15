@@ -15,12 +15,12 @@ export interface Deployment {
   id?: string;           // Existing model_id (for updates)
   provider: string;      // e.g. "custom-solo-engineer"
   model: string;         // The litellm_params.model value — if it contains '/' it is used as-is, otherwise "openai/" is prepended
+  modelName?: string;    // The unique model_name from LiteLLM (e.g. "solo-engineer/coder") — used as display key
   apiKey?: string;       // Provider API key (from vault)
   apiBase?: string;      // e.g. "https://llm.solo.engineer/v1"
   weight?: number;       // 0-100, for weighted strategy
   rpmLimit?: number;     // Requests per minute limit
   tpmLimit?: number;     // Tokens per minute limit
-  isRegistered?: boolean; // Deprecated — no longer used by composer; model value determines prefix
 }
 
 export interface ComboConfig {
@@ -123,11 +123,12 @@ function buildModelPayload(
 export function composeCombo(config: ComboConfig): ComposedPayloads {
   const { name, strategy, apiType, fallbacks } = config;
 
-  // Deduplicate deployments by model value — keep first occurrence
+  // Deduplicate deployments by modelName (unique per provider) — keep first occurrence
   const seen = new Set<string>();
   const deployments = config.deployments.filter((d) => {
-    if (seen.has(d.model)) return false;
-    seen.add(d.model);
+    const key = d.modelName ?? d.model;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 

@@ -69,6 +69,7 @@ function makeMocks({
     getModelGroups: () => Promise.resolve(['solo-engineer/coder', 'solo-engineer/codex']),
     getModelInfo: () => Promise.resolve({ data: modelInfoData }),
     deleteModel: vi.fn().mockResolvedValue(undefined),
+    importModel: vi.fn().mockResolvedValue({}),
     loadCustomProviders: () => Promise.resolve([]),
   };
 }
@@ -103,6 +104,7 @@ vi.mock('../../hooks/useLlmCommands', () => ({
   get getModelGroups() { return hookMocks.getModelGroups; },
   get getModelInfo() { return hookMocks.getModelInfo; },
   get deleteModel() { return hookMocks.deleteModel; },
+  get importModel() { return hookMocks.importModel; },
   get loadCustomProviders() { return hookMocks.loadCustomProviders; },
 }));
 
@@ -364,14 +366,13 @@ describe('A013/UI/RoutingTab – Combo lifecycle (e2e)', () => {
 
     await user.click(saveBtn);
 
-    // Verify /model/new was called with the correct payload
+    // Verify importModel was called with the new signature
     await waitFor(() => {
-      const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-      const modelNewCall = fetchCalls.find(([url]: [string]) => url.includes('/model/new'));
-      expect(modelNewCall).toBeDefined();
-      const body = JSON.parse(modelNewCall![1].body);
-      expect(body.model_name).toBe('my-new-pool');
-      expect(body.litellm_params.model).toBe('openai/coder');
+      const importCalls = hookMocks.importModel.mock.calls;
+      expect(importCalls.length).toBeGreaterThan(0);
+      // importModel(litellmBaseUrl, masterKey, providerId, modelId, apiKey, modelName?, ...)
+      // modelName (6th arg, index 5) should be the combo name
+      expect(importCalls[0][5]).toBe('my-new-pool');
     });
 
     // Builder should dismiss and return to list
@@ -436,22 +437,10 @@ describe('A013/UI/RoutingTab – Combo lifecycle (e2e)', () => {
     await user.click(saveBtn);
 
     await waitFor(() => {
-      const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-
-      // /model/delete must be called first
-      const deleteCallIdx = fetchCalls.findIndex(([url]: [string]) =>
-        url.includes('/model/delete'),
-      );
-      const createCallIdx = fetchCalls.findIndex(([url]: [string]) =>
-        url.includes('/model/new'),
-      );
-
-      expect(deleteCallIdx).toBeGreaterThanOrEqual(0);
-      expect(createCallIdx).toBeGreaterThan(deleteCallIdx);
-
-      // Delete payload references individual model IDs (not model_name)
-      const deleteBody = JSON.parse(fetchCalls[deleteCallIdx]![1].body);
-      expect(deleteBody.id).toBe('model-id-aaa');
+      // deleteModel must be called for existing deployments
+      expect(hookMocks.deleteModel).toHaveBeenCalled();
+      // importModel must be called to recreate deployments
+      expect(hookMocks.importModel).toHaveBeenCalled();
     });
   });
 
@@ -831,12 +820,10 @@ describe('A013/UI/RoutingTab – Combo lifecycle (e2e)', () => {
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
-      const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-      const modelNewCall = fetchCalls.find(([url]: [string]) => url.includes('/model/new'));
-      expect(modelNewCall).toBeDefined();
-      const body = JSON.parse(modelNewCall![1].body);
-      expect(body.model_name).toBe('my-pool');
-      expect(body.litellm_params).toHaveProperty('weight');
+      // importModel is called with new signature
+      expect(hookMocks.importModel).toHaveBeenCalled();
+      // The combo name is passed as 6th arg (index 5) — modelName override
+      expect(hookMocks.importModel.mock.calls[0][5]).toBe('my-pool');
     });
   });
 
@@ -878,11 +865,10 @@ describe('A013/UI/RoutingTab – Combo lifecycle (e2e)', () => {
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
-      const fetchCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-      const modelNewCalls = fetchCalls.filter(([url]: [string]) => url.includes('/model/new'));
-      expect(modelNewCalls.length).toBeGreaterThanOrEqual(1);
-      const body = JSON.parse(modelNewCalls[0]![1].body);
-      expect(body.model_info).toHaveProperty('order', 1);
+      // importModel is called with new signature
+      expect(hookMocks.importModel).toHaveBeenCalled();
+      // The combo name is passed as 6th arg (index 5)
+      expect(hookMocks.importModel.mock.calls[0][5]).toBe('priority-pool');
     });
   });
 

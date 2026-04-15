@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Skeleton, Statistic, message } from 'antd';
-import { getBaseUrl, getMasterKey, getSpendLogs, type SpendLog } from '../hooks/useLlmCommands';
+import { ReloadOutlined } from '@ant-design/icons';
+import { AppButton } from '@snapfzz/shared';
+import { getBaseUrl, getMasterKey, getSpendLogs, getModelInfo, loadCustomProviders, type SpendLog } from '../hooks/useLlmCommands';
+import { buildProviderLookup, resolveProviderName, type ProviderLookup } from '../lib/modelNames';
 
 // --- helpers ---
 
@@ -49,12 +52,6 @@ function getCacheCreationTokens(log: SpendLog): number {
     }
   }
   return 0;
-}
-
-function providerOf(log: SpendLog): string {
-  const mg = log.model_group || log.model || '';
-  if (mg.includes('/')) return mg.split('/')[0];
-  return 'unknown';
 }
 
 // --- cache status ---
@@ -204,17 +201,21 @@ export default function CacheTab() {
   const [logs, setLogs] = useState<SpendLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
+  const [providerLookup, setProviderLookup] = useState<ProviderLookup>({ byModelId: new Map(), byApiBase: new Map(), providerNames: new Set() });
 
   const loadData = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
     try {
-      const [raw, status] = await Promise.all([
+      const [raw, status, customProviders, modelInfoRes] = await Promise.all([
         getSpendLogs(baseUrl, masterKey, {}),
         getCacheStatus(baseUrl, masterKey),
+        loadCustomProviders().catch(() => []),
+        getModelInfo(baseUrl, masterKey).catch(() => ({ data: [] })),
       ]);
       setLogs(raw.filter((l) => l.model && l.model.trim() !== ''));
       setCacheStatus(status);
+      setProviderLookup(buildProviderLookup(customProviders, modelInfoRes.data ?? []));
     } catch {
       message.error('Failed to load spend logs');
       setLogs([]);
@@ -259,8 +260,9 @@ export default function CacheTab() {
       cacheCreationTokens += cct;
       if (!isCached) cacheWriteTokens += pt;
 
-      // provider
-      const provider = providerOf(log);
+      // provider — skip unresolvable entries
+      const provider = resolveProviderName(log, providerLookup);
+      if (provider === 'unknown') continue;
       const pr = providerMap.get(provider) ?? {
         provider,
         totalRequests: 0,
@@ -327,7 +329,7 @@ export default function CacheTab() {
       hourRows: sortedHours,
       hasCacheData,
     };
-  }, [logs]);
+  }, [logs, providerLookup]);
 
   if (loading) return <Skeleton active paragraph={{ rows: 10 }} />;
 
@@ -343,6 +345,12 @@ export default function CacheTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+
+      {/* Header with refresh */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Cache</div>
+        <AppButton variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>Refresh</AppButton>
+      </div>
 
       {/* Section 0: Cache Status */}
       <Section title="Cache Status">

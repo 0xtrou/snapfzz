@@ -212,6 +212,7 @@ export default function VaultSettings() {
                 columns={columns}
                 dataSource={secrets}
                 pagination={false}
+                size="small"
               />
             )}
           </section>

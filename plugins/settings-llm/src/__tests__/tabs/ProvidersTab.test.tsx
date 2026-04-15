@@ -1,7 +1,10 @@
 // Spec: A013-llm-providers.md
 // Section: Settings Plugin UI — Providers Tab
-// Verifies: card grid view, drill-in detail view, key CRUD operations, toggle state,
-//           custom providers, available models, catalog integration
+// Verifies: card grid view, drill-in detail view, API key management, custom providers,
+//           available models, catalog integration
+//
+// A013/Vault: Provider API keys are no longer stored in the vault.
+// Keys are entered in the UI and passed directly to LiteLLM when importing models.
 
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -120,16 +123,19 @@ vi.mock('../../catalog', () => {
 });
 
 
+// A013/Fetch: Mock global.fetch for discoverModels (fetch from provider API) and
+// importModel (POST /model/new via litellmFetch). These functions no longer use bridge.invoke.
+const mockFetch = vi.fn();
+
 describe('A013/UI/ProvidersTab', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockInvoke.mockReset();
+    mockFetch.mockReset();
+    vi.stubGlobal('fetch', mockFetch);
+
     mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
-      if (command === 'llm_list_provider_keys') {
-        if (args.providerId === 'openai') return ['primary'];
-        if (args.providerId === 'anthropic') return ['prod', 'dev'];
-        return [];
-      }
+      // A013/Vault: No more llm_list_provider_keys / llm_store_provider_key / llm_delete_provider_key
       if (command === 'vault_read') {
         if (args.key === 'litellm:custom_providers') return null;
         return null;
@@ -137,16 +143,33 @@ describe('A013/UI/ProvidersTab', () => {
       if (command === 'vault_store') return undefined;
       if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
       if (command === 'llm_get_master_key') return 'sk-master-test';
-      if (command === 'llm_discover_models') return { data: [] };
-      if (command === 'llm_import_model') return { status: 'success' };
       return undefined;
     });
 
-    // Clear discovery cache before each test
+    // Default fetch mock: discovery returns empty, import returns success,
+    // gateway /v1/models and /v1/model/info return empty results.
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('/model/new')) {
+        return { ok: true, json: () => Promise.resolve({ status: 'success' }) };
+      }
+      if (String(url).includes('/v1/model/info')) {
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
+      }
+      if (String(url).includes('/v1/models')) {
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
+      }
+      return { ok: true, json: () => Promise.resolve({ data: [] }) };
+    });
+
+    // Clear discovery cache and provider configured flags before each test
     localStorage.removeItem('snapfzz:discovered_models');
+    localStorage.removeItem('snapfzz:provider_configured:openai');
+    localStorage.removeItem('snapfzz:provider_configured:anthropic');
+    localStorage.removeItem('snapfzz:provider_configured:deepseek');
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -154,24 +177,27 @@ describe('A013/UI/ProvidersTab', () => {
     it('A013/Grid: renders a card for each catalog provider with key counts', async () => {
       render(<ProvidersTab />);
 
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('llm_list_provider_keys', { providerId: 'openai' });
-      });
-
       // Catalog mock has openai, anthropic, deepseek
       expect(await screen.findByText('OpenAI')).toBeInTheDocument();
       expect(screen.getByText('Anthropic')).toBeInTheDocument();
       expect(screen.getByText('DeepSeek')).toBeInTheDocument();
     });
 
-    it('A013/Grid: shows key count badges per provider', async () => {
+    it('A013/Grid: shows unconfigured state per provider card when no keys set', async () => {
       render(<ProvidersTab />);
 
-      expect(await screen.findByText('● 1 key')).toBeInTheDocument();
-      expect(screen.getByText('● 2 keys')).toBeInTheDocument();
-      // Providers with no keys show muted text
+      await screen.findByText('OpenAI');
+      // All providers start unconfigured — show "○ No keys"
       const noKeyTexts = screen.getAllByText('○ No keys');
       expect(noKeyTexts.length).toBeGreaterThan(0);
+    });
+
+    it('A013/Grid: shows configured state when localStorage flag is set', async () => {
+      localStorage.setItem('snapfzz:provider_configured:openai', '1');
+      render(<ProvidersTab />);
+
+      // OpenAI has a configured flag — shows "● 1 key"
+      expect(await screen.findByText('● 1 key')).toBeInTheDocument();
     });
 
     it('A013/Grid: shows catalog model count on provider cards', async () => {
@@ -229,12 +255,6 @@ describe('A013/UI/ProvidersTab', () => {
   describe('Custom Providers', () => {
     it('A013/Custom: renders custom provider cards when vault has data', async () => {
       mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          if (args.providerId === 'custom-solo-eng') return ['default'];
-          return [];
-        }
         if (command === 'vault_read') {
           if (args.key === 'litellm:custom_providers') {
             return JSON.stringify([
@@ -243,6 +263,7 @@ describe('A013/UI/ProvidersTab', () => {
                 name: 'llm.solo.engineer',
                 baseUrl: 'https://llm.solo.engineer/v1',
                 variant: 'openai',
+                apiKey: 'sk-custom-key',
               },
             ]);
           }
@@ -271,7 +292,7 @@ describe('A013/UI/ProvidersTab', () => {
       expect(await screen.findByText('Add Custom Provider')).toBeInTheDocument();
     });
 
-    it('A013/Custom: add modal stores provider config and key', async () => {
+    it('A013/Custom: add modal stores provider config with apiKey in the config blob', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
@@ -299,21 +320,22 @@ describe('A013/UI/ProvidersTab', () => {
         });
       });
 
+      // A013/Vault: API key stored in provider config blob, NOT in vault provider keys
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('llm_store_provider_key', {
-          providerId: 'custom-my-provider',
-          keyName: 'default',
-          keyValue: 'sk-custom-key',
-        });
+        const call = mockInvoke.mock.calls.find(
+          ([cmd, args]) => cmd === 'vault_store' && args.key === 'litellm:custom_providers',
+        );
+        expect(call).toBeDefined();
+        const stored = JSON.parse(call![1].value);
+        expect(stored[0].apiKey).toBe('sk-custom-key');
       });
+
+      // Ensure llm_store_provider_key was NOT called
+      expect(mockInvoke).not.toHaveBeenCalledWith('llm_store_provider_key', expect.anything());
     });
 
     it('A013/Custom: clicking custom provider card navigates to detail', async () => {
       mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'custom-solo-eng') return ['default'];
-          return [];
-        }
         if (command === 'vault_read') {
           if (args.key === 'litellm:custom_providers') {
             return JSON.stringify([
@@ -355,13 +377,11 @@ describe('A013/UI/ProvidersTab', () => {
       return user;
     }
 
-    it('A013/Detail: shows provider name, connection count, and key entries', async () => {
+    it('A013/Detail: shows provider name and not-configured status initially', async () => {
       await navigateToOpenAI();
 
       expect(screen.getByText('OpenAI')).toBeInTheDocument();
-      expect(screen.getByText('1 connection')).toBeInTheDocument();
-      expect(screen.getByText('primary')).toBeInTheDocument();
-      expect(screen.queryByText(/ENV: os\.environ/)).not.toBeInTheDocument();
+      expect(screen.getByText('○ Not configured')).toBeInTheDocument();
     });
 
     it('A013/Detail: does not show base URL for built-in providers', async () => {
@@ -371,10 +391,33 @@ describe('A013/UI/ProvidersTab', () => {
       expect(screen.queryByText(/api\.openai\.com/)).not.toBeInTheDocument();
     });
 
-    it('A013/Detail: shows connected status for each key', async () => {
+    it('A013/Detail: shows "Add Key" button when no key is configured', async () => {
       await navigateToOpenAI();
 
-      expect(screen.getByText('● Connected')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add Key/i })).toBeInTheDocument();
+    });
+
+    it('A013/Detail: clicking "Add Key" shows API key input', async () => {
+      const user = await navigateToOpenAI();
+
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+
+      expect(screen.getByLabelText('API Key')).toBeInTheDocument();
+    });
+
+    it('A013/Detail: saving an API key updates status to connected', async () => {
+      const user = await navigateToOpenAI();
+
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-test-key');
+
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('● Connected')).toBeInTheDocument();
+      });
     });
 
     it('A013/Detail: back button returns to grid view', async () => {
@@ -390,119 +433,77 @@ describe('A013/UI/ProvidersTab', () => {
       expect(screen.getByText('Anthropic')).toBeInTheDocument();
     });
 
-    it('A013/Detail: delete button invokes llm_delete_provider_key', async () => {
-      const user = await navigateToOpenAI();
-
-      const deleteButton = screen.getByRole('button', { name: 'Delete primary' });
-      await user.click(deleteButton);
-
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('llm_delete_provider_key', {
-          providerId: 'openai',
-          keyName: 'primary',
-        });
-      });
-    });
-
-    it('A013/Detail: add key modal invokes llm_store_provider_key', async () => {
-      const user = await navigateToOpenAI();
-
-      const addBtn = screen.getByRole('button', { name: /Add Key/i });
-      await user.click(addBtn);
-
-      const modal = await screen.findByRole('dialog', { name: /Add Provider Key/i });
-      const keyNameInput = within(modal).getByLabelText(/Key Name/i);
-      const keyValueInput = within(modal).getByLabelText(/API Key/i);
-
-      await user.type(keyNameInput, 'staging');
-      await user.type(keyValueInput, 'sk-staging-value');
-
-      await user.click(within(modal).getByRole('button', { name: 'OK' }));
-
-      await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('llm_store_provider_key', {
-          providerId: 'openai',
-          keyName: 'staging',
-          keyValue: 'sk-staging-value',
-        });
-      });
-    });
-
-    it('A013/Detail: edit opens modal with key name pre-filled and disabled', async () => {
-      const user = await navigateToOpenAI();
-
-      const editButton = screen.getByRole('button', { name: 'Edit primary' });
-      await user.click(editButton);
-
-      const modal = await screen.findByRole('dialog', { name: /Edit Key: primary/i });
-      const keyNameInput = within(modal).getByLabelText(/Key Name/i);
-
-      expect(keyNameInput).toHaveValue('primary');
-      expect(keyNameInput).toBeDisabled();
-    });
-
-    it('A013/Detail: shows Available Models section with live discovery when keys exist', async () => {
+    it('A013/Detail: shows Available Models section (catalog when no key, live when key present)', async () => {
       await navigateToOpenAI();
 
       expect(await screen.findByText('Available Models')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument();
+      // Without a key, catalog fallback is shown
+      expect(screen.getByText('from catalog')).toBeInTheDocument();
     });
 
-    it('A013/Detail: discovers models from provider API via Tauri command', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          return [];
+    it('A013/Detail: discovers models from provider API after API key is entered', async () => {
+      const discoveredModels = {
+        data: [
+          { id: 'gpt-4o', object: 'model', owned_by: 'openai' },
+          { id: 'gpt-4o-mini', object: 'model', owned_by: 'openai' },
+        ],
+      };
+      // discoverModels now uses fetch() directly — not bridge.invoke
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes('/v1/models') && !String(url).includes('127.0.0.1')) {
+          return { ok: true, json: () => Promise.resolve(discoveredModels) };
         }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') {
-          return {
-            data: [
-              { id: 'gpt-4o', object: 'model', owned_by: 'openai' },
-              { id: 'gpt-4o-mini', object: 'model', owned_by: 'openai' },
-            ],
-          };
+        if (String(url).includes('/model/new')) {
+          return { ok: true, json: () => Promise.resolve({ status: 'success' }) };
         }
-        if (command === 'llm_import_model') return { status: 'success' };
-        return undefined;
-      });
-
-      await navigateToOpenAI();
-
-      expect(await screen.findByText('gpt-4o')).toBeInTheDocument();
-      expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
-      expect(mockInvoke).toHaveBeenCalledWith('llm_discover_models', {
-        providerId: 'openai',
-        baseUrl: null,
-      });
-    });
-
-    it('A013/Detail: model filter narrows displayed models', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          return [];
-        }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') {
-          return {
-            data: [
-              { id: 'gpt-4o', object: 'model' },
-              { id: 'gpt-4o-mini', object: 'model' },
-              { id: 'gpt-3.5-turbo', object: 'model' },
-            ],
-          };
-        }
-        return undefined;
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
       });
 
       const user = await navigateToOpenAI();
+
+      // Enter API key to enable live discovery
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-openai-key');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('gpt-4o')).toBeInTheDocument();
+      expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
+      // A013: discoverModels now uses fetch() directly (not bridge.invoke)
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/models'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer sk-openai-key',
+          }),
+        }),
+      );
+    });
+
+    it('A013/Detail: model filter narrows displayed models', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes('/v1/models') && !String(url).includes('127.0.0.1')) {
+          return {
+            ok: true,
+            json: () => Promise.resolve({
+              data: [
+                { id: 'gpt-4o', object: 'model' },
+                { id: 'gpt-4o-mini', object: 'model' },
+                { id: 'gpt-3.5-turbo', object: 'model' },
+              ],
+            }),
+          };
+        }
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
+      });
+
+      const user = await navigateToOpenAI();
+
+      // Enter API key to enable live discovery
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-openai-key');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
 
       await screen.findByText('gpt-4o');
 
@@ -518,97 +519,101 @@ describe('A013/UI/ProvidersTab', () => {
     });
 
     it('A013/Detail: shows error state when model discovery fails', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          return [];
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes('/v1/models') && !String(url).includes('127.0.0.1')) {
+          return {
+            ok: false,
+            status: 401,
+            text: () => Promise.resolve('Unauthorized'),
+          };
         }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') throw new Error('Provider returned 401');
-        return undefined;
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
       });
 
-      await navigateToOpenAI();
+      const user = await navigateToOpenAI();
+
+      // Enter API key to trigger discovery
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-bad-key');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
 
       expect(await screen.findByText('Unable to fetch models')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     });
 
     it('A013/Detail: copy button is present for each discovered model', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          return [];
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes('/v1/models') && !String(url).includes('127.0.0.1')) {
+          return { ok: true, json: () => Promise.resolve({ data: [{ id: 'gpt-4o', object: 'model' }] }) };
         }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') {
-          return { data: [{ id: 'gpt-4o', object: 'model' }] };
-        }
-        return undefined;
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
       });
 
-      await navigateToOpenAI();
+      const user = await navigateToOpenAI();
+
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-openai-key');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
 
       const copyBtn = await screen.findByRole('button', { name: 'Copy gpt-4o' });
       expect(copyBtn).toBeInTheDocument();
     });
 
-    it('A013/Detail: import button calls llm_import_model and shows checkmark', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          return [];
+    it('A013/Detail: import button calls POST /model/new with api_key directly', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes('/v1/models') && !String(url).includes('127.0.0.1')) {
+          return { ok: true, json: () => Promise.resolve({ data: [{ id: 'gpt-4o', object: 'model' }] }) };
         }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') {
-          return { data: [{ id: 'gpt-4o', object: 'model' }] };
+        if (String(url).includes('/model/new')) {
+          return { ok: true, json: () => Promise.resolve({ status: 'success' }) };
         }
-        if (command === 'llm_import_model') return { status: 'success' };
-        return undefined;
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
       });
 
       const user = await navigateToOpenAI();
+
+      // Enter API key
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-openai-key');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
 
       // The model chip uses a Switch with aria-label="Enable <model-id>"
       const enableSwitch = await screen.findByRole('switch', { name: 'Enable gpt-4o' });
       await user.click(enableSwitch);
 
+      // A013: importModel now calls POST /model/new via litellmFetch (not bridge.invoke)
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', expect.objectContaining({
-          providerId: 'openai',
-          modelId: 'gpt-4o',
-          modelName: null,
-          baseUrl: null,
-        }));
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://127.0.0.1:4000/model/new',
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'Authorization': 'Bearer sk-master-test',
+            }),
+            body: expect.stringContaining('gpt-4o'),
+          }),
+        );
       });
     });
 
     it('A013/Detail: model chips show catalog metadata (mode, context, pricing, capabilities)', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'llm_list_provider_keys') {
-          if (args.providerId === 'openai') return ['primary'];
-          if (args.providerId === 'anthropic') return ['prod', 'dev'];
-          return [];
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes('/v1/models') && !String(url).includes('127.0.0.1')) {
+          return { ok: true, json: () => Promise.resolve({ data: [{ id: 'gpt-4o', object: 'model' }] }) };
         }
-        if (command === 'vault_read') return null;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        if (command === 'llm_discover_models') {
-          return { data: [{ id: 'gpt-4o', object: 'model' }] };
-        }
-        return undefined;
+        return { ok: true, json: () => Promise.resolve({ data: [] }) };
       });
 
-      await navigateToOpenAI();
+      const user = await navigateToOpenAI();
+
+      // Enter API key to trigger live discovery
+      await user.click(screen.getByRole('button', { name: /Add Key/i }));
+      const keyInput = screen.getByLabelText('API Key');
+      await user.type(keyInput, 'sk-openai-key');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
 
       await screen.findByText('gpt-4o');
 
@@ -623,11 +628,11 @@ describe('A013/UI/ProvidersTab', () => {
   });
 
   describe('Catalog Fallback', () => {
-    it('A013/Catalog: shows catalog models when provider has no keys', async () => {
+    it('A013/Catalog: shows catalog models when provider has no API key', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
-      // DeepSeek has no keys in the mock
+      // DeepSeek has no configured API key
       const deepseekCard = await screen.findByRole('button', { name: 'View DeepSeek details' });
       await user.click(deepseekCard);
 
@@ -638,11 +643,11 @@ describe('A013/UI/ProvidersTab', () => {
       expect(screen.getByText('from catalog')).toBeInTheDocument();
       expect(screen.getByText('deepseek/deepseek-chat')).toBeInTheDocument();
 
-      // Should NOT call llm_discover_models since no keys
-      expect(mockInvoke).not.toHaveBeenCalledWith(
-        'llm_discover_models',
-        expect.anything(),
+      // Should NOT call fetch for model discovery since no API key
+      const discoveryCall = mockFetch.mock.calls.find(
+        ([url]: [string]) => String(url).includes('/v1/models') && !String(url).includes('127.0.0.1'),
       );
+      expect(discoveryCall).toBeUndefined();
     });
 
     it('A013/Catalog: hides Enable All and Refresh buttons when showing catalog', async () => {
@@ -661,7 +666,7 @@ describe('A013/UI/ProvidersTab', () => {
   });
 
   describe('Empty State', () => {
-    it('A013/Detail: shows empty state when provider has no keys', async () => {
+    it('A013/Detail: shows empty state when provider has no API key', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
@@ -669,10 +674,10 @@ describe('A013/UI/ProvidersTab', () => {
       await user.click(deepseekCard);
 
       await screen.findByText('Back to Providers');
-      expect(screen.getByText(/No API keys configured for DeepSeek/i)).toBeInTheDocument();
+      expect(screen.getByText(/No API key configured for DeepSeek/i)).toBeInTheDocument();
     });
 
-    it('A013/Detail: still shows Available Models from catalog when no keys exist', async () => {
+    it('A013/Detail: still shows Available Models from catalog when no API key exists', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
@@ -680,7 +685,7 @@ describe('A013/UI/ProvidersTab', () => {
       await user.click(deepseekCard);
 
       await screen.findByText('Back to Providers');
-      // Models should be shown from catalog even without keys
+      // Models should be shown from catalog even without an API key
       expect(await screen.findByText('Available Models')).toBeInTheDocument();
     });
   });

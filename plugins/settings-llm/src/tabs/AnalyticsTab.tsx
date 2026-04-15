@@ -3,6 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Empty, message, Radio, Skeleton } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { AppButton } from '@snapfzz/shared';
 import {
   getBaseUrl,
   getMasterKey,
@@ -10,8 +12,12 @@ import {
   getModelInfo,
   loadCustomProviders,
   type SpendLog,
-  type CustomProvider,
 } from '../hooks/useLlmCommands';
+import {
+  buildProviderLookup,
+  resolveProviderName,
+  type ProviderLookup,
+} from '../lib/modelNames';
 import {
   OverviewCards,
   MetricRows,
@@ -43,73 +49,11 @@ function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } 
 }
 
 
-// Build a lookup from model_id → provider name.
-// Uses: model_info.snapfzz_provider_id (set at import time) → custom providers config.
-// Fallback: api_base → custom provider name match.
-interface ProviderLookup {
-  byModelId: Map<string, string>;    // model_id UUID → provider name
-  byApiBase: Map<string, string>;    // api_base URL → provider name (fallback)
-}
-
-function buildProviderLookup(
-  providers: CustomProvider[],
-  modelInfos: Array<{ model_name: string; model_info?: Record<string, unknown>; litellm_params?: { api_base?: string } }>,
-): ProviderLookup {
-  // Provider ID → name from custom providers config
-  const idToName = new Map<string, string>();
-  const baseToName = new Map<string, string>();
-  for (const p of providers) {
-    idToName.set(`custom-${p.id}`, p.name);
-    const base = p.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
-    // Don't overwrite — first provider with this base wins
-    if (!baseToName.has(base)) {
-      baseToName.set(base, p.name);
-      baseToName.set(base + '/', p.name);
-      baseToName.set(base + '/v1', p.name);
-      baseToName.set(base + '/v1/', p.name);
-    }
-  }
-
-  // model_id → provider name from model_info.snapfzz_provider_id
-  const byModelId = new Map<string, string>();
-  for (const m of modelInfos) {
-    const modelId = (m.model_info as Record<string, unknown>)?.id as string;
-    const providerId = (m.model_info as Record<string, unknown>)?.snapfzz_provider_id as string;
-    if (modelId && providerId && idToName.has(providerId)) {
-      byModelId.set(modelId, idToName.get(providerId)!);
-    } else if (modelId && m.litellm_params?.api_base) {
-      // Fallback: resolve from api_base
-      const base = m.litellm_params.api_base.replace(/\/+$/, '');
-      if (baseToName.has(base)) byModelId.set(modelId, baseToName.get(base)!);
-    }
-  }
-
-  return { byModelId, byApiBase: baseToName };
-}
-
-function resolveProviderName(log: SpendLog, lookup: ProviderLookup): string {
-  // 1. Try model_id → provider name (most accurate)
-  if (log.model_id && lookup.byModelId.has(log.model_id)) {
-    return lookup.byModelId.get(log.model_id)!;
-  }
-  // 2. Fallback: api_base → provider name
-  if (log.api_base) {
-    const base = log.api_base.replace(/\/+$/, '');
-    if (lookup.byApiBase.has(base)) return lookup.byApiBase.get(base)!;
-    if (lookup.byApiBase.has(log.api_base)) return lookup.byApiBase.get(log.api_base)!;
-  }
-  // 3. Last resort: hostname
-  if (log.api_base) {
-    try { return new URL(log.api_base).hostname.replace(/^(api|llm)\./, ''); } catch { /* */ }
-  }
-  return 'unknown';
-}
-
 export default function AnalyticsTab() {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
-  const [providerLookup, setProviderLookup] = useState<ProviderLookup>({ byModelId: new Map(), byApiBase: new Map() });
+  const [providerLookup, setProviderLookup] = useState<ProviderLookup>({ byModelId: new Map(), byApiBase: new Map(), providerNames: new Set() });
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<TimeRange>('30D');
 
@@ -183,11 +127,9 @@ export default function AnalyticsTab() {
       me.requests++; me.inputTokens += pt; me.outputTokens += ct; me.totalTokens += tt; me.cost += spend;
       modelMap.set(modelGroup, me);
 
-      // Provider breakdown — extract from model_group (first segment before /)
-      // or resolve from custom providers config
-      const provider = modelGroup.includes('/')
-        ? modelGroup.split('/')[0]
-        : resolveProviderName(log, providerLookup);
+      // Provider breakdown — resolve via shared utility (handles multi-slash model_group correctly)
+      const provider = resolveProviderName(log, providerLookup);
+      if (provider === 'unknown') continue;
       const pe = providerMap.get(provider) ?? { requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0 };
       pe.requests++; pe.inputTokens += pt; pe.outputTokens += ct; pe.totalTokens += tt; pe.cost += spend;
       providerMap.set(provider, pe);
@@ -310,12 +252,15 @@ export default function AnalyticsTab() {
       {/* Time range selector */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Usage Analytics</div>
-        <Radio.Group value={timeRange} onChange={(e) => setTimeRange(e.target.value)} size="small">
-          <Radio.Button value="1D">1D</Radio.Button>
-          <Radio.Button value="30D">30D</Radio.Button>
-          <Radio.Button value="YTD">YTD</Radio.Button>
-          <Radio.Button value="All">All</Radio.Button>
-        </Radio.Group>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <AppButton variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>Refresh</AppButton>
+          <Radio.Group value={timeRange} onChange={(e) => setTimeRange(e.target.value)} size="small">
+            <Radio.Button value="1D">1D</Radio.Button>
+            <Radio.Button value="30D">30D</Radio.Button>
+            <Radio.Button value="YTD">YTD</Radio.Button>
+            <Radio.Button value="All">All</Radio.Button>
+          </Radio.Group>
+        </div>
       </div>
 
       {/* Overview cards */}

@@ -28,16 +28,14 @@ import {
   type CustomProviderVariant,
   type DiscoveredModel,
   type ModelInfoDetails,
-  deleteProviderKey,
+  deleteModel,
   discoverModels,
   getBaseUrl,
   getMasterKey,
   getModelInfo,
   importModel,
-  listProviderKeys,
   loadCustomProviders,
   saveCustomProviders,
-  storeProviderKey,
 } from '../hooks/useLlmCommands';
 import {
   type CatalogModelEntry,
@@ -163,21 +161,35 @@ const PROVIDER_BRAND_COLORS: Record<string, string> = {
   xai: '#000000',
 };
 
-interface ProviderKeyEntry {
-  keyName: string;
-  envVar: string;
-}
+// A013/Discovery: Default base URLs for built-in providers.
+// Used when discovering models for providers that don't have a custom base URL configured.
+const PROVIDER_DEFAULT_BASE_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1',
+  gemini: 'https://generativelanguage.googleapis.com/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  together_ai: 'https://api.together.xyz/v1',
+  fireworks_ai: 'https://api.fireworks.ai/inference/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  xai: 'https://api.x.ai/v1',
+  perplexity: 'https://api.perplexity.ai',
+  zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+  cohere: 'https://api.cohere.ai/v1',
+  huggingface: 'https://api-inference.huggingface.co',
+  cerebras: 'https://api.cerebras.ai/v1',
+  sambanova: 'https://api.sambanova.ai/v1',
+};
 
-interface ProviderKeyCounts {
-  [providerId: string]: string[];
-}
+// A013: Provider API keys are no longer stored in vault.
+// "Configured" status uses localStorage flags (built-in providers) or apiKey
+// field in the custom provider config blob (custom providers).
+// keyCounts keeps string[] shape so ProviderCard.keyCount (length) still works.
+type ProviderKeyCounts = { [providerId: string]: string[] };
 
-// Per A013/UI: state for provider enable/disable toggles (visual-only for now)
-// Removed: ToggleState was used for provider card toggles (now removed).
-// Keep this line to avoid git conflicts with nearby code.
-interface _ToggleState_Removed {
-  [providerId: string]: boolean;
-}
+type ToggleState = { [providerId: string]: boolean };
 
 /**
  * Branded avatar for a provider. Renders the real SVG logo when one exists
@@ -646,11 +658,13 @@ function clearDiscoveryCache(providerId: string): void {
 function AvailableModels({
   providerId,
   hasKeys,
+  apiKey,
   baseUrl,
   variant,
 }: {
   providerId: string;
   hasKeys: boolean;
+  apiKey?: string;
   baseUrl?: string;
   variant?: string;
 }) {
@@ -671,6 +685,8 @@ function AvailableModels({
   useEffect(() => () => clearTimeout(debounceRef.current), []);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [importingId, setImportingId] = useState<string | null>(null);
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [gatewayKey, setGatewayKey] = useState('');
   const [importAllLoading, setImportAllLoading] = useState(false);
   const [registeredInfoMap, setRegisteredInfoMap] = useState<Record<string, ModelInfoDetails>>({});
   const [usingCatalog, setUsingCatalog] = useState(false);
@@ -715,7 +731,8 @@ function AvailableModels({
         setLoading(false);
         return;
       }
-      const response = await discoverModels(providerId, baseUrl);
+      const resolvedBaseUrl = baseUrl ?? PROVIDER_DEFAULT_BASE_URLS[providerId] ?? '';
+      const response = await discoverModels(apiKey ?? '', resolvedBaseUrl);
       const data = response?.data ?? [];
       setModels(data);
       writeDiscoveryCache(providerId, data);
@@ -727,7 +744,7 @@ function AvailableModels({
     } finally {
       setLoading(false);
     }
-  }, [providerId, baseUrl, hasKeys]);
+  }, [providerId, apiKey, baseUrl, hasKeys]);
 
   const handleRefresh = useCallback(async () => {
     clearDiscoveryCache(providerId);
@@ -742,6 +759,8 @@ function AvailableModels({
     (async () => {
       try {
         const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
+        setGatewayUrl(url);
+        setGatewayKey(key);
         const [modelsRes, infoRes] = await Promise.all([
           (async () => {
             const { getModels } = await import('../hooks/useLlmCommands');
@@ -749,18 +768,21 @@ function AvailableModels({
           })(),
           getModelInfo(url, key).catch(() => ({ data: [] })),
         ]);
-        // Store full model names (e.g. "solo-engineer/coder") from gateway.
-        // The imported check uses provider-scoped matching below.
-        const registered = new Set((modelsRes?.data ?? []).map((m: { id: string }) => m.id));
-        setImportedIds(registered);
-
-        // Build a lookup from model_name -> model_info for capability tags
+        // Store model names that belong to THIS provider (match by snapfzz_provider_id).
+        const registered = new Set<string>();
         const infoMap: Record<string, ModelInfoDetails> = {};
         for (const entry of infoRes.data) {
-          if (entry.model_info) {
-            infoMap[entry.model_name] = entry.model_info;
+          const entryProviderId = (entry.model_info as Record<string, unknown> | undefined)?.snapfzz_provider_id;
+          if (entryProviderId === providerId) {
+            registered.add(entry.model_name);
+            if (entry.model_info) infoMap[entry.model_name] = entry.model_info;
           }
         }
+        // Also check /v1/models for provider-scoped names (fallback for entries without model_info)
+        for (const m of (modelsRes?.data ?? []) as { id: string }[]) {
+          if (m.id.startsWith(`${providerSlug}/`)) registered.add(m.id);
+        }
+        setImportedIds(registered);
         setRegisteredInfoMap(infoMap);
       } catch {
         // Gateway not ready — no pre-check
@@ -822,13 +844,13 @@ function AvailableModels({
     async (modelId: string) => {
       setImportingId(modelId);
       const { data } = await fetchWithToast(
-        () => importModel(providerId, modelId, undefined, baseUrl, variant),
+        () => importModel(gatewayUrl, gatewayKey, providerId, modelId, apiKey ?? '', undefined, baseUrl, variant),
         { successMessage: `${modelId} enabled`, errorMessage: `Failed to enable ${modelId}` },
       );
       if (data !== undefined) setImportedIds((prev) => new Set(prev).add(modelId));
       setImportingId(null);
     },
-    [providerId, baseUrl, variant],
+    [gatewayUrl, gatewayKey, providerId, apiKey, baseUrl, variant],
   );
 
   const handleImportAll = useCallback(async () => {
@@ -839,7 +861,7 @@ function AvailableModels({
     let failed = 0;
     for (const model of toImport) {
       const { data } = await fetchWithToast(
-        () => importModel(providerId, model.id, undefined, baseUrl, variant),
+        () => importModel(gatewayUrl, gatewayKey, providerId, model.id, apiKey ?? '', undefined, baseUrl, variant),
         { showSuccessToast: false, errorMessage: `Failed to enable ${model.id}` },
       );
       if (data !== undefined) {
@@ -855,7 +877,7 @@ function AvailableModels({
       message.warning(`Imported ${succeeded}, failed ${failed}`);
     }
     setImportAllLoading(false);
-  }, [providerId, baseUrl, variant, importedIds, displayModels]);
+  }, [gatewayUrl, gatewayKey, providerId, apiKey, baseUrl, variant, importedIds, displayModels]);
 
   const handleDisable = useCallback(
     async (modelId: string) => {
@@ -1048,80 +1070,61 @@ function AvailableModels({
 
 // ─── Provider Detail (drill-in) ─────────────────────────────────────────
 
+// A013/Vault: Provider API keys are no longer stored in the vault.
+// The API key is entered by the user and passed directly to LiteLLM when importing models.
+// For built-in providers, the key is held in component state for the session.
+// For custom providers, the key is persisted in the custom provider config blob.
+
 function ProviderDetail({
   providerId,
   providerLabel,
   isCustom,
   baseUrl,
   variant,
+  initialApiKey,
   onBack,
+  onApiKeyChange,
 }: {
   providerId: string;
   providerLabel: string;
   isCustom?: boolean;
   baseUrl?: string;
   variant?: string;
+  /** Pre-populated API key (e.g. from custom provider config). */
+  initialApiKey?: string;
   onBack: () => void;
+  /** Called when the user saves a new API key so the parent can persist it. */
+  onApiKeyChange?: (apiKey: string) => void;
 }) {
-  const [keys, setKeys] = useState<ProviderKeyEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [form] = Form.useForm();
+  const [apiKey, setApiKey] = useState(initialApiKey ?? '');
+  const [keyInput, setKeyInput] = useState(initialApiKey ?? '');
+  const [editingKey, setEditingKey] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const loadKeys = useCallback(async () => {
-    setLoading(true);
-    const { data: keyNames, error } = await fetchWithToast(
-      () => listProviderKeys(providerId),
-      { errorMessage: 'Failed to load provider keys', showSuccessToast: false },
-    );
-    if (keyNames) {
-      setKeys(
-        keyNames.map((keyName) => ({
-          keyName,
-          envVar: `PROVIDER_${providerId.toUpperCase()}_${keyName.toUpperCase()}`,
-        })),
-      );
-    } else {
-      if (error) console.error(`[ProviderDetail] Failed to load keys for ${providerId}:`, error);
-      setKeys([]);
-    }
-    setLoading(false);
-  }, [providerId]);
+  const hasKey = apiKey.trim().length > 0;
 
-  useEffect(() => {
-    void loadKeys();
-  }, [loadKeys]);
-
-  async function handleAddOrEdit(values: { keyName: string; keyValue: string }) {
+  async function handleSaveKey() {
+    const trimmed = keyInput.trim();
+    if (!trimmed) return;
     setSubmitting(true);
     try {
-      await storeProviderKey(providerId, values.keyName, values.keyValue);
-      setModalOpen(false);
-      setEditingKey(null);
-      form.resetFields();
-      await loadKeys();
+      setApiKey(trimmed);
+      setEditingKey(false);
+      onApiKeyChange?.(trimmed);
     } finally {
       setSubmitting(false);
     }
   }
 
-  function openAddModal() {
-    setEditingKey(null);
-    form.resetFields();
-    setModalOpen(true);
+  function handleRemoveKey() {
+    setApiKey('');
+    setKeyInput('');
+    onApiKeyChange?.('');
   }
 
-  function openEditModal(keyName: string) {
-    setEditingKey(keyName);
-    form.setFieldsValue({ keyName, keyValue: '' });
-    setModalOpen(true);
-  }
-
-  const maskKey = (name: string) => {
-    if (name.length <= 8) return name.replace(/./g, '\u2022');
-    return name.slice(0, 4) + '\u2022'.repeat(12) + name.slice(-4);
+  const maskKey = (key: string) => {
+    if (key.length <= 8) return key.replace(/./g, '\u2022');
+    return key.slice(0, 4) + '\u2022'.repeat(12) + key.slice(-4);
   };
 
   return (
@@ -1165,8 +1168,8 @@ function ProviderDetail({
             <Title level={4} style={{ margin: 0, color: 'var(--text-primary)' }}>
               {providerLabel}
             </Title>
-            <Text style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-              {keys.length} connection{keys.length !== 1 ? 's' : ''}
+            <Text style={{ color: hasKey ? 'var(--color-success)' : 'var(--text-secondary)', fontSize: 13 }}>
+              {hasKey ? '● Connected' : '○ Not configured'}
             </Text>
             {isCustom && baseUrl && (
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
@@ -1176,15 +1179,77 @@ function ProviderDetail({
           </div>
         </div>
 
-        <Button icon={<PlusOutlined />} onClick={openAddModal}>
-          Add Key
-        </Button>
+        {!editingKey && (
+          <Button icon={<EditOutlined />} onClick={() => { setKeyInput(apiKey); setEditingKey(true); }}>
+            {hasKey ? 'Edit Key' : 'Add Key'}
+          </Button>
+        )}
       </div>
 
-      {/* Key list */}
-      {loading ? (
-        <Skeleton active paragraph={{ rows: 3 }} />
-      ) : keys.length === 0 ? (
+      {/* API Key section */}
+      {editingKey ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+            API Key
+          </Text>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input.Password
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="sk-..."
+              style={{ flex: 1 }}
+              aria-label="API Key"
+            />
+            <Button
+              type="primary"
+              loading={submitting}
+              onClick={() => void handleSaveKey()}
+              disabled={!keyInput.trim()}
+            >
+              Save
+            </Button>
+            <Button onClick={() => setEditingKey(false)}>Cancel</Button>
+          </div>
+          <Text style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            The key is passed directly to LiteLLM when models are imported. LiteLLM encrypts it in its database.
+          </Text>
+        </div>
+      ) : hasKey ? (
+        <div
+          style={{
+            background: 'var(--bg-default)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 8,
+            padding: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 13,
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {maskKey(apiKey)}
+          </Text>
+          <ConfirmAction
+            title="Remove API key?"
+            description="You can add it again at any time. Models already imported in LiteLLM will continue to work."
+            onConfirm={handleRemoveKey}
+            okText="Remove"
+            danger
+          >
+            <AppButton
+              aria-label="Remove API key"
+              variant="danger"
+              icon={<DeleteOutlined />}
+            />
+          </ConfirmAction>
+        </div>
+      ) : (
         <div
           style={{
             padding: 32,
@@ -1195,118 +1260,19 @@ function ProviderDetail({
           }}
         >
           <Text style={{ color: 'var(--text-muted)' }}>
-            No API keys configured for {providerLabel}.
+            No API key configured for {providerLabel}.
           </Text>
         </div>
-      ) : (
-        keys.map((entry) => (
-          <div
-            key={entry.keyName}
-            style={{
-              background: 'var(--bg-default)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 8,
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Text
-                style={{
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  fontSize: 14,
-                }}
-              >
-                {entry.keyName}
-              </Text>
-              <Text
-                style={{
-                  color: 'var(--color-success)',
-                  fontSize: 12,
-                }}
-              >
-                ● Connected
-              </Text>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 8,
-                marginTop: 4,
-              }}
-            >
-              <AppButton
-                aria-label={`Edit ${entry.keyName}`}
-                icon={<EditOutlined />}
-                onClick={() => openEditModal(entry.keyName)}
-              />
-              <ConfirmAction
-                title={`Delete ${entry.keyName}?`}
-                description="This removes the API key from the vault."
-                onConfirm={async () => {
-                  await deleteProviderKey(providerId, entry.keyName);
-                  await loadKeys();
-                }}
-                okText="Delete"
-                danger
-              >
-                <AppButton
-                  aria-label={`Delete ${entry.keyName}`}
-                  variant="danger"
-                  icon={<DeleteOutlined />}
-                />
-              </ConfirmAction>
-            </div>
-          </div>
-        ))
       )}
 
-      {/* Available Models: live discovery when keys exist, catalog fallback otherwise */}
-      <AvailableModels providerId={providerId} hasKeys={keys.length > 0} baseUrl={baseUrl} variant={variant} />
-
-      {/* Add / Edit Key Modal */}
-      <Modal
-        title={editingKey ? `Edit Key: ${editingKey}` : 'Add Provider Key'}
-        open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setEditingKey(null);
-          form.resetFields();
-        }}
-        onOk={() => form.submit()}
-        confirmLoading={submitting}
-      >
-        <Form form={form} layout="vertical" onFinish={handleAddOrEdit}>
-          <Form.Item
-            name="keyName"
-            label="Key Name"
-            rules={[{ required: true, message: 'Enter a key name' }]}
-          >
-            <Input
-              placeholder="e.g., production, dev-testing"
-              disabled={editingKey !== null}
-            />
-          </Form.Item>
-          <Form.Item
-            name="keyValue"
-            label="API Key"
-            rules={[{ required: true, message: 'Enter the API key' }]}
-          >
-            <Input.Password placeholder="sk-..." />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {/* Available Models: live discovery when API key is provided, catalog fallback otherwise */}
+      <AvailableModels
+        providerId={providerId}
+        hasKeys={hasKey}
+        apiKey={apiKey}
+        baseUrl={baseUrl}
+        variant={variant}
+      />
     </div>
   );
 }
@@ -1365,15 +1331,16 @@ function AddCustomProviderModal({
         <Form.Item
           name="name"
           label="Name"
+          normalize={(v: string) => v.toLowerCase()}
           rules={[
             { required: true, message: 'Enter a provider name' },
             {
-              pattern: /^[a-zA-Z0-9._-]+$/,
-              message: 'Only letters, numbers, dots, hyphens, and underscores',
+              pattern: /^[a-z0-9._-]+$/,
+              message: 'Lowercase letters, numbers, dots, hyphens, and underscores only',
             },
           ]}
         >
-          <Input placeholder="e.g., llm.solo.engineer" />
+          <Input placeholder="e.g., solo-engineer" />
         </Form.Item>
         <Form.Item
           name="baseUrl"
@@ -1420,24 +1387,19 @@ export default function ProvidersTab() {
     setLoading(true);
     const { data } = await fetchWithToast(
       async () => {
-        const [counts, customs] = await Promise.all([
-          (async () => {
-            const c: ProviderKeyCounts = {};
-            for (const provider of PROVIDERS) {
-              const keys = await listProviderKeys(provider.id);
-              c[provider.id] = keys;
-            }
-            return c;
-          })(),
-          loadCustomProviders(),
-        ]);
-
-        // Load key counts for custom providers too
-        for (const cp of customs) {
-          const keys = await listProviderKeys(`custom-${cp.id}`);
-          counts[`custom-${cp.id}`] = keys;
+        const customs = await loadCustomProviders();
+        // A013/Vault: Provider API keys are no longer stored in vault.
+        // "Configured" status is derived from the custom provider's apiKey field
+        // (for custom providers) or from localStorage flags (for built-in providers).
+        const counts: ProviderKeyCounts = {};
+        for (const provider of PROVIDERS) {
+          const configured = localStorage.getItem(`snapfzz:provider_configured:${provider.id}`);
+          counts[provider.id] = configured === '1' ? ['configured'] : [];
         }
-
+        for (const cp of customs) {
+          const cpKey = `custom-${cp.id}`;
+          counts[cpKey] = cp.apiKey ? ['configured'] : [];
+        }
         return { counts, customs };
       },
       { errorMessage: 'Failed to load providers', showSuccessToast: false },
@@ -1514,17 +1476,19 @@ export default function ProvidersTab() {
     apiKey: string;
     variant: CustomProviderVariant;
   }) {
-    const id = values.name.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+    const name = values.name.toLowerCase();
+    const id = name.replace(/[^a-z0-9._-]/g, '-');
     const newProvider: CustomProvider = {
       id,
-      name: values.name,
+      name,
       baseUrl: values.baseUrl,
       variant: values.variant,
+      apiKey: values.apiKey,
     };
 
     const updated = [...customProviders, newProvider];
+    // A013/Vault: API key is persisted in the custom provider config blob (not vault provider keys).
     await saveCustomProviders(updated);
-    await storeProviderKey(`custom-${id}`, 'default', values.apiKey);
 
     setCustomProviders(updated);
     setCustomModalOpen(false);
@@ -1535,12 +1499,19 @@ export default function ProvidersTab() {
     const updated = customProviders.filter((cp) => cp.id !== cpId);
     await fetchWithToast(
       async () => {
+        // Cascade: delete all models belonging to this provider from LiteLLM
+        const [url, key] = await Promise.all([getBaseUrl(), getMasterKey()]);
+        const infoRes = await getModelInfo(url, key).catch(() => ({ data: [] }));
+        const providerFullId = `custom-${cpId}`;
+        const idsToDelete = (infoRes.data ?? [])
+          .filter((e: { model_info?: Record<string, unknown> }) =>
+            (e.model_info as Record<string, unknown> | undefined)?.snapfzz_provider_id === providerFullId)
+          .map((e: { model_info?: Record<string, unknown> }) =>
+            (e.model_info as Record<string, unknown> | undefined)?.id as string)
+          .filter(Boolean);
+        await Promise.all(idsToDelete.map((id) => deleteModel(url, key, id)));
+
         await saveCustomProviders(updated);
-        // Delete all keys for this custom provider
-        const keys = await listProviderKeys(`custom-${cpId}`);
-        for (const keyName of keys) {
-          await deleteProviderKey(`custom-${cpId}`, keyName);
-        }
         setCustomProviders(updated);
         await loadKeyCounts();
       },
@@ -1556,6 +1527,15 @@ export default function ProvidersTab() {
           providerId={builtIn.id}
           providerLabel={builtIn.label}
           onBack={handleBack}
+          onApiKeyChange={(key) => {
+            // Persist "configured" flag in localStorage for built-in providers.
+            // The actual API key is only held in component state for the session.
+            if (key) {
+              localStorage.setItem(`snapfzz:provider_configured:${builtIn.id}`, '1');
+            } else {
+              localStorage.removeItem(`snapfzz:provider_configured:${builtIn.id}`);
+            }
+          }}
         />
       );
     }
@@ -1573,7 +1553,16 @@ export default function ProvidersTab() {
           isCustom
           baseUrl={custom.baseUrl}
           variant={custom.variant}
+          initialApiKey={custom.apiKey}
           onBack={handleBack}
+          onApiKeyChange={async (key) => {
+            // Persist updated API key in the custom provider config blob.
+            const updated = customProviders.map((cp) =>
+              cp.id === cpId ? { ...cp, apiKey: key } : cp,
+            );
+            await saveCustomProviders(updated);
+            setCustomProviders(updated);
+          }}
         />
       );
     }
@@ -1583,8 +1572,8 @@ export default function ProvidersTab() {
     <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       <div style={{ marginBottom: 16 }}>
         <Text style={{ color: 'var(--text-secondary)' }}>
-          Provider API keys are stored securely in the vault and referenced via
-          environment variables in the gateway config.
+          Provider API keys are passed directly to LiteLLM when importing models.
+          LiteLLM encrypts them in its database — the vault only stores the master key.
         </Text>
       </div>
 

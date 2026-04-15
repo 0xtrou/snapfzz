@@ -230,28 +230,27 @@ function StepDeployments({
   onApiTypeChange: (t: 'openai' | 'anthropic') => void;
   onChange: (deps: Deployment[]) => void;
 }) {
-  // Derive selected display names from current deployments by reverse-looking up
-  // the info entry whose litellm_params.model matches the deployment's model field.
-  const selectedNames = deployments
-    .map((d) => availableModels.find((m) => m.model === d.model)?.name ?? d.model);
+  // Derive selected values from deployments using modelName (unique key).
+  const selectedNames = deployments.map((d) => d.modelName ?? d.model);
 
-  // Filter models by selected API type — only show models whose litellm_params.model
-  // starts with the selected prefix (openai/ or anthropic/)
-  const filteredModels = availableModels.filter((m) => {
-    if (!m.model) return true; // Show if no model info
-    return m.model.startsWith(`${apiType}/`);
-  });
-  const modelOptions = filteredModels.map((m) => ({ label: m.name, value: m.name }));
+  // Filter models by selected API type and deduplicate by name (model_name is unique).
+  const seenNames = new Set<string>();
+  const modelOptions: { label: string; value: string }[] = [];
+  for (const m of availableModels) {
+    if (m.model && !m.model.startsWith(`${apiType}/`)) continue;
+    if (seenNames.has(m.name)) continue;
+    seenNames.add(m.name);
+    modelOptions.push({ label: m.name, value: m.name });
+  }
 
   const handleSelectionChange = (selected: string[]) => {
     const newDeployments: Deployment[] = selected.map((name) => {
       const info = availableModels.find((m) => m.name === name);
       return {
         provider: info?.provider ?? '',
-        model: info?.model ?? name,  // litellm_params.model value (e.g. "openai/coder")
+        model: info?.model ?? name,
+        modelName: name,  // Unique key: the LiteLLM model_name (e.g. "solo-engineer/coder")
         apiBase: info?.apiBase ?? '',
-        apiKey: info?.apiKey ?? '',  // Copy the API key
-        isRegistered: false,         // Always create as new standalone entry
       };
     });
     onChange(newDeployments);
@@ -299,19 +298,6 @@ function StepDeployments({
       </div>
 
       {deployments.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          {deployments.map((d) => {
-            const displayName = modelDisplayName(d.model, availableModels);
-            return (
-              <Tag key={d.model} color="blue" style={{ fontSize: 12 }}>
-                {displayName}
-              </Tag>
-            );
-          })}
-        </div>
-      )}
-
-      {deployments.length > 0 && (
         <div style={{ marginTop: 16 }}>
           {/* Header row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 140px', gap: 8, marginBottom: 8 }}>
@@ -321,7 +307,7 @@ function StepDeployments({
           </div>
           {/* Data rows */}
           {deployments.map((d, i) => {
-            const displayName = modelDisplayName(d.model, availableModels);
+            const displayName = deploymentDisplayName(d);
             return (
               <div
                 key={d.model}
@@ -457,7 +443,7 @@ function StepStrategy({
             {deployments.map((dep, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {modelDisplayName(dep.model, availableModels)}
+                  {deploymentDisplayName(dep)}
                 </span>
                 <Slider
                   min={1}
@@ -526,7 +512,7 @@ function StepStrategy({
                 </div>
                 <Tag style={{ minWidth: 24, textAlign: 'center' }}>{idx + 1}</Tag>
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {modelDisplayName(dep.model, availableModels)}
+                  {deploymentDisplayName(dep)}
                 </span>
               </div>
             ))}
@@ -595,7 +581,7 @@ function StepReview({
           <span style={labelStyle}>Deployments ({deployments.length})</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
             {deployments.map((d, i) => {
-              const displayName = modelDisplayName(d.model, availableModels);
+              const displayName = deploymentDisplayName(d);
               return (
                 <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                   {i + 1}. {displayName}
@@ -638,10 +624,9 @@ function StepReview({
 
 // --- helpers ---
 
-/** Resolve user-facing model name from available models, using model_name (e.g. "solo-engineer/coder"). */
-function modelDisplayName(model: string, models: AvailableModelInfo[]): string {
-  const info = models.find((m) => m.model === model);
-  return info?.name ?? model;
+/** Resolve user-facing display name for a deployment. Uses modelName (unique) as key. */
+function deploymentDisplayName(dep: Deployment): string {
+  return dep.modelName ?? dep.model;
 }
 
 const headerStyle: React.CSSProperties = {

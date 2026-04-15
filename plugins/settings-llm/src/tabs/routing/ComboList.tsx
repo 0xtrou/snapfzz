@@ -40,10 +40,7 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete }: ComboL
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 1 }}>
-          Combos
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 6 }}>
         <AppButton icon={<PlusOutlined />} onClick={onCreate}>
           Create Combo
         </AppButton>

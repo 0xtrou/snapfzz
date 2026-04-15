@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Radio, Select, Input, Skeleton, message, Tag } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { fetchWithToast, AppButton } from '@snapfzz/shared';
 import {
   getBaseUrl,
@@ -12,6 +12,7 @@ import {
   getModelGroups,
   getModelInfo,
   deleteModel,
+  importModel,
   loadCustomProviders,
   type CustomProvider,
 } from '../hooks/useLlmCommands';
@@ -529,18 +530,42 @@ export default function RoutingTab() {
 
       if (modelInfoResult.status === 'fulfilled') {
         const infoData = modelInfoResult.value as { data: ModelInfoEntry[] };
-        setCombos(buildCombosFromModelInfo(infoData, litellmStrat));
-        // Build available model list: individual provider/model deployments (those with a slash in model_name)
+        // Build available model list first — needed to resolve combo deployment names.
+        const seenModelNames = new Set<string>();
         const modelInfoList: AvailableModelInfo[] = infoData.data
-          .filter((entry) => entry.model_name.includes('/'))
+          .filter((entry) => {
+            if (!entry.model_name.includes('/')) return false;
+            if ((entry.model_info as Record<string, unknown> | undefined)?.snapfzz_combo) return false;
+            if (seenModelNames.has(entry.model_name)) return false;
+            seenModelNames.add(entry.model_name);
+            return true;
+          })
           .map((entry) => ({
             name: entry.model_name,
             apiBase: entry.litellm_params?.api_base,
-            model: entry.litellm_params?.model,      // "openai/coder" — already has provider prefix
+            model: entry.litellm_params?.model,
             provider: (entry.model_info as Record<string, string> | undefined)?.snapfzz_provider_id,
-            apiKey: entry.litellm_params?.api_key,   // The actual API key
+            apiKey: entry.litellm_params?.api_key,
           }));
         setAvailableModelInfo(modelInfoList);
+
+        // Build combos, then resolve each deployment's modelName from available models.
+        // Combo deployments only have litellm_params.model (e.g. "openai/coder") —
+        // resolve to the user-facing model_name (e.g. "solo-engineer/coder").
+        // Match on BOTH model AND provider to handle cases where different providers
+        // share the same bare model name (e.g. solo-engineer/coder vs solo-engineer-test/coder).
+        const loadedCombos = buildCombosFromModelInfo(infoData, litellmStrat);
+        for (const combo of loadedCombos) {
+          for (const dep of combo.deployments) {
+            if (!dep.modelName) {
+              const match = modelInfoList.find((m) =>
+                m.model === dep.model && m.provider === dep.provider,
+              ) ?? modelInfoList.find((m) => m.model === dep.model);
+              if (match) dep.modelName = match.name;
+            }
+          }
+        }
+        setCombos(loadedCombos);
       }
 
       if (customProviders.status === 'fulfilled') {
@@ -602,32 +627,45 @@ export default function RoutingTab() {
     const { error } = await fetchWithToast(
       async () => {
         // When editing an existing combo, delete each deployment by its model_id first.
-        // LiteLLM's /model/delete requires { id: "model-uuid" } — not model_name.
         if (editingCombo) {
           const idsToDelete = editingCombo.deployments
             .map((d) => d.id)
             .filter((id): id is string => !!id);
           await Promise.all(
-            idsToDelete.map((id) =>
-              fetch(`${baseUrl}/model/delete`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id }),
-              }),
-            ),
+            idsToDelete.map((id) => deleteModel(baseUrl, masterKey, id)),
           );
         }
-        // Create each model deployment
-        await Promise.all(
-          payloads.modelsToCreate.map((payload) =>
-            fetch(`${baseUrl}/model/new`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            }),
-          ),
-        );
-        // Apply config update
+        // Create each deployment via LiteLLM /model/new directly.
+        // The API key comes from the CustomProvider config (stored in vault blob).
+        for (const payload of payloads.modelsToCreate) {
+          const providerId = payload.model_info?.snapfzz_provider_id ?? '';
+          const provider = providers.find((p) => `custom-${p.id}` === providerId);
+          const apiKey = provider?.apiKey ?? '';
+          const providerBaseUrl = provider?.baseUrl;
+          const litellmModel = payload.litellm_params.model;
+          const bareModel = litellmModel.includes('/')
+            ? litellmModel.split('/').slice(1).join('/')
+            : litellmModel;
+          const variant = litellmModel.includes('/') ? litellmModel.split('/')[0] : 'openai';
+          await importModel(
+            baseUrl,
+            masterKey,
+            providerId,
+            bareModel,
+            apiKey,
+            payload.model_name,
+            providerBaseUrl,
+            variant,
+            {
+              weight: payload.litellm_params.weight,
+              rpm: payload.litellm_params.rpm,
+              tpm: payload.litellm_params.tpm,
+              order: payload.model_info?.order,
+              isCombo: true,
+            },
+          );
+        }
+        // Apply config update (routing strategy, fallbacks)
         if (payloads.configUpdate) {
           await updateConfig(baseUrl, masterKey, payloads.configUpdate as unknown as Record<string, unknown>);
         }
@@ -639,7 +677,7 @@ export default function RoutingTab() {
       setEditingCombo(null);
       void loadData(baseUrl, masterKey);
     }
-  }, [baseUrl, masterKey, editingCombo, loadData]);
+  }, [baseUrl, masterKey, editingCombo, providers, loadData]);
 
   const handleComboDelete = useCallback(async (name: string) => {
     const combo = combos.find((c) => c.name === name);
@@ -679,6 +717,10 @@ export default function RoutingTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Combos</div>
+        <AppButton variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData(baseUrl, masterKey)}>Refresh</AppButton>
+      </div>
       {showBuilder ? (
         <ComboBuilder
           existingCombo={editingCombo ?? undefined}

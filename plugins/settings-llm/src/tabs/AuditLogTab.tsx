@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Empty, message, Popconfirm, Radio, Select, Skeleton, Tag, Typography } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { AppButton, fetchWithToast, PretextPaginatedList } from '@snapfzz/shared';
 import { createTauriBridge } from '@snapfzz/shared';
-import { getSpendLogs, getBaseUrl, getMasterKey, type SpendLog } from '../hooks/useLlmCommands';
+import { getSpendLogs, getBaseUrl, getMasterKey, getModelInfo, loadCustomProviders, type SpendLog } from '../hooks/useLlmCommands';
+import { buildProviderLookup, resolveProviderName, type ProviderLookup } from '../lib/modelNames';
 
 const bridge = createTauriBridge();
 
 const { Text } = Typography;
 
 const ROW_HEIGHT = 40;
-const EXPANDED_HEIGHT = 600;
+const EXPANDED_HEIGHT = 700;
 
 function formatTokens(n?: number): string {
   if (n == null) return '—';
@@ -72,14 +73,23 @@ function maskKey(key?: string): string {
 }
 
 // A013/AuditLog: Expanded detail panel
-const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: SpendLog }) {
-  const details = [
+const ExpandedDetail = React.memo(function ExpandedDetail({ record, providerLookup }: { record: SpendLog; providerLookup: ProviderLookup }) {
+  const providerName = resolveProviderName(record, providerLookup);
+
+  // Full-width rows for long values
+  const fullWidthDetails = [
     { label: 'Request ID', value: record.request_id },
+    { label: 'API Base', value: record.api_base ?? '—' },
+  ];
+
+  // Grid rows for short values
+  const details = [
     { label: 'Status', value: record.status ?? '—' },
     { label: 'Call Type', value: record.call_type ?? '—' },
     { label: 'Model Group', value: record.model_group ?? '—' },
-    { label: 'Provider', value: record.custom_llm_provider ?? '—' },
-    { label: 'API Base', value: record.api_base ?? '—' },
+    { label: 'Combo', value: record.model_group && !record.model_group.includes('/') ? record.model_group : '—' },
+    { label: 'Provider', value: providerName !== 'unknown' ? providerName : '—' },
+    { label: 'API Type', value: record.custom_llm_provider ?? '—' },
     { label: 'Duration', value: record.request_duration_ms != null ? `${record.request_duration_ms}ms` : '—' },
     { label: 'Cache Hit', value: record.cache_hit ?? '—' },
     { label: 'Prompt Tokens', value: record.prompt_tokens != null ? String(record.prompt_tokens) : '—' },
@@ -105,6 +115,16 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
 
   return (
     <div style={{ padding: '8px 16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Full-width rows for long text (Request ID, API Base) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {fullWidthDetails.map(({ label, value }) => (
+          <div key={label} style={{ display: 'flex', gap: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{label}:</Text>
+            <Text style={{ fontSize: 12, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{value}</Text>
+          </div>
+        ))}
+      </div>
+      {/* Grid for short fields */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '4px 24px' }}>
         {details.map(({ label, value }) => (
           <div key={label} style={{ display: 'flex', gap: 8 }}>
@@ -163,10 +183,12 @@ const LogRow = React.memo(function LogRow({
   log,
   expanded,
   onToggle,
+  providerLookup,
 }: {
   log: SpendLog;
   expanded: boolean;
   onToggle: (id: string) => void;
+  providerLookup: ProviderLookup;
 }) {
   return (
     <div>
@@ -177,7 +199,7 @@ const LogRow = React.memo(function LogRow({
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(log.request_id); } }}
         style={{
           display: 'grid',
-          gridTemplateColumns: '170px 80px 1fr 110px 80px 90px',
+          gridTemplateColumns: '170px 80px 1fr 100px 55px 110px 80px 90px',
           gap: 8,
           alignItems: 'center',
           padding: '0 16px',
@@ -190,11 +212,19 @@ const LogRow = React.memo(function LogRow({
         <Text style={{ fontSize: 12 }}>{formatTimestamp(log)}</Text>
         {statusTag(log.status)}
         <Text ellipsis style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{log.model_group || log.model || '—'}</Text>
+        <Text ellipsis style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+          {log.model_group && !log.model_group.includes('/') ? log.model_group : '—'}
+        </Text>
+        <span style={{ fontSize: 14, textAlign: 'center' }}>
+          {log.cache_hit === 'True'
+            ? <CheckCircleOutlined style={{ color: 'var(--color-success)' }} />
+            : <CloseCircleOutlined style={{ color: 'var(--text-muted)', opacity: 0.4 }} />}
+        </span>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{maskKey(log.api_key)}</Text>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>{formatTokens(log.total_tokens)}</Text>
         <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'right' }}>${(log.spend || 0).toFixed(6)}</Text>
       </div>
-      {expanded && <ExpandedDetail record={log} />}
+      {expanded && <ExpandedDetail record={log} providerLookup={providerLookup} />}
     </div>
   );
 });
@@ -203,6 +233,7 @@ export default function AuditLogTab() {
   const [baseUrl, setBaseUrl] = useState<string>('');
   const [masterKey, setMasterKey] = useState<string>('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
+  const [providerLookup, setProviderLookup] = useState<ProviderLookup>({ byModelId: new Map(), byApiBase: new Map(), providerNames: new Set() });
   const [modelFilter, setModelFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failure'>('all');
   const [loading, setLoading] = useState(true);
@@ -211,12 +242,16 @@ export default function AuditLogTab() {
   const loadLogs = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
-    const { data } = await fetchWithToast(
-      () => getSpendLogs(baseUrl, masterKey, {}),
-      { errorMessage: 'Failed to load spend logs', showSuccessToast: false },
-    );
-    if (data) setLogs(data);
+    const [spendResult, providersResult, modelInfoResult] = await Promise.allSettled([
+      getSpendLogs(baseUrl, masterKey, {}),
+      loadCustomProviders(),
+      getModelInfo(baseUrl, masterKey),
+    ]);
+    if (spendResult.status === 'fulfilled') setLogs(spendResult.value);
     else setLogs([]);
+    if (providersResult.status === 'fulfilled' && modelInfoResult.status === 'fulfilled') {
+      setProviderLookup(buildProviderLookup(providersResult.value, modelInfoResult.value.data ?? []));
+    }
     setLoading(false);
   }, [baseUrl, masterKey]);
 
@@ -279,9 +314,9 @@ export default function AuditLogTab() {
 
   const renderItem = useCallback(
     (log: SpendLog) => (
-      <LogRow log={log} expanded={expandedIds.has(log.request_id)} onToggle={handleToggle} />
+      <LogRow log={log} expanded={expandedIds.has(log.request_id)} onToggle={handleToggle} providerLookup={providerLookup} />
     ),
-    [expandedIds, handleToggle],
+    [expandedIds, handleToggle, providerLookup],
   );
 
   const keyExtractor = useCallback((log: SpendLog) => log.request_id, []);
@@ -324,6 +359,8 @@ export default function AuditLogTab() {
           {filteredLogs.length} request{filteredLogs.length !== 1 ? 's' : ''}
         </Text>
 
+        <AppButton variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadLogs()}>Refresh</AppButton>
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Popconfirm
             title="Clear logs older than 1 day?"
@@ -364,7 +401,7 @@ export default function AuditLogTab() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '170px 80px 1fr 110px 80px 90px',
+            gridTemplateColumns: '170px 80px 1fr 100px 55px 110px 80px 90px',
             gap: 8,
             padding: '0 16px',
             height: 32,
@@ -376,6 +413,8 @@ export default function AuditLogTab() {
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Timestamp</Text>
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Status</Text>
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Model</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Combo</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Cached</Text>
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>API Key</Text>
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Tokens</Text>
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Spend</Text>

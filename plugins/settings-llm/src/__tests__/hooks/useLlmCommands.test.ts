@@ -27,38 +27,9 @@ describe('A013/Hooks: useLlmCommands', () => {
     vi.unstubAllGlobals();
   });
 
-  describe('A013/Vault: Provider key management', () => {
-    it('stores provider key with correct parameters', async () => {
-      mockInvoke.mockResolvedValue(undefined);
-      const { storeProviderKey } = await import('../../hooks/useLlmCommands');
-      await storeProviderKey('openai', 'key_1', 'sk-test');
-      expect(mockInvoke).toHaveBeenCalledWith('llm_store_provider_key', {
-        providerId: 'openai',
-        keyName: 'key_1',
-        keyValue: 'sk-test',
-      });
-    });
-
-    it('deletes provider key with correct parameters', async () => {
-      mockInvoke.mockResolvedValue(undefined);
-      const { deleteProviderKey } = await import('../../hooks/useLlmCommands');
-      await deleteProviderKey('anthropic', 'prod');
-      expect(mockInvoke).toHaveBeenCalledWith('llm_delete_provider_key', {
-        providerId: 'anthropic',
-        keyName: 'prod',
-      });
-    });
-
-    it('lists provider keys', async () => {
-      mockInvoke.mockResolvedValue(['key_1', 'key_2']);
-      const { listProviderKeys } = await import('../../hooks/useLlmCommands');
-      const result = await listProviderKeys('openai');
-      expect(result).toEqual(['key_1', 'key_2']);
-      expect(mockInvoke).toHaveBeenCalledWith('llm_list_provider_keys', {
-        providerId: 'openai',
-      });
-    });
-  });
+  // A013/Vault: Provider key management commands were removed.
+  // Provider API keys are now passed directly to LiteLLM when importing models.
+  // storeProviderKey, deleteProviderKey, and listProviderKeys no longer exist.
 
   describe('A013/Config: Config management', () => {
     it('gets base URL from backend settings', async () => {
@@ -380,56 +351,99 @@ describe('A013/Hooks: useLlmCommands', () => {
   });
 
   describe('A013/Discovery: Model discovery and import', () => {
-    it('discovers models via llm_discover_models Tauri command', async () => {
+    it('discovers models via fetch from provider API', async () => {
       const response = { data: [{ id: 'gpt-4o', object: 'model', owned_by: 'openai' }] };
-      mockInvoke.mockResolvedValue(response);
-      const { discoverModels } = await import('../../hooks/useLlmCommands');
-      const result = await discoverModels('openai');
-      expect(result).toEqual(response);
-      expect(mockInvoke).toHaveBeenCalledWith('llm_discover_models', {
-        providerId: 'openai',
-        baseUrl: null,
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response),
       });
+      const { discoverModels } = await import('../../hooks/useLlmCommands');
+      const result = await discoverModels('sk-openai-key', 'https://api.openai.com/v1');
+      expect(result).toEqual(response);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/models',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer sk-openai-key',
+          }),
+        }),
+      );
     });
 
     it('discovers models with custom base URL', async () => {
       const response = { data: [{ id: 'my-model', object: 'model' }] };
-      mockInvoke.mockResolvedValue(response);
-      const { discoverModels } = await import('../../hooks/useLlmCommands');
-      const result = await discoverModels('custom-solo', 'https://llm.solo.engineer/v1');
-      expect(result).toEqual(response);
-      expect(mockInvoke).toHaveBeenCalledWith('llm_discover_models', {
-        providerId: 'custom-solo',
-        baseUrl: 'https://llm.solo.engineer/v1',
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response),
       });
+      const { discoverModels } = await import('../../hooks/useLlmCommands');
+      const result = await discoverModels('sk-custom-key', 'https://llm.solo.engineer/v1');
+      expect(result).toEqual(response);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://llm.solo.engineer/v1/models',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer sk-custom-key',
+          }),
+        }),
+      );
     });
 
-    it('imports model via llm_import_model Tauri command', async () => {
-      const response = { status: 'success' };
-      mockInvoke.mockResolvedValue(response);
-      const { importModel } = await import('../../hooks/useLlmCommands');
-      const result = await importModel('openai', 'gpt-4o');
-      expect(result).toEqual(response);
-      expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
-        providerId: 'openai',
-        modelId: 'gpt-4o',
-        modelName: null,
-        baseUrl: null,
-        variant: null,
+    it('throws when discoverModels returns non-ok response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('Unauthorized'),
       });
+      const { discoverModels } = await import('../../hooks/useLlmCommands');
+      await expect(discoverModels('sk-bad-key', 'https://api.openai.com/v1')).rejects.toThrow('Provider returned 401');
+    });
+
+    it('imports model via POST /model/new using litellmFetch', async () => {
+      const response = { status: 'success' };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response),
+      });
+      const { importModel } = await import('../../hooks/useLlmCommands');
+      // A013: new signature — litellmBaseUrl and masterKey are first two args
+      const result = await importModel('http://localhost:4000', 'sk-master', 'openai', 'gpt-4o', 'sk-openai-key');
+      expect(result).toEqual(response);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/model/new',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer sk-master',
+          }),
+          body: expect.stringContaining('gpt-4o'),
+        }),
+      );
     });
 
     it('imports model with custom name and base URL', async () => {
-      mockInvoke.mockResolvedValue({ status: 'success' });
-      const { importModel } = await import('../../hooks/useLlmCommands');
-      await importModel('custom-solo', 'my-model', 'alias-name', 'https://llm.solo.engineer/v1', 'openai');
-      expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
-        providerId: 'custom-solo',
-        modelId: 'my-model',
-        modelName: 'alias-name',
-        baseUrl: 'https://llm.solo.engineer/v1',
-        variant: 'openai',
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'success' }),
       });
+      const { importModel } = await import('../../hooks/useLlmCommands');
+      await importModel(
+        'http://localhost:4000',
+        'sk-master',
+        'custom-solo',
+        'my-model',
+        'sk-custom-key',
+        'alias-name',
+        'https://llm.solo.engineer/v1',
+        'openai',
+      );
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/model/new',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('alias-name'),
+        }),
+      );
     });
   });
 

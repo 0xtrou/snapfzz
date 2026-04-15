@@ -187,6 +187,9 @@ export interface CustomProvider {
   name: string;
   baseUrl: string;
   variant: CustomProviderVariant;
+  // API key stored in provider config so user does not re-enter each session.
+  // LiteLLM encrypts the key in its DB once models are imported.
+  apiKey?: string;
 }
 
 // A013/Fetch: Helper to call LiteLLM APIs directly via fetch
@@ -221,36 +224,6 @@ export async function getBaseUrl(): Promise<string> {
 
 export async function getMasterKey(): Promise<string> {
   return bridge.invoke<string>('llm_get_master_key', {});
-}
-
-// A013/Vault: Provider key management hooks
-
-export async function storeProviderKey(
-  providerId: string,
-  keyName: string,
-  keyValue: string,
-): Promise<void> {
-  await bridge.invoke<void>('llm_store_provider_key', {
-    providerId,
-    keyName,
-    keyValue,
-  });
-}
-
-export async function deleteProviderKey(
-  providerId: string,
-  keyName: string,
-): Promise<void> {
-  await bridge.invoke<void>('llm_delete_provider_key', {
-    providerId,
-    keyName,
-  });
-}
-
-export async function listProviderKeys(providerId: string): Promise<string[]> {
-  return bridge.invoke<string[]>('llm_list_provider_keys', {
-    providerId,
-  });
 }
 
 // A013/Config: Config management hooks
@@ -529,7 +502,7 @@ export async function getModelInfo(
 }
 
 // A013/Discovery: Discover models from a provider's native API.
-// API keys are read from the vault on the backend — the frontend never sees them.
+// The frontend passes the API key directly — it is not read from the vault.
 
 export interface DiscoveredModel {
   id: string;
@@ -542,29 +515,82 @@ export interface DiscoverModelsResponse {
 }
 
 export async function discoverModels(
-  providerId: string,
-  baseUrl?: string,
+  apiKey: string,
+  baseUrl: string,
 ): Promise<DiscoverModelsResponse> {
-  return bridge.invoke<DiscoverModelsResponse>('llm_discover_models', {
-    providerId,
-    baseUrl: baseUrl ?? null,
+  // Call the provider's /v1/models endpoint directly via fetch.
+  const base = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+  const res = await fetch(`${base}/v1/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Provider returned ${res.status}: ${body}`);
+  }
+  return res.json();
 }
 
+export interface ImportModelOpts {
+  weight?: number;
+  rpm?: number;
+  tpm?: number;
+  order?: number;
+  isCombo?: boolean;
+}
+
+/**
+ * Import a model into LiteLLM via POST /model/new.
+ * Pure frontend — calls LiteLLM directly using the master key.
+ */
 export async function importModel(
+  litellmBaseUrl: string,
+  masterKey: string,
   providerId: string,
   modelId: string,
+  apiKey: string,
   modelName?: string,
-  baseUrl?: string,
+  apiBase?: string,
   variant?: string,
+  opts?: ImportModelOpts,
 ): Promise<Record<string, unknown>> {
-  return bridge.invoke<Record<string, unknown>>('llm_import_model', {
-    providerId,
-    modelId,
-    modelName: modelName ?? null,
-    baseUrl: baseUrl ?? null,
-    variant: variant ?? null,
+  // Build model names:
+  // model_name = <provider-slug>/<model-id> for unique routing
+  // litellm_params.model = <sdk-prefix>/<model-id> for LiteLLM SDK routing
+  const providerSlug = providerId.startsWith('custom-')
+    ? providerId.slice('custom-'.length)
+    : providerId;
+  const sdkPrefix = variant ?? 'openai';
+  const litellmModel = `${sdkPrefix}/${modelId}`;
+  const displayName = modelName ?? `${providerSlug}/${modelId}`;
+
+  const litellmParams: Record<string, unknown> = {
+    model: litellmModel,
+    api_key: apiKey,
+    api_base: apiBase,
+  };
+  if (opts?.weight != null) litellmParams.weight = opts.weight;
+  if (opts?.rpm != null) litellmParams.rpm = opts.rpm;
+  if (opts?.tpm != null) litellmParams.tpm = opts.tpm;
+
+  const modelInfo: Record<string, unknown> = {
+    snapfzz_provider_id: providerId,
+  };
+  if (opts?.isCombo) modelInfo.snapfzz_combo = true;
+  if (opts?.order != null) modelInfo.order = opts.order;
+
+  const res = await litellmFetch(`${litellmBaseUrl}/model/new`, masterKey, {
+    method: 'POST',
+    body: JSON.stringify({
+      model_name: displayName,
+      litellm_params: litellmParams,
+      model_info: modelInfo,
+    }),
   });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`LiteLLM returned ${res.status}: ${body}`);
+  }
+  return res.json();
 }
 
 // A013/ModelDelete: Remove a model from LiteLLM via POST /model/delete
