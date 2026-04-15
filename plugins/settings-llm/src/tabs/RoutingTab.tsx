@@ -10,7 +10,14 @@ import {
   getConfig,
   updateConfig,
   getModelGroups,
+  getModelInfo,
+  deleteModel,
+  loadCustomProviders,
+  type CustomProvider,
 } from '../hooks/useLlmCommands';
+import type { ComboConfig, ComposedPayloads } from '../routing/composer';
+import ComboBuilder from './routing/ComboBuilder';
+import ComboList from './routing/ComboList';
 
 // --- types ---
 
@@ -389,6 +396,24 @@ function entriesToAliasMap(entries: AliasEntry[]): Record<string, string> {
   return map;
 }
 
+// Build ComboConfig list from /v1/model/info by grouping by model_name.
+// Deployments are reconstructed from litellm_params.
+function buildCombosFromModelInfo(data: { data: Array<{ model_name: string; litellm_params?: { api_base?: string; model?: string; api_key?: string }; model_info?: { snapfzz_provider_id?: string } }> }): ComboConfig[] {
+  const grouped: Record<string, ComboConfig> = {};
+  for (const entry of data.data) {
+    const groupName = entry.model_name;
+    if (!grouped[groupName]) {
+      grouped[groupName] = { name: groupName, strategy: 'round-robin', deployments: [] };
+    }
+    grouped[groupName].deployments.push({
+      provider: (entry.model_info as Record<string, string> | undefined)?.snapfzz_provider_id ?? '',
+      model: entry.litellm_params?.model?.replace(/^openai\//, '') ?? '',
+      apiBase: entry.litellm_params?.api_base ?? '',
+    });
+  }
+  return Object.values(grouped);
+}
+
 // --- main component ---
 
 export default function RoutingTab() {
@@ -396,6 +421,12 @@ export default function RoutingTab() {
   const [masterKey, setMasterKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [modelGroups, setModelGroups] = useState<string[]>([]);
+
+  // Combo state
+  const [combos, setCombos] = useState<ComboConfig[]>([]);
+  const [providers, setProviders] = useState<CustomProvider[]>([]);
+  const [editingCombo, setEditingCombo] = useState<ComboConfig | null>(null);
+  const [creatingCombo, setCreatingCombo] = useState(false);
 
   // Strategy state
   const [strategy, setStrategy] = useState(DEFAULT_STRATEGY);
@@ -415,9 +446,11 @@ export default function RoutingTab() {
   const loadData = useCallback(async (url: string, key: string) => {
     setLoading(true);
     try {
-      const [configData, groups] = await Promise.allSettled([
+      const [configData, groups, modelInfoResult, customProviders] = await Promise.allSettled([
         getConfig(url, key),
         getModelGroups(url, key),
+        getModelInfo(url, key),
+        loadCustomProviders(),
       ]);
 
       if (groups.status === 'fulfilled') {
@@ -440,6 +473,14 @@ export default function RoutingTab() {
         setSavedFallbacks(fb);
         setAliases(aliasEntries);
         setSavedAliases(aliasEntries);
+      }
+
+      if (modelInfoResult.status === 'fulfilled') {
+        setCombos(buildCombosFromModelInfo(modelInfoResult.value as Parameters<typeof buildCombosFromModelInfo>[0]));
+      }
+
+      if (customProviders.status === 'fulfilled') {
+        setProviders(customProviders.value);
       }
     } catch {
       message.error('Failed to load routing config');
@@ -493,6 +534,56 @@ export default function RoutingTab() {
     }
   }, [baseUrl, masterKey, aliases]);
 
+  const handleComboSave = useCallback(async (payloads: ComposedPayloads) => {
+    const { error } = await fetchWithToast(
+      async () => {
+        // Create each model deployment
+        await Promise.all(
+          payloads.modelsToCreate.map((payload) =>
+            fetch(`${baseUrl}/model/new`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }),
+          ),
+        );
+        // Delete stale models
+        await Promise.all(
+          payloads.modelsToDelete.map((id) => deleteModel(baseUrl, masterKey, id)),
+        );
+        // Apply config update
+        if (payloads.configUpdate) {
+          await updateConfig(baseUrl, masterKey, payloads.configUpdate as unknown as Record<string, unknown>);
+        }
+      },
+      { successMessage: 'Combo saved', errorMessage: 'Failed to save combo' },
+    );
+    if (!error) {
+      setCreatingCombo(false);
+      setEditingCombo(null);
+      void loadData(baseUrl, masterKey);
+    }
+  }, [baseUrl, masterKey, loadData]);
+
+  const handleComboDelete = useCallback(async (name: string) => {
+    const combo = combos.find((c) => c.name === name);
+    if (!combo) return;
+    const { error } = await fetchWithToast(
+      async () => {
+        // Delete via model/delete by model_name — LiteLLM removes by group name
+        await fetch(`${baseUrl}/model/delete`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model_name: name }),
+        });
+      },
+      { successMessage: 'Combo deleted', errorMessage: 'Failed to delete combo' },
+    );
+    if (!error) {
+      setCombos((prev) => prev.filter((c) => c.name !== name));
+    }
+  }, [baseUrl, masterKey, combos]);
+
   if (loading) {
     return (
       <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
@@ -501,8 +592,28 @@ export default function RoutingTab() {
     );
   }
 
+  const showBuilder = creatingCombo || editingCombo !== null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+      {showBuilder ? (
+        <ComboBuilder
+          existingCombo={editingCombo ?? undefined}
+          providers={providers}
+          onSave={handleComboSave}
+          onCancel={() => { setCreatingCombo(false); setEditingCombo(null); }}
+        />
+      ) : (
+        <Section title="Combos">
+          <ComboList
+            combos={combos}
+            onEdit={(combo) => setEditingCombo(combo)}
+            onCreate={() => setCreatingCombo(true)}
+            onDelete={handleComboDelete}
+          />
+        </Section>
+      )}
+
       <StrategySection
         current={strategy}
         saved={savedStrategy}
