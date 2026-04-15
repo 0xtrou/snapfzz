@@ -9,7 +9,7 @@ use crate::helpers;
 
 pub async fn run_metrics_loop(
     registry: Arc<BudgetRegistry>,
-    factory_registry: Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>,
+    factory_registry: Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>,
     handle: tauri::AppHandle,
 ) {
     loop {
@@ -112,10 +112,10 @@ pub async fn run_metrics_loop(
 
 async fn perform_restart(
     handle: &tauri::AppHandle,
-    factory_registry: &Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>,
+    factory_registry: &Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>,
     name: &str,
 ) {
-    let mut registry = factory_registry.lock().await;
+    let mut registry = factory_registry.write().await;
     match registry.restart(name).await {
         Ok(()) => {
             helpers::emit_supervisor(

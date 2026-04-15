@@ -18,7 +18,7 @@ pub fn spawn_boot_phases(
     python_runtime: Arc<PythonRuntime>,
     component_registry: Arc<ComponentRegistry>,
     postgres_runtime: Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>,
-    factory_registry: Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>,
+    factory_registry: Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>,
     app_handle: tauri::AppHandle,
 ) {
     let python_ready = Arc::new(tokio::sync::Notify::new());
@@ -123,7 +123,7 @@ pub fn spawn_boot_phases(
             let maybe_url = pg_url_rx.borrow().clone().flatten();
 
             // Brief lock: set database_url + spawn each service, then release
-            let mut registry = factory_registry.lock().await;
+            let mut registry = factory_registry.write().await;
             if let Some(url) = maybe_url {
                 registry.set_database_url(url);
             }

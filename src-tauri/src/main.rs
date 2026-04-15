@@ -94,7 +94,7 @@ fn main() {
         vault.clone(),
         data_dir.clone(),
     )));
-    let factory_registry = Arc::new(tokio::sync::Mutex::new(factory_registry));
+    let factory_registry = Arc::new(tokio::sync::RwLock::new(factory_registry));
 
     let postgres_runtime = Arc::new(tokio::sync::Mutex::new(None::<
         snapfzz_packs::runtime::postgres::PostgresRuntime,
@@ -210,7 +210,7 @@ fn main() {
                 let factory_registry = factory_registry.clone();
                 let postgres_runtime = postgres_runtime.clone();
                 tauri::async_runtime::block_on(async move {
-                    let registry = factory_registry.lock().await;
+                    let registry = factory_registry.read().await;
                     let process_mgr = registry.process_manager();
                     drop(registry);
                     let _ = process_mgr.shutdown("agentscope").await;

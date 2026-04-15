@@ -109,14 +109,14 @@ pub async fn budget_report_violation(
 #[tauri::command]
 pub async fn budget_snapshot(
     registry: tauri::State<'_, Arc<BudgetRegistry>>,
-    factory_registry: tauri::State<'_, Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>,
+    factory_registry: tauri::State<'_, Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>>,
     postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<Value, String> {
     // A039/PostgresSnapshot: Surface PostgreSQL in process list
     let mut metrics = registry.snapshot();
     // A037/budget_snapshot: Override processes with ProcessFactoryRegistry so all known
     // services appear (including Stopped/not-yet-spawned), not just ones in supervised domain.
-    let mut processes = factory_registry.lock().await.list_snapshots();
+    let mut processes = factory_registry.read().await.list_snapshots();
 
     // A039/PostgresMetrics: Append PostgreSQL snapshot with real PID, memory, uptime, and health URL.
     let pg = postgres_runtime.lock().await;
@@ -180,7 +180,7 @@ mod tests {
         Arc::new(tokio::sync::Mutex::new(None))
     }
 
-    fn empty_factory_registry(data_dir: &std::path::Path) -> Arc<tokio::sync::Mutex<ProcessFactoryRegistry>> {
+    fn empty_factory_registry(data_dir: &std::path::Path) -> Arc<tokio::sync::RwLock<ProcessFactoryRegistry>> {
         let logs = Arc::new(ProcessLogs::with_max_lines(data_dir.to_path_buf(), 100));
         let process_mgr = Arc::new(ProcessManager::with_parts(
             Arc::new(tokio::sync::Mutex::new(RuntimeState::new())),
@@ -188,7 +188,7 @@ mod tests {
         ));
         let platform = detect_platform().expect("platform");
         let python_runtime = Arc::new(PythonRuntime::new(data_dir.join("runtime"), platform));
-        Arc::new(tokio::sync::Mutex::new(ProcessFactoryRegistry::new(
+        Arc::new(tokio::sync::RwLock::new(ProcessFactoryRegistry::new(
             Arc::new(BudgetRegistry::from_hardware()),
             process_mgr,
             Arc::new(SettingsManager::new(data_dir.to_path_buf())),
@@ -355,7 +355,7 @@ mod tests {
 
         let snapshot = tauri::async_runtime::block_on(budget_snapshot(
             app.state::<Arc<BudgetRegistry>>(),
-            app.state::<Arc<tokio::sync::Mutex<ProcessFactoryRegistry>>>(),
+            app.state::<Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>>(),
             app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>(),
         ))
         .expect("budget snapshot");
