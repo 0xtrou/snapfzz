@@ -60,7 +60,7 @@ describe('A013/UI/AnalyticsTab', () => {
   it('A013/analytics/models: shows model breakdown', async () => {
     mockGetSpendLogs.mockResolvedValue(SAMPLE_LOGS);
     render(<AnalyticsTab />);
-    await waitFor(() => { expect(screen.getByText('MODEL BREAKDOWN')).toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.getByText('Model Breakdown')).toBeInTheDocument(); });
     // Model shows as provider/model_group (e.g. openai.com/gpt-4o)
     expect(screen.getAllByText(/gpt-4o/).length).toBeGreaterThanOrEqual(1);
   });
@@ -68,7 +68,7 @@ describe('A013/UI/AnalyticsTab', () => {
   it('A013/analytics/providers: shows provider breakdown', async () => {
     mockGetSpendLogs.mockResolvedValue(SAMPLE_LOGS);
     render(<AnalyticsTab />);
-    await waitFor(() => { expect(screen.getByText('PROVIDER BREAKDOWN')).toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.getByText('Provider Breakdown')).toBeInTheDocument(); });
     // Provider resolved from api_base hostname
     expect(screen.getAllByText(/openai/).length).toBeGreaterThanOrEqual(1);
   });
