@@ -114,34 +114,42 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
         ))}
       </div>
       {(() => {
-        // Request: prefer proxy_server_request (has messages, model), fallback to messages
-        const req = record.proxy_server_request ?? record.messages;
-        const hasReq = req && typeof req === 'object' && Object.keys(req).length > 0;
-        // Response: use response field
-        const resp = record.response;
-        const hasResp = resp && typeof resp === 'object' && Object.keys(resp).length > 0;
-        // Error info from metadata
-        const errorInfo = (record.metadata as Record<string, unknown>)?.error_information;
-        const hasError = errorInfo && typeof errorInfo === 'object' && Object.keys(errorInfo).length > 0;
+        // Extract only useful fields from proxy_server_request (strip auth metadata)
+        const raw = record.proxy_server_request as Record<string, unknown> | undefined;
+        const reqPayload = raw ? { model: raw.model, messages: raw.messages, max_tokens: raw.max_tokens } : null;
+        const hasReq = reqPayload && reqPayload.messages;
+
+        // Response: strip internal fields, keep choices + usage
+        const rawResp = record.response as Record<string, unknown> | undefined;
+        const respPayload = rawResp && Object.keys(rawResp).length > 0
+          ? { id: rawResp.id, model: rawResp.model, choices: rawResp.choices, usage: rawResp.usage }
+          : null;
+        const hasResp = respPayload && respPayload.id;
+
+        // Error: extract just the message and code
+        const meta = record.metadata as Record<string, unknown> | undefined;
+        const errInfo = meta?.error_information as Record<string, unknown> | undefined;
+        const errorPayload = errInfo ? { error_code: errInfo.error_code, error_message: errInfo.error_message, llm_provider: errInfo.llm_provider } : null;
+        const hasError = errorPayload && errorPayload.error_message;
 
         return (
           <>
             {hasReq && (
               <div>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Request</Text>
-                <pre style={preStyle}>{tryFormatJson(JSON.stringify(req))}</pre>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(reqPayload))}</pre>
               </div>
             )}
             {hasResp && (
               <div>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response</Text>
-                <pre style={preStyle}>{tryFormatJson(JSON.stringify(resp))}</pre>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(respPayload))}</pre>
               </div>
             )}
             {hasError && !hasResp && (
               <div>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Error</Text>
-                <pre style={preStyle}>{tryFormatJson(JSON.stringify(errorInfo))}</pre>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(errorPayload))}</pre>
               </div>
             )}
           </>
