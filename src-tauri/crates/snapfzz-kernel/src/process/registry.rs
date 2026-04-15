@@ -100,11 +100,22 @@ impl ProcessFactoryRegistry {
     }
 
     // A039/parallel_spawn: Spawn services concurrently for faster boot.
+    // Split into prepare → spawn → finalize so the caller can release the
+    // write lock during the slow spawn phase, allowing concurrent reads.
     pub async fn spawn_all(&mut self) -> Vec<(String, Result<(), ProcessError>)> {
+        let handles = self.prepare_spawn_all();
+        let results = Self::run_spawn_handles(handles).await;
+        self.finalize_spawn_all(results)
+    }
+
+    /// Phase 1 (quick write): Create BudgetedProcess entries and launch tokio tasks.
+    /// Returns JoinHandles — caller should drop the write lock before awaiting them.
+    pub fn prepare_spawn_all(
+        &mut self,
+    ) -> Vec<tokio::task::JoinHandle<(String, Result<(), ProcessError>, BudgetedProcess)>> {
         let names: Vec<String> = self.factories.keys().cloned().collect();
 
-        // Step 1: Create all BudgetedProcess entries that don't exist yet.
-        // This requires &mut self and is fast (no I/O beyond settings load).
+        // Create all BudgetedProcess entries that don't exist yet.
         for name in &names {
             if self.processes.contains_key(name.as_str()) {
                 continue;
@@ -132,8 +143,7 @@ impl ProcessFactoryRegistry {
             }
         }
 
-        // Step 2: Take ownership of each BudgetedProcess so we can move them
-        // into independent tokio tasks and spawn concurrently.
+        // Take ownership and spawn concurrently via tokio tasks.
         let taken: Vec<(String, BudgetedProcess)> = names
             .iter()
             .filter_map(|name| self.processes.remove_entry(name))
@@ -151,20 +161,34 @@ impl ProcessFactoryRegistry {
                 (name, result, process)
             }));
         }
+        handles
+    }
 
-        // Step 3: Collect results and reinsert processes into the map so
-        // subsequent calls to get(), restart(), kill(), etc. work normally.
-        let mut out = Vec::with_capacity(handles.len());
+    /// Phase 2 (no lock needed): Await all spawn handles.
+    pub async fn run_spawn_handles(
+        handles: Vec<tokio::task::JoinHandle<(String, Result<(), ProcessError>, BudgetedProcess)>>,
+    ) -> Vec<(String, Result<(), ProcessError>, BudgetedProcess)> {
+        let mut results = Vec::with_capacity(handles.len());
         for handle in handles {
             match handle.await {
-                Ok((name, result, process)) => {
-                    self.processes.insert(name.clone(), process);
-                    out.push((name, result));
-                }
+                Ok(tuple) => results.push(tuple),
                 Err(e) => {
-                    out.push(("unknown".to_string(), Err(ProcessError::SpawnFailed(e.to_string()))));
+                    eprintln!("[spawn_all] task join error: {e}");
                 }
             }
+        }
+        results
+    }
+
+    /// Phase 3 (quick write): Reinsert spawned processes into the registry.
+    pub fn finalize_spawn_all(
+        &mut self,
+        results: Vec<(String, Result<(), ProcessError>, BudgetedProcess)>,
+    ) -> Vec<(String, Result<(), ProcessError>)> {
+        let mut out = Vec::with_capacity(results.len());
+        for (name, result, process) in results {
+            self.processes.insert(name.clone(), process);
+            out.push((name, result));
         }
         out
     }

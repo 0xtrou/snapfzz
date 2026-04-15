@@ -122,13 +122,21 @@ pub fn spawn_boot_phases(
             // Read PG URL from watch channel
             let maybe_url = pg_url_rx.borrow().clone().flatten();
 
-            // Brief lock: set database_url + spawn each service, then release
-            let mut registry = factory_registry.write().await;
-            if let Some(url) = maybe_url {
-                registry.set_database_url(url);
-            }
-            let results = registry.spawn_all().await;
-            drop(registry);
+            // Phase 1 (quick write): set database_url + prepare spawn handles
+            let handles = {
+                let mut registry = factory_registry.write().await;
+                if let Some(url) = maybe_url {
+                    registry.set_database_url(url);
+                }
+                registry.prepare_spawn_all()
+                // write lock released here — UI reads can proceed
+            };
+
+            // Phase 2 (no lock): await all spawns concurrently
+            let spawn_results = snapfzz_kernel::process::ProcessFactoryRegistry::run_spawn_handles(handles).await;
+
+            // Phase 3 (quick write): reinsert spawned processes
+            let results = factory_registry.write().await.finalize_spawn_all(spawn_results);
 
             for (name, result) in results {
                 match result {
