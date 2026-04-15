@@ -64,15 +64,19 @@ export function PretextPaginatedList<T>({
   const startItem = (currentPage - 1) * pageSize + 1;
   const endItem = Math.min(currentPage * pageSize, items.length);
 
+  // Compute total height for current page so list expands to fit (no inner scroll)
+  const totalPageHeight = pageItems.reduce((sum, item) => sum + estimateHeightFn(item), 0);
+
   return (
     <div className={className} style={style}>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ minHeight: 0 }}>
         <PretextList
           items={pageItems}
           estimateHeight={estimateHeightFn}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
-          style={{ height: '100%' }}
+          overscan={pageItems.length}
+          style={{ height: totalPageHeight, overflow: 'hidden' }}
         />
       </div>
 

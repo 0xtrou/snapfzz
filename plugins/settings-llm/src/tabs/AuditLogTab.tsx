@@ -362,7 +362,7 @@ export default function AuditLogTab() {
           keyExtractor={keyExtractor}
           pageSize={20}
           pageSizeOptions={[10, 20, 50, 100]}
-          style={{ height: 560, display: 'flex', flexDirection: 'column' }}
+          style={{ display: 'flex', flexDirection: 'column' }}
         />
       )}
     </div>
