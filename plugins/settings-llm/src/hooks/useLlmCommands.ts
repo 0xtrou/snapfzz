@@ -127,6 +127,7 @@ export interface SpendLog {
   end_user?: string;
   messages?: unknown;
   response?: unknown;
+  proxy_server_request?: unknown;
   status?: string;
   // Some LiteLLM versions return "timestamp" instead of "startTime"
   timestamp?: string;

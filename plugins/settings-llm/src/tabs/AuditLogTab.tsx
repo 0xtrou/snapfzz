@@ -113,18 +113,40 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
           </div>
         ))}
       </div>
-      {record.messages && !(typeof record.messages === 'object' && Object.keys(record.messages).length === 0) && !(record.messages === '{}') && (
-        <div>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Messages (Request)</Text>
-          <pre style={preStyle}>{tryFormatJson(typeof record.messages === 'string' ? record.messages : JSON.stringify(record.messages))}</pre>
-        </div>
-      )}
-      {record.response && !(typeof record.response === 'object' && Object.keys(record.response).length === 0) && !(record.response === '{}') && (
-        <div>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response</Text>
-          <pre style={preStyle}>{tryFormatJson(typeof record.response === 'string' ? record.response : JSON.stringify(record.response))}</pre>
-        </div>
-      )}
+      {(() => {
+        // Request: prefer proxy_server_request (has messages, model), fallback to messages
+        const req = record.proxy_server_request ?? record.messages;
+        const hasReq = req && typeof req === 'object' && Object.keys(req).length > 0;
+        // Response: use response field
+        const resp = record.response;
+        const hasResp = resp && typeof resp === 'object' && Object.keys(resp).length > 0;
+        // Error info from metadata
+        const errorInfo = (record.metadata as Record<string, unknown>)?.error_information;
+        const hasError = errorInfo && typeof errorInfo === 'object' && Object.keys(errorInfo).length > 0;
+
+        return (
+          <>
+            {hasReq && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Request</Text>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(req))}</pre>
+              </div>
+            )}
+            {hasResp && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response</Text>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(resp))}</pre>
+              </div>
+            )}
+            {hasError && !hasResp && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Error</Text>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(errorInfo))}</pre>
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 });
