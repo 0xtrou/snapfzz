@@ -96,7 +96,7 @@ describe('U011/vault-settings', () => {
     expect(maskSecretValue('abcdef')).toBe('••••••••');
     expect(maskSecretValue('abcd')).toBe('••••••••');
     expect(maskSecretValue('')).toBe('••••••••');
-    expect(maskSecretValue('sk-long-api-key-12345')).toBe('•••••••••••••••••••••');
+    expect(maskSecretValue('sk-long-api-key-12345')).toBe('••••••••');
   });
 
   it('U011/vault-settings: shows healthy status when vault_list succeeds', async () => {
@@ -111,41 +111,39 @@ describe('U011/vault-settings', () => {
 
   it('U011/vault-settings: shows secret entries table with fully masked values', async () => {
     setupVault({
-      'provider:openai:apiKey': 'sk-test-4f9x',
-      'provider:anthropic:apiKey': 'an-test-1234',
+      'litellm:master_key': 'b6014e28-cd17-499e-a073-981ec4fe26c1',
     });
 
     render(<VaultSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText('provider:openai:apiKey')).toBeInTheDocument();
-      expect(screen.getByText('provider:anthropic:apiKey')).toBeInTheDocument();
-      const maskedCells = screen.getAllByText('••••••••••••');
-      expect(maskedCells).toHaveLength(2);
+      expect(screen.getByText('litellm:master_key')).toBeInTheDocument();
+      const maskedCells = screen.getAllByText('••••••••');
+      expect(maskedCells).toHaveLength(1);
     });
   });
 
   it('U011/vault-settings: masks secrets without revealing any characters', async () => {
     setupVault({
-      'provider:openai:apiKey': 'sk-1234567890',
+      'litellm:master_key': 'b6014e28-cd17-499e',
     });
 
     render(<VaultSettings />);
 
     await waitFor(() => {
-      const expected = maskSecretValue('sk-1234567890');
+      const expected = maskSecretValue('b6014e28-cd17-499e');
       const masked = screen.getByText(expected);
       expect(masked).toBeInTheDocument();
-      expect(masked.textContent).not.toContain('7');
-      expect(masked.textContent).not.toContain('8');
-      expect(masked.textContent).not.toContain('9');
+      expect(masked.textContent).not.toContain('b');
+      expect(masked.textContent).not.toContain('6');
       expect(masked.textContent).not.toContain('0');
+      expect(masked.textContent).not.toContain('4');
     });
   });
 
   it('U011/vault-settings: masks short secrets with minimum 8 bullets', async () => {
     setupVault({
-      'provider:openai:apiKey': 'abc',
+      'my-test-secret': 'abc',
     });
 
     render(<VaultSettings />);
@@ -197,15 +195,15 @@ describe('U011/vault-settings', () => {
 
     render(<VaultSettings />);
 
-    await user.type(screen.getByLabelText('Secret name'), 'provider:openai:apiKey');
+    await user.type(screen.getByLabelText('Secret name'), 'my-test-secret');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: 'provider:openai:apiKey',
+        key: 'my-test-secret',
         value: '',
       });
-      expect(screen.getByText('provider:openai:apiKey')).toBeInTheDocument();
+      expect(screen.getByText('my-test-secret')).toBeInTheDocument();
     });
   });
 
@@ -216,16 +214,16 @@ describe('U011/vault-settings', () => {
 
     render(<VaultSettings />);
 
-    await user.type(screen.getByLabelText('Secret name'), 'provider:openai:apiKey');
+    await user.type(screen.getByLabelText('Secret name'), 'my-test-secret');
     await user.type(screen.getByLabelText('Secret value'), 'sk-new-secret');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: 'provider:openai:apiKey',
+        key: 'my-test-secret',
         value: 'sk-new-secret',
       });
-      expect(screen.getByText('provider:openai:apiKey')).toBeInTheDocument();
+      expect(screen.getByText('my-test-secret')).toBeInTheDocument();
       expect(screen.getByText(maskSecretValue('sk-new-secret'))).toBeInTheDocument();
     });
 
@@ -236,33 +234,33 @@ describe('U011/vault-settings', () => {
   it('U011/vault-settings: delete secret shows confirmation dialog', async () => {
     const user = userEvent.setup();
     setupVault({
-      'provider:openai:apiKey': 'sk-test-4f9x',
+      'my-test-secret': 'sk-test-4f9x',
     });
 
     render(<VaultSettings />);
 
-    const deleteButton = await screen.findByRole('button', { name: 'Delete provider:openai:apiKey' });
+    const deleteButton = await screen.findByRole('button', { name: 'Delete my-test-secret' });
     await user.click(deleteButton);
 
-    expect(await screen.findByText('Delete provider:openai:apiKey?')).toBeInTheDocument();
+    expect(await screen.findByText('Delete my-test-secret?')).toBeInTheDocument();
     expect(screen.getByText('This permanently removes the secret from the vault.')).toBeInTheDocument();
   });
 
   it('U011/vault-settings: delete secret calls vault_delete and refreshes table', async () => {
     const user = userEvent.setup();
     const entries: Record<string, string> = {
-      'provider:openai:apiKey': 'sk-test-4f9x',
+      'my-test-secret': 'sk-test-4f9x',
     };
     setupVault(entries);
 
     render(<VaultSettings />);
 
-    const deleteButton = await screen.findByRole('button', { name: 'Delete provider:openai:apiKey' });
+    const deleteButton = await screen.findByRole('button', { name: 'Delete my-test-secret' });
     await user.click(deleteButton);
     await user.click(await screen.findByRole('button', { name: 'Delete' }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('vault_delete', { key: 'provider:openai:apiKey' });
+      expect(mockInvoke).toHaveBeenCalledWith('vault_delete', { key: 'my-test-secret' });
       expect(screen.getByText('No secrets stored')).toBeInTheDocument();
     });
   });
@@ -332,13 +330,13 @@ describe('U011/vault-settings', () => {
 
     render(<VaultSettings />);
 
-    await user.type(screen.getByLabelText('Secret name'), '  provider:trimmed:key  ');
+    await user.type(screen.getByLabelText('Secret name'), '  trimmed-secret  ');
     await user.type(screen.getByLabelText('Secret value'), 'value');
     await user.click(screen.getByRole('button', { name: /Add$/ }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: 'provider:trimmed:key',
+        key: 'trimmed-secret',
         value: 'value',
       });
     });
