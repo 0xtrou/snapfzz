@@ -423,7 +423,7 @@ function decodeLitellmStrategy(
 interface ModelInfoEntry {
   model_name: string;
   litellm_params?: { api_base?: string; model?: string; api_key?: string; weight?: number; rpm?: number; tpm?: number };
-  model_info?: { snapfzz_provider_id?: string; order?: number };
+  model_info?: { id?: string; snapfzz_provider_id?: string; order?: number };
 }
 
 function buildCombosFromModelInfo(data: { data: ModelInfoEntry[] }, litellmStrategy: string): ComboConfig[] {
@@ -444,6 +444,7 @@ function buildCombosFromModelInfo(data: { data: ModelInfoEntry[] }, litellmStrat
     if (order !== undefined && order !== null) grouped[groupName].hasOrder = true;
 
     grouped[groupName].config.deployments.push({
+      id: (entry.model_info as Record<string, string> | undefined)?.id,
       provider: (entry.model_info as Record<string, string> | undefined)?.snapfzz_provider_id ?? '',
       model: entry.litellm_params?.model ?? '',
       apiBase: entry.litellm_params?.api_base ?? '',
@@ -600,14 +601,21 @@ export default function RoutingTab() {
   const handleComboSave = useCallback(async (payloads: ComposedPayloads) => {
     const { error } = await fetchWithToast(
       async () => {
-        // When editing an existing combo, delete all its deployments first to avoid duplication.
-        // LiteLLM's /model/delete accepts a model_name (group name) and removes all deployments under it.
+        // When editing an existing combo, delete each deployment by its model_id first.
+        // LiteLLM's /model/delete requires { id: "model-uuid" } — not model_name.
         if (editingCombo) {
-          await fetch(`${baseUrl}/model/delete`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model_name: editingCombo.name }),
-          });
+          const idsToDelete = editingCombo.deployments
+            .map((d) => d.id)
+            .filter((id): id is string => !!id);
+          await Promise.all(
+            idsToDelete.map((id) =>
+              fetch(`${baseUrl}/model/delete`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+              }),
+            ),
+          );
         }
         // Create each model deployment
         await Promise.all(
@@ -638,12 +646,19 @@ export default function RoutingTab() {
     if (!combo) return;
     const { error } = await fetchWithToast(
       async () => {
-        // Delete via model/delete by model_name — LiteLLM removes by group name
-        await fetch(`${baseUrl}/model/delete`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model_name: name }),
-        });
+        // Delete each deployment by its model_id — LiteLLM requires { id: "model-uuid" }
+        const idsToDelete = combo.deployments
+          .map((d) => d.id)
+          .filter((id): id is string => !!id);
+        await Promise.all(
+          idsToDelete.map((id) =>
+            fetch(`${baseUrl}/model/delete`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id }),
+            }),
+          ),
+        );
       },
       { successMessage: 'Combo deleted', errorMessage: 'Failed to delete combo' },
     );
