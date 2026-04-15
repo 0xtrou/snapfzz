@@ -27,6 +27,7 @@ export interface ComboConfig {
   name: string;           // Model group name (what users request)
   strategy: RoutingStrategy;
   deployments: Deployment[];
+  apiType?: 'openai' | 'anthropic';  // Prefix used when building litellm_params.model
   fallbacks?: string[];   // Other combo names to fallback to
 }
 
@@ -76,12 +77,15 @@ const LITELLM_STRATEGY: Record<RoutingStrategy, string> = {
 function buildModelPayload(
   modelName: string,
   deployment: Deployment,
-  extras: { weight?: number; order?: number } = {},
+  extras: { weight?: number; order?: number; apiType?: 'openai' | 'anthropic' } = {},
 ): ModelNewPayload {
-  // If the model value already carries a provider prefix (e.g. "openai/coder" from
-  // litellm_params.model), use it as-is. Otherwise apply the openai/ prefix so
-  // LiteLLM can route to the deployment via the SDK.
-  const modelValue = deployment.model.includes('/') ? deployment.model : `openai/${deployment.model}`;
+  // Use the apiType from extras if provided; otherwise fall back to whatever prefix
+  // the deployment model already carries, defaulting to "openai" if no prefix exists.
+  const prefix = extras.apiType ?? 'openai';
+  const bareModel = deployment.model.includes('/')
+    ? deployment.model.split('/').slice(1).join('/')
+    : deployment.model;
+  const modelValue = `${prefix}/${bareModel}`;
 
   const litellmParams: ModelNewPayload['litellm_params'] = {
     model: modelValue,
@@ -117,7 +121,7 @@ function buildModelPayload(
 }
 
 export function composeCombo(config: ComboConfig): ComposedPayloads {
-  const { name, strategy, deployments, fallbacks } = config;
+  const { name, strategy, deployments, apiType, fallbacks } = config;
 
   const modelsToCreate: ModelNewPayload[] = [];
 
@@ -125,7 +129,7 @@ export function composeCombo(config: ComboConfig): ComposedPayloads {
     case 'round-robin': {
       // All deployments get equal weight — omitting weight field means equal.
       for (const deployment of deployments) {
-        modelsToCreate.push(buildModelPayload(name, deployment));
+        modelsToCreate.push(buildModelPayload(name, deployment, { apiType }));
       }
       break;
     }
@@ -134,7 +138,7 @@ export function composeCombo(config: ComboConfig): ComposedPayloads {
       // Each deployment carries its declared weight.
       for (const deployment of deployments) {
         modelsToCreate.push(
-          buildModelPayload(name, deployment, { weight: deployment.weight }),
+          buildModelPayload(name, deployment, { weight: deployment.weight, apiType }),
         );
       }
       break;
@@ -144,7 +148,7 @@ export function composeCombo(config: ComboConfig): ComposedPayloads {
       // order = index + 1; LiteLLM tries order=1 first, cascades on failure.
       deployments.forEach((deployment, index) => {
         modelsToCreate.push(
-          buildModelPayload(name, deployment, { order: index + 1 }),
+          buildModelPayload(name, deployment, { order: index + 1, apiType }),
         );
       });
       break;
@@ -155,7 +159,7 @@ export function composeCombo(config: ComboConfig): ComposedPayloads {
       // then overflow to subsequent deployments (order=2+).
       deployments.forEach((deployment, index) => {
         modelsToCreate.push(
-          buildModelPayload(name, deployment, { order: index + 1 }),
+          buildModelPayload(name, deployment, { order: index + 1, apiType }),
         );
       });
       break;
@@ -166,7 +170,7 @@ export function composeCombo(config: ComboConfig): ComposedPayloads {
     case 'latency-optimized': {
       // LiteLLM handles distribution natively — no weight/order needed.
       for (const deployment of deployments) {
-        modelsToCreate.push(buildModelPayload(name, deployment));
+        modelsToCreate.push(buildModelPayload(name, deployment, { apiType }));
       }
       break;
     }

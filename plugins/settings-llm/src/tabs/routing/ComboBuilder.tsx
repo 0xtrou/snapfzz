@@ -1,7 +1,7 @@
 // Combo Builder — 4-step wizard for creating/editing routing combos.
 
 import { useState } from 'react';
-import { Input, Select, Slider, Tag, Tooltip } from 'antd';
+import { Input, Radio, Select, Slider, Tag, Tooltip } from 'antd';
 import {
   HolderOutlined,
   CheckCircleOutlined,
@@ -217,10 +217,14 @@ function StepBasics({
 function StepDeployments({
   deployments,
   availableModels,
+  apiType,
+  onApiTypeChange,
   onChange,
 }: {
   deployments: Deployment[];
   availableModels: AvailableModelInfo[];
+  apiType: 'openai' | 'anthropic';
+  onApiTypeChange: (t: 'openai' | 'anthropic') => void;
   onChange: (deps: Deployment[]) => void;
 }) {
   // Derive selected display names from current deployments by reverse-looking up
@@ -246,6 +250,19 @@ function StepDeployments({
 
   return (
     <div style={{ maxWidth: 560 }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          API Type
+        </div>
+        <Radio.Group
+          value={apiType}
+          onChange={(e) => onApiTypeChange(e.target.value as 'openai' | 'anthropic')}
+        >
+          <Radio value="openai">OpenAI Compatible</Radio>
+          <Radio value="anthropic">Anthropic Compatible</Radio>
+        </Radio.Group>
+      </div>
+
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
           Select Models
@@ -274,11 +291,14 @@ function StepDeployments({
 
       {deployments.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          {deployments.map((d) => (
-            <Tag key={d.model} color="blue" style={{ fontSize: 12 }}>
-              {d.model}
-            </Tag>
-          ))}
+          {deployments.map((d) => {
+            const displayName = availableModels.find((m) => m.model === d.model)?.name ?? d.model;
+            return (
+              <Tag key={d.model} color="blue" style={{ fontSize: 12 }}>
+                {displayName}
+              </Tag>
+            );
+          })}
         </div>
       )}
 
@@ -560,6 +580,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
   const [name, setName] = useState(existingCombo?.name ?? '');
   const [deployments, setDeployments] = useState<Deployment[]>(existingCombo?.deployments ?? []);
   const [strategy, setStrategy] = useState<RoutingStrategy | ''>(existingCombo?.strategy ?? '');
+  const [apiType, setApiType] = useState<'openai' | 'anthropic'>(existingCombo?.apiType ?? 'openai');
   const [saving, setSaving] = useState(false);
 
   const handleWeightChange = (idx: number, weight: number) => {
@@ -586,7 +607,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
     if (!strategy) return;
     setSaving(true);
     try {
-      const config: ComboConfig = { name, strategy, deployments };
+      const config: ComboConfig = { name, strategy, deployments, apiType };
       const payloads = composeCombo(config);
       await onSave(payloads);
     } finally {
@@ -620,6 +641,8 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
           <StepDeployments
             deployments={deployments}
             availableModels={availableModels}
+            apiType={apiType}
+            onApiTypeChange={setApiType}
             onChange={setDeployments}
           />
         )}
