@@ -20,7 +20,7 @@ export default function LlmSettings() {
         title="LLM Providers"
         subtitle="Manage LLM providers, virtual keys with budgets, routing strategies, and view spend audit logs."
       />
-      <div style={{ padding: '24px 32px', background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, margin: '16px 32px 24px' }}>
+      <div style={{ padding: '24px 32px', background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, margin: '16px 16px 24px' }}>
         <Tabs
           activeKey={activeKey}
           onChange={setActiveKey}
