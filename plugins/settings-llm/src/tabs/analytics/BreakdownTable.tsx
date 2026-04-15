@@ -64,7 +64,7 @@ function SortArrow({ active, asc }: { active: boolean; asc: boolean }) {
         verticalAlign: 'middle',
       }}
     >
-      {active && !asc ? '▲' : '▼'}
+      {active && asc ? '▲' : '▼'}
     </span>
   );
 }

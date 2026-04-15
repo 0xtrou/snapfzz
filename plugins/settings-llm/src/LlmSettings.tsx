@@ -9,6 +9,8 @@ import AuditLogTab from './tabs/AuditLogTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
 import CacheTab from './tabs/CacheTab';
 
+const iconStyle = { marginRight: 6 };
+
 export default function LlmSettings() {
   const [activeKey, setActiveKey] = useState('providers');
 
@@ -25,62 +27,32 @@ export default function LlmSettings() {
           items={[
             {
               key: 'providers',
-              label: (
-                <span>
-                  <ApiOutlined />
-                  Providers
-                </span>
-              ),
+              label: <span><ApiOutlined style={iconStyle} />Providers</span>,
               children: <ProvidersTab />,
             },
             {
               key: 'keys',
-              label: (
-                <span>
-                  <KeyOutlined />
-                  API Keys
-                </span>
-              ),
+              label: <span><KeyOutlined style={iconStyle} />API Keys</span>,
               children: <ApiKeysTab />,
             },
             {
               key: 'routing',
-              label: (
-                <span>
-                  <SwapOutlined />
-                  Routing
-                </span>
-              ),
+              label: <span><SwapOutlined style={iconStyle} />Routing</span>,
               children: <RoutingTab />,
             },
             {
               key: 'audit',
-              label: (
-                <span>
-                  <FileTextOutlined />
-                  Audit Log
-                </span>
-              ),
+              label: <span><FileTextOutlined style={iconStyle} />Audit Log</span>,
               children: <AuditLogTab />,
             },
             {
               key: 'analytics',
-              label: (
-                <span>
-                  <BarChartOutlined />
-                  Analytics
-                </span>
-              ),
+              label: <span><BarChartOutlined style={iconStyle} />Analytics</span>,
               children: <AnalyticsTab />,
             },
             {
               key: 'cache',
-              label: (
-                <span>
-                  <ThunderboltOutlined />
-                  Cache
-                </span>
-              ),
+              label: <span><ThunderboltOutlined style={iconStyle} />Cache</span>,
               children: <CacheTab />,
             },
           ]}

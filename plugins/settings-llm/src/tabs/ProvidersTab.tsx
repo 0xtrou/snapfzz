@@ -1605,7 +1605,7 @@ export default function ProvidersTab() {
               style={{
                 fontSize: 13,
                 fontWeight: 700,
-                color: 'var(--text-muted)',
+                color: 'var(--text-primary)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
               }}
@@ -1688,7 +1688,7 @@ export default function ProvidersTab() {
               style={{
                 fontSize: 13,
                 fontWeight: 700,
-                color: 'var(--text-muted)',
+                color: 'var(--text-primary)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
                 flexShrink: 0,
