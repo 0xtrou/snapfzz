@@ -42,7 +42,7 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete }: ComboL
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 1 }}>
-          Model Groups
+          Combos
         </div>
         <AppButton icon={<PlusOutlined />} onClick={onCreate}>
           Create Combo

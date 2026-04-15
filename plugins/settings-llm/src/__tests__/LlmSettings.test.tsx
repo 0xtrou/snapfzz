@@ -54,7 +54,7 @@ describe('A013/UI: LlmSettings', () => {
     render(<LlmSettings />);
     expect(screen.getAllByText('Providers').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('API Keys')).toBeInTheDocument();
-    expect(screen.getByText('Routing')).toBeInTheDocument();
+    expect(screen.getByText('Combos')).toBeInTheDocument();
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
     expect(screen.getByText('Analytics')).toBeInTheDocument();
   });
@@ -68,7 +68,7 @@ describe('A013/UI: LlmSettings', () => {
       expect(screen.getByText('No virtual keys created')).toBeInTheDocument();
     });
     
-    await user.click(screen.getByText('Routing'));
+    await user.click(screen.getByText('Combos'));
     await waitFor(() => {
       expect(screen.getByText('Create Combo')).toBeInTheDocument();
     });

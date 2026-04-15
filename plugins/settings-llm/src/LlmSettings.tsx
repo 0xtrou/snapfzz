@@ -37,7 +37,7 @@ export default function LlmSettings() {
             },
             {
               key: 'routing',
-              label: <span><SwapOutlined style={iconStyle} />Routing</span>,
+              label: <span><SwapOutlined style={iconStyle} />Combos</span>,
               children: <RoutingTab />,
             },
             {

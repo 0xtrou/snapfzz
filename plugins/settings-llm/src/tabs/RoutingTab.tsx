@@ -621,14 +621,12 @@ export default function RoutingTab() {
           onCancel={() => { setCreatingCombo(false); setEditingCombo(null); }}
         />
       ) : (
-        <Section title="Combos">
-          <ComboList
-            combos={combos}
-            onEdit={(combo) => setEditingCombo(combo)}
-            onCreate={() => setCreatingCombo(true)}
-            onDelete={handleComboDelete}
-          />
-        </Section>
+        <ComboList
+          combos={combos}
+          onEdit={(combo) => setEditingCombo(combo)}
+          onCreate={() => setCreatingCombo(true)}
+          onDelete={handleComboDelete}
+        />
       )}
 
       {/* Strategy, Fallbacks, and Aliases are now managed per-combo via the Combo Builder */}
