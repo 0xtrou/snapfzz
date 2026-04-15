@@ -306,7 +306,7 @@ export default function AnalyticsTab() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, overflow: 'hidden', background: 'var(--bg-subtle)', borderRadius: 8, padding: 20, margin: -8 }}>
       {/* Time range selector */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Usage Analytics</div>
