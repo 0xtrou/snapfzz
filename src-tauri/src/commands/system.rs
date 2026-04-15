@@ -100,7 +100,7 @@ pub async fn agent_health(
     registry: tauri::State<'_, Arc<BudgetRegistry>>,
 ) -> Result<HealthStatus, String> {
     Ok(HealthStatus {
-        status: if registry.supervised.check_health("agentscope").await {
+        status: if registry.supervised.check_health("agent-runtime").await {
             "connected"
         } else {
             "disconnected"
@@ -229,7 +229,7 @@ mod tests {
 
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Performance));
         registry.register_process(
-            "agentscope",
+            "agent-runtime",
             snapfzz_kernel::budget::supervised::ProcessBudget {
                 pid: None,
                 health_url: format!("http://{addr}/health"),

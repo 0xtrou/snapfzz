@@ -5,6 +5,9 @@ use snapfzz_kernel::process::{ProcessFactoryRegistry, ProcessManager};
 use std::sync::Arc;
 use tauri::Emitter;
 
+/// Display name for the embedded PostgreSQL process (not managed by a factory).
+const POSTGRES_PROCESS_NAME: &str = "database";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SupervisorEvent {
@@ -52,7 +55,7 @@ pub async fn list_processes(
     let pg = postgres_runtime.lock().await;
     let pg_snapshot = if let Some(ref pg) = *pg {
         ProcessSnapshot {
-            name: "postgresql".to_string(),
+            name: POSTGRES_PROCESS_NAME.to_string(),
             pid: pg.pid(),
             status: if pg.is_ready() { ProcessStatus::Online } else { ProcessStatus::Stopped },
             rss_mb: pg.rss_mb(),
@@ -65,7 +68,7 @@ pub async fn list_processes(
             owner: "system".to_string(),
         }
     } else {
-        ProcessSnapshot::stopped("postgresql", "system")
+        ProcessSnapshot::stopped(POSTGRES_PROCESS_NAME, "system")
     };
     processes.push(pg_snapshot);
 
@@ -80,7 +83,7 @@ pub async fn get_process_logs(
     postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<Vec<String>, String> {
     // A039/PostgresLogs: Read PostgreSQL logs from its log file, not the in-memory ring buffer.
-    if name == "postgresql" {
+    if name == POSTGRES_PROCESS_NAME {
         let pg = postgres_runtime.lock().await;
         if let Some(ref pg) = *pg {
             let log_path = pg.log_file_path();
@@ -113,7 +116,7 @@ pub async fn clear_process_logs(
     postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<(), String> {
     // A039/PostgresLogs: Clear PostgreSQL log file directly.
-    if name == "postgresql" {
+    if name == POSTGRES_PROCESS_NAME {
         let pg = postgres_runtime.lock().await;
         if let Some(ref pg) = *pg {
             let _ = std::fs::write(pg.log_file_path(), "");
@@ -133,7 +136,7 @@ pub async fn restart_process<R: tauri::Runtime>(
 ) -> Result<(), String> {
     // A039/PostgresRestart: PostgreSQL is managed outside the factory registry.
     // Tolerates being called after kill — stop() errors are ignored since PG may already be down.
-    if name == "postgresql" {
+    if name == POSTGRES_PROCESS_NAME {
         let mut pg_guard = postgres_runtime.lock().await;
         if let Some(ref mut pg) = *pg_guard {
             // Stop gracefully — ignore errors (PG may already be stopped after kill)
@@ -172,7 +175,7 @@ pub async fn kill_process<R: tauri::Runtime>(
     postgres_runtime: tauri::State<'_, Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>,
 ) -> Result<(), String> {
     // A039/PostgresKill: PostgreSQL is managed outside the factory registry.
-    if name == "postgresql" {
+    if name == POSTGRES_PROCESS_NAME {
         let mut pg_guard = postgres_runtime.lock().await;
         if let Some(ref mut pg) = *pg_guard {
             if let Err(e) = pg.stop().await {
@@ -278,8 +281,8 @@ mod tests {
         assert!(
             processes
                 .iter()
-                .any(|entry| entry.get("name").and_then(|v| v.as_str()) == Some("litellm")),
-            "litellm should appear in process list"
+                .any(|entry| entry.get("name").and_then(|v| v.as_str()) == Some("llm-gateway")),
+            "llm-gateway should appear in process list"
         );
     }
 
@@ -287,8 +290,8 @@ mod tests {
     fn a014_commands_process_logs_direct_tail_and_clear_paths() {
         let temp = tempfile::tempdir().expect("tempdir");
         let logs = Arc::new(ProcessLogs::with_max_lines(temp.path().to_path_buf(), 50));
-        logs.push("agentscope", "line-1".to_string());
-        logs.push("agentscope", "line-2".to_string());
+        logs.push("agent-runtime", "line-1".to_string());
+        logs.push("agent-runtime", "line-2".to_string());
 
         let process_mgr = Arc::new(ProcessManager::with_parts(
             Arc::new(Mutex::new(RuntimeState::new())),
@@ -306,7 +309,7 @@ mod tests {
         let pg_state = app.state::<Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>>();
 
         let tailed = tauri::async_runtime::block_on(super::get_process_logs(
-            "agentscope".to_string(),
+            "agent-runtime".to_string(),
             10,
             app.state::<Arc<ProcessManager>>(),
             pg_state.clone(),
@@ -315,14 +318,14 @@ mod tests {
         assert_eq!(tailed, vec!["line-1".to_string(), "line-2".to_string()]);
 
         tauri::async_runtime::block_on(super::clear_process_logs(
-            "agentscope".to_string(),
+            "agent-runtime".to_string(),
             app.state::<Arc<ProcessManager>>(),
             pg_state.clone(),
         ))
         .expect("clear logs");
 
         let tailed_after_clear = tauri::async_runtime::block_on(super::get_process_logs(
-            "agentscope".to_string(),
+            "agent-runtime".to_string(),
             10,
             app.state::<Arc<ProcessManager>>(),
             pg_state,
@@ -387,7 +390,7 @@ mod tests {
         super::emit_supervisor(
             app.handle(),
             "success",
-            "agentscope",
+            "agent-runtime",
             "Process killed".to_string(),
         );
     }

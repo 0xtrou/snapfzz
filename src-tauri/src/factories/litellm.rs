@@ -77,7 +77,7 @@ impl LiteLLMFactory {
 
 impl ProcessFactory for LiteLLMFactory {
     fn name(&self) -> &'static str {
-        "litellm"
+        "llm-gateway"
     }
 
     fn health_path(&self) -> &'static str {
@@ -430,7 +430,7 @@ mod tests {
         // A038/name: Factory name must match the registry key used to look up this service
         let temp = tempfile::tempdir().expect("tempdir");
         let factory = make_factory(temp.path());
-        assert_eq!(factory.name(), "litellm");
+        assert_eq!(factory.name(), "llm-gateway");
     }
 
     #[test]

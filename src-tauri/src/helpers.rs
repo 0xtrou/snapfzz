@@ -272,13 +272,13 @@ mod tests {
     fn a014_helpers_build_supervisor_event_sets_expected_fields() {
         let event = super::build_supervisor_event(
             "success",
-            "agentscope",
+            "agent-runtime",
             "AgentScope Runtime started successfully".to_string(),
         );
 
         let value = serde_json::to_value(&event).expect("serialize event");
         assert_eq!(value["eventType"], "success");
-        assert_eq!(value["process"], "agentscope");
+        assert_eq!(value["process"], "agent-runtime");
         assert_eq!(value["message"], "AgentScope Runtime started successfully");
         assert!(value["timestamp"].as_u64().unwrap_or_default() > 0);
     }

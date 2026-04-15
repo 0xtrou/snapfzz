@@ -213,8 +213,8 @@ fn main() {
                     let registry = factory_registry.read().await;
                     let process_mgr = registry.process_manager();
                     drop(registry);
-                    let _ = process_mgr.shutdown("agentscope").await;
-                    let _ = process_mgr.shutdown("litellm").await;
+                    let _ = process_mgr.shutdown("agent-runtime").await;
+                    let _ = process_mgr.shutdown("llm-gateway").await;
 
                     if let Some(pg) = postgres_runtime.lock().await.as_mut() {
                         if let Err(e) = pg.stop().await {

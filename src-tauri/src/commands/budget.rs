@@ -3,6 +3,8 @@ use snapfzz_kernel::budget::{self, device::DeviceInfo, metrics::{ProcessSnapshot
 use snapfzz_kernel::process::ProcessFactoryRegistry;
 use std::sync::Arc;
 
+const POSTGRES_PROCESS_NAME: &str = "database";
+
 pub(crate) fn preset_name_from_str(preset_name: &str) -> Result<PresetName, String> {
     match preset_name {
         "performance" => Ok(PresetName::Performance),
@@ -122,7 +124,7 @@ pub async fn budget_snapshot(
     let pg = postgres_runtime.lock().await;
     let pg_snapshot = if let Some(ref pg) = *pg {
         ProcessSnapshot {
-            name: "postgresql".to_string(),
+            name: POSTGRES_PROCESS_NAME.to_string(),
             pid: pg.pid(),
             status: if pg.is_ready() { ProcessStatus::Online } else { ProcessStatus::Stopped },
             rss_mb: pg.rss_mb(),
@@ -135,7 +137,7 @@ pub async fn budget_snapshot(
             owner: "system".to_string(),
         }
     } else {
-        ProcessSnapshot::stopped("postgresql", "system")
+        ProcessSnapshot::stopped(POSTGRES_PROCESS_NAME, "system")
     };
     processes.push(pg_snapshot);
 
@@ -285,7 +287,7 @@ mod tests {
     #[test]
     fn a008_commands_budget_apply_preset_updates_registry_and_agentscope_budget() {
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
-        register_process(&registry, "agentscope");
+        register_process(&registry, "agent-runtime");
 
         apply_preset(&registry, "performance").expect("apply preset");
 
@@ -297,7 +299,7 @@ mod tests {
     #[test]
     fn a008_commands_budget_apply_preset_with_device_uses_device_derived_hardware() {
         let registry = Arc::new(BudgetRegistry::with_preset_name(PresetName::Battery));
-        register_process(&registry, "agentscope");
+        register_process(&registry, "agent-runtime");
         let device = DeviceInfo {
             os: "linux".to_string(),
             arch: "x86_64".to_string(),
