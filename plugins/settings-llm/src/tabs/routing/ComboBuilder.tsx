@@ -3,8 +3,6 @@
 import { useState } from 'react';
 import { Input, Select, Slider, Tag, Tooltip } from 'antd';
 import {
-  PlusOutlined,
-  DeleteOutlined,
   HolderOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -21,9 +19,17 @@ import type { CustomProvider } from '../../hooks/useLlmCommands';
 
 // --- types ---
 
+export interface AvailableModelInfo {
+  name: string;
+  apiBase?: string;
+  model?: string;
+  provider?: string;
+}
+
 export interface ComboBuilderProps {
   existingCombo?: ComboConfig;
   providers: CustomProvider[];
+  availableModels: AvailableModelInfo[];  // Models from /v1/model/info
   onSave: (payloads: ComposedPayloads) => Promise<void>;
   onCancel: () => void;
 }
@@ -209,102 +215,76 @@ function StepBasics({
 
 function StepDeployments({
   deployments,
-  providers,
+  availableModels,
   onChange,
 }: {
   deployments: Deployment[];
-  providers: CustomProvider[];
+  availableModels: AvailableModelInfo[];
   onChange: (deps: Deployment[]) => void;
 }) {
-  const providerOptions = providers.map((p) => ({ label: p.name, value: p.id }));
+  // Derive selected model names from current deployments (registered ones only)
+  const selectedNames = deployments
+    .filter((d) => d.isRegistered)
+    .map((d) => d.model);
 
-  const addDeployment = () => {
-    onChange([...deployments, { provider: '', model: '', apiBase: '' }]);
-  };
+  const modelOptions = availableModels.map((m) => ({ label: m.name, value: m.name }));
 
-  const removeDeployment = (idx: number) => {
-    onChange(deployments.filter((_, i) => i !== idx));
-  };
-
-  const updateDeployment = (idx: number, patch: Partial<Deployment>) => {
-    onChange(deployments.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
-  };
-
-  const handleProviderChange = (idx: number, providerId: string) => {
-    const provider = providers.find((p) => p.id === providerId);
-    updateDeployment(idx, {
-      provider: providerId,
-      apiBase: provider?.baseUrl ?? '',
+  const handleSelectionChange = (selected: string[]) => {
+    const newDeployments: Deployment[] = selected.map((modelName) => {
+      const info = availableModels.find((m) => m.name === modelName);
+      return {
+        provider: info?.provider ?? '',
+        model: modelName,
+        apiBase: info?.apiBase ?? '',
+        isRegistered: true,
+      };
     });
+    onChange(newDeployments);
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {deployments.length === 0 && (
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>
-            No deployments added. Add at least one.
-          </div>
-        )}
-
-        {deployments.map((dep, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr auto',
-              gap: 10,
-              alignItems: 'end',
-              padding: '12px 14px',
-              background: 'var(--bg-subtle)',
-              borderRadius: 6,
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
-            <div>
-              <div style={labelStyle}>Provider</div>
-              <Select
-                value={dep.provider || undefined}
-                placeholder="Select provider"
-                options={providerOptions}
-                style={{ width: '100%' }}
-                onChange={(v) => handleProviderChange(idx, v as string)}
-              />
-            </div>
-            <div>
-              <div style={labelStyle}>Model</div>
-              <Input
-                value={dep.model}
-                placeholder="e.g. coder"
-                onChange={(e) => updateDeployment(idx, { model: e.target.value })}
-              />
-            </div>
-            <div>
-              <div style={labelStyle}>API Base</div>
-              <Input
-                value={dep.apiBase ?? ''}
-                placeholder="Auto-filled from provider"
-                onChange={(e) => updateDeployment(idx, { apiBase: e.target.value })}
-              />
-            </div>
-            <AppButton
-              variant="text"
-              icon={<DeleteOutlined />}
-              onClick={() => removeDeployment(idx)}
-              style={{ color: 'var(--text-muted)' }}
-            />
-          </div>
-        ))}
+    <div style={{ maxWidth: 560 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+          Select Models
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+          Choose which models to include in this combo. Requests will be distributed across selected models based on the routing strategy.
+        </div>
+        <Select
+          mode="multiple"
+          value={selectedNames}
+          options={modelOptions}
+          style={{ width: '100%' }}
+          placeholder="Select models to include..."
+          showSearch
+          filterOption={(input, opt) =>
+            (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+          }
+          onChange={handleSelectionChange}
+          notFoundContent={
+            availableModels.length === 0
+              ? 'No models found. Add providers in the Providers tab first.'
+              : 'No matching models'
+          }
+        />
       </div>
 
-      <AppButton
-        icon={<PlusOutlined />}
-        onClick={addDeployment}
-        variant="text"
-        style={{ marginTop: 12 }}
-      >
-        Add Deployment
-      </AppButton>
+      {deployments.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {deployments.map((d) => (
+            <Tag key={d.model} color="blue" style={{ fontSize: 12 }}>
+              {d.model}
+            </Tag>
+          ))}
+        </div>
+      )}
+
+      {deployments.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+          No models selected. Select at least one to continue.
+        </div>
+      )}
     </div>
   );
 }
@@ -573,7 +553,7 @@ const STEPS = ['Basics', 'Deployments', 'Strategy', 'Review'];
 
 // --- main component ---
 
-export default function ComboBuilder({ existingCombo, providers, onSave, onCancel }: ComboBuilderProps) {
+export default function ComboBuilder({ existingCombo, providers, availableModels, onSave, onCancel }: ComboBuilderProps) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState(existingCombo?.name ?? '');
   const [deployments, setDeployments] = useState<Deployment[]>(existingCombo?.deployments ?? []);
@@ -637,7 +617,7 @@ export default function ComboBuilder({ existingCombo, providers, onSave, onCance
         {step === 1 && (
           <StepDeployments
             deployments={deployments}
-            providers={providers}
+            availableModels={availableModels}
             onChange={setDeployments}
           />
         )}

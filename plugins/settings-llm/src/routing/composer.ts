@@ -12,14 +12,15 @@ export type RoutingStrategy =
   | 'fill-first';       // Use primary until RPM limit, then overflow
 
 export interface Deployment {
-  id?: string;       // Existing model_id (for updates)
-  provider: string;  // e.g. "custom-solo-engineer"
-  model: string;     // e.g. "coder"
-  apiKey?: string;   // Provider API key (from vault)
-  apiBase?: string;  // e.g. "https://llm.solo.engineer/v1"
-  weight?: number;   // 0-100, for weighted strategy
-  rpmLimit?: number; // Requests per minute limit
-  tpmLimit?: number; // Tokens per minute limit
+  id?: string;           // Existing model_id (for updates)
+  provider: string;      // e.g. "custom-solo-engineer"
+  model: string;         // e.g. "coder" or full "solo-engineer/coder" when isRegistered
+  apiKey?: string;       // Provider API key (from vault)
+  apiBase?: string;      // e.g. "https://llm.solo.engineer/v1"
+  weight?: number;       // 0-100, for weighted strategy
+  rpmLimit?: number;     // Requests per minute limit
+  tpmLimit?: number;     // Tokens per minute limit
+  isRegistered?: boolean; // When true, model is already registered in LiteLLM — use name as-is
 }
 
 export interface ComboConfig {
@@ -78,7 +79,9 @@ function buildModelPayload(
   extras: { weight?: number; order?: number } = {},
 ): ModelNewPayload {
   const litellmParams: ModelNewPayload['litellm_params'] = {
-    model: `openai/${deployment.model}`,
+    // Registered models (from multi-select) are already known to LiteLLM — use as-is.
+    // Fresh deployments (provider+model form) get the openai/ prefix for SDK routing.
+    model: deployment.isRegistered ? deployment.model : `openai/${deployment.model}`,
     api_key: deployment.apiKey ?? '',
   };
 

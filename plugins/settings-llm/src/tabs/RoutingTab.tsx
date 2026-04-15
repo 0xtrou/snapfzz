@@ -16,7 +16,7 @@ import {
   type CustomProvider,
 } from '../hooks/useLlmCommands';
 import type { ComboConfig, ComposedPayloads } from '../routing/composer';
-import ComboBuilder from './routing/ComboBuilder';
+import ComboBuilder, { type AvailableModelInfo } from './routing/ComboBuilder';
 import ComboList from './routing/ComboList';
 
 // --- types ---
@@ -429,6 +429,7 @@ export default function RoutingTab() {
   // Combo state
   const [combos, setCombos] = useState<ComboConfig[]>([]);
   const [providers, setProviders] = useState<CustomProvider[]>([]);
+  const [availableModelInfo, setAvailableModelInfo] = useState<AvailableModelInfo[]>([]);
   const [editingCombo, setEditingCombo] = useState<ComboConfig | null>(null);
   const [creatingCombo, setCreatingCombo] = useState(false);
 
@@ -480,7 +481,18 @@ export default function RoutingTab() {
       }
 
       if (modelInfoResult.status === 'fulfilled') {
-        setCombos(buildCombosFromModelInfo(modelInfoResult.value as Parameters<typeof buildCombosFromModelInfo>[0]));
+        const infoData = modelInfoResult.value as Parameters<typeof buildCombosFromModelInfo>[0];
+        setCombos(buildCombosFromModelInfo(infoData));
+        // Build available model list: individual provider/model deployments (those with a slash in model_name)
+        const modelInfoList: AvailableModelInfo[] = infoData.data
+          .filter((entry) => entry.model_name.includes('/'))
+          .map((entry) => ({
+            name: entry.model_name,
+            apiBase: entry.litellm_params?.api_base,
+            model: entry.litellm_params?.model,
+            provider: (entry.model_info as Record<string, string> | undefined)?.snapfzz_provider_id,
+          }));
+        setAvailableModelInfo(modelInfoList);
       }
 
       if (customProviders.status === 'fulfilled') {
@@ -604,6 +616,7 @@ export default function RoutingTab() {
         <ComboBuilder
           existingCombo={editingCombo ?? undefined}
           providers={providers}
+          availableModels={availableModelInfo}
           onSave={handleComboSave}
           onCancel={() => { setCreatingCombo(false); setEditingCombo(null); }}
         />
