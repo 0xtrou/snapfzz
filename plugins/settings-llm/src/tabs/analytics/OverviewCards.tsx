@@ -33,7 +33,7 @@ function StatCard({ label, value, subtitle, valueColor }: StatCardProps) {
           color: 'var(--text-muted)',
           fontSize: 11,
           fontWeight: 600,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 0.5,
           marginBottom: 4,
         }}

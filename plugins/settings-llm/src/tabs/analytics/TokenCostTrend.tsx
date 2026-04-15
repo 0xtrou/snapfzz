@@ -90,7 +90,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
             color: 'var(--text-primary)',
             fontSize: 13,
             fontWeight: 700,
-            textTransform: 'uppercase',
+            textTransform: 'none',
             letterSpacing: 0.5,
             marginBottom: 12,
           }}
@@ -128,7 +128,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
           color: 'var(--text-primary)',
           fontSize: 13,
           fontWeight: 700,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 0.5,
           marginBottom: 12,
         }}

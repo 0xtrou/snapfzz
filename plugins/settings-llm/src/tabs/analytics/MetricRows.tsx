@@ -30,7 +30,7 @@ function SectionHeader({ title }: { title: string }) {
         color: 'var(--text-primary)',
         fontSize: 13,
         fontWeight: 700,
-        textTransform: 'uppercase',
+        textTransform: 'none',
         letterSpacing: 0.5,
         marginBottom: 8,
         paddingBottom: 4,
@@ -50,7 +50,7 @@ function MetricItem({ label, value }: { label: string; value: string }) {
           color: 'var(--text-muted)',
           fontSize: 11,
           fontWeight: 600,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 0.5,
         }}
       >

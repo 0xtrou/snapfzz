@@ -280,7 +280,7 @@ function MostActiveDayCard({
           color: 'var(--text-primary)',
           fontSize: 13,
           fontWeight: 700,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 0.5,
           marginBottom: 0,
         }}
@@ -376,7 +376,7 @@ function WeeklyCard({ dailyData }: { dailyData: { date: string; requests: number
           color: 'var(--text-primary)',
           fontSize: 13,
           fontWeight: 700,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 0.5,
           marginBottom: 0,
         }}
@@ -452,7 +452,7 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
               color: 'var(--text-primary)',
               fontSize: 13,
               fontWeight: 700,
-              textTransform: 'uppercase',
+              textTransform: 'none',
               letterSpacing: 0.5,
             }}
           >
@@ -529,7 +529,7 @@ export default function ActivityHeatmap({ dailyData }: ActivityHeatmapProps) {
                 color: 'var(--text-primary)',
                 fontSize: 13,
                 fontWeight: 700,
-                textTransform: 'uppercase',
+                textTransform: 'none',
                 letterSpacing: 0.5,
               }}
             >

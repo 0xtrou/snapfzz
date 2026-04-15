@@ -36,7 +36,7 @@ const headerCellStyle: React.CSSProperties = {
   color: 'var(--text-muted)',
   fontSize: 10,
   fontWeight: 600,
-  textTransform: 'uppercase',
+  textTransform: 'none',
   letterSpacing: 0.6,
   padding: '0 8px 8px 0',
   cursor: 'pointer',
@@ -152,7 +152,7 @@ export function BreakdownTable({ title, rows, nameHeader = 'NAME', filterPlaceho
             color: 'var(--text-primary)',
             fontSize: 13,
             fontWeight: 700,
-            textTransform: 'uppercase',
+            textTransform: 'none',
             letterSpacing: 0.5,
           }}
         >

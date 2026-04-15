@@ -63,7 +63,7 @@ export default function DonutChart({ title, slices, totalLabel }: DonutChartProp
           color: 'var(--text-primary)',
           fontSize: 13,
           fontWeight: 700,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 0.5,
           marginBottom: 12,
         }}

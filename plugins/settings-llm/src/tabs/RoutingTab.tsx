@@ -82,7 +82,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
           color: 'var(--text-primary)',
           fontSize: 13,
           fontWeight: 700,
-          textTransform: 'uppercase',
+          textTransform: 'none',
           letterSpacing: 1,
           marginBottom: 16,
         }}
@@ -206,7 +206,7 @@ function FallbacksSection({ rules, saved, modelGroups, saving, onChange, onSave 
             }}
           >
             <div style={{ flex: '0 0 180px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'none' }}>
                 Primary Model
               </div>
               <Select
@@ -225,7 +225,7 @@ function FallbacksSection({ rules, saved, modelGroups, saving, onChange, onSave 
             <div style={{ fontSize: 18, color: 'var(--text-muted)', flexShrink: 0, marginTop: 20 }}>→</div>
 
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'none' }}>
                 Fallback Models (in order)
               </div>
               <Select
@@ -328,7 +328,7 @@ function AliasesSection({ aliases, saved, modelGroups, saving, onChange, onSave 
             }}
           >
             <div style={{ flex: '0 0 200px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'none' }}>
                 Alias
               </div>
               <Input
@@ -341,7 +341,7 @@ function AliasesSection({ aliases, saved, modelGroups, saving, onChange, onSave 
             <div style={{ fontSize: 18, color: 'var(--text-muted)', flexShrink: 0, marginTop: 20 }}>→</div>
 
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'none' }}>
                 Target Model Group
               </div>
               <Select

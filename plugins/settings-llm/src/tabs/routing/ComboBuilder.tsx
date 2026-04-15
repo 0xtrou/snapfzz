@@ -192,7 +192,7 @@ function StepBasics({
   return (
     <div style={{ maxWidth: 480 }}>
       <div style={{ marginBottom: 20 }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, textTransform: 'none', letterSpacing: 0.5 }}>
           Combo Name
         </label>
         <Input
@@ -259,7 +259,7 @@ function StepDeployments({
   return (
     <div style={{ maxWidth: 560 }}>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: 0.5, marginBottom: 8 }}>
           API Type
         </div>
         <Radio.Group
@@ -272,7 +272,7 @@ function StepDeployments({
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: 0.5, marginBottom: 6 }}>
           Select Models
         </div>
         <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
@@ -433,7 +433,7 @@ function StepStrategy({
             borderRadius: 8,
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, textTransform: 'none', letterSpacing: 0.5 }}>
             Weights
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
@@ -468,7 +468,7 @@ function StepStrategy({
             borderRadius: 8,
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, textTransform: 'none', letterSpacing: 0.5 }}>
             Priority Order
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
@@ -602,7 +602,7 @@ function StepReview({
           marginBottom: 20,
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'none', letterSpacing: 0.5, marginBottom: 10 }}>
           Validation
         </div>
         <CheckRow label="Combo name is valid" ok={nameValid} />
@@ -633,7 +633,7 @@ const headerStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 600,
   color: 'var(--text-muted)',
-  textTransform: 'uppercase',
+  textTransform: 'none',
   letterSpacing: 0.5,
 };
 
@@ -642,7 +642,7 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 600,
   color: 'var(--text-muted)',
-  textTransform: 'uppercase',
+  textTransform: 'none',
   letterSpacing: 0.5,
   marginBottom: 4,
 };
@@ -701,7 +701,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'none', letterSpacing: 1 }}>
           {existingCombo ? 'Edit Combo' : 'New Combo'}
         </div>
         <AppButton variant="text" onClick={onCancel} style={{ color: 'var(--text-muted)' }}>
