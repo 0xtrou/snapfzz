@@ -10,7 +10,7 @@ const bridge = createTauriBridge();
 const { Text } = Typography;
 
 const ROW_HEIGHT = 40;
-const EXPANDED_HEIGHT = 320;
+const EXPANDED_HEIGHT = 600;
 
 function formatTokens(n?: number): string {
   if (n == null) return '—';
