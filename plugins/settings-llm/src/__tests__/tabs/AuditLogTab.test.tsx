@@ -124,7 +124,7 @@ describe('A013/UI/AuditLogTab', () => {
     render(<AuditLogTab />);
 
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('Failed to get LiteLLM URL');
+      expect(messageErrorSpy).toHaveBeenCalledWith('Failed to get gateway URL');
     });
     expect(document.querySelector('.ant-skeleton')).toBeTruthy();
   });

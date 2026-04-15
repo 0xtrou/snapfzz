@@ -226,7 +226,7 @@ export default function AuditLogTab() {
         setBaseUrl(url);
         setMasterKey(key);
       })
-      .catch(() => message.error('Failed to get LiteLLM URL'));
+      .catch(() => message.error('Failed to get gateway URL'));
   }, []);
 
   useEffect(() => {

@@ -324,7 +324,7 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
     await user.click(screen.getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('LiteLLM URL not configured');
+      expect(messageErrorSpy).toHaveBeenCalledWith('Gateway URL not configured');
     });
     expect(mockGenerateKey).not.toHaveBeenCalled();
   });
@@ -360,7 +360,7 @@ describe('A013/UI/ApiKeysTab/Extra', () => {
     await user.click(screen.getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('LiteLLM URL not configured');
+      expect(messageErrorSpy).toHaveBeenCalledWith('Gateway URL not configured');
     });
     expect(mockGenerateKey).not.toHaveBeenCalled();
   });

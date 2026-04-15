@@ -6,7 +6,7 @@ export default function RoutingTab() {
   return (
     <div>
       <Text type="secondary">
-        Configure model routing, aliases, and fallback strategies for the LiteLLM gateway.
+        Configure model routing, aliases, and fallback strategies for the LLM gateway.
       </Text>
       <div
         style={{

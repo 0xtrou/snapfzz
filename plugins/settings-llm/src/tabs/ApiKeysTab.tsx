@@ -130,7 +130,7 @@ export default function ApiKeysTab() {
         setBaseUrl(url);
         setMasterKey(key);
       })
-      .catch(() => message.error('Failed to get LiteLLM URL'));
+      .catch(() => message.error('Failed to get gateway URL'));
   }, []);
 
   useEffect(() => {
@@ -281,7 +281,7 @@ export default function ApiKeysTab() {
     budget_duration: string;
   }) {
     if (!baseUrl || !masterKey) {
-      message.error('LiteLLM URL not configured');
+      message.error('Gateway URL not configured');
       return;
     }
     setSubmitting(true);
@@ -312,7 +312,7 @@ export default function ApiKeysTab() {
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text type="secondary">
-            Virtual keys with budgets for accessing LiteLLM gateway. Use these keys in your tools
+            Virtual keys with budgets for accessing the LLM gateway. Use these keys in your tools
             instead of provider keys.
           </Text>
           <Button icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
