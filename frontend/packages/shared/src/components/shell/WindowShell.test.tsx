@@ -69,4 +69,30 @@ describe('WindowShell', () => {
     expect(screen.getByText('header:Prefs:light')).toBeTruthy();
     expect(screen.getByText('content')).toBeTruthy();
   });
+
+  it('clears toastAPI on unmount', async () => {
+    hooksMock.useAppSettings.mockReturnValue({
+      theme: 'dark',
+      toggleTheme: vi.fn(),
+      customFonts: [],
+    });
+    shellMock.useWindowDrag.mockReturnValue({ current: null });
+
+    const { WindowShell } = await import('./WindowShell');
+    const { getToastAPI } = await import('../../lib/toast');
+
+    const { unmount } = render(
+      <WindowShell>
+        <span>child</span>
+      </WindowShell>,
+    );
+
+    // After mount, ToastBridge wires up the API
+    expect(getToastAPI()).not.toBeNull();
+
+    unmount();
+
+    // After unmount, the cleanup sets toastAPI back to null
+    expect(getToastAPI()).toBeNull();
+  });
 });

@@ -150,6 +150,86 @@ describe('invokeWithToast', () => {
   });
 });
 
+describe('fetchWithToast', () => {
+  const success = vi.fn();
+  const errorFn = vi.fn();
+
+  beforeEach(async () => {
+    success.mockReset();
+    errorFn.mockReset();
+    setToastAPI({ success, error: errorFn });
+  });
+
+  it('returns data on successful fn', async () => {
+    const { fetchWithToast } = await import('./toast');
+    const result = await fetchWithToast(() => Promise.resolve('value'));
+    expect(result).toEqual({ data: 'value' });
+  });
+
+  it('returns error on thrown fn', async () => {
+    const { fetchWithToast } = await import('./toast');
+    const result = await fetchWithToast(() => Promise.reject(new Error('boom')));
+    expect(result).toMatchObject({ error: expect.objectContaining({ message: 'boom' }) });
+    expect(result.data).toBeUndefined();
+  });
+
+  it('shows success toast when successMessage is provided', async () => {
+    const { fetchWithToast } = await import('./toast');
+    await fetchWithToast(() => Promise.resolve(42), { successMessage: 'All good' });
+    expect(success).toHaveBeenCalledWith('All good');
+  });
+
+  it('does not show success toast when showSuccessToast is false', async () => {
+    const { fetchWithToast } = await import('./toast');
+    await fetchWithToast(() => Promise.resolve(42), {
+      successMessage: 'All good',
+      showSuccessToast: false,
+    });
+    expect(success).not.toHaveBeenCalled();
+  });
+
+  it('does not show success toast when no successMessage', async () => {
+    const { fetchWithToast } = await import('./toast');
+    await fetchWithToast(() => Promise.resolve(42), { showSuccessToast: true });
+    expect(success).not.toHaveBeenCalled();
+  });
+
+  it('shows error toast with errorMessage on failure', async () => {
+    const { fetchWithToast } = await import('./toast');
+    await fetchWithToast(() => Promise.reject(new Error('orig')), {
+      errorMessage: 'Custom error',
+    });
+    expect(errorFn).toHaveBeenCalledWith('Custom error');
+  });
+
+  it('shows error toast with error.message when no errorMessage provided', async () => {
+    const { fetchWithToast } = await import('./toast');
+    await fetchWithToast(() => Promise.reject(new Error('orig error')));
+    expect(errorFn).toHaveBeenCalledWith('orig error');
+  });
+
+  it('does not show error toast when showErrorToast is false', async () => {
+    const { fetchWithToast } = await import('./toast');
+    await fetchWithToast(() => Promise.reject(new Error('boom')), { showErrorToast: false });
+    expect(errorFn).not.toHaveBeenCalled();
+  });
+
+  it('wraps non-Error thrown values into an Error', async () => {
+    const { fetchWithToast } = await import('./toast');
+    const result = await fetchWithToast(() => Promise.reject('string error'));
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error?.message).toBe('string error');
+  });
+
+  it('shows no toast when toastAPI is null', async () => {
+    const { fetchWithToast, setToastAPI: set } = await import('./toast');
+    set(null);
+    const result = await fetchWithToast(() => Promise.resolve(1), { successMessage: 'hi' });
+    expect(result).toEqual({ data: 1 });
+    expect(success).not.toHaveBeenCalled();
+  });
+});
+
 describe('createToastedBridge', () => {
   const success = vi.fn();
   const errorFn = vi.fn();
