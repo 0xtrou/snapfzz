@@ -327,6 +327,7 @@ export default function ApiKeysTab() {
             columns={columns}
             dataSource={keys}
             pagination={false}
+            size="small"
             expandable={{ expandedRowRender }}
           />
         )}
