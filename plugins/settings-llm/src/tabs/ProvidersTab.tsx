@@ -288,7 +288,7 @@ function ProviderCard({
       <Text
         style={{
           fontSize: 15,
-          fontWeight: 600,
+          fontWeight: 700,
           color: 'var(--text-primary)',
         }}
       >
@@ -403,7 +403,7 @@ function CustomProviderCard({
       <Text
         style={{
           fontSize: 15,
-          fontWeight: 600,
+          fontWeight: 700,
           color: 'var(--text-primary)',
         }}
       >
@@ -1604,7 +1604,7 @@ export default function ProvidersTab() {
             <Text
               style={{
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 700,
                 color: 'var(--text-muted)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
@@ -1687,7 +1687,7 @@ export default function ProvidersTab() {
             <Text
               style={{
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 700,
                 color: 'var(--text-muted)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',

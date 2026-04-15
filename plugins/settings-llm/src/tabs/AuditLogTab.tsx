@@ -358,42 +358,45 @@ export default function AuditLogTab() {
         </div>
       </div>
 
-      {/* Column headers */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '170px 80px 1fr 110px 80px 90px',
-          gap: 8,
-          padding: '0 16px',
-          height: 32,
-          alignItems: 'center',
-          borderBottom: '2px solid var(--border-default)',
-          background: 'var(--bg-subtle)',
-        }}
-      >
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Timestamp</Text>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Status</Text>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Model</Text>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>API Key</Text>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Tokens</Text>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Spend</Text>
-      </div>
+      {/* Column headers + log list card */}
+      <div style={{ background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, overflow: 'hidden' }}>
+        {/* Column headers */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '170px 80px 1fr 110px 80px 90px',
+            gap: 8,
+            padding: '0 16px',
+            height: 32,
+            alignItems: 'center',
+            borderBottom: '2px solid var(--border-default)',
+            background: 'var(--bg-subtle)',
+          }}
+        >
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Timestamp</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Status</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Model</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>API Key</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Tokens</Text>
+          <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right' }}>Spend</Text>
+        </div>
 
-      {loading ? (
-        <Skeleton active paragraph={{ rows: 6 }} />
-      ) : filteredLogs.length === 0 ? (
-        <Empty description="No spend logs found" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ marginTop: 32 }} />
-      ) : (
-        <PretextPaginatedList
-          items={filteredLogs}
-          estimateHeight={estimateHeight}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          pageSize={20}
-          pageSizeOptions={[10, 20, 50, 100]}
-          style={{ display: 'flex', flexDirection: 'column' }}
-        />
-      )}
+        {loading ? (
+          <div style={{ padding: 16 }}><Skeleton active paragraph={{ rows: 6 }} /></div>
+        ) : filteredLogs.length === 0 ? (
+          <Empty description="No spend logs found" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '32px 0' }} />
+        ) : (
+          <PretextPaginatedList
+            items={filteredLogs}
+            estimateHeight={estimateHeight}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            pageSize={20}
+            pageSizeOptions={[10, 20, 50, 100]}
+            style={{ display: 'flex', flexDirection: 'column' }}
+          />
+        )}
+      </div>
     </div>
   );
 }

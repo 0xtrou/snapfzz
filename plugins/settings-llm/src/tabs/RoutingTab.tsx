@@ -14,7 +14,7 @@ export default function RoutingTab() {
           padding: 24,
           border: '1px solid var(--border-default)',
           borderRadius: 8,
-          background: 'var(--bg-secondary, var(--bg-subtle))',
+          background: 'var(--bg-default)',
         }}
       >
         <Title level={5}>Coming Soon</Title>

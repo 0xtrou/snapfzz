@@ -320,20 +320,22 @@ export default function ApiKeysTab() {
           </Button>
         </div>
 
-        {loading ? (
-          <Skeleton active paragraph={{ rows: 4 }} />
-        ) : keys.length === 0 ? (
-          <Empty description="No virtual keys created" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : (
-          <Table<KeyInfo>
-            rowKey={(r, index) => `${resolveKey(r)}-${index}`}
-            columns={columns}
-            dataSource={keys}
-            pagination={false}
-            size="small"
-            expandable={{ expandedRowRender }}
-          />
-        )}
+        <div style={{ background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, padding: 0, overflow: 'hidden' }}>
+          {loading ? (
+            <div style={{ padding: 16 }}><Skeleton active paragraph={{ rows: 4 }} /></div>
+          ) : keys.length === 0 ? (
+            <Empty description="No virtual keys created" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: 24 }} />
+          ) : (
+            <Table<KeyInfo>
+              rowKey={(r, index) => `${resolveKey(r)}-${index}`}
+              columns={columns}
+              dataSource={keys}
+              pagination={false}
+              size="small"
+              expandable={{ expandedRowRender }}
+            />
+          )}
+        </div>
       </Space>
 
       <Modal

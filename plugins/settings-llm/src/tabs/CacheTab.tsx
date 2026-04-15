@@ -137,7 +137,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div
       style={{
-        background: 'var(--bg-subtle)',
+        background: 'var(--bg-default)',
         border: '1px solid var(--border-default)',
         borderRadius: 8,
         padding: '20px 24px',
