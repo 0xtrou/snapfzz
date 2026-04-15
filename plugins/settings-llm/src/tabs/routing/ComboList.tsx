@@ -40,13 +40,16 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete }: ComboL
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 1 }}>
           Combos
         </div>
         <AppButton icon={<PlusOutlined />} onClick={onCreate}>
           Create Combo
         </AppButton>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+        A combo groups multiple models under one name with a routing strategy. Use the combo name as the <code style={{ fontSize: 11, padding: '1px 5px', background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 4 }}>model</code> parameter in your API calls — requests are automatically distributed across the models in the combo.
       </div>
 
       {combos.length === 0 && (

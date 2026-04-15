@@ -121,7 +121,15 @@ function buildModelPayload(
 }
 
 export function composeCombo(config: ComboConfig): ComposedPayloads {
-  const { name, strategy, deployments, apiType, fallbacks } = config;
+  const { name, strategy, apiType, fallbacks } = config;
+
+  // Deduplicate deployments by model value — keep first occurrence
+  const seen = new Set<string>();
+  const deployments = config.deployments.filter((d) => {
+    if (seen.has(d.model)) return false;
+    seen.add(d.model);
+    return true;
+  });
 
   const modelsToCreate: ModelNewPayload[] = [];
 

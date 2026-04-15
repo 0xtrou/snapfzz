@@ -396,26 +396,71 @@ function entriesToAliasMap(entries: AliasEntry[]): Record<string, string> {
   return map;
 }
 
+// Reverse-map LiteLLM's routing_strategy + per-deployment fields back to our RoutingStrategy.
+// simple-shuffle is overloaded: round-robin (no weight/order), weighted (has weight), priority (has order).
+function decodeLitellmStrategy(
+  litellmStrategy: string,
+  hasWeights: boolean,
+  hasOrder: boolean,
+): ComboConfig['strategy'] {
+  switch (litellmStrategy) {
+    case 'least-busy': return 'least-busy';
+    case 'cost-based-routing': return 'cost-optimized';
+    case 'latency-based-routing': return 'latency-optimized';
+    case 'usage-based-routing': return hasOrder ? 'fill-first' : 'least-busy';
+    case 'simple-shuffle':
+    default:
+      if (hasWeights) return 'weighted';
+      if (hasOrder) return 'priority';
+      return 'round-robin';
+  }
+}
+
 // Build ComboConfig list from /v1/model/info by grouping by model_name.
-// Deployments are reconstructed from litellm_params.
+// Deployments are reconstructed from litellm_params + model_info.
 // Only user-created combos are included: model names with a slash are
 // individual provider/model deployments managed by the Providers tab.
-function buildCombosFromModelInfo(data: { data: Array<{ model_name: string; litellm_params?: { api_base?: string; model?: string; api_key?: string }; model_info?: { snapfzz_provider_id?: string } }> }): ComboConfig[] {
-  const grouped: Record<string, ComboConfig> = {};
+interface ModelInfoEntry {
+  model_name: string;
+  litellm_params?: { api_base?: string; model?: string; api_key?: string; weight?: number; rpm?: number; tpm?: number };
+  model_info?: { snapfzz_provider_id?: string; order?: number };
+}
+
+function buildCombosFromModelInfo(data: { data: ModelInfoEntry[] }, litellmStrategy: string): ComboConfig[] {
+  const grouped: Record<string, { config: ComboConfig; hasWeights: boolean; hasOrder: boolean }> = {};
   for (const entry of data.data) {
     const groupName = entry.model_name;
-    // Filter: only show user-created combos (no slash = not a provider/model deployment)
     if (groupName.includes('/')) continue;
     if (!grouped[groupName]) {
-      grouped[groupName] = { name: groupName, strategy: 'round-robin', deployments: [] };
+      grouped[groupName] = {
+        config: { name: groupName, strategy: 'round-robin', deployments: [] },
+        hasWeights: false,
+        hasOrder: false,
+      };
     }
-    grouped[groupName].deployments.push({
+    const weight = entry.litellm_params?.weight;
+    const order = (entry.model_info as Record<string, unknown> | undefined)?.order as number | undefined;
+    if (weight !== undefined && weight !== null) grouped[groupName].hasWeights = true;
+    if (order !== undefined && order !== null) grouped[groupName].hasOrder = true;
+
+    grouped[groupName].config.deployments.push({
       provider: (entry.model_info as Record<string, string> | undefined)?.snapfzz_provider_id ?? '',
-      model: entry.litellm_params?.model?.replace(/^openai\//, '') ?? '',
+      model: entry.litellm_params?.model ?? '',
       apiBase: entry.litellm_params?.api_base ?? '',
+      apiKey: entry.litellm_params?.api_key ?? '',
+      weight: weight,
+      rpmLimit: entry.litellm_params?.rpm,
+      tpmLimit: entry.litellm_params?.tpm,
     });
   }
-  return Object.values(grouped);
+
+  return Object.values(grouped).map(({ config, hasWeights, hasOrder }) => {
+    config.strategy = decodeLitellmStrategy(litellmStrategy, hasWeights, hasOrder);
+    // Detect apiType from first deployment's model prefix
+    const firstModel = config.deployments[0]?.model ?? '';
+    config.apiType = firstModel.startsWith('anthropic/') ? 'anthropic' : 'openai';
+    return config;
+  });
 }
 
 // --- main component ---
@@ -462,9 +507,10 @@ export default function RoutingTab() {
         setModelGroups(groups.value);
       }
 
+      let litellmStrat = DEFAULT_STRATEGY;
       if (configData.status === 'fulfilled') {
         const router = (configData.value['router_settings'] ?? {}) as Partial<RoutingConfig>;
-        const strat = typeof router.routing_strategy === 'string' ? router.routing_strategy : DEFAULT_STRATEGY;
+        litellmStrat = typeof router.routing_strategy === 'string' ? router.routing_strategy : DEFAULT_STRATEGY;
         const fb: FallbackRule[] = Array.isArray(router.fallbacks) ? router.fallbacks : [];
         const aliasEntries = aliasMapToEntries(
           router.model_group_alias && typeof router.model_group_alias === 'object'
@@ -472,8 +518,8 @@ export default function RoutingTab() {
             : {},
         );
 
-        setStrategy(strat);
-        setSavedStrategy(strat);
+        setStrategy(litellmStrat);
+        setSavedStrategy(litellmStrat);
         setFallbacks(fb);
         setSavedFallbacks(fb);
         setAliases(aliasEntries);
@@ -481,8 +527,8 @@ export default function RoutingTab() {
       }
 
       if (modelInfoResult.status === 'fulfilled') {
-        const infoData = modelInfoResult.value as Parameters<typeof buildCombosFromModelInfo>[0];
-        setCombos(buildCombosFromModelInfo(infoData));
+        const infoData = modelInfoResult.value as { data: ModelInfoEntry[] };
+        setCombos(buildCombosFromModelInfo(infoData, litellmStrat));
         // Build available model list: individual provider/model deployments (those with a slash in model_name)
         const modelInfoList: AvailableModelInfo[] = infoData.data
           .filter((entry) => entry.model_name.includes('/'))
@@ -554,6 +600,15 @@ export default function RoutingTab() {
   const handleComboSave = useCallback(async (payloads: ComposedPayloads) => {
     const { error } = await fetchWithToast(
       async () => {
+        // When editing an existing combo, delete all its deployments first to avoid duplication.
+        // LiteLLM's /model/delete accepts a model_name (group name) and removes all deployments under it.
+        if (editingCombo) {
+          await fetch(`${baseUrl}/model/delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model_name: editingCombo.name }),
+          });
+        }
         // Create each model deployment
         await Promise.all(
           payloads.modelsToCreate.map((payload) =>
@@ -563,10 +618,6 @@ export default function RoutingTab() {
               body: JSON.stringify(payload),
             }),
           ),
-        );
-        // Delete stale models
-        await Promise.all(
-          payloads.modelsToDelete.map((id) => deleteModel(baseUrl, masterKey, id)),
         );
         // Apply config update
         if (payloads.configUpdate) {
@@ -580,7 +631,7 @@ export default function RoutingTab() {
       setEditingCombo(null);
       void loadData(baseUrl, masterKey);
     }
-  }, [baseUrl, masterKey, loadData]);
+  }, [baseUrl, masterKey, editingCombo, loadData]);
 
   const handleComboDelete = useCallback(async (name: string) => {
     const combo = combos.find((c) => c.name === name);

@@ -1,9 +1,12 @@
 // Combo Builder — 4-step wizard for creating/editing routing combos.
 
 import { useState } from 'react';
-import { Input, Radio, Select, Slider, Tag, Tooltip } from 'antd';
+import { Input, InputNumber, Radio, Select, Slider, Tag, Tooltip, Typography } from 'antd';
+
+const { Text } = Typography;
 import {
-  HolderOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
@@ -183,7 +186,7 @@ function StepBasics({
   name: string;
   onChange: (v: string) => void;
 }) {
-  const isValid = /^[a-zA-Z0-9_-]+$/.test(name);
+  const isValid = /^[a-z0-9_-]+$/.test(name);
   const showError = name.length > 0 && !isValid;
 
   return (
@@ -194,14 +197,14 @@ function StepBasics({
         </label>
         <Input
           value={name}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value.toLowerCase())}
           placeholder="e.g. gpt4-pool"
           size="large"
           status={showError ? 'error' : undefined}
         />
         {showError && (
           <div style={{ fontSize: 12, color: 'var(--color-error)', marginTop: 4 }}>
-            Slashes are not allowed. Use letters, numbers, dashes and underscores.
+            Only lowercase letters, numbers, dashes and underscores are allowed.
           </div>
         )}
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
@@ -298,11 +301,58 @@ function StepDeployments({
       {deployments.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           {deployments.map((d) => {
-            const displayName = availableModels.find((m) => m.model === d.model)?.name ?? d.model;
+            const displayName = modelDisplayName(d.model, availableModels);
             return (
               <Tag key={d.model} color="blue" style={{ fontSize: 12 }}>
                 {displayName}
               </Tag>
+            );
+          })}
+        </div>
+      )}
+
+      {deployments.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          {/* Header row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 140px', gap: 8, marginBottom: 8 }}>
+            <div style={headerStyle}>Model</div>
+            <div style={headerStyle}>RPM Limit</div>
+            <div style={headerStyle}>TPM Limit</div>
+          </div>
+          {/* Data rows */}
+          {deployments.map((d, i) => {
+            const displayName = modelDisplayName(d.model, availableModels);
+            return (
+              <div
+                key={d.model}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 140px 140px', gap: 8, marginBottom: 6, alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }} ellipsis>{displayName}</Text>
+                <InputNumber
+                  size="small"
+                  min={1}
+                  placeholder="No limit"
+                  value={d.rpmLimit ?? undefined}
+                  onChange={(v) => {
+                    const updated = [...deployments];
+                    updated[i] = { ...d, rpmLimit: v ?? undefined };
+                    onChange(updated);
+                  }}
+                  style={{ width: '100%' }}
+                />
+                <InputNumber
+                  size="small"
+                  min={1}
+                  placeholder="No limit"
+                  value={d.tpmLimit ?? undefined}
+                  onChange={(v) => {
+                    const updated = [...deployments];
+                    updated[i] = { ...d, tpmLimit: v ?? undefined };
+                    onChange(updated);
+                  }}
+                  style={{ width: '100%' }}
+                />
+              </div>
             );
           })}
         </div>
@@ -356,18 +406,18 @@ function StrategyCard({
 function StepStrategy({
   strategy,
   deployments,
+  availableModels,
   onChange,
   onWeightChange,
   onReorder,
 }: {
   strategy: RoutingStrategy | '';
   deployments: Deployment[];
+  availableModels: AvailableModelInfo[];
   onChange: (s: RoutingStrategy) => void;
   onWeightChange: (idx: number, weight: number) => void;
   onReorder: (from: number, to: number) => void;
 }) {
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-
   return (
     <div>
       <div
@@ -397,14 +447,17 @@ function StepStrategy({
             borderRadius: 8,
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Weights
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
+            Adjust the slider to control how much traffic each model receives. Higher weight means more requests.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {deployments.map((dep, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {dep.provider || `Deployment ${idx + 1}`} / {dep.model || '—'}
+                  {modelDisplayName(dep.model, availableModels)}
                 </span>
                 <Slider
                   min={1}
@@ -429,22 +482,16 @@ function StepStrategy({
             borderRadius: 8,
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Priority Order (drag to reorder)
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Priority Order
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
+            Use the arrows to reorder. Requests go to the top model first and cascade down on failure.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {deployments.map((dep, idx) => (
               <div
                 key={idx}
-                draggable
-                onDragStart={() => setDragIdx(idx)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (dragIdx !== null && dragIdx !== idx) {
-                    onReorder(dragIdx, idx);
-                  }
-                  setDragIdx(null);
-                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -453,14 +500,33 @@ function StepStrategy({
                   background: 'var(--bg-default)',
                   border: '1px solid var(--border-default)',
                   borderRadius: 6,
-                  cursor: 'grab',
-                  opacity: dragIdx === idx ? 0.5 : 1,
                 }}
               >
-                <HolderOutlined style={{ color: 'var(--text-muted)' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                  <button
+                    disabled={idx === 0}
+                    onClick={() => onReorder(idx, idx - 1)}
+                    style={{
+                      background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer',
+                      padding: 0, lineHeight: 1, color: idx === 0 ? 'var(--border-default)' : 'var(--text-muted)',
+                    }}
+                  >
+                    <ArrowUpOutlined style={{ fontSize: 11 }} />
+                  </button>
+                  <button
+                    disabled={idx === deployments.length - 1}
+                    onClick={() => onReorder(idx, idx + 1)}
+                    style={{
+                      background: 'none', border: 'none', cursor: idx === deployments.length - 1 ? 'default' : 'pointer',
+                      padding: 0, lineHeight: 1, color: idx === deployments.length - 1 ? 'var(--border-default)' : 'var(--text-muted)',
+                    }}
+                  >
+                    <ArrowDownOutlined style={{ fontSize: 11 }} />
+                  </button>
+                </div>
                 <Tag style={{ minWidth: 24, textAlign: 'center' }}>{idx + 1}</Tag>
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {dep.provider || `Deployment ${idx + 1}`} / {dep.model || '—'}
+                  {modelDisplayName(dep.model, availableModels)}
                 </span>
               </div>
             ))}
@@ -488,16 +554,18 @@ function StepReview({
   name,
   deployments,
   strategy,
+  availableModels,
   saving,
   onSubmit,
 }: {
   name: string;
   deployments: Deployment[];
   strategy: RoutingStrategy | '';
+  availableModels: AvailableModelInfo[];
   saving: boolean;
   onSubmit: () => void;
 }) {
-  const nameValid = /^[a-zA-Z0-9_-]+$/.test(name) && name.length > 0;
+  const nameValid = /^[a-z0-9_-]+$/.test(name) && name.length > 0;
   const hasDeployments = deployments.length > 0;
   const hasStrategy = strategy !== '';
   const allValid = nameValid && hasDeployments && hasStrategy;
@@ -526,11 +594,14 @@ function StepReview({
         <div>
           <span style={labelStyle}>Deployments ({deployments.length})</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-            {deployments.map((d, i) => (
-              <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                {i + 1}. {d.provider || 'no-provider'} / {d.model || 'no-model'}{d.apiBase ? ` (${d.apiBase})` : ''}
-              </div>
-            ))}
+            {deployments.map((d, i) => {
+              const displayName = modelDisplayName(d.model, availableModels);
+              return (
+                <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {i + 1}. {displayName}
+                </div>
+              );
+            })}
             {deployments.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>None</div>}
           </div>
         </div>
@@ -559,13 +630,27 @@ function StepReview({
         disabled={!allValid}
         type="primary"
       >
-        {saving ? 'Saving…' : 'Create Combo'}
+        {saving ? 'Saving…' : 'Save'}
       </AppButton>
     </div>
   );
 }
 
 // --- helpers ---
+
+/** Resolve user-facing model name from available models, using model_name (e.g. "solo-engineer/coder"). */
+function modelDisplayName(model: string, models: AvailableModelInfo[]): string {
+  const info = models.find((m) => m.model === model);
+  return info?.name ?? model;
+}
+
+const headerStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: 'var(--text-muted)',
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+};
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -603,7 +688,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
   };
 
   const canProceed = (): boolean => {
-    if (step === 0) return /^[a-zA-Z0-9_-]+$/.test(name) && name.length > 0;
+    if (step === 0) return /^[a-z0-9_-]+$/.test(name) && name.length > 0;
     if (step === 1) return deployments.length > 0;
     if (step === 2) return strategy !== '';
     return true;
@@ -656,6 +741,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
           <StepStrategy
             strategy={strategy}
             deployments={deployments}
+            availableModels={availableModels}
             onChange={setStrategy}
             onWeightChange={handleWeightChange}
             onReorder={handleReorder}
@@ -666,6 +752,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
             name={name}
             deployments={deployments}
             strategy={strategy}
+            availableModels={availableModels}
             saving={saving}
             onSubmit={handleSubmit}
           />

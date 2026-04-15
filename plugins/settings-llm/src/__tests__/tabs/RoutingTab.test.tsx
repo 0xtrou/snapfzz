@@ -35,7 +35,7 @@ describe('A013/UI/RoutingTab', () => {
   it('shows routing management description', async () => {
     render(<RoutingTab />);
     await waitFor(() => {
-      expect(screen.getByText(/routing/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/routing strategy/i).length).toBeGreaterThanOrEqual(1);
     }, { timeout: 3000 });
   });
 });

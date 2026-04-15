@@ -298,4 +298,20 @@ describe('payload shape', () => {
 
     expect(result.modelsToDelete).toEqual([]);
   });
+
+  it('deduplicates deployments with the same model value', () => {
+    const dupDep: Deployment = { ...dep1, weight: 99 };
+    const config: ComboConfig = {
+      name: 'dedup-group',
+      strategy: 'weighted',
+      deployments: [dep1, dupDep, dep2],
+    };
+
+    const result = composeCombo(config);
+
+    expect(result.modelsToCreate).toHaveLength(2);
+    // First occurrence wins — dep1's weight, not dupDep's
+    expect(result.modelsToCreate[0].litellm_params.weight).toBe(70);
+    expect(result.modelsToCreate[1].litellm_params.weight).toBe(30);
+  });
 });
