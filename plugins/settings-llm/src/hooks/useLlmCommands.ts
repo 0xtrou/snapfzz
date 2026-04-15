@@ -601,3 +601,25 @@ export async function saveCustomProviders(
     value: JSON.stringify(providers),
   });
 }
+
+// A013/Routing: Config read/write for router_settings via API
+
+export async function getConfig(baseUrl: string, masterKey: string): Promise<Record<string, unknown>> {
+  const res = await litellmFetch(`${baseUrl}/config/yaml/get`, masterKey);
+  return res.json();
+}
+
+export async function updateConfig(baseUrl: string, masterKey: string, settings: Record<string, unknown>): Promise<unknown> {
+  const res = await litellmFetch(`${baseUrl}/config/update`, masterKey, {
+    method: 'POST',
+    body: JSON.stringify(settings),
+  });
+  return res.json();
+}
+
+export async function getModelGroups(baseUrl: string, masterKey: string): Promise<string[]> {
+  const res = await litellmFetch(`${baseUrl}/model_group/info`, masterKey);
+  const data = await res.json();
+  // Extract group names from response
+  return Array.isArray(data) ? data.map((g: Record<string, unknown>) => (g['model_group'] ?? g['name'] ?? g) as string).filter(Boolean) : [];
+}

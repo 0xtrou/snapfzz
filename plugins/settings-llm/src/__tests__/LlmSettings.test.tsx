@@ -18,6 +18,9 @@ vi.mock('@snapfzz/shared', () => ({
   fetchWithToast: async (fn: () => Promise<unknown>) => {
     try { return { data: await fn() }; } catch (err) { return { error: err instanceof Error ? err : new Error(String(err)) }; }
   },
+  AppButton: ({ children, onClick, disabled, loading }: any) => (
+    <button onClick={onClick} disabled={disabled || loading}>{children}</button>
+  ),
   PretextGrid: ({ items, renderItem, keyExtractor }: any) => (
     <div data-testid="pretext-grid">
       {(items ?? []).map((item: any, i: number) => (
@@ -34,6 +37,10 @@ vi.mock('../hooks/useLlmCommands', () => ({
   listKeys: () => Promise.resolve({ keys: [] }),
   getSpendLogs: () => Promise.resolve([]),
   loadCustomProviders: () => Promise.resolve([]),
+  getConfig: () => Promise.resolve({ router_settings: { routing_strategy: 'simple-shuffle', fallbacks: [], model_group_alias: {} } }),
+  updateConfig: () => Promise.resolve({}),
+  getModelGroups: () => Promise.resolve([]),
+  getModels: () => Promise.resolve({ data: [] }),
 }));
 
 describe('A013/UI: LlmSettings', () => {
@@ -63,7 +70,7 @@ describe('A013/UI: LlmSettings', () => {
     
     await user.click(screen.getByText('Routing'));
     await waitFor(() => {
-      expect(screen.getByText('Coming Soon')).toBeInTheDocument();
+      expect(screen.getByText('Routing Strategy')).toBeInTheDocument();
     });
   });
 });
