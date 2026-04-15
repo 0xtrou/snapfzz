@@ -141,8 +141,6 @@ vi.mock('../../catalog', () => {
 // Base mock implementation factory
 function makeBaseMock() {
   return async (command: string, _args: Record<string, any>) => {
-    if (command === 'vault_read') return null;
-    if (command === 'vault_store') return undefined;
     if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
     if (command === 'llm_get_master_key') return 'sk-master-test';
     return undefined;
@@ -199,6 +197,7 @@ describe('A013/UI/ProvidersTab/Extra', () => {
     localStorage.removeItem('snapfzz:provider_configured:anthropic');
     localStorage.removeItem('snapfzz:provider_configured:deepseek');
     localStorage.removeItem('snapfzz:provider_configured:huggingface');
+    localStorage.removeItem('snapfzz:custom_providers');
   });
 
   afterEach(() => {
@@ -307,10 +306,9 @@ describe('A013/UI/ProvidersTab/Extra', () => {
       await user.click(within(modal).getByRole('button', { name: 'OK' }));
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-          key: 'litellm:custom_providers',
-          value: expect.stringContaining('my-anthropic-provider'),
-        });
+        const raw = localStorage.getItem('snapfzz:custom_providers');
+        expect(raw).toBeTruthy();
+        expect(raw).toContain('my-anthropic-provider');
       });
     });
   });
@@ -371,20 +369,9 @@ describe('A013/UI/ProvidersTab/Extra', () => {
 
   describe('Keyboard on Custom Provider Card', () => {
     it('A013/Custom/Keyboard: Enter key on custom provider card navigates to detail', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'vault_read') {
-          if (args.key === 'litellm:custom_providers') {
-            return JSON.stringify([
-              { id: 'eng-solo', name: 'eng-solo', baseUrl: 'https://eng.solo/v1', variant: 'openai', apiKey: 'sk-solo' },
-            ]);
-          }
-          return null;
-        }
-        if (command === 'vault_store') return undefined;
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        return undefined;
-      });
+      localStorage.setItem('snapfzz:custom_providers', JSON.stringify([
+        { id: 'eng-solo', name: 'eng-solo', baseUrl: 'https://eng.solo/v1', variant: 'openai', apiKey: 'sk-solo' },
+      ]));
 
       const user = userEvent.setup();
       render(<ProvidersTab />);
@@ -1062,25 +1049,15 @@ describe('A013/UI/ProvidersTab/Extra', () => {
 
   describe('Custom Provider Detail View', () => {
     it('A013/CustomDetail: custom provider detail shows base URL', async () => {
-      mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-        if (command === 'vault_read') {
-          if (args.key === 'litellm:custom_providers') {
-            return JSON.stringify([
-              {
-                id: 'my-ep',
-                name: 'My Endpoint',
-                baseUrl: 'https://my-endpoint.io/v1',
-                variant: 'openai',
-                apiKey: 'sk-ep-key',
-              },
-            ]);
-          }
-          return null;
-        }
-        if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-        if (command === 'llm_get_master_key') return 'sk-master-test';
-        return undefined;
-      });
+      localStorage.setItem('snapfzz:custom_providers', JSON.stringify([
+        {
+          id: 'my-ep',
+          name: 'My Endpoint',
+          baseUrl: 'https://my-endpoint.io/v1',
+          variant: 'openai',
+          apiKey: 'sk-ep-key',
+        },
+      ]));
 
       const user = userEvent.setup();
       render(<ProvidersTab />);

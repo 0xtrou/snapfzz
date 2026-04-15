@@ -605,13 +605,13 @@ export async function deleteModel(baseUrl: string, masterKey: string, modelId: s
   }
 }
 
-// Custom provider config persistence via vault
+// Custom provider config persistence via localStorage
+
+const CUSTOM_PROVIDERS_KEY = 'snapfzz:custom_providers';
 
 export async function loadCustomProviders(): Promise<CustomProvider[]> {
   try {
-    const raw = await bridge.invoke<string>('vault_read', {
-      key: 'litellm:custom_providers',
-    });
+    const raw = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as CustomProvider[];
   } catch {
@@ -622,10 +622,7 @@ export async function loadCustomProviders(): Promise<CustomProvider[]> {
 export async function saveCustomProviders(
   providers: CustomProvider[],
 ): Promise<void> {
-  await bridge.invoke<void>('vault_store', {
-    key: 'litellm:custom_providers',
-    value: JSON.stringify(providers),
-  });
+  localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(providers));
 }
 
 // A013/Routing: Config read/write for router_settings via API

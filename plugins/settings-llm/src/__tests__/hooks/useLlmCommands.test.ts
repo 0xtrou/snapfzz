@@ -514,44 +514,40 @@ describe('A013/Hooks: useLlmCommands', () => {
   });
 
   describe('A013/Custom: Custom provider persistence', () => {
-    it('loads custom providers from vault', async () => {
+    beforeEach(() => {
+      localStorage.removeItem('snapfzz:custom_providers');
+    });
+
+    it('loads custom providers from localStorage', async () => {
       const providers = [
         { id: 'solo', name: 'Solo', baseUrl: 'https://solo.dev/v1', variant: 'openai' },
       ];
-      mockInvoke.mockResolvedValue(JSON.stringify(providers));
+      localStorage.setItem('snapfzz:custom_providers', JSON.stringify(providers));
       const { loadCustomProviders } = await import('../../hooks/useLlmCommands');
       const result = await loadCustomProviders();
       expect(result).toEqual(providers);
-      expect(mockInvoke).toHaveBeenCalledWith('vault_read', {
-        key: 'litellm:custom_providers',
-      });
     });
 
-    it('returns empty array when vault has no custom providers', async () => {
-      mockInvoke.mockResolvedValue(null);
+    it('returns empty array when localStorage has no custom providers', async () => {
       const { loadCustomProviders } = await import('../../hooks/useLlmCommands');
       const result = await loadCustomProviders();
       expect(result).toEqual([]);
     });
 
-    it('returns empty array when vault_read throws', async () => {
-      mockInvoke.mockRejectedValue(new Error('vault locked'));
+    it('returns empty array when localStorage value is invalid JSON', async () => {
+      localStorage.setItem('snapfzz:custom_providers', 'not-valid-json');
       const { loadCustomProviders } = await import('../../hooks/useLlmCommands');
       const result = await loadCustomProviders();
       expect(result).toEqual([]);
     });
 
-    it('saves custom providers to vault as JSON', async () => {
-      mockInvoke.mockResolvedValue(undefined);
+    it('saves custom providers to localStorage as JSON', async () => {
       const { saveCustomProviders } = await import('../../hooks/useLlmCommands');
       const providers = [
         { id: 'test', name: 'Test', baseUrl: 'https://test.io/v1', variant: 'openai' as const },
       ];
       await saveCustomProviders(providers);
-      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: 'litellm:custom_providers',
-        value: JSON.stringify(providers),
-      });
+      expect(localStorage.getItem('snapfzz:custom_providers')).toBe(JSON.stringify(providers));
     });
   });
 });

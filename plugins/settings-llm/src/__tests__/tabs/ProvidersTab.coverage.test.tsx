@@ -118,8 +118,6 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     mockFetch.mockReset();
     vi.stubGlobal('fetch', mockFetch);
     mockInvoke.mockImplementation(async (command: string, _args: Record<string, any>) => {
-      if (command === 'vault_read') return null;
-      if (command === 'vault_store') return undefined;
       if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
       if (command === 'llm_get_master_key') return 'sk-master-test';
       return undefined;
@@ -133,6 +131,7 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     localStorage.removeItem('snapfzz:provider_configured:openai');
     localStorage.removeItem('snapfzz:provider_configured:anthropic');
     localStorage.removeItem('snapfzz:provider_configured:deepseek');
+    localStorage.removeItem('snapfzz:custom_providers');
   });
 
   afterEach(() => {
@@ -201,21 +200,10 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     const user = userEvent.setup();
 
     // Use a custom provider so we can pass initialApiKey
-    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-      if (command === 'vault_read') {
-        if (args.key === 'litellm:custom_providers') {
-          return JSON.stringify([{
-            id: 'test-provider', name: 'TestProvider',
-            baseUrl: 'http://test.local', variant: 'openai', apiKey: 'sk-existing',
-          }]);
-        }
-        return null;
-      }
-      if (command === 'vault_store') return undefined;
-      if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
-      if (command === 'llm_get_master_key') return 'sk-master-test';
-      return undefined;
-    });
+    localStorage.setItem('snapfzz:custom_providers', JSON.stringify([{
+      id: 'test-provider', name: 'TestProvider',
+      baseUrl: 'http://test.local', variant: 'openai', apiKey: 'sk-existing',
+    }]));
 
     render(<ProvidersTab />);
 
@@ -458,16 +446,7 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
       { id: 'my-provider', name: 'My Provider', baseUrl: 'http://localhost:9000', variant: 'openai' },
     ];
 
-    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-      if (command === 'vault_read') {
-        if (args.key === 'litellm:custom_providers') {
-          return JSON.stringify(customProviders);
-        }
-        return null;
-      }
-      if (command === 'vault_store') return undefined;
-      return undefined;
-    });
+    localStorage.setItem('snapfzz:custom_providers', JSON.stringify(customProviders));
 
     const user = userEvent.setup();
     render(<ProvidersTab />);
@@ -482,12 +461,9 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     const confirmBtn = appBtn.parentElement as HTMLElement;
     await user.click(confirmBtn);
 
-    // saveCustomProviders → vault_store with updated (empty) list
+    // saveCustomProviders → localStorage updated with empty list
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: 'litellm:custom_providers',
-        value: JSON.stringify([]),
-      });
+      expect(localStorage.getItem('snapfzz:custom_providers')).toBe(JSON.stringify([]));
     });
 
     // A013/Vault: No more llm_list_provider_keys or llm_delete_provider_key calls
@@ -499,20 +475,8 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     const initialProviders = [
       { id: 'rm-me', name: 'Remove Me', baseUrl: 'http://localhost:8000', variant: 'anthropic' },
     ];
-    // Track vault state so loadKeyCounts sees the updated list after delete
-    let storedProviders = JSON.stringify(initialProviders);
-
-    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-      if (command === 'vault_read') {
-        if (args.key === 'litellm:custom_providers') return storedProviders;
-        return null;
-      }
-      if (command === 'vault_store') {
-        if (args.key === 'litellm:custom_providers') storedProviders = args.value as string;
-        return undefined;
-      }
-      return undefined;
-    });
+    // Set initial providers in localStorage
+    localStorage.setItem('snapfzz:custom_providers', JSON.stringify(initialProviders));
 
     const user = userEvent.setup();
     render(<ProvidersTab />);
@@ -539,14 +503,7 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
       },
     ];
 
-    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-      if (command === 'vault_read') {
-        if (args.key === 'litellm:custom_providers') return JSON.stringify(customProviders);
-        return null;
-      }
-      if (command === 'vault_store') return undefined;
-      return undefined;
-    });
+    localStorage.setItem('snapfzz:custom_providers', JSON.stringify(customProviders));
 
     render(<ProvidersTab />);
 
@@ -563,14 +520,7 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
       },
     ];
 
-    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
-      if (command === 'vault_read') {
-        if (args.key === 'litellm:custom_providers') return JSON.stringify(customProviders);
-        return null;
-      }
-      if (command === 'vault_store') return undefined;
-      return undefined;
-    });
+    localStorage.setItem('snapfzz:custom_providers', JSON.stringify(customProviders));
 
     render(<ProvidersTab />);
 
