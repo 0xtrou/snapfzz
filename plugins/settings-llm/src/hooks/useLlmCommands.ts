@@ -603,10 +603,14 @@ export async function saveCustomProviders(
 }
 
 // A013/Routing: Config read/write for router_settings via API
+// /router/settings returns { current_values: { routing_strategy, fallbacks, ... } }.
+// We reshape it to { router_settings: current_values } to match what RoutingTab expects.
 
 export async function getConfig(baseUrl: string, masterKey: string): Promise<Record<string, unknown>> {
-  const res = await litellmFetch(`${baseUrl}/config/yaml/get`, masterKey);
-  return res.json();
+  const res = await litellmFetch(`${baseUrl}/router/settings`, masterKey);
+  const data = await res.json() as Record<string, unknown>;
+  const current = (data['current_values'] ?? {}) as Record<string, unknown>;
+  return { router_settings: current };
 }
 
 export async function updateConfig(baseUrl: string, masterKey: string, settings: Record<string, unknown>): Promise<unknown> {
@@ -619,7 +623,16 @@ export async function updateConfig(baseUrl: string, masterKey: string, settings:
 
 export async function getModelGroups(baseUrl: string, masterKey: string): Promise<string[]> {
   const res = await litellmFetch(`${baseUrl}/model_group/info`, masterKey);
-  const data = await res.json();
-  // Extract group names from response
-  return Array.isArray(data) ? data.map((g: Record<string, unknown>) => (g['model_group'] ?? g['name'] ?? g) as string).filter(Boolean) : [];
+  const data = await res.json() as Record<string, unknown> | unknown[];
+  // /model_group/info returns { data: [{ model_group: "..." }, ...] }
+  const items: unknown[] = Array.isArray(data) ? data : (Array.isArray((data as Record<string, unknown>)['data']) ? (data as Record<string, unknown>)['data'] as unknown[] : []);
+  return items
+    .map((g) => {
+      if (g && typeof g === 'object') {
+        const obj = g as Record<string, unknown>;
+        return (obj['model_group'] ?? obj['name']) as string | undefined;
+      }
+      return String(g);
+    })
+    .filter((v): v is string => typeof v === 'string' && v.length > 0);
 }

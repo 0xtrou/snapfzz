@@ -433,6 +433,72 @@ describe('A013/Hooks: useLlmCommands', () => {
     });
   });
 
+  describe('A013/Routing: getConfig and getModelGroups', () => {
+    it('getConfig calls /router/settings and reshapes to { router_settings }', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          current_values: {
+            routing_strategy: 'latency-based-routing',
+            fallbacks: null,
+            model_group_alias: { fast: 'gpt-4o-mini' },
+          },
+          fields: [],
+        }),
+      });
+      const { getConfig } = await import('../../hooks/useLlmCommands');
+      const result = await getConfig('http://localhost:4000', 'sk-master');
+      expect(result).toHaveProperty('router_settings');
+      expect((result['router_settings'] as Record<string, unknown>)['routing_strategy']).toBe('latency-based-routing');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/router/settings',
+        expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer sk-master' }) }),
+      );
+    });
+
+    it('getModelGroups extracts model_group names from { data: [...] } response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          data: [
+            { model_group: 'solo-engineer/coder', providers: ['openai'] },
+            { model_group: 'solo-engineer-test/codex', providers: ['openai'] },
+          ],
+        }),
+      });
+      const { getModelGroups } = await import('../../hooks/useLlmCommands');
+      const result = await getModelGroups('http://localhost:4000', 'sk-master');
+      expect(result).toEqual(['solo-engineer/coder', 'solo-engineer-test/codex']);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:4000/model_group/info',
+        expect.anything(),
+      );
+    });
+
+    it('getModelGroups handles flat array response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([
+          { model_group: 'gpt-4o' },
+          { model_group: 'claude-3-5-sonnet' },
+        ]),
+      });
+      const { getModelGroups } = await import('../../hooks/useLlmCommands');
+      const result = await getModelGroups('http://localhost:4000', 'sk-master');
+      expect(result).toEqual(['gpt-4o', 'claude-3-5-sonnet']);
+    });
+
+    it('getModelGroups returns empty array when data is empty', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+      const { getModelGroups } = await import('../../hooks/useLlmCommands');
+      const result = await getModelGroups('http://localhost:4000', 'sk-master');
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('A013/Custom: Custom provider persistence', () => {
     it('loads custom providers from vault', async () => {
       const providers = [
