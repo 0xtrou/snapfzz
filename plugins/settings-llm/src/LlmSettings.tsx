@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Tabs } from 'antd';
-import { ApiOutlined, KeyOutlined, SwapOutlined, FileTextOutlined, BarChartOutlined } from '@ant-design/icons';
+import { ApiOutlined, KeyOutlined, SwapOutlined, FileTextOutlined, BarChartOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { SettingsHeader } from '@snapfzz/shared';
 import ProvidersTab from './tabs/ProvidersTab';
 import ApiKeysTab from './tabs/ApiKeysTab';
 import RoutingTab from './tabs/RoutingTab';
 import AuditLogTab from './tabs/AuditLogTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
+import CacheTab from './tabs/CacheTab';
 
 export default function LlmSettings() {
   const [activeKey, setActiveKey] = useState('providers');
@@ -71,6 +72,16 @@ export default function LlmSettings() {
                 </span>
               ),
               children: <AnalyticsTab />,
+            },
+            {
+              key: 'cache',
+              label: (
+                <span>
+                  <ThunderboltOutlined />
+                  Cache
+                </span>
+              ),
+              children: <CacheTab />,
             },
           ]}
         />
