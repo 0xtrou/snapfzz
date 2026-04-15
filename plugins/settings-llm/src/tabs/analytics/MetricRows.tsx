@@ -27,9 +27,9 @@ function SectionHeader({ title }: { title: string }) {
   return (
     <div
       style={{
-        color: 'var(--text-muted)',
-        fontSize: 11,
-        fontWeight: 600,
+        color: 'var(--text-primary)',
+        fontSize: 13,
+        fontWeight: 700,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
         marginBottom: 8,
