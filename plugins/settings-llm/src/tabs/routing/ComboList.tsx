@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Tag, Modal } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined } from '@ant-design/icons';
 import { AppButton } from '@snapfzz/shared';
 import type { ComboConfig } from '../../routing/composer';
 
@@ -11,6 +11,8 @@ export interface ComboListProps {
   onEdit: (combo: ComboConfig) => void;
   onCreate: () => void;
   onDelete: (name: string) => Promise<void>;
+  loadData: () => Promise<void>;
+  loading: boolean;
 }
 
 const STRATEGY_COLORS: Record<string, string> = {
@@ -23,7 +25,7 @@ const STRATEGY_COLORS: Record<string, string> = {
   'fill-first': 'gold',
 };
 
-export default function ComboList({ combos, onEdit, onCreate, onDelete }: ComboListProps) {
+export default function ComboList({ combos, onEdit, onCreate, onDelete, loadData, loading }: ComboListProps) {
   const [deletingName, setDeletingName] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
 
@@ -40,7 +42,8 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete }: ComboL
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <AppButton style={{ marginRight: 8 }} variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>Refresh</AppButton>
         <AppButton icon={<PlusOutlined />} onClick={onCreate}>
           Create Combo
         </AppButton>

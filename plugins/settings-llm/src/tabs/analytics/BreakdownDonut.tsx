@@ -154,7 +154,7 @@ export function BreakdownDonut({ title, entries }: BreakdownDonutProps) {
           fontSize: 11,
           fontWeight: 600,
           textTransform: 'none',
-          letterSpacing: 0.5,
+          
           marginBottom: 16,
         }}
       >

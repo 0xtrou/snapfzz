@@ -256,8 +256,7 @@ export default function AnalyticsTab({ active }: { active?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, overflow: 'hidden', background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       {/* Time range selector */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Usage Analytics</div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <AppButton variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>Refresh</AppButton>
           <Radio.Group value={timeRange} onChange={(e) => setTimeRange(e.target.value)} size="small">
@@ -306,17 +305,17 @@ export default function AnalyticsTab({ active }: { active?: boolean }) {
       </div>
 
       {/* Provider Breakdown */}
-      <BreakdownTable title="PROVIDER BREAKDOWN" rows={providerRows} nameHeader="PROVIDER" />
+      <BreakdownTable title="Provider Breakdown" rows={providerRows} nameHeader="Provider" />
 
       {/* Model Breakdown */}
       <BreakdownTable
-        title="MODEL BREAKDOWN"
+        title="Model Breakdown"
         rows={modelRows}
-        nameHeader="MODEL"
+        nameHeader="Model"
       />
 
       {/* API Key Breakdown */}
-      <BreakdownTable title="API KEY BREAKDOWN" rows={keyRows} nameHeader="API KEY" filterPlaceholder="Filter API key..." />
+      <BreakdownTable title="API Key Breakdown" rows={keyRows} nameHeader="API Key" filterPlaceholder="Filter API key..." />
     </div>
   );
 }

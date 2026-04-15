@@ -91,7 +91,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
             fontSize: 13,
             fontWeight: 700,
             textTransform: 'none',
-            letterSpacing: 0.5,
+            
             marginBottom: 12,
           }}
         >
@@ -129,7 +129,7 @@ export default function TokenCostTrend({ data }: TokenCostTrendProps) {
           fontSize: 13,
           fontWeight: 700,
           textTransform: 'none',
-          letterSpacing: 0.5,
+          
           marginBottom: 12,
         }}
       >

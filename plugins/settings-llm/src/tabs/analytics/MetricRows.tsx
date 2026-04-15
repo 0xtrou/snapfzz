@@ -31,7 +31,7 @@ function SectionHeader({ title }: { title: string }) {
         fontSize: 13,
         fontWeight: 700,
         textTransform: 'none',
-        letterSpacing: 0.5,
+        
         marginBottom: 8,
         paddingBottom: 4,
         borderBottom: '1px solid var(--border-default)',
@@ -51,7 +51,7 @@ function MetricItem({ label, value }: { label: string; value: string }) {
           fontSize: 11,
           fontWeight: 600,
           textTransform: 'none',
-          letterSpacing: 0.5,
+          
         }}
       >
         {label}

@@ -36,7 +36,7 @@ export default function InstallProgressOverlay({
       }}
     >
       <Space direction="vertical" size={8} style={{ width: '100%' }}>
-        <Text strong style={{ fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+        <Text strong style={{ fontSize: 12 }}>
           Installing Python Packs
         </Text>
         {steps.map((step) => (

@@ -157,7 +157,7 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
             fontSize: 13,
             fontWeight: 700,
             textTransform: 'none',
-            letterSpacing: 0.5,
+            
             marginBottom: 12,
           }}
         >
@@ -194,7 +194,7 @@ export default function ModelUsageChart({ data }: ModelUsageChartProps) {
           fontSize: 13,
           fontWeight: 700,
           textTransform: 'none',
-          letterSpacing: 0.5,
+          
           marginBottom: 12,
         }}
       >

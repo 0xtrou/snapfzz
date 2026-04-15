@@ -34,7 +34,7 @@ function StatCard({ label, value, subtitle, valueColor }: StatCardProps) {
           fontSize: 11,
           fontWeight: 600,
           textTransform: 'none',
-          letterSpacing: 0.5,
+          
           marginBottom: 4,
         }}
       >

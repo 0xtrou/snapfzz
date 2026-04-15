@@ -105,8 +105,7 @@ function StatCard({ label, value, valueColor, subtitle }: StatCardProps) {
           color: 'var(--text-muted)',
           fontSize: 11,
           fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
+          
           marginBottom: 4,
         }}
       >
@@ -145,8 +144,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
           color: 'var(--text-primary)',
           fontSize: 13,
           fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
           marginBottom: 16,
         }}
       >
@@ -163,8 +160,7 @@ const TH_STYLE: React.CSSProperties = {
   color: 'var(--text-muted)',
   fontSize: 11,
   fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: 0.5,
+  
   padding: '6px 12px',
   textAlign: 'left',
   borderBottom: '1px solid var(--border-default)',
@@ -353,8 +349,7 @@ export default function CacheTab({ active }: { active?: boolean }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
 
       {/* Header with refresh */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 700 }}>Cache</div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <AppButton variant="text" icon={<ReloadOutlined />} loading={loading} onClick={() => void loadData()}>Refresh</AppButton>
       </div>
 

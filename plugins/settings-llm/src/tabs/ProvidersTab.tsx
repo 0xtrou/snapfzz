@@ -1603,8 +1603,6 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
                 fontSize: 13,
                 fontWeight: 700,
                 color: 'var(--text-primary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
               }}
             >
               Custom Providers
@@ -1686,8 +1684,6 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
                 fontSize: 13,
                 fontWeight: 700,
                 color: 'var(--text-primary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
                 flexShrink: 0,
               }}
             >

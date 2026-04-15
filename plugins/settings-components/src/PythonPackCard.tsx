@@ -211,7 +211,7 @@ export default function PythonPackCard({
               })}
             />
           ) : (
-            <Text type="secondary" style={{ fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+            <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase' }}>
               Runtime Components
             </Text>
           )}

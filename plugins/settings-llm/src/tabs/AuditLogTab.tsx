@@ -388,16 +388,6 @@ export default function AuditLogTab({ active }: { active?: boolean }) {
               Keep 7 days
             </AppButton>
           </Popconfirm>
-          <Popconfirm
-            title="Clear logs older than 30 days?"
-            onConfirm={() => void handleClearLogs(30)}
-            okText="Clear"
-            placement="bottom"
-          >
-            <AppButton size="small" icon={<DeleteOutlined />}>
-              Keep 30 days
-            </AppButton>
-          </Popconfirm>
         </div>
       </div>
 
