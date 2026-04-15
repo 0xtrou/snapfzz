@@ -35,8 +35,19 @@ function getCachedTokens(log: SpendLog): number {
       }
     }
   }
-  // Fallback: if cache_hit === "True", use all prompt_tokens as cached
-  if (log.cache_hit === 'True') return log.prompt_tokens ?? 0;
+  return 0;
+}
+
+function getCacheCreationTokens(log: SpendLog): number {
+  // Anthropic returns cache_creation_input_tokens in usage
+  const resp = log.response as Record<string, unknown> | undefined;
+  if (resp) {
+    const usage = resp['usage'] as Record<string, unknown> | undefined;
+    if (usage) {
+      const ct = usage['cache_creation_input_tokens'];
+      if (typeof ct === 'number') return ct;
+    }
+  }
   return 0;
 }
 
@@ -44,6 +55,31 @@ function providerOf(log: SpendLog): string {
   const mg = log.model_group || log.model || '';
   if (mg.includes('/')) return mg.split('/')[0];
   return 'unknown';
+}
+
+// --- cache status ---
+
+interface CacheStatus {
+  enabled: boolean;
+  type: string;
+  status?: string;
+}
+
+async function getCacheStatus(baseUrl: string, masterKey: string): Promise<CacheStatus> {
+  try {
+    const res = await fetch(`${baseUrl}/cache/ping`, {
+      headers: { 'Authorization': `Bearer ${masterKey}`, 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return { enabled: false, type: 'none' };
+    const data = await res.json() as Record<string, unknown>;
+    return {
+      enabled: true,
+      type: typeof data['cache_type'] === 'string' ? data['cache_type'] : 'unknown',
+      status: typeof data['status'] === 'string' ? data['status'] : undefined,
+    };
+  } catch {
+    return { enabled: false, type: 'none' };
+  }
 }
 
 // --- stat card ---
@@ -167,13 +203,18 @@ export default function CacheTab() {
   const [masterKey, setMasterKey] = useState('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
 
   const loadData = useCallback(async () => {
     if (!baseUrl || !masterKey) return;
     setLoading(true);
     try {
-      const raw = await getSpendLogs(baseUrl, masterKey, {});
+      const [raw, status] = await Promise.all([
+        getSpendLogs(baseUrl, masterKey, {}),
+        getCacheStatus(baseUrl, masterKey),
+      ]);
       setLogs(raw.filter((l) => l.model && l.model.trim() !== ''));
+      setCacheStatus(status);
     } catch {
       message.error('Failed to load spend logs');
       setLogs([]);
@@ -191,11 +232,12 @@ export default function CacheTab() {
   useEffect(() => { void loadData(); }, [loadData]);
 
   // --- aggregation ---
-  const { overview, providerRows, hourRows, hasCacheData } = useMemo(() => {
+  const { providerCache, responseCache, providerRows, hourRows, hasCacheData } = useMemo(() => {
     let totalRequests = 0;
     let cachedRequests = 0;
     let totalInputTokens = 0;
     let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
     let cacheWriteTokens = 0;
 
     const providerMap = new Map<string, ProviderRow>();
@@ -208,11 +250,13 @@ export default function CacheTab() {
       const isCached = log.cache_hit === 'True';
       const pt = log.prompt_tokens ?? 0;
       const ct = getCachedTokens(log);
+      const cct = getCacheCreationTokens(log);
 
       totalRequests++;
       if (isCached) cachedRequests++;
       totalInputTokens += pt;
       cacheReadTokens += ct;
+      cacheCreationTokens += cct;
       if (!isCached) cacheWriteTokens += pt;
 
       // provider
@@ -248,13 +292,16 @@ export default function CacheTab() {
       }
     }
 
-    // Cache savings estimate: cached tokens cost ~10% of normal input price.
-    // We don't have per-model pricing, so estimate $1.50/1M input tokens average.
+    // Provider cache savings: cached tokens cost ~10% of normal input price.
+    // Estimate $1.50/1M input tokens average.
     const avgInputPricePer1M = 1.5;
     const savingsEstimate = (cacheReadTokens / 1_000_000) * avgInputPricePer1M * 0.9;
 
-    const cacheRate = totalRequests > 0 ? (cachedRequests / totalRequests) * 100 : 0;
     const cacheReuseRatio = totalInputTokens > 0 ? (cacheReadTokens / totalInputTokens) * 100 : 0;
+
+    // Response cache stats
+    const cacheHitRate = totalRequests > 0 ? (cachedRequests / totalRequests) * 100 : 0;
+    const cacheMisses = totalRequests - cachedRequests;
 
     const sortedHours = [...hourMap.values()].sort((a, b) => a.hour.localeCompare(b.hour));
     const sortedProviders = [...providerMap.values()].sort((a, b) => b.totalRequests - a.totalRequests);
@@ -262,7 +309,20 @@ export default function CacheTab() {
     const hasCacheData = cachedRequests > 0;
 
     return {
-      overview: { totalRequests, cachedRequests, totalInputTokens, cacheReadTokens, cacheWriteTokens, cacheRate, cacheReuseRatio, savingsEstimate },
+      providerCache: {
+        cacheReadTokens,
+        cacheCreationTokens,
+        cacheReuseRatio,
+        savingsEstimate,
+        totalInputTokens,
+      },
+      responseCache: {
+        cacheHitRate,
+        cachedRequests,
+        cacheMisses,
+        totalRequests,
+        cacheWriteTokens,
+      },
       providerRows: sortedProviders,
       hourRows: sortedHours,
       hasCacheData,
@@ -283,44 +343,122 @@ export default function CacheTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Section 1: Overview */}
-      <Section title="Prompt Cache Overview">
-        {/* Stat cards */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
+
+      {/* Section 0: Cache Status */}
+      <Section title="Cache Status">
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
+          Response cache stores complete API responses for identical requests. Provider cache optimizes token usage by caching prompt prefixes.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: cacheStatus?.enabled ? 'var(--color-success)' : 'var(--color-warning)',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: 13, color: 'var(--text-primary)', minWidth: 160 }}>
+              Response Cache
+            </span>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: cacheStatus?.enabled ? 'var(--color-success)' : 'var(--text-muted)',
+              }}
+            >
+              {cacheStatus?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+            {cacheStatus?.enabled && cacheStatus.type && cacheStatus.type !== 'none' && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                — {cacheStatus.type}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: 'var(--color-info)',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: 13, color: 'var(--text-primary)', minWidth: 160 }}>
+              Provider Prompt Cache
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-info)' }}>
+              Always available
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              — depends on provider support
+            </span>
+          </div>
+        </div>
+      </Section>
+
+      {/* Section 1: Provider Prompt Cache */}
+      <Section title="Provider Prompt Cache">
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <StatCard
-            label="Cache Rate"
-            value={fmtPct(overview.cacheRate)}
-            valueColor="var(--color-success)"
-            subtitle={`${overview.cachedRequests} / ${overview.totalRequests} requests`}
+            label="Cache Read Tokens"
+            value={fmt(providerCache.cacheReadTokens)}
+            valueColor="var(--color-cyan)"
+            subtitle="tokens served from provider cache"
           />
           <StatCard
-            label="Cache Reuse Ratio"
-            value={fmtPct(overview.cacheReuseRatio)}
+            label="Cache Creation Tokens"
+            value={fmt(providerCache.cacheCreationTokens)}
+            valueColor="var(--color-warning)"
+            subtitle="tokens written to provider cache"
+          />
+          <StatCard
+            label="Reuse Ratio"
+            value={fmtPct(providerCache.cacheReuseRatio)}
             valueColor="var(--color-info)"
             subtitle="cached / total input tokens"
           />
           <StatCard
-            label="Cache Read Tokens"
-            value={fmt(overview.cacheReadTokens)}
-            valueColor="var(--color-cyan)"
-          />
-          <StatCard
-            label="Cache Write Tokens"
-            value={fmt(overview.cacheWriteTokens)}
-            valueColor="var(--color-warning)"
-          />
-          <StatCard
             label="Est. Cost Saved"
-            value={fmtCost(overview.savingsEstimate)}
+            value={fmtCost(providerCache.savingsEstimate)}
             valueColor="var(--color-gold)"
             subtitle="at avg $1.50/1M tokens"
           />
         </div>
+      </Section>
 
-        {/* Provider breakdown table */}
-        <div style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-          Breakdown by Provider
+      {/* Section 2: Response Cache */}
+      <Section title="Response Cache">
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <StatCard
+            label="Cache Hit Rate"
+            value={fmtPct(responseCache.cacheHitRate)}
+            valueColor="var(--color-success)"
+            subtitle={`${responseCache.cachedRequests} / ${responseCache.totalRequests} requests`}
+          />
+          <StatCard
+            label="Cached Responses"
+            value={fmt(responseCache.cachedRequests)}
+            valueColor="var(--color-success)"
+            subtitle="complete responses served from cache"
+          />
+          <StatCard
+            label="Cache Misses"
+            value={fmt(responseCache.cacheMisses)}
+            valueColor="var(--text-muted)"
+            subtitle="requests forwarded to provider"
+          />
         </div>
+      </Section>
+
+      {/* Section 3: Provider Breakdown */}
+      <Section title="Breakdown by Provider">
         <div style={{ overflowX: 'auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr repeat(6, auto)', minWidth: 600 }}>
             {['Provider', 'Total Input', 'Cache Read', 'Cache Write', 'Cache Ratio', 'Cache Rate', 'Cached Reqs'].map((h) => (
@@ -349,7 +487,7 @@ export default function CacheTab() {
         </div>
       </Section>
 
-      {/* Section 2: Cache Trend (24h) */}
+      {/* Section 4: Cache Trend (24h) */}
       <Section title="Cache Trend (24h)">
         {/* Summary stats row */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
@@ -372,8 +510,8 @@ export default function CacheTab() {
 
         {!hasCacheData ? (
           <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: 15, marginBottom: 8 }}>Cache is not enabled</div>
-            <div style={{ fontSize: 13 }}>Enable caching in the gateway config to see cache statistics</div>
+            <div style={{ fontSize: 15, marginBottom: 8 }}>No cache activity detected</div>
+            <div style={{ fontSize: 13 }}>Enable response caching in your gateway config or use providers that support native prompt caching.</div>
           </div>
         ) : hourRows.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: 13 }}>

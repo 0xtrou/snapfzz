@@ -328,11 +328,13 @@ export default function AnalyticsTab() {
       />
 
       {/* Metric rows */}
-      <MetricRows
-        infrastructure={metrics.infrastructure}
-        performance={metrics.performance}
-        highlights={metrics.highlights}
-      />
+      <div style={{ background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, padding: 16 }}>
+        <MetricRows
+          infrastructure={metrics.infrastructure}
+          performance={metrics.performance}
+          highlights={metrics.highlights}
+        />
+      </div>
 
       {/* Activity heatmap */}
       <ActivityHeatmap dailyData={heatmapData} />
