@@ -489,8 +489,9 @@ export default function RoutingTab() {
           .map((entry) => ({
             name: entry.model_name,
             apiBase: entry.litellm_params?.api_base,
-            model: entry.litellm_params?.model,
+            model: entry.litellm_params?.model,      // "openai/coder" — already has provider prefix
             provider: (entry.model_info as Record<string, string> | undefined)?.snapfzz_provider_id,
+            apiKey: entry.litellm_params?.api_key,   // The actual API key
           }));
         setAvailableModelInfo(modelInfoList);
       }

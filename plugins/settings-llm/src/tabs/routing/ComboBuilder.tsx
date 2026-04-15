@@ -20,10 +20,11 @@ import type { CustomProvider } from '../../hooks/useLlmCommands';
 // --- types ---
 
 export interface AvailableModelInfo {
-  name: string;
-  apiBase?: string;
-  model?: string;
-  provider?: string;
+  name: string;          // e.g. "solo-engineer/coder"
+  apiBase?: string;      // e.g. "https://llm.solo.engineer/v1"
+  model?: string;        // e.g. "openai/coder" — the litellm_params.model value
+  provider?: string;     // e.g. "custom-solo-engineer"
+  apiKey?: string;       // The actual API key (from litellm_params)
 }
 
 export interface ComboBuilderProps {
@@ -222,21 +223,22 @@ function StepDeployments({
   availableModels: AvailableModelInfo[];
   onChange: (deps: Deployment[]) => void;
 }) {
-  // Derive selected model names from current deployments (registered ones only)
+  // Derive selected display names from current deployments by reverse-looking up
+  // the info entry whose litellm_params.model matches the deployment's model field.
   const selectedNames = deployments
-    .filter((d) => d.isRegistered)
-    .map((d) => d.model);
+    .map((d) => availableModels.find((m) => m.model === d.model)?.name ?? d.model);
 
   const modelOptions = availableModels.map((m) => ({ label: m.name, value: m.name }));
 
   const handleSelectionChange = (selected: string[]) => {
-    const newDeployments: Deployment[] = selected.map((modelName) => {
-      const info = availableModels.find((m) => m.name === modelName);
+    const newDeployments: Deployment[] = selected.map((name) => {
+      const info = availableModels.find((m) => m.name === name);
       return {
         provider: info?.provider ?? '',
-        model: modelName,
+        model: info?.model ?? name,  // litellm_params.model value (e.g. "openai/coder")
         apiBase: info?.apiBase ?? '',
-        isRegistered: true,
+        apiKey: info?.apiKey ?? '',  // Copy the API key
+        isRegistered: false,         // Always create as new standalone entry
       };
     });
     onChange(newDeployments);

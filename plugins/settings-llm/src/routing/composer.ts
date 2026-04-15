@@ -14,13 +14,13 @@ export type RoutingStrategy =
 export interface Deployment {
   id?: string;           // Existing model_id (for updates)
   provider: string;      // e.g. "custom-solo-engineer"
-  model: string;         // e.g. "coder" or full "solo-engineer/coder" when isRegistered
+  model: string;         // The litellm_params.model value — if it contains '/' it is used as-is, otherwise "openai/" is prepended
   apiKey?: string;       // Provider API key (from vault)
   apiBase?: string;      // e.g. "https://llm.solo.engineer/v1"
   weight?: number;       // 0-100, for weighted strategy
   rpmLimit?: number;     // Requests per minute limit
   tpmLimit?: number;     // Tokens per minute limit
-  isRegistered?: boolean; // When true, model is already registered in LiteLLM — use name as-is
+  isRegistered?: boolean; // Deprecated — no longer used by composer; model value determines prefix
 }
 
 export interface ComboConfig {
@@ -78,10 +78,13 @@ function buildModelPayload(
   deployment: Deployment,
   extras: { weight?: number; order?: number } = {},
 ): ModelNewPayload {
+  // If the model value already carries a provider prefix (e.g. "openai/coder" from
+  // litellm_params.model), use it as-is. Otherwise apply the openai/ prefix so
+  // LiteLLM can route to the deployment via the SDK.
+  const modelValue = deployment.model.includes('/') ? deployment.model : `openai/${deployment.model}`;
+
   const litellmParams: ModelNewPayload['litellm_params'] = {
-    // Registered models (from multi-select) are already known to LiteLLM — use as-is.
-    // Fresh deployments (provider+model form) get the openai/ prefix for SDK routing.
-    model: deployment.isRegistered ? deployment.model : `openai/${deployment.model}`,
+    model: modelValue,
     api_key: deployment.apiKey ?? '',
   };
 
