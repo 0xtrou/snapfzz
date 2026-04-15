@@ -22,7 +22,7 @@ impl AgentScopeFactory {
 
 impl ProcessFactory for AgentScopeFactory {
     fn name(&self) -> &'static str {
-        "agentscope"
+        "agent-runtime"
     }
 
     fn health_path(&self) -> &'static str {

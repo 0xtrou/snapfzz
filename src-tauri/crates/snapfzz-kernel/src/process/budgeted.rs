@@ -508,7 +508,7 @@ mod tests {
 
     impl ProcessFactory for LitellmFactory {
         fn name(&self) -> &'static str {
-            "litellm"
+            "llm-gateway"
         }
 
         fn health_path(&self) -> &'static str {
