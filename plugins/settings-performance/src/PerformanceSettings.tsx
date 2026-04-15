@@ -273,7 +273,7 @@ export default function PerformanceSettings() {
         </span>
       </SettingsHeader>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
-      <div style={{ padding: '16px 32px' }}>
+      <div style={{ padding: '24px 32px', background: 'var(--bg-subtle)', borderRadius: 8, margin: '0 32px 24px' }}>
         <Card
           title={<Text style={{ color: 'var(--text-primary)' }}>Preset</Text>}
           style={{ marginBottom: 20, background: 'var(--bg-default)', borderColor: 'var(--border-default)' }}
