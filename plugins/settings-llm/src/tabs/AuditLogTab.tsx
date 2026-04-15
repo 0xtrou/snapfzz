@@ -97,7 +97,7 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
     borderRadius: 6,
     padding: '8px 12px',
     margin: 0,
-    maxHeight: 160,
+    maxHeight: 200,
     overflow: 'auto',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-all',
@@ -114,17 +114,16 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
         ))}
       </div>
       {(() => {
-        // Extract only useful fields from proxy_server_request (strip auth metadata)
-        const raw = record.proxy_server_request as Record<string, unknown> | undefined;
-        const reqPayload = raw ? { model: raw.model, messages: raw.messages, max_tokens: raw.max_tokens } : null;
+        // Raw request: from proxy_server_request, strip internal metadata
+        const rawReq = record.proxy_server_request as Record<string, unknown> | undefined;
+        const reqPayload = rawReq ? { model: rawReq.model, messages: rawReq.messages, max_tokens: rawReq.max_tokens, temperature: rawReq.temperature, stream: rawReq.stream } : null;
+        // Remove undefined fields
+        if (reqPayload) { for (const k of Object.keys(reqPayload)) { if ((reqPayload as Record<string, unknown>)[k] === undefined) delete (reqPayload as Record<string, unknown>)[k]; } }
         const hasReq = reqPayload && reqPayload.messages;
 
-        // Response: strip internal fields, keep choices + usage
+        // Raw response: full payload
         const rawResp = record.response as Record<string, unknown> | undefined;
-        const respPayload = rawResp && Object.keys(rawResp).length > 0
-          ? { id: rawResp.id, model: rawResp.model, choices: rawResp.choices, usage: rawResp.usage }
-          : null;
-        const hasResp = respPayload && respPayload.id;
+        const hasResp = rawResp && Object.keys(rawResp).length > 0;
 
         // Error: extract just the message and code
         const meta = record.metadata as Record<string, unknown> | undefined;
@@ -136,14 +135,14 @@ const ExpandedDetail = React.memo(function ExpandedDetail({ record }: { record: 
           <>
             {hasReq && (
               <div>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Request</Text>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Request Payload</Text>
                 <pre style={preStyle}>{tryFormatJson(JSON.stringify(reqPayload))}</pre>
               </div>
             )}
             {hasResp && (
               <div>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response</Text>
-                <pre style={preStyle}>{tryFormatJson(JSON.stringify(respPayload))}</pre>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Response Payload</Text>
+                <pre style={preStyle}>{tryFormatJson(JSON.stringify(rawResp))}</pre>
               </div>
             )}
             {hasError && !hasResp && (
