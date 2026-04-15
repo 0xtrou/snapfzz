@@ -229,7 +229,7 @@ const LogRow = React.memo(function LogRow({
   );
 });
 
-export default function AuditLogTab() {
+export default function AuditLogTab({ active }: { active?: boolean }) {
   const [baseUrl, setBaseUrl] = useState<string>('');
   const [masterKey, setMasterKey] = useState<string>('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
@@ -267,6 +267,12 @@ export default function AuditLogTab() {
   useEffect(() => {
     void loadLogs();
   }, [loadLogs]);
+
+  // Refresh data when tab becomes active (tab switch, not remount)
+  useEffect(() => {
+    if (active) void loadLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   const handleToggle = useCallback((id: string) => {
     setExpandedIds((prev) => {

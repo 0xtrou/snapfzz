@@ -1372,7 +1372,7 @@ function AddCustomProviderModal({
 
 // ─── Main Component ─────────────────────────────────────────────────────
 
-export default function ProvidersTab() {
+export default function ProvidersTab({ active }: { active?: boolean }) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [keyCounts, setKeyCounts] = useState<ProviderKeyCounts>({});
   const [toggleState, setToggleState] = useState<ToggleState>({});
@@ -1430,6 +1430,14 @@ export default function ProvidersTab() {
   useEffect(() => {
     void loadKeyCounts();
   }, [loadKeyCounts]);
+
+  // Refresh data when tab becomes active (tab switch, not remount)
+  useEffect(() => {
+    if (active && !selectedProvider) {
+      void loadKeyCounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   const filteredProviders = useMemo(() => {
     let list: typeof PROVIDERS;

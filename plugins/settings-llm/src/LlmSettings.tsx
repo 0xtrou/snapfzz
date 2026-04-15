@@ -28,32 +28,32 @@ export default function LlmSettings() {
             {
               key: 'providers',
               label: <span><ApiOutlined style={iconStyle} />Providers</span>,
-              children: <ProvidersTab />,
+              children: <ProvidersTab active={activeKey === 'providers'} />,
             },
             {
               key: 'keys',
               label: <span><KeyOutlined style={iconStyle} />API Keys</span>,
-              children: <ApiKeysTab />,
+              children: <ApiKeysTab active={activeKey === 'keys'} />,
             },
             {
               key: 'routing',
               label: <span><SwapOutlined style={iconStyle} />Combos</span>,
-              children: <RoutingTab />,
+              children: <RoutingTab active={activeKey === 'routing'} />,
             },
             {
               key: 'audit',
               label: <span><FileTextOutlined style={iconStyle} />Audit Log</span>,
-              children: <AuditLogTab />,
+              children: <AuditLogTab active={activeKey === 'audit'} />,
             },
             {
               key: 'analytics',
               label: <span><BarChartOutlined style={iconStyle} />Analytics</span>,
-              children: <AnalyticsTab />,
+              children: <AnalyticsTab active={activeKey === 'analytics'} />,
             },
             {
               key: 'cache',
               label: <span><ThunderboltOutlined style={iconStyle} />Cache</span>,
-              children: <CacheTab />,
+              children: <CacheTab active={activeKey === 'cache'} />,
             },
           ]}
         />

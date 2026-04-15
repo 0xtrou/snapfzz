@@ -195,7 +195,7 @@ interface HourRow {
   cacheReadTokens: number;
 }
 
-export default function CacheTab() {
+export default function CacheTab({ active }: { active?: boolean }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
@@ -231,6 +231,12 @@ export default function CacheTab() {
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
+
+  // Refresh data when tab becomes active (tab switch, not remount)
+  useEffect(() => {
+    if (active) void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   // --- aggregation ---
   const { providerCache, responseCache, providerRows, hourRows, hasCacheData } = useMemo(() => {

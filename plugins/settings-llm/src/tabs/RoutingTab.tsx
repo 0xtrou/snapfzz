@@ -467,7 +467,7 @@ function buildCombosFromModelInfo(data: { data: ModelInfoEntry[] }, litellmStrat
 
 // --- main component ---
 
-export default function RoutingTab() {
+export default function RoutingTab({ active }: { active?: boolean }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [loading, setLoading] = useState(true);
@@ -587,6 +587,14 @@ export default function RoutingTab() {
       })
       .catch(() => message.error('Failed to connect to gateway'));
   }, [loadData]);
+
+  // Refresh data when tab becomes active (tab switch, not remount)
+  useEffect(() => {
+    if (active && baseUrl && masterKey) {
+      void loadData(baseUrl, masterKey);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   const saveStrategy = useCallback(async () => {
     setSavingStrategy(true);

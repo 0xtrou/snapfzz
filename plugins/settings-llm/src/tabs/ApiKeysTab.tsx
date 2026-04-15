@@ -81,7 +81,7 @@ function loadCachedModels(): string[] {
   }
 }
 
-export default function ApiKeysTab() {
+export default function ApiKeysTab({ active }: { active?: boolean }) {
   const [baseUrl, setBaseUrl] = useState<string>('');
   const [masterKey, setMasterKey] = useState<string>('');
   const [keys, setKeys] = useState<KeyInfo[]>([]);
@@ -136,6 +136,14 @@ export default function ApiKeysTab() {
   useEffect(() => {
     void loadKeys();
   }, [loadKeys]);
+
+  // Refresh data when tab becomes active (tab switch, not remount)
+  useEffect(() => {
+    if (active && baseUrl && masterKey) {
+      void loadKeys();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   useEffect(() => {
     if (baseUrl && masterKey) {

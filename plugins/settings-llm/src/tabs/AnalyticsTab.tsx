@@ -49,7 +49,7 @@ function dateRangeForFilter(range: TimeRange): { start?: string; end?: string } 
 }
 
 
-export default function AnalyticsTab() {
+export default function AnalyticsTab({ active }: { active?: boolean }) {
   const [baseUrl, setBaseUrl] = useState('');
   const [masterKey, setMasterKey] = useState('');
   const [logs, setLogs] = useState<SpendLog[]>([]);
@@ -100,6 +100,12 @@ export default function AnalyticsTab() {
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
+
+  // Refresh data when tab becomes active (tab switch, not remount)
+  useEffect(() => {
+    if (active) void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   // Single-pass client-side aggregation from spend logs.
   // /global/spend/report and /spend/logs?summarize=true require LiteLLM Enterprise.
