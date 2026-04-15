@@ -1,16 +1,8 @@
-// A013/UI/RoutingTab: Model routing configuration tests
+// A013/UI/RoutingTab: Combo-based routing configuration tests
 
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import RoutingTab from '../../tabs/RoutingTab';
-
-const { mockGetBaseUrl, mockGetMasterKey, mockGetConfig, mockGetModelGroups, mockUpdateConfig } = vi.hoisted(() => ({
-  mockGetBaseUrl: vi.fn(),
-  mockGetMasterKey: vi.fn(),
-  mockGetConfig: vi.fn(),
-  mockGetModelGroups: vi.fn(),
-  mockUpdateConfig: vi.fn(),
-}));
 
 vi.mock('@snapfzz/shared', () => ({
   fetchWithToast: async (fn: () => Promise<unknown>) => {
@@ -22,53 +14,28 @@ vi.mock('@snapfzz/shared', () => ({
 }));
 
 vi.mock('../../hooks/useLlmCommands', () => ({
-  getBaseUrl: () => mockGetBaseUrl(),
-  getMasterKey: () => mockGetMasterKey(),
-  getConfig: (...args: unknown[]) => mockGetConfig(...args),
-  updateConfig: (...args: unknown[]) => mockUpdateConfig(...args),
-  getModelGroups: (...args: unknown[]) => mockGetModelGroups(...args),
+  getBaseUrl: () => Promise.resolve('http://127.0.0.1:4000'),
+  getMasterKey: () => Promise.resolve('sk-master-test'),
+  getConfig: () => Promise.resolve({ router_settings: { routing_strategy: 'simple-shuffle' } }),
+  updateConfig: () => Promise.resolve({}),
+  getModelGroups: () => Promise.resolve(['solo-engineer/coder', 'solo-engineer-test/codex']),
+  getModelInfo: () => Promise.resolve({ data: [] }),
+  deleteModel: () => Promise.resolve(),
+  loadCustomProviders: () => Promise.resolve([]),
 }));
 
 describe('A013/UI/RoutingTab', () => {
-  beforeEach(() => {
-    mockGetBaseUrl.mockResolvedValue('http://127.0.0.1:4000');
-    mockGetMasterKey.mockResolvedValue('sk-master-test');
-    mockGetConfig.mockResolvedValue({
-      router_settings: {
-        routing_strategy: 'simple-shuffle',
-        fallbacks: [],
-        model_group_alias: {},
-      },
-    });
-    mockGetModelGroups.mockResolvedValue(['gpt-4o', 'claude-3-5-sonnet']);
-    mockUpdateConfig.mockResolvedValue({});
-  });
-
-  it('renders routing strategy section after loading', async () => {
+  it('renders combo list section after loading', async () => {
     render(<RoutingTab />);
     await waitFor(() => {
-      expect(screen.getByText('Routing Strategy')).toBeInTheDocument();
+      expect(screen.getByText(/Create Combo/i)).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 
-  it('renders fallback chains section after loading', async () => {
+  it('shows routing management description', async () => {
     render(<RoutingTab />);
     await waitFor(() => {
-      expect(screen.getByText('Fallback Chains')).toBeInTheDocument();
-    }, { timeout: 3000 });
-  });
-
-  it('renders model aliases section after loading', async () => {
-    render(<RoutingTab />);
-    await waitFor(() => {
-      expect(screen.getByText('Model Aliases')).toBeInTheDocument();
-    }, { timeout: 3000 });
-  });
-
-  it('shows active strategy badge for configured strategy', async () => {
-    render(<RoutingTab />);
-    await waitFor(() => {
-      expect(screen.getByText('Active')).toBeInTheDocument();
+      expect(screen.getByText(/routing/i)).toBeInTheDocument();
     }, { timeout: 3000 });
   });
 });

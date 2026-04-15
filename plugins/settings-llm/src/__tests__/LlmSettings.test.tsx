@@ -70,7 +70,7 @@ describe('A013/UI: LlmSettings', () => {
     
     await user.click(screen.getByText('Routing'));
     await waitFor(() => {
-      expect(screen.getByText('Routing Strategy')).toBeInTheDocument();
+      expect(screen.getByText('Create Combo')).toBeInTheDocument();
     });
   });
 });

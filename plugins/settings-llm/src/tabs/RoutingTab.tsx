@@ -614,32 +614,7 @@ export default function RoutingTab() {
         </Section>
       )}
 
-      <StrategySection
-        current={strategy}
-        saved={savedStrategy}
-        modelGroups={modelGroups}
-        saving={savingStrategy}
-        onChange={setStrategy}
-        onSave={saveStrategy}
-      />
-
-      <FallbacksSection
-        rules={fallbacks}
-        saved={savedFallbacks}
-        modelGroups={modelGroups}
-        saving={savingFallbacks}
-        onChange={setFallbacks}
-        onSave={saveFallbacks}
-      />
-
-      <AliasesSection
-        aliases={aliases}
-        saved={savedAliases}
-        modelGroups={modelGroups}
-        saving={savingAliases}
-        onChange={setAliases}
-        onSave={saveAliases}
-      />
+      {/* Strategy, Fallbacks, and Aliases are now managed per-combo via the Combo Builder */}
     </div>
   );
 }
