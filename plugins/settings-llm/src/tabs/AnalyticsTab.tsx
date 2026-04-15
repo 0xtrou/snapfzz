@@ -254,7 +254,7 @@ export default function AnalyticsTab({ active }: { active?: boolean }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, overflow: 'hidden', background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, overflow: 'hidden', borderRadius: 8, padding: 20 }}>
       {/* Time range selector */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

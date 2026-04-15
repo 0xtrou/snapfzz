@@ -297,7 +297,7 @@ export default function RoutingTab() {
   const showBuilder = creatingCombo || editingCombo !== null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, borderRadius: 8, padding: 20 }}>
       {showBuilder ? (
         <ComboBuilder
           existingCombo={editingCombo ?? undefined}

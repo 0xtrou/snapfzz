@@ -1128,7 +1128,7 @@ function ProviderDetail({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, borderRadius: 8, padding: 20 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Button
@@ -1577,7 +1577,7 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
   }
 
   return (
-    <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+    <div style={{ borderRadius: 8, padding: 20 }}>
       <div style={{ marginBottom: 16 }}>
         <Text style={{ color: 'var(--text-secondary)' }}>
           Provider API keys are passed directly to LiteLLM when importing models.

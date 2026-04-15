@@ -346,7 +346,7 @@ export default function CacheTab({ active }: { active?: boolean }) {
   }, 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, borderRadius: 8, padding: 20 }}>
 
       {/* Header with refresh */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
