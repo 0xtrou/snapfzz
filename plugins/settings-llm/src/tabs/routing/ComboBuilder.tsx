@@ -194,7 +194,7 @@ function StepBasics({
         />
         {showError && (
           <div style={{ fontSize: 12, color: 'var(--color-error)', marginTop: 4 }}>
-            Only letters, numbers, dashes and underscores allowed.
+            Slashes are not allowed. Use letters, numbers, dashes and underscores.
           </div>
         )}
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>

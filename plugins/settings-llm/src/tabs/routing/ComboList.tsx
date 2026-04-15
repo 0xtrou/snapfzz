@@ -61,7 +61,7 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete }: ComboL
             fontSize: 13,
           }}
         >
-          No combos yet. Create one to start routing requests to multiple deployments.
+          No routing combos created. Create a combo to group multiple model deployments under one name with a routing strategy.
         </div>
       )}
 

@@ -41,6 +41,7 @@ export interface ModelNewPayload {
   };
   model_info?: {
     snapfzz_provider_id: string;
+    snapfzz_combo?: boolean; // True for user-created combos
     order?: number; // For priority strategy
   };
 }
@@ -96,6 +97,7 @@ function buildModelPayload(
 
   const modelInfo: ModelNewPayload['model_info'] = {
     snapfzz_provider_id: deployment.provider,
+    snapfzz_combo: true, // Mark as user-created combo
   };
   if (extras.order !== undefined) {
     modelInfo.order = extras.order;

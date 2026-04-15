@@ -398,10 +398,14 @@ function entriesToAliasMap(entries: AliasEntry[]): Record<string, string> {
 
 // Build ComboConfig list from /v1/model/info by grouping by model_name.
 // Deployments are reconstructed from litellm_params.
+// Only user-created combos are included: model names with a slash are
+// individual provider/model deployments managed by the Providers tab.
 function buildCombosFromModelInfo(data: { data: Array<{ model_name: string; litellm_params?: { api_base?: string; model?: string; api_key?: string }; model_info?: { snapfzz_provider_id?: string } }> }): ComboConfig[] {
   const grouped: Record<string, ComboConfig> = {};
   for (const entry of data.data) {
     const groupName = entry.model_name;
+    // Filter: only show user-created combos (no slash = not a provider/model deployment)
+    if (groupName.includes('/')) continue;
     if (!grouped[groupName]) {
       grouped[groupName] = { name: groupName, strategy: 'round-robin', deployments: [] };
     }
