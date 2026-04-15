@@ -22,7 +22,7 @@ export default function RoutingTab() {
           Routing configuration will be available in a future update. This includes:
         </Text>
         <ul style={{ marginTop: 12, color: 'var(--text-secondary)' }}>
-          <li>Model group aliases (e.g., "fast" → gpt-4o)</li>
+          <li>Model group aliases (e.g., "fast" → your-preferred-model)</li>
           <li>Routing strategies (simple-shuffle, latency-based, least-busy)</li>
           <li>Fallback rules for failed requests</li>
           <li>Load balancing across multiple deployments</li>

@@ -180,7 +180,7 @@ export interface ModelInfoResponse {
 }
 
 // Custom provider metadata stored in vault as JSON blob
-export type CustomProviderVariant = 'openai' | 'anthropic';
+export type CustomProviderVariant = 'openai' | 'anthropic' | 'cohere' | 'mistral' | string;
 
 export interface CustomProvider {
   id: string;
@@ -556,12 +556,14 @@ export async function importModel(
   modelId: string,
   modelName?: string,
   baseUrl?: string,
+  variant?: string,
 ): Promise<Record<string, unknown>> {
   return bridge.invoke<Record<string, unknown>>('llm_import_model', {
     providerId,
     modelId,
     modelName: modelName ?? null,
     baseUrl: baseUrl ?? null,
+    variant: variant ?? null,
   });
 }
 

@@ -415,18 +415,20 @@ describe('A013/Hooks: useLlmCommands', () => {
         modelId: 'gpt-4o',
         modelName: null,
         baseUrl: null,
+        variant: null,
       });
     });
 
     it('imports model with custom name and base URL', async () => {
       mockInvoke.mockResolvedValue({ status: 'success' });
       const { importModel } = await import('../../hooks/useLlmCommands');
-      await importModel('custom-solo', 'my-model', 'alias-name', 'https://llm.solo.engineer/v1');
+      await importModel('custom-solo', 'my-model', 'alias-name', 'https://llm.solo.engineer/v1', 'openai');
       expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
         providerId: 'custom-solo',
         modelId: 'my-model',
         modelName: 'alias-name',
         baseUrl: 'https://llm.solo.engineer/v1',
+        variant: 'openai',
       });
     });
   });

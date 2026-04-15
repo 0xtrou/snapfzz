@@ -31,9 +31,12 @@ import {
 const { Text } = Typography;
 
 const BUDGET_DURATIONS = [
-  { value: '1d', label: '1 Day' },
-  { value: '7d', label: '7 Days' },
-  { value: '30d', label: '30 Days' },
+  { value: '1d', label: '1 day' },
+  { value: '7d', label: '7 days' },
+  { value: '14d', label: '14 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+  { value: '365d', label: '1 year' },
 ];
 
 const MODELS_CACHE_KEY = 'snapfzz:available_models';

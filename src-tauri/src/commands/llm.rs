@@ -1,5 +1,11 @@
 // A013/Commands: Tauri commands for LLM Gateway operations
 
+const DEFAULT_LITELLM_HOST: &str = "127.0.0.1";
+const DEFAULT_LITELLM_PORT: &str = "4000";
+
+/// LiteLLM internal table name — coupled to LiteLLM schema version.
+const LITELLM_SPEND_LOGS_TABLE: &str = "LiteLLM_SpendLogs";
+
 use serde_json::Value;
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_llm::{
@@ -18,12 +24,12 @@ pub async fn llm_get_base_url(
 ) -> Result<String, String> {
     let settings = settings_mgr.load().unwrap_or_default();
     let host = if settings.litellm_host.is_empty() {
-        "127.0.0.1".to_string()
+        DEFAULT_LITELLM_HOST.to_string()
     } else {
         settings.litellm_host
     };
     let port: u16 = if settings.litellm_port.is_empty() {
-        4000
+        DEFAULT_LITELLM_PORT.parse().unwrap_or(4000)
     } else {
         settings.litellm_port.parse().unwrap_or(4000)
     };
@@ -118,24 +124,13 @@ pub async fn llm_get_config_path(data_dir: String) -> Result<String, String> {
 // A013/Discovery: Discover models from a provider's own API using vault-stored keys.
 // The frontend cannot call provider APIs directly because API keys live in the vault.
 
-// A013/Internal: Known API base URLs for built-in providers. Used only by
-// llm_discover_models when no explicit base_url is supplied by the caller.
-// The frontend no longer queries this — it uses the bundled model catalog for metadata.
-fn resolve_provider_base_url(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "openai" => Some("https://api.openai.com"),
-        "anthropic" => Some("https://api.anthropic.com"),
-        "google" | "gemini" => Some("https://generativelanguage.googleapis.com"),
-        "mistral" => Some("https://api.mistral.ai"),
-        "groq" => Some("https://api.groq.com/openai"),
-        "deepseek" => Some("https://api.deepseek.com"),
-        "together_ai" => Some("https://api.together.xyz"),
-        "fireworks_ai" => Some("https://api.fireworks.ai/inference"),
-        "openrouter" => Some("https://openrouter.ai/api"),
-        "zhipu" => Some("https://open.bigmodel.cn/api/paas"),
-        "xai" => Some("https://api.x.ai"),
-        _ => None,
-    }
+// A013/Internal: Formerly contained hardcoded provider base URLs. Removed — the
+// frontend must pass base_url explicitly. For built-in providers, the catalog
+// contains the API base URL. Kept for call-site compatibility.
+fn resolve_provider_base_url(_provider_id: &str) -> Option<&'static str> {
+    // Built-in provider URLs removed — the frontend must pass base_url.
+    // For built-in providers, the catalog contains the API base URL.
+    None
 }
 
 #[tauri::command]
@@ -158,7 +153,7 @@ pub async fn llm_discover_models(
     let url = match base_url {
         Some(ref u) if !u.is_empty() => u.clone(),
         _ => resolve_provider_base_url(&provider_id)
-            .ok_or_else(|| format!("No base URL known for provider '{provider_id}'"))?
+            .ok_or_else(|| format!("No base URL configured for provider '{provider_id}'. Select a provider with a configured API endpoint."))?
             .to_string(),
     };
 
@@ -191,6 +186,7 @@ pub async fn llm_import_model(
     model_id: String,
     model_name: Option<String>,
     base_url: Option<String>,
+    variant: Option<String>,  // "openai" or "anthropic" — required for custom providers
 ) -> Result<Value, String> {
     // Get master key for LiteLLM auth
     let master_key = {
@@ -213,12 +209,12 @@ pub async fn llm_import_model(
     // Get LiteLLM base URL from settings
     let settings = settings_mgr.load().unwrap_or_default();
     let litellm_host = if settings.litellm_host.is_empty() {
-        "127.0.0.1"
+        DEFAULT_LITELLM_HOST
     } else {
         &settings.litellm_host
     };
     let litellm_port = if settings.litellm_port.is_empty() {
-        "4000"
+        DEFAULT_LITELLM_PORT
     } else {
         &settings.litellm_port
     };
@@ -228,10 +224,10 @@ pub async fn llm_import_model(
     // litellm_params.model = <sdk-prefix>/<model-id> for LiteLLM SDK routing.
     // LiteLLM strips the sdk prefix before sending to the endpoint.
     let (sdk_prefix, provider_slug) = if provider_id.starts_with("custom-") {
-        // Custom providers: determine SDK from variant, use provider name as slug
+        // Custom providers: use variant to determine SDK prefix, provider name as slug
         let slug = provider_id.strip_prefix("custom-").unwrap_or(&provider_id);
-        // All custom providers are OpenAI-compatible for now
-        ("openai", slug.to_string())
+        let sdk = variant.as_deref().unwrap_or("openai");
+        (sdk, slug.to_string())
     } else {
         // Built-in providers: use provider ID as both SDK prefix and slug
         (provider_id.as_str(), provider_id.clone())
@@ -292,7 +288,8 @@ pub async fn llm_cleanup_spend_logs(
     let psql = find_psql(&data_dir)?;
 
     let sql = format!(
-        r#"DELETE FROM "LiteLLM_SpendLogs" WHERE "startTime" < NOW() - INTERVAL '{keep_days} days'"#,
+        r#"DELETE FROM "{}" WHERE "startTime" < NOW() - INTERVAL '{keep_days} days'"#,
+        LITELLM_SPEND_LOGS_TABLE,
     );
 
     let output = tokio::process::Command::new(&psql)

@@ -583,12 +583,12 @@ describe('A013/UI/ProvidersTab', () => {
       await user.click(enableSwitch);
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', {
+        expect(mockInvoke).toHaveBeenCalledWith('llm_import_model', expect.objectContaining({
           providerId: 'openai',
           modelId: 'gpt-4o',
           modelName: null,
           baseUrl: null,
-        });
+        }));
       });
     });
 

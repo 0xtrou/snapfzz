@@ -49,6 +49,7 @@ import { PROVIDER_ICONS } from '../provider-icons';
 
 const { Text, Title } = Typography;
 
+// A013: Provider labels should be sourced from the catalog in a future iteration
 // A013/Catalog: Curated display names for known providers.
 // The catalog is the source of truth for which providers exist — this map only
 // adds human-friendly labels. Providers in the catalog but not in this map
@@ -85,6 +86,7 @@ const CURATED_LABELS: Record<string, string> = {
   text_completion_openai: 'OpenAI Completions',
 };
 
+// A013: Pinned order should come from catalog metadata (e.g. order field) in a future iteration
 // Providers we want shown first, in this order. All other catalog providers
 // follow alphabetically after these.
 const PINNED_PROVIDER_ORDER = [
@@ -128,6 +130,7 @@ function buildProviderList(): { id: string; label: string }[] {
 
 const PROVIDERS = buildProviderList();
 
+// A013: Popular providers should be derived from catalog flags or usage data
 // Popular providers shown by default in the filter — well-known services most
 // users will want to configure. Kept as a Set for O(1) lookup.
 const POPULAR_PROVIDER_IDS = new Set([
@@ -136,6 +139,7 @@ const POPULAR_PROVIDER_IDS = new Set([
   'bedrock', 'vertex_ai', 'cohere', 'xai', 'zhipu',
 ]);
 
+// A013: Brand colors should be sourced from catalog or provider config
 // Brand colors for provider icon circles. Hex literals are intentional —
 // these represent brand identity, not theme colors.
 const PROVIDER_BRAND_COLORS: Record<string, string> = {
@@ -643,10 +647,12 @@ function AvailableModels({
   providerId,
   hasKeys,
   baseUrl,
+  variant,
 }: {
   providerId: string;
   hasKeys: boolean;
   baseUrl?: string;
+  variant?: string;
 }) {
   const [models, setModels] = useState<DiscoveredModel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -816,13 +822,13 @@ function AvailableModels({
     async (modelId: string) => {
       setImportingId(modelId);
       const { data } = await fetchWithToast(
-        () => importModel(providerId, modelId, undefined, baseUrl),
+        () => importModel(providerId, modelId, undefined, baseUrl, variant),
         { successMessage: `${modelId} enabled`, errorMessage: `Failed to enable ${modelId}` },
       );
       if (data !== undefined) setImportedIds((prev) => new Set(prev).add(modelId));
       setImportingId(null);
     },
-    [providerId, baseUrl],
+    [providerId, baseUrl, variant],
   );
 
   const handleImportAll = useCallback(async () => {
@@ -833,7 +839,7 @@ function AvailableModels({
     let failed = 0;
     for (const model of toImport) {
       const { data } = await fetchWithToast(
-        () => importModel(providerId, model.id, undefined, baseUrl),
+        () => importModel(providerId, model.id, undefined, baseUrl, variant),
         { showSuccessToast: false, errorMessage: `Failed to enable ${model.id}` },
       );
       if (data !== undefined) {
@@ -849,7 +855,7 @@ function AvailableModels({
       message.warning(`Imported ${succeeded}, failed ${failed}`);
     }
     setImportAllLoading(false);
-  }, [providerId, baseUrl, importedIds, displayModels]);
+  }, [providerId, baseUrl, variant, importedIds, displayModels]);
 
   const handleDisable = useCallback(
     async (modelId: string) => {
@@ -1047,12 +1053,14 @@ function ProviderDetail({
   providerLabel,
   isCustom,
   baseUrl,
+  variant,
   onBack,
 }: {
   providerId: string;
   providerLabel: string;
   isCustom?: boolean;
   baseUrl?: string;
+  variant?: string;
   onBack: () => void;
 }) {
   const [keys, setKeys] = useState<ProviderKeyEntry[]>([]);
@@ -1265,7 +1273,7 @@ function ProviderDetail({
       )}
 
       {/* Available Models: live discovery when keys exist, catalog fallback otherwise */}
-      <AvailableModels providerId={providerId} hasKeys={keys.length > 0} baseUrl={baseUrl} />
+      <AvailableModels providerId={providerId} hasKeys={keys.length > 0} baseUrl={baseUrl} variant={variant} />
 
       {/* Add / Edit Key Modal */}
       <Modal
@@ -1564,6 +1572,7 @@ export default function ProvidersTab() {
           providerLabel={custom.name}
           isCustom
           baseUrl={custom.baseUrl}
+          variant={custom.variant}
           onBack={handleBack}
         />
       );
