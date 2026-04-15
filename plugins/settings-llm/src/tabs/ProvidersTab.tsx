@@ -1580,7 +1580,7 @@ export default function ProvidersTab() {
   }
 
   return (
-    <div>
+    <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       <div style={{ marginBottom: 16 }}>
         <Text style={{ color: 'var(--text-secondary)' }}>
           Provider API keys are stored securely in the vault and referenced via

@@ -4,7 +4,7 @@ const { Text, Title } = Typography;
 
 export default function RoutingTab() {
   return (
-    <div>
+    <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       <Text type="secondary">
         Configure model routing, aliases, and fallback strategies for the LLM gateway.
       </Text>

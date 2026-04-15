@@ -308,7 +308,7 @@ export default function ApiKeysTab() {
   }
 
   return (
-    <div>
+    <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text type="secondary">

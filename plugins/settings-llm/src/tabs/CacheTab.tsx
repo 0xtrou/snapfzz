@@ -342,7 +342,7 @@ export default function CacheTab() {
   }, 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
 
       {/* Section 0: Cache Status */}
       <Section title="Cache Status">

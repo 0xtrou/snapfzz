@@ -287,7 +287,7 @@ export default function AuditLogTab() {
   const keyExtractor = useCallback((log: SpendLog) => log.request_id, []);
 
   return (
-    <div>
+    <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       {/* Toolbar: filter + retention controls */}
       <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Select
