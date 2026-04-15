@@ -126,6 +126,7 @@ impl ProcessFactory for LiteLLMFactory {
              \x20 store_prompts_in_spend_logs: True\n\
              \n\
              litellm_settings:\n\
+             \x20 drop_params: True\n\
              \x20 cache: True\n\
              \x20 cache_params:\n\
              \x20   type: \"disk\"\n\
