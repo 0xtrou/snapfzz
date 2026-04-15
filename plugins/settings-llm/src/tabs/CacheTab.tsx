@@ -145,8 +145,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     >
       <div
         style={{
-          color: 'var(--text-muted)',
-          fontSize: 11,
+          color: 'var(--text-primary)',
+          fontSize: 13,
           fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: 1,

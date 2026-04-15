@@ -1125,7 +1125,7 @@ function ProviderDetail({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg-subtle)', borderRadius: 8, padding: 20 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Button

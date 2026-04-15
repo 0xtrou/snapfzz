@@ -86,7 +86,7 @@ export function PretextPaginatedList<T>({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '8px 0',
+            padding: '8px 16px',
             borderTop: '1px solid var(--border-default)',
             fontSize: 12,
             color: 'var(--text-muted)',
