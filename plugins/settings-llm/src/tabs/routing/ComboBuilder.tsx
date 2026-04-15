@@ -232,7 +232,13 @@ function StepDeployments({
   const selectedNames = deployments
     .map((d) => availableModels.find((m) => m.model === d.model)?.name ?? d.model);
 
-  const modelOptions = availableModels.map((m) => ({ label: m.name, value: m.name }));
+  // Filter models by selected API type — only show models whose litellm_params.model
+  // starts with the selected prefix (openai/ or anthropic/)
+  const filteredModels = availableModels.filter((m) => {
+    if (!m.model) return true; // Show if no model info
+    return m.model.startsWith(`${apiType}/`);
+  });
+  const modelOptions = filteredModels.map((m) => ({ label: m.name, value: m.name }));
 
   const handleSelectionChange = (selected: string[]) => {
     const newDeployments: Deployment[] = selected.map((name) => {
@@ -642,7 +648,7 @@ export default function ComboBuilder({ existingCombo, providers, availableModels
             deployments={deployments}
             availableModels={availableModels}
             apiType={apiType}
-            onApiTypeChange={setApiType}
+            onApiTypeChange={(t) => { setApiType(t); setDeployments([]); }}
             onChange={setDeployments}
           />
         )}
