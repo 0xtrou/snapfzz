@@ -25,6 +25,7 @@ fn python_pack_specs() -> Vec<String> {
         package_spec("agentscope", versions::AGENTSCOPE),
         package_spec("agentscope-runtime", versions::AGENTSCOPE_RUNTIME),
         format!("litellm[proxy]=={}", versions::LITELLM),
+        "diskcache".to_string(),
         "prisma".to_string(),
         "greenlet".to_string(),
     ]
@@ -428,11 +429,12 @@ mod tests {
     #[test]
     fn t32_python_pack_specs_returns_all_required_packages() {
         let specs = python_pack_specs();
-        assert_eq!(specs.len(), 5);
+        assert_eq!(specs.len(), 6);
         assert!(specs[0].starts_with("agentscope=="));
         assert!(specs[1].starts_with("agentscope-runtime=="));
         assert!(specs[2].starts_with("litellm[proxy]=="));
-        assert_eq!(specs[3], "prisma");
+        assert_eq!(specs[3], "diskcache");
+        assert_eq!(specs[4], "prisma");
     }
 
     #[test]
