@@ -20,10 +20,6 @@ pub fn get_or_create_master_key(vault: &mut SecretVault) -> Result<String, LlmEr
     }
 }
 
-pub fn master_key_env_var() -> String {
-    "LITELLM_MASTER_KEY".to_string()
-}
-
 fn vault_error(error: VaultError) -> LlmError {
     LlmError::Vault(error.to_string())
 }
@@ -57,9 +53,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a013_vault_master_key_env_var() {
-        // A013/Vault: master key env var name
-        assert_eq!(master_key_env_var(), "LITELLM_MASTER_KEY".to_string());
-    }
 }

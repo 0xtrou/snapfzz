@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 pub fn generate_config(
     config: &GatewayConfig,
-    vault_keys: &[String],
+    _vault_keys: &[String],  // Deprecated — kept for call-site compat, always empty
     data_dir: &Path,
 ) -> Result<String, LlmError> {
     if !config
@@ -15,23 +15,6 @@ pub fn generate_config(
         return Err(LlmError::Message(
             "master_key must use os.environ/ reference".to_string(),
         ));
-    }
-
-    for deployment in &config.model_list {
-        if !deployment.litellm_params.api_key.starts_with("os.environ/") {
-            return Err(LlmError::Message(format!(
-                "api_key for model '{}' must use os.environ/ reference",
-                deployment.model_name
-            )));
-        }
-    }
-
-    for key in vault_keys {
-        if key.trim().is_empty() {
-            return Err(LlmError::Message(
-                "vault key names cannot be empty".to_string(),
-            ));
-        }
     }
 
     let mut config = config.clone();

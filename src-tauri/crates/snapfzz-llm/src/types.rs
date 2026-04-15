@@ -58,18 +58,6 @@ pub struct DefaultKeyGenerateParams {
     pub budget_duration: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ProviderConfig {
-    pub provider_id: String,
-    pub key_name: String,
-    pub model_name: String,
-    pub provider_model: String,
-    pub api_base: Option<String>,
-    pub rpm: Option<u32>,
-    pub tpm: Option<u32>,
-    pub enabled: bool,
-}
-
 #[derive(Debug, Error)]
 pub enum LlmError {
     #[error("io error: {0}")]
@@ -129,22 +117,4 @@ mod tests {
         assert_eq!(decoded, config);
     }
 
-    #[test]
-    fn a013_types_provider_config_round_trip_json_serialization() {
-        let config = ProviderConfig {
-            provider_id: "openai".to_string(),
-            key_name: "key_1".to_string(),
-            model_name: "gpt-4o".to_string(),
-            provider_model: "openai/gpt-4o".to_string(),
-            api_base: None,
-            rpm: Some(100),
-            tpm: Some(1_000),
-            enabled: true,
-        };
-
-        let json = serde_json::to_string(&config).expect("serialize json");
-        let decoded: ProviderConfig = serde_json::from_str(&json).expect("deserialize json");
-
-        assert_eq!(decoded, config);
-    }
 }
