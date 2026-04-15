@@ -1159,6 +1159,31 @@ mod tests {
         assert!(CefInstallCheck::is_installed(&downloader));
     }
 
+    // ── installed_version via resolve when CEF is installed ──────────────────
+
+    #[tokio::test]
+    async fn a015_resolve_returns_installed_info_when_cef_binary_dir_exists() {
+        // Exercises installed_version() — the fast path in resolve() that skips the CDN
+        // and reads the version from the local cef_binary_* directory name.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let install_dir = temp.path().join("cef");
+        // Create a cef_binary directory matching the version-in-name format.
+        std::fs::create_dir_all(
+            install_dir.join("cef_binary_146.0.10+gabcdef+chromium-146.0.7423.3_macosarm64_minimal"),
+        )
+        .expect("create cef_binary dir");
+
+        let downloader = CefDownloader::new(install_dir, "macos-arm64".to_string());
+        // is_installed() must be true for the fast path to be taken.
+        assert!(downloader.is_installed());
+
+        let info = downloader.resolve().await.expect("resolve should succeed when installed");
+        assert!(info.is_installed);
+        // installed_version strips the prefix and takes the part before the first '+'.
+        assert_eq!(info.version, "146.0.10");
+        assert_eq!(info.platform, "macos-arm64");
+    }
+
     // ── download_events delegates to download_cef ────────────────────────────
 
     #[tokio::test]

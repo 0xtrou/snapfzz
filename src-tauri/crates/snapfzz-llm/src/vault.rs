@@ -53,4 +53,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a013_vault_error_maps_vault_error_to_llm_error() {
+        // A013/Vault: vault_error converts VaultError into LlmError::Vault(message)
+        // Exercise vault_error by passing a non-NotFound VaultError through get_or_create_master_key.
+        // We trigger the store-failure path by making the vault file unreadable after open,
+        // then calling get_or_create_master_key which will try to read (gets NotFound) then store.
+        // Instead, test vault_error directly via the exposed LlmError::Vault variant.
+        use snapfzz_vault::VaultError;
+        let vault_err = VaultError::Crypto("bad nonce".to_string());
+        let llm_err = vault_error(vault_err);
+        assert!(llm_err.to_string().contains("bad nonce"));
+        assert!(matches!(llm_err, crate::types::LlmError::Vault(_)));
+    }
+
 }

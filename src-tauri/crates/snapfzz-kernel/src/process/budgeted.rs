@@ -1082,7 +1082,7 @@ mod tests {
         )
         .expect("process");
 
-        assert_eq!(process.name(), "litellm");
+        assert_eq!(process.name(), "llm-gateway");
     }
 
     // -------------------------------------------------------------------------
@@ -1259,7 +1259,7 @@ mod tests {
             database_url: None,
         };
 
-        assert_eq!(LitellmFactory.name(), "litellm");
+        assert_eq!(LitellmFactory.name(), "llm-gateway");
         assert_eq!(LitellmFactory.health_path(), "/health");
         assert_eq!(LitellmFactory.port_settings_keys(), ("litellmHost", "litellmPort"));
         assert_eq!(LitellmFactory.working_dir(&Settings::default()), Some(PathBuf::from("/tmp")));

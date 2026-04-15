@@ -77,6 +77,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a013_types_llm_error_json_conversion_from_serde_json_error() {
+        // A013/Types: LlmError::Json wraps serde_json::Error via From impl
+        let json_err: Result<serde_json::Value, _> = serde_json::from_str("{bad json}");
+        let err = json_err.unwrap_err();
+        let llm_err: LlmError = err.into();
+        assert!(matches!(llm_err, LlmError::Json(_)));
+        assert!(!llm_err.to_string().is_empty());
+    }
+
+    #[test]
     fn a013_types_gateway_config_round_trip_yaml_serialization() {
         let config = GatewayConfig {
             model_list: vec![ModelDeployment {
