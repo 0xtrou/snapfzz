@@ -264,10 +264,14 @@ ctx.rust.invoke('agent_health')
 ```
 plugins/orchestrator/
 ├── SPEC.md
+├── manifest.json                    # Plugin manifest — id, runtimes, main
 ├── package.json                     # deps: @snapfzz/plugin-sdk, @snapfzz/shared
 ├── tsconfig.json
-├── src/
-│   ├── index.ts                     # definePlugin() — manifest + budget + activate()
+├── vite.config.ts
+├── vitest.config.ts
+│
+├── src/                             # TypeScript — Zone 3 (browser)
+│   ├── index.ts                     # definePlugin() — contributions + activate()
 │   ├── contributions/
 │   │   ├── ChatPanel.tsx            # PretextList + PretextBubble + PretextInput
 │   │   ├── ConnectionStatus.tsx     # reads agent_health
@@ -282,9 +286,59 @@ plugins/orchestrator/
 │   │   ├── ThinkingIndicator.tsx
 │   │   └── ScrollPill.tsx
 │   ├── hooks/
-│   │   └── use-chat.ts             # State: Msg[], send(), stop(), streaming
-│   └── types.ts                     # Frontend mirror of AgentScope Msg + ContentBlock
+│   │   └── use-chat.ts              # State: Msg[], send(), stop(), streaming
+│   └── types.ts                     # Frontend mirror of Msg + ContentBlock
+│
+├── dist/                            # Built TypeScript bundle (output of vite build)
+│   ├── index.js
+│   ├── ChatPanel-*.js
+│   ├── ConnectionStatus-*.js
+│   ├── TokenCounter-*.js
+│   └── use-chat-*.js
+│
+├── intelligence/                    # Python intelligence package — Zone 1
+│   ├── agent/                       # ReAct agent loop, hooks
+│   ├── config/                      # Configuration models
+│   ├── memory/                      # PostgresMemory, agent_md, remelight
+│   ├── mission/                     # Handler, prompts, runner, state
+│   ├── security/                    # File guard, skill scanner, tool guard
+│   ├── src/orchestrator/            # CLI entry: app.py, cli.py
+│   ├── tools/                       # File I/O, shell, browser, media, agent ops
+│   ├── pyproject.toml               # Package — exposes `orchestrator` binary
+│   └── requirements.txt
+│
+├── runtime/                         # Populated at install time by install_plugin_runtime
+│   └── bin/
+│       └── orchestrator             # Binary copied from venv/bin/orchestrator
+│
+├── pack/                            # Declarative agent configuration
+│   ├── pack.yaml                    # Agent config (id: snapfzz.orchestrator)
+│   └── prompts/
+│       ├── system.md                # System prompt
+│       └── contexts/                # Context-specific prompt fragments
+│
 └── __tests__/
+```
+
+### Runtime Lifecycle
+
+```
+Plugin host calls:
+  1. install_system_plugin("snapfzz.orchestrator")
+     → dev: creates ~/.snapfzz/plugins/snapfzz.orchestrator → plugins/orchestrator (symlink)
+     → prod: copies bundle from app resources
+
+  2. install_plugin_runtime(declaration)
+     → uv pip install --editable ~/.snapfzz/plugins/snapfzz.orchestrator/intelligence/
+     → cp venv/bin/orchestrator → ~/.snapfzz/plugins/snapfzz.orchestrator/runtime/bin/orchestrator
+
+  3. register_plugin_runtime(declaration)
+     → Creates PluginProcessFactory, registers in ProcessFactoryRegistry
+
+  4. spawn_plugin_runtime("chat.orchestrator")
+     → PluginProcessFactory checks runtime/bin/orchestrator exists (can_start)
+     → Spawns: runtime/bin/orchestrator app --host 127.0.0.1 --port {dynamic}
+     → Health check loop begins at /health every 2s
 ```
 
 ---

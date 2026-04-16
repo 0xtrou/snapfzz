@@ -30,15 +30,16 @@ snapfzz-startup-launcher/
 │   │   │   ├── components.rs           # system pack CRUD
 │   │   │   ├── llm.rs                  # LiteLLM config, key/spend tracking
 │   │   │   ├── pip.rs                  # python pack install/uninstall
+│   │   │   ├── plugin_runtime.rs       # install/register/spawn/unregister plugin runtimes
 │   │   │   └── system.rs               # health, open_path, pick_folder
 │   │   ├── factories/                  # ProcessFactory impls
-│   │   │   ├── agentscope.rs
+│   │   │   ├── plugin_runtime.rs       # PluginProcessFactory (generic, A020 Phase 1)
 │   │   │   └── litellm.rs
 │   │   ├── helpers.rs
 │   │   └── metrics.rs                  # 2s budget-metrics emission loop
 │   ├── crates/
 │   │   ├── snapfzz-kernel/             # Boot, budget registry, process mgmt, settings
-│   │   ├── snapfzz-packs/              # Runtime management (Python, PostgreSQL, LiteLLM, AgentScope, CEF)
+│   │   ├── snapfzz-packs/              # Runtime management (Python, PostgreSQL, LiteLLM, CEF)
 │   │   ├── snapfzz-stream/             # SSE parsing + token batching
 │   │   ├── snapfzz-vault/              # AES-256-GCM secret vault
 │   │   ├── snapfzz-llm/                # LiteLLM config gen, key/spend proxy
@@ -55,10 +56,14 @@ snapfzz-startup-launcher/
 │   └── preferences/                    # @snapfzz/preferences — thin shell for settings window
 │
 ├── plugins/                            # System plugins (TypeScript, in-process)
-│   ├── chat/                           # Orchestrator conversation + AI runtime
+│   ├── orchestrator/                   # Orchestrator conversation + AI runtime (snapfzz.orchestrator)
+│   │   ├── manifest.json               # Plugin manifest — id, runtimes.python[], main
 │   │   ├── src/                        # TypeScript UI (Zone 3)
-│   │   └── runtime/                    # Python runtime (Zone 1) — 9-block scaffolding
-│   │       └── blocks/                 # BlockPipeline, 9 blocks (~995 lines)
+│   │   ├── dist/                       # Built TypeScript bundle
+│   │   ├── intelligence/               # Python intelligence package (Zone 1, QwenPaw)
+│   │   │   └── src/orchestrator/       # CLI entry point (app.py, cli.py)
+│   │   ├── runtime/bin/                # Installed binary (set by install_plugin_runtime)
+│   │   └── pack/                       # Declarative config (pack.yaml, prompts/)
 │   ├── settings-general/
 │   ├── settings-llm/
 │   ├── settings-performance/
@@ -126,7 +131,7 @@ Async (fire-and-forget):
   Phase 3: Service Spawn (waits for both)
     → spawn_all() concurrent via tokio::spawn
     → LiteLLM: prisma cache → spawn
-    → AgentScope: can_start()=false → skip
+    (plugin runtimes spawn at plugin activation, not boot)
 ```
 
 ---
@@ -135,7 +140,7 @@ Async (fire-and-forget):
 
 **Core is the bones. Everything else is a plugin.**
 
-- **System plugins** (TypeScript, in-process, trusted): Chat, KB, Code, Preview, Settings-*
+- **System plugins** (TypeScript, in-process, trusted): Orchestrator, KB, Code, Preview, Settings-*
 - **User plugins** (any language, process-isolated, webhook-based): third-party, sandboxed
 
 ### Plugin Manifest Pattern
@@ -315,7 +320,7 @@ These are non-negotiable. Violating any of these will get your PR rejected.
 | A015 | Mini App Runtime | CEF child WebViews, sandboxed iframe host |
 | A016 | Runtime Architecture | Runtime trait, RuntimeManager, is_runtime_ready |
 | A018 | Packs Refactoring | Vertical domain slices, core/ + service packs |
-| A020 | Composable Intelligence | 9-block scaffolding, plugin artifact discovery, PostgresMemory (IN PROGRESS) |
+| A020 | Composable Intelligence | Plugin artifact discovery (DONE — Phase 1), QwenPaw intelligence layer, PluginProcessFactory, Phases 2–6 planned |
 | A039 | Phased Boot | Parallel async boot, prisma cache, fast health poll |
 
 ### UI Specs (docs/ui-specs/)
@@ -368,20 +373,22 @@ Key files: `shared/src/hooks/use-app-settings.ts`, `shared/src/components/shell/
 
 ## Active Initiative: A020 Composable Intelligence
 
-The current major initiative moves intelligence into the chat plugin as a self-contained unit.
+Intelligence delivered as a self-contained plugin (`plugins/orchestrator/`, ID `snapfzz.orchestrator`).
 
-### What's Done
-- Architecture plan (`docs/plans/A020-composable-intelligence.md`)
-- 9-block Python scaffolding (`plugins/chat/runtime/blocks/`) — all 11 files, ~995 lines
-  - Blocks: state, context, tools, security, recovery, plan_mode, sentiment, multi_agent, agent_loop
-  - Pipeline: `BlockPipeline.from_pack()` reads pack.yaml, `build()` produces configured agent
+### Phase 1 — DONE
+- Plugin renamed `plugins/chat/` → `plugins/orchestrator/`, ID `snapfzz.orchestrator`
+- `AgentScopeFactory` / `AgentScopeService` removed; replaced by generic `PluginProcessFactory`
+- Full plugin runtime lifecycle: `install_system_plugin` → `install_plugin_runtime` → `register_plugin_runtime` → `spawn_plugin_runtime`
+- System plugins follow the same install flow as user plugins (whitelisted in `SYSTEM_PLUGINS`)
+- Orchestrator binary compiled by `install_plugin_runtime` (pip install via uv, binary to `runtime/bin/`)
+- Intelligence layer delivered via QwenPaw extraction into `plugins/orchestrator/intelligence/`
+- 9-block scaffolding design was not implemented — replaced by QwenPaw extraction
 
-### What's Next (6 phases)
-1. **Plugin artifact discovery** — extend plugin SDK with `runtimes` field, generic `PluginProcessFactory`
+### What's Next (Phases 2–6)
 2. **Memory database** — `snapfzz-memory` crate, PostgreSQL `memory` DB, migrations
-3. **Remaining Phase 3** — `app.py`, `memory.py`, `tools/`, `pack/pack.yaml`, system prompts
-4. **Chat plugin intelligence contributions** — manifest runtimes, agentTools, agentSkills
-5. **Chat UI rich input** — file upload, session switcher, memory indicator
+3. **Intelligence integration** — wire `pack/pack.yaml` into runtime startup, end-to-end chat flow
+4. **Plugin intelligence contributions** — agentTools, agentSkills in manifest
+5. **Rich input UI** — file upload, session switcher, memory indicator
 6. **RAG pipeline** — pgvector embeddings, similarity search, fact extraction
 
 ---

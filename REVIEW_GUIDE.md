@@ -137,7 +137,7 @@ CORE PACKAGES (infrastructure only):
   @snapfzz/project       → thin shell, reads from store
 
 PLUGIN PACKAGES (features):
-  plugins/chat/           → Chat UI, orchestrator conversation
+  plugins/orchestrator/   → Orchestrator chat UI + AI runtime (snapfzz.orchestrator)
   plugins/team/           → Agent dashboard
   plugins/knowledge-base/ → Notion-like docs
   plugins/code/           → Monaco editor, file explorer, git

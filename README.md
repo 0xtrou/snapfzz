@@ -51,7 +51,7 @@ Coverage ≥90% enforced by CI on every push. Rust coverage via `cargo-llvm-cov`
 
 | Package | Coverage |
 |---|---|
-| [`@snapfzz/chat`](plugins/chat/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/chat.json)](plugins/chat/) |
+| [`@snapfzz/orchestrator`](plugins/orchestrator/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/orchestrator.json)](plugins/orchestrator/) |
 | [`@snapfzz/settings-general`](plugins/settings-general/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-general.json)](plugins/settings-general/) |
 | [`@snapfzz/settings-llm`](plugins/settings-llm/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-llm.json)](plugins/settings-llm/) |
 | [`@snapfzz/settings-performance`](plugins/settings-performance/) | [![](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/snapfzz/main/.badges/settings-performance.json)](plugins/settings-performance/) |

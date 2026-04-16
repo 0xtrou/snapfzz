@@ -292,50 +292,33 @@ intelligence/
 
 ### The Problem
 
-Plugins currently only declare TypeScript contributions (Zone 3). But a plugin like `plugins/chat/` ships artifacts across all zones:
+Plugins previously only declared TypeScript contributions (Zone 3). But `plugins/orchestrator/` ships artifacts across all zones:
 
 - **Zone 3** (Browser): TypeScript UI components
-- **Zone 1** (Python process): AgentScope Runtime
+- **Zone 1** (Python process): Intelligence runtime (orchestrator binary)
 - **Zone 2** (Web Worker): Future — syntax highlighting, state management
 
 The app needs to **discover and wire** these at boot/activation time.
 
-### Solution: Extend `definePlugin()` with `runtimes`
+### Solution: `runtimes` field in `manifest.json` (DONE)
 
-```typescript
-// New types in plugin-sdk/src/types.ts
+Runtime declarations live in `manifest.json` rather than TypeScript `definePlugin()`. The `PluginRuntimeDeclaration` Rust struct (`src-tauri/src/commands/plugin_runtime.rs`) is the authoritative schema:
 
-export interface PluginPythonRuntime {
-  id: string;                    // "chat.agentscope"
-  module?: string;               // "app" (for python -m app)
-  entrypoint: string;            // "runtime/app.py"
-  workingDir: string;            // "runtime"
-  healthPath: string;            // "/health"
-  healthIntervalMs?: number;     // 2000
-  dependencies?: string;         // "runtime/requirements.txt"
-  resources?: {
-    maxMemoryMb?: number;        // 512
-    maxRestarts?: number;        // 10
-  };
-  env?: Record<string, string>;  // extra env vars
-  requiresDatabase?: boolean;    // needs MEMORY_DATABASE_URL
-}
-
-export interface PluginWorkerScript {
-  id: string;                    // "chat.syntax-highlighter"
-  entrypoint: string;            // "workers/highlighter.ts"
-  type: 'dedicated' | 'shared';
-}
-
-export interface PluginRuntimes {
-  python?: PluginPythonRuntime[];
-  workers?: PluginWorkerScript[];
-}
-
-// Extended PluginManifest
-export interface PluginManifest {
-  // ... existing fields ...
-  runtimes?: PluginRuntimes;     // NEW
+```
+PluginRuntimeDeclaration {
+  runtime_id: String,         // "chat.orchestrator"
+  plugin_id: String,          // "snapfzz.orchestrator"
+  package_dir: String,        // "intelligence"
+  command: String,            // "orchestrator app"
+  health_check: String,       // "/health"
+  health_interval_ms?: u64,   // 2000
+  max_memory_mb?: u64,        // 512
+  max_restarts?: u32,         // 10
+  requires_database?: bool,   // true
+  env?: HashMap<String, String>,
+  host_flag?: String,         // "--host"
+  port_flag?: String,         // "--port"
+  additional_args?: Vec<String>,
 }
 ```
 

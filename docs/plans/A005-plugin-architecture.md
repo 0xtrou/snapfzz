@@ -361,7 +361,7 @@ All plugin ports bound to `127.0.0.1` only — never exposed to network.
 
 ```
 plugins/
-├── chat/                   system plugin (TypeScript)
+├── orchestrator/           system plugin (TypeScript + Python runtime, snapfzz.orchestrator)
 ├── settings-general/       system plugin
 ├── settings-vault/         system plugin
 └── ...
@@ -561,8 +561,8 @@ PLUGINS                                    [Reload All]
 
 SYSTEM PLUGINS
 ┌─────────────────────────────────────────────────────┐
-│ Chat                                 ● Running      │
-│ snapfzz.chat v1.0.0                                │
+│ Orchestrator                         ● Running      │
+│ snapfzz.orchestrator v0.1.0                        │
 │ [Reload]                                            │
 ├─────────────────────────────────────────────────────┤
 │ Knowledge Base                       ◌ Lazy         │
@@ -657,8 +657,12 @@ On install: verify against Snapfzz registry public key + author public key.
 
 ```
 snapfzz-kernel/        Boot, budget, process, settings, components trait
-snapfzz-runtime/       Runtime lifecycle (AgentScope, LiteLLM, CEF)
-snapfzz-packs/         System component downloads
+snapfzz-packs/         Runtime lifecycle (LiteLLM, CEF — plugin runtimes managed via PluginProcessFactory)
+snapfzz-kernel/        Boot, budget, process, settings
+snapfzz-stream/        SSE consumer, token batching
+snapfzz-vault/         AES-256-GCM secret vault
+snapfzz-llm/           LiteLLM config + key/spend proxy
+snapfzz-plugin-bridge/ Plugin→kernel validation, capability checking
 snapfzz-stream/        SSE consumer, token batching
 snapfzz-vault/         AES-256-GCM secret vault
 snapfzz-llm/           LiteLLM config + key/spend proxy

@@ -30,8 +30,8 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 │    └── system.rs      health, open_path, pick_folder, preferences   │
 │                                                                      │
 │  factories/         ← ProcessFactory impls for managed services      │
-│    ├── agentscope.rs  AgentScope process factory                     │
-│    └── litellm.rs     LiteLLM process factory (prisma cache, DB URL)│
+│    ├── plugin_runtime.rs  PluginProcessFactory (generic, A020)       │
+│    └── litellm.rs         LiteLLM process factory (prisma cache, DB)│
 │                                                                      │
 │  helpers.rs         ← resolve_data_dir, configure_runtime_env        │
 │  metrics.rs         ← 2s budget-metrics emission loop                │
@@ -59,8 +59,8 @@ RUNTIME MANAGEMENT (snapfzz-packs)     DOMAIN LOGIC (standalone crates)
 │   PostgreSQL infra          │        │                             │
 │                             │        │ snapfzz-cef                │
 │ litellm/  → how to spawn   │        │   CefRuntime, CefWindow,   │
-│ agentscope/ → how to spawn  │        │   CDP server, screenshots  │
-│ cef/      → how to download │        │                             │
+│ cef/      → how to download │        │   CDP server, screenshots  │
+│                             │        │                             │
 └─────────────────────────────┘        │ snapfzz-stream             │
                                        │   SSE parsing, batching    │
                                        │                             │
@@ -74,7 +74,7 @@ RUNTIME MANAGEMENT (snapfzz-packs)     DOMAIN LOGIC (standalone crates)
 | Crate | Layer | Owns | Does NOT own |
 |---|---|---|---|
 | **snapfzz-kernel** | Orchestration | Boot (preflight + hooks), budget (registry + presets + permits), process (spawn + health + logs + supervisor), settings (schema + load/save) | Tauri commands, domain logic, runtime lifecycle |
-| **snapfzz-packs** | Runtime mgmt | Service pack architecture: `core/` (traits, DTOs, Python toolchain, PostgreSQL infra), `litellm/` (spawn config), `agentscope/` (spawn config), `cef/` (download + install). Implements SystemComponent + ManagedService traits. | Domain logic, process spawning, Tauri commands |
+| **snapfzz-packs** | Runtime mgmt | Service pack architecture: `core/` (traits, DTOs, Python toolchain, PostgreSQL infra), `litellm/` (spawn config), `cef/` (download + install). Implements SystemComponent + ManagedService traits. Plugin runtimes use `PluginProcessFactory` in `src-tauri/src/factories/` — not a packs service. | Domain logic, process spawning, Tauri commands |
 | **snapfzz-cef** | Domain logic | CEF runtime lifecycle, window management (navigate, screenshot, devtools), CDP automation, CefInstallCheck trait | CEF binary download (that's in packs/cef), Tauri commands |
 | **snapfzz-llm** | Domain logic | LiteLLM config.yaml generation, virtual key management (/key/* proxy), spend tracking (/spend/* proxy) | LiteLLM process lifecycle (that's in packs/litellm) |
 | **snapfzz-stream** | Domain logic | SSE consumer, token batching at `batch_interval_ms`, Channel callback | Tauri Channel type, HTTP client config |
@@ -135,9 +135,6 @@ snapfzz-packs/src/
 │
 ├── litellm/                     ← LiteLLM runtime pack (how to spawn)
 │   └── service.rs                 LiteLLMService (implements ManagedService)
-│
-├── agentscope/                  ← AgentScope runtime pack (how to spawn)
-│   └── service.rs                 AgentScopeService (implements ManagedService)
 │
 ├── cef/                         ← CEF runtime pack (how to download + install)
 │   ├── download.rs                CefDownloader (SystemComponent), download_status
@@ -213,8 +210,8 @@ Phase 1: Python Runtime                 Phase 2: PostgreSQL
                       ├── wait python_ready + pg_ready
                       ├── set_database_url from watch channel
                       ├── spawn_all() (concurrent via tokio::spawn)
-                      │   ├── LiteLLM: prisma cache check → spawn
-                      │   └── AgentScope: can_start()=false → skip
+                      │   └── LiteLLM: prisma cache check → spawn
+                      │   (plugin runtimes spawn at plugin activation, not boot)
                       └── emit supervisor events per service
 ```
 
@@ -230,9 +227,9 @@ Phase 1: Python Runtime                 Phase 2: PostgreSQL
 
 ```
 ProcessFactoryRegistry  (guarded by RwLock — concurrent reads during boot)
-  ├── LiteLLM      port dynamic  health: /health/liveliness
-  ├── AgentScope    port dynamic  health: /health (disabled)
-  └── PostgreSQL    port dynamic  managed by postgresql_embedded
+  ├── LiteLLM          port dynamic  health: /health/liveliness  (registered at boot)
+  ├── chat.orchestrator port dynamic  health: /health            (registered at plugin activation)
+  └── PostgreSQL        port dynamic  managed by postgresql_embedded
 
 Each service implements ProcessFactory:
   can_start()       → readiness check
@@ -259,8 +256,10 @@ Each service implements ProcessFactory:
 │   ├── postgres/              PostgreSQL data directory + postmaster.pid
 │   └── litellm/               LiteLLM config (config.yaml)
 └── processes/
-    ├── agentscope/            AgentScope CWD
     └── litellm/               LiteLLM CWD (.prisma_hash)
+
+Note: Plugin processes (orchestrator, future plugins) use
+~/.snapfzz/plugins/{plugin_id}/data/ as their working dir.
 ```
 
 ---
@@ -334,7 +333,7 @@ Rust → Frontend:  app.emit("event-name", payload) → bridge.listen('event-nam
 
 | Plugin | Icon | Order | What |
 |---|---|---|---|
-| `settings-general` | SettingOutlined | 10 | Theme, font, AgentScope host/port |
+| `settings-general` | SettingOutlined | 10 | Theme, font, agent host/port |
 | `settings-llm` | ApiOutlined | 25 | LLM providers, keys, routing, audit |
 | `settings-performance` | DashboardOutlined | 30 | Preset selector, batch interval |
 | `settings-processes` | SearchOutlined | 40 | Process list, logs, restart/kill |
