@@ -11,12 +11,17 @@ export default defineConfig({
     },
     outDir: 'dist',
     emptyOutDir: true,
+    // Single file output — asset:// can't resolve relative chunk imports
+    cssCodeSplit: false,
     rollupOptions: {
       external: [
         'react',
         'react-dom',
         'react/jsx-runtime',
       ],
+      output: {
+        inlineDynamicImports: true,
+      },
     },
   },
 });
