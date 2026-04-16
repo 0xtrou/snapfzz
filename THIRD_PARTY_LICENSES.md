@@ -144,7 +144,8 @@ The Snapfzz source code itself is licensed under the [Snapfzz Community License 
   - **Runtime** (`app/`) → `intelligence/runtime/` — MultiAgentManager, Workspace isolation, DynamicMultiAgentRunner, ServiceManager
   - **Config** (`config/`) → `intelligence/config/` — Pydantic models for all subsystems
   - **Hooks** (`agents/hooks/`) → `intelligence/agent/hooks/` — BootstrapHook, MemoryCompactionHook
-- **Removed components:** Channel adapters (Discord, Telegram, etc.), CLI, provider configs, local model support, console UI, tokenizer — replaced by Snapfzz equivalents (LiteLLM gateway, PluginProcessFactory, Zone 3 frontend)
+- **Removed components:** CLI entry points, provider configs, local model support, tokenizer — replaced by Snapfzz equivalents (LiteLLM gateway, PluginProcessFactory)
+- **Kept as-is:** Channel adapters (Discord, Telegram, Slack, DingTalk, Feishu, QQ, Mattermost, iMessage, MQTT, Matrix, Voice, WeCom) — core communication layer for reaching users beyond the desktop UI
 - **Added components:** `src/orchestrator/cli.py` (Snapfzz CLI entry point), `src/orchestrator/app.py` (FastAPI factory with /health), `memory/postgres.py` (pgvector adapter, planned)
 
 ### AgentScope
