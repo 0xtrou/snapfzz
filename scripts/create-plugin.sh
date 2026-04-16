@@ -98,7 +98,8 @@ create_system_plugin() {
   display_name="$(to_title_case "$name")"
 
   echo "Creating system plugin: plugins/$name/ ..."
-  mkdir -p "$plugin_dir/src/__tests__" "$plugin_dir/src/contributions"
+  mkdir -p "$plugin_dir/src/__tests__" "$plugin_dir/src/contributions" \
+           "$plugin_dir/intelligence/src/${name//-/_}"
 
   # ── package.json
   cat > "$plugin_dir/package.json" <<PKGJSON
@@ -221,6 +222,19 @@ export default definePlugin({
     capabilities: ['rust.invoke', 'bus.emit', 'commands.register', 'logger'],
   },
 
+  runtimes: {
+    python: [{
+      id: '${name}.runtime',
+      packageDir: 'intelligence',
+      command: '${name//-/_} app',
+      healthCheck: '/health',
+      healthIntervalMs: 2000,
+      resources: { maxMemoryMb: 512, maxRestarts: 10 },
+      hostFlag: '--host',
+      portFlag: '--port',
+    }],
+  },
+
   contributes: {
     commands: [],
     shortcuts: [],
@@ -269,6 +283,105 @@ describe('${name} plugin manifest', () => {
 });
 TESTTS
 
+  # ── intelligence/pyproject.toml
+  local py_module="${name//-/_}"
+  cat > "$plugin_dir/intelligence/pyproject.toml" <<PYPROJECT
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "snapfzz-${name}"
+version = "0.1.0"
+description = "${display_name} intelligence backend"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/${py_module}"]
+
+[project.scripts]
+${py_module} = "${py_module}.cli:main"
+PYPROJECT
+
+  # ── intelligence/__init__.py
+  cat > "$plugin_dir/intelligence/__init__.py" <<'INITPY'
+"""Intelligence layer."""
+INITPY
+
+  # ── intelligence/src/{module}/__init__.py
+  cat > "$plugin_dir/intelligence/src/${py_module}/__init__.py" <<'MODINIT'
+"""Python package root."""
+MODINIT
+
+  # ── intelligence/src/{module}/app.py
+  cat > "$plugin_dir/intelligence/src/${py_module}/app.py" <<APPPY
+"""FastAPI application factory."""
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="${display_name}", version="0.1.0", lifespan=_lifespan)
+
+    @app.get("/health")
+    async def health():
+        return JSONResponse({"status": "healthy", "version": "0.1.0"})
+
+    return app
+APPPY
+
+  # ── intelligence/src/{module}/cli.py
+  cat > "$plugin_dir/intelligence/src/${py_module}/cli.py" <<CLIPY
+"""CLI entry point — started by Snapfzz process manager."""
+
+import argparse
+import sys
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="${py_module}")
+    sub = parser.add_subparsers(dest="command")
+
+    app_parser = sub.add_parser("app", help="Start the server")
+    app_parser.add_argument("--host", default="127.0.0.1")
+    app_parser.add_argument("--port", type=int, default=8080)
+    app_parser.add_argument("--log-level", default="info",
+                            choices=["debug", "info", "warning", "error"])
+
+    args = parser.parse_args()
+
+    if args.command == "app":
+        import uvicorn
+        uvicorn.run(
+            "${py_module}.app:create_app",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            log_level=args.log_level,
+            workers=1,
+        )
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+CLIPY
+
   # ── manifest.json
   cat > "$plugin_dir/manifest.json" <<MANIFEST
 {
@@ -277,9 +390,17 @@ TESTTS
   "version": "0.1.0",
   "description": "${display_name} plugin for Snapfzz",
   "type": "system",
-  "main": "./src/index.ts",
+  "main": "dist/index.js",
   "surface": ["project"],
-  "activationEvents": ["onStartupFinished"]
+  "activationEvents": ["onStartupFinished"],
+  "runtimes": {
+    "python": [{
+      "id": "${name}.runtime",
+      "packageDir": "intelligence",
+      "command": "${py_module} app",
+      "healthCheck": "/health"
+    }]
+  }
 }
 MANIFEST
 
