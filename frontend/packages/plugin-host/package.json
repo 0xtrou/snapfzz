@@ -13,9 +13,6 @@
     "@snapfzz/shared": "workspace:*",
     "react": "^19.0.0"
   },
-  "optionalDependencies": {
-    "@snapfzz/orchestrator-plugin": "workspace:*"
-  },
   "devDependencies": {
     "@snapfzz/settings-advanced": "workspace:*",
     "@snapfzz/settings-components": "workspace:*",

@@ -10,48 +10,98 @@ budget: [cpu, memory, network]
 
 > See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current system architecture.
 
-Intelligence is a whitebox shipped via the plugin architecture. The chat plugin is a **self-contained unit** — it owns both the frontend (TypeScript, Zone 3) and the backend intelligence runtime (Python, Zone 1). AgentScope + AgentScope Runtime is the execution engine. A thin 9-block scaffolding layer configures AgentScope from declarative pack config. The app discovers and wires plugin artifacts across all zones automatically.
+Intelligence is a whitebox shipped via the plugin architecture. The orchestrator plugin is a **self-contained unit** — it owns both the frontend (TypeScript, Zone 3) and the backend intelligence runtime (Python, Zone 1). The app discovers and wires plugin artifacts across all zones automatically.
+
+---
+
+## Current State (as of 2026-04-15)
+
+### DONE — Phase 1: Plugin Artifact Discovery
+
+The plugin runtime lifecycle is fully implemented:
+
+- Plugin renamed: `plugins/chat/` → `plugins/orchestrator/`, plugin ID `snapfzz.orchestrator`
+- `AgentScopeFactory` / `AgentScopeService` removed — replaced by generic `PluginProcessFactory`
+- `PluginProcessFactory` (`src-tauri/src/factories/plugin_runtime.rs`) — data-driven factory created from manifest runtime declarations
+- Tauri commands implemented in `src-tauri/src/commands/plugin_runtime.rs`:
+  - `install_system_plugin` — installs system plugins (symlink in dev, copy in production)
+  - `install_plugin_runtime` — pip-installs the intelligence package, copies binary to `runtime/bin/`
+  - `register_plugin_runtime` — registers factory in `ProcessFactoryRegistry`
+  - `spawn_plugin_runtime` — spawns the managed process
+  - `unregister_plugin_runtime` — cleanup on deactivation
+  - `list_installed_plugins`, `get_plugin_info` — discovery helpers for the plugin host
+- System plugins follow the **same install flow as user plugins** — whitelisted in `SYSTEM_PLUGINS` constant
+- The orchestrator binary is compiled by `install_plugin_runtime` (pip install + binary copy to `runtime/bin/`), not a build hook
+
+### DONE — Intelligence Layer: QwenPaw Extraction
+
+The original 9-block scaffolding design was **replaced** by QwenPaw extraction. The intelligence layer now lives at `plugins/orchestrator/intelligence/` as a proper Python package with its own structure:
+
+```
+plugins/orchestrator/intelligence/
+├── agent/          # ReAct agent loop, hooks
+├── config/         # Models, configuration
+├── memory/         # PostgreSQL memory, agent_md, remelight manager
+├── mission/        # Handler, prompts, runner, state
+├── security/       # File guard, skill scanner, tool guard
+├── src/orchestrator/  # Main CLI entry point (app.py, cli.py)
+└── tools/          # File I/O, shell, browser, media, agent ops
+```
+
+The `pack/` directory contains the declarative configuration (`pack.yaml`, `prompts/`).
+
+### PLANNED — Phases 2–6
+
+See Implementation Phases section below.
 
 ---
 
 ## Design Principles
 
-1. **Plugin ships everything.** UI, runtime, pack config, system prompt, tools — all inside `plugins/chat/`. No separate `intelligence/` directory.
-2. **AgentScope is the engine.** ReActAgent, Toolkit, Memory, pipeline coordination — we use them directly.
-3. **9-block scaffolding, not framework.** A thin composition layer (~1000 lines Python) reads pack.yaml and configures AgentScope. Each block wraps one AgentScope primitive. Blocks are independently swappable and evaluable.
+1. **Plugin ships everything.** UI, runtime, pack config, system prompt, tools — all inside `plugins/orchestrator/`. The root-level `intelligence/` directory no longer exists.
+2. **QwenPaw is the intelligence layer.** The Python intelligence package (extracted via QwenPaw) provides the ReAct agent loop, tools, memory, and mission handling.
+3. **Pack config, not framework.** Declarative `pack/pack.yaml` configures the agent. The intelligence package reads this at startup.
 4. **Multi-zone artifact discovery.** Plugins declare runtimes (Python processes, Web Workers) in their manifest. The app discovers and spawns them at activation time.
-5. **PostgreSQL for memory.** Swap AgentScope's `InMemoryMemory` for a `PostgresMemory` adapter.
+5. **PostgreSQL for memory.** The intelligence layer includes a PostgresMemory adapter under `intelligence/memory/`.
 
 ---
 
 ## What Stays
 
-- **AgentScope + AgentScope Runtime** = execution engine (ReActAgent, Toolkit, stream_printing_messages)
 - **LiteLLM gateway** = LLM provider routing (already managed)
 - **snapfzz-stream** = SSE parsing + batching (Rust Zone 1)
 - **Pretext components** = chat rendering (Zone 3)
 - **Plugin architecture** (A005) = contribution types, lifecycle, crash supervision
 
-## What Changes
+## What Changed (Phase 1 — DONE)
 
-- `intelligence/` directory **removed** — contents move into `plugins/chat/runtime/`
+- `intelligence/` directory at repo root **removed** — intelligence now lives inside `plugins/orchestrator/intelligence/`
+- Plugin renamed: `plugins/chat/` → `plugins/orchestrator/`, ID `snapfzz.orchestrator`
 - Plugin SDK extended with `runtimes` field for multi-zone artifact declarations
 - Plugin host discovers and spawns plugin-declared Python runtimes at activation
-- Generic `PluginProcessFactory` replaces hardcoded `AgentScopeFactory`
-- 9-block scaffolding composes AgentScope agents from pack.yaml
-- PostgreSQL gets a dedicated `memory` database
+- Generic `PluginProcessFactory` replaced hardcoded `AgentScopeFactory` — removed `factories/agentscope.rs` and `packs/agentscope/`
+- 9-block scaffolding design **replaced** by QwenPaw extraction into `intelligence/` package structure
+- Orchestrator binary compiled by `install_plugin_runtime` (pip install via uv, binary copied to `runtime/bin/`)
+- System plugins follow the same install flow as user plugins
+
+## What Remains Planned
+
+- PostgreSQL `memory` database (Phase 2)
+- RAG pipeline with pgvector embeddings (Phase 6)
 
 ---
 
 ## Plugin Structure — The Complete Unit
 
 ```
-plugins/chat/                         ← THE SELF-CONTAINED PLUGIN
+plugins/orchestrator/                 ← THE SELF-CONTAINED PLUGIN (renamed from plugins/chat/)
+│
+├── manifest.json                     # Plugin manifest (id: snapfzz.orchestrator)
+│                                     #   runtimes.python[] — intelligence runtime declaration
+│                                     #   main: dist/index.js
 │
 ├── src/                              # TypeScript — browser (Zone 3)
-│   ├── index.ts                      # Plugin manifest (definePlugin)
-│   │                                 #   runtimes.python[] (NEW)
-│   │                                 #   agentTools[], agentSkills[]
+│   ├── index.ts                      # definePlugin()
 │   │                                 #   leftPanelTabs[], statusItems[]
 │   │                                 #   commands[], shortcuts[]
 │   ├── contributions/
@@ -59,60 +109,53 @@ plugins/chat/                         ← THE SELF-CONTAINED PLUGIN
 │   │   ├── ConnectionStatus.tsx      # Status bar — agent health
 │   │   └── TokenCounter.tsx          # Status bar — token usage
 │   ├── components/                   # ContentBlock renderers
-│   │   ├── MessageBubble.tsx
 │   │   ├── ThinkingCallout.tsx
 │   │   ├── ToolUseCard.tsx
 │   │   ├── ToolResultInline.tsx
-│   │   ├── CodeBlock.tsx
-│   │   ├── TextContent.tsx
-│   │   ├── InlineRenderer.tsx
 │   │   ├── ImageContent.tsx
 │   │   ├── AudioPlayer.tsx
 │   │   ├── VideoPlayer.tsx
-│   │   ├── FileAttachment.tsx        # NEW
 │   │   ├── ScrollPill.tsx
 │   │   └── ThinkingIndicator.tsx
 │   ├── hooks/
-│   │   ├── use-chat.ts
-│   │   └── markdown.ts
+│   │   └── use-chat.ts
 │   └── types.ts
 │
-├── runtime/                          # Python — managed process (Zone 1)
-│   ├── app.py                        # AgentScope Runtime entry point
-│   ├── requirements.txt              # Python dependencies
-│   ├── memory.py                     # PostgresMemory(Memory) adapter
-│   ├── tools/                        # Tool functions for Toolkit
-│   │   ├── files.py
-│   │   ├── shell.py
-│   │   ├── web.py
-│   │   └── project.py
-│   └── blocks/                       # 9-block scaffolding (~995 lines)
-│       ├── __init__.py               # Public API: Block, BlockPipeline
-│       ├── base.py                   # Block ABC, BlockResult, Scorecard
-│       ├── pipeline.py              # BlockPipeline: from_pack(), build()
-│       ├── agent_loop.py             # Wraps ReActAgent
-│       ├── multi_agent.py            # Sub-agent topology
-│       ├── plan_mode.py              # Plan vs react threshold
-│       ├── context.py                # Context window config
-│       ├── tools.py                  # Wraps Toolkit
-│       ├── recovery.py               # Failure handling
-│       ├── security.py               # Action authorization
-│       ├── state.py                  # Wraps Memory → PostgresMemory
-│       └── sentiment.py              # Tone adaptation
+├── dist/                             # Compiled TypeScript bundle (built output)
+│   ├── index.js                      # Plugin entry point
+│   ├── ChatPanel-*.js
+│   ├── ConnectionStatus-*.js
+│   ├── TokenCounter-*.js
+│   └── use-chat-*.js
 │
-├── pack/                             # Pure configuration — no code
-│   ├── pack.yaml                     # 9-block config
+├── intelligence/                     # Python intelligence package (Zone 1)
+│   │                                 # QwenPaw extraction — NOT the 9-block scaffolding
+│   ├── agent/                        # ReAct agent loop, hooks
+│   ├── config/                       # Models, configuration
+│   ├── memory/                       # PostgresMemory adapter, remelight manager
+│   ├── mission/                      # Handler, prompts, runner, state
+│   ├── security/                     # File guard, skill scanner, tool guard
+│   ├── src/orchestrator/             # CLI entry point
+│   │   ├── app.py
+│   │   └── cli.py
+│   ├── tools/                        # File I/O, shell, browser, media, agent ops
+│   ├── pyproject.toml
+│   └── requirements.txt
+│
+├── runtime/                          # Runtime artifacts (populated at install time)
+│   └── bin/                          # Compiled binary (copied by install_plugin_runtime)
+│       └── orchestrator              # Executable — installed from venv/bin/
+│
+├── pack/                             # Declarative configuration — no code
+│   ├── pack.yaml                     # Agent configuration
 │   └── prompts/
 │       ├── system.md                 # Orchestrator system prompt
-│       └── contexts/
-│           ├── onboarding.md
-│           ├── building.md
-│           ├── debugging.md
-│           └── shipping.md
+│       └── contexts/                 # Context-specific prompt fragments
 │
 ├── __tests__/
 ├── SPEC.md
 ├── package.json
+├── vite.config.ts
 └── vitest.config.ts
 ```
 
@@ -122,19 +165,23 @@ plugins/chat/                         ← THE SELF-CONTAINED PLUGIN
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                  CHAT PLUGIN (plugins/chat/)                      │
+│             ORCHESTRATOR PLUGIN (plugins/orchestrator/)           │
 │                                                                  │
-│  src/ (Zone 3)                   runtime/ (Zone 1)               │
-│  ├── ChatPanel.tsx               ├── app.py (AgentScope Runtime) │
-│  ├── Composer + file upload      ├── blocks/ (9-block scaffold)  │
-│  ├── ContentBlock renderers      ├── memory.py (PostgresMemory)  │
-│  └── use-chat.ts                 └── tools/ (Toolkit functions)  │
+│  src/ (Zone 3)                   intelligence/ (Zone 1)          │
+│  ├── ChatPanel.tsx               ├── agent/    (ReAct loop)      │
+│  ├── Composer                    ├── mission/  (handler, state)  │
+│  ├── ContentBlock renderers      ├── memory/   (PostgresMemory)  │
+│  └── use-chat.ts                 ├── tools/    (file, shell, web)│
+│                                  ├── security/ (guards)          │
+│                                  └── src/orchestrator/app.py     │
 │                                                                  │
-│  manifest declares:              pack/ (pure config)             │
-│  ├── runtimes.python[]           ├── pack.yaml (block config)    │
-│  ├── agentTools[]                └── prompts/ (system + context) │
-│  ├── agentSkills[]                                               │
-│  └── commands[]                                                  │
+│  manifest.json declares:         pack/ (pure config)             │
+│  ├── runtimes.python[]           ├── pack.yaml                   │
+│  │   └── command: "orchestrator  └── prompts/ (system + context) │
+│  │         app"                                                  │
+│  └── main: dist/index.js         runtime/bin/orchestrator        │
+│                                  (compiled by install_plugin_    │
+│                                   runtime — pip install + copy)  │
 └──────────────┬──────────────────────────┬────────────────────────┘
                │ Tauri IPC                │ HTTP SSE
                ▼                          ▼
@@ -142,93 +189,101 @@ plugins/chat/                         ← THE SELF-CONTAINED PLUGIN
 │                    INFRASTRUCTURE                                │
 │                                                                  │
 │  Rust Bridge (src-tauri/src/commands/)                           │
-│  ├── stream.rs      send_message, stop, session CRUD            │
-│  ├── memory.rs      memory_store, memory_query (NEW)             │
-│  └── plugins.rs     register_plugin_runtimes,                    │
-│                     spawn_plugin_runtime (NEW)                   │
+│  ├── stream.rs         send_message, stop, session CRUD          │
+│  └── plugin_runtime.rs install_system_plugin,                    │
+│                         install_plugin_runtime,                  │
+│                         register_plugin_runtime,                 │
+│                         spawn_plugin_runtime,                    │
+│                         unregister_plugin_runtime,               │
+│                         list_installed_plugins, get_plugin_info  │
 │                                                                  │
 │  Rust Crates                                                     │
-│  ├── snapfzz-stream    SSE parsing + batching                   │
-│  ├── snapfzz-memory    PostgreSQL memory CRUD (NEW)              │
-│  ├── snapfzz-packs     PluginProcessFactory (generic) (MODIFIED)│
+│  ├── snapfzz-stream    SSE parsing + batching                    │
+│  ├── snapfzz-packs     Python + PostgreSQL infrastructure        │
 │  └── snapfzz-kernel    Boot, budget, process, settings           │
 │                                                                  │
-│  PostgreSQL (embedded)                                           │
-│  ├── litellm DB        LLM proxy state (existing)               │
-│  └── memory DB         Conversation + project memory (NEW)       │
+│  src-tauri/src/factories/                                        │
+│  ├── plugin_runtime.rs  PluginProcessFactory (generic, DONE)    │
+│  └── litellm.rs         LiteLLMFactory (existing)               │
 │                                                                  │
-│  LiteLLM Proxy         Multi-provider LLM gateway (existing)    │
+│  PostgreSQL (embedded)                                           │
+│  └── litellm DB         LLM proxy state (existing)              │
+│  (memory DB — PLANNED Phase 2)                                   │
+│                                                                  │
+│  LiteLLM Proxy          Multi-provider LLM gateway (existing)   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 9-Block Scaffolding
+## Intelligence Layer — QwenPaw Extraction
 
-The scaffolding is a **thin composition layer** (~995 lines Python) that reads pack.yaml and produces a configured AgentScope agent. It is NOT a replacement for AgentScope — each block wraps exactly one AgentScope primitive.
+> **Note:** The original 9-block scaffolding design was not implemented. It was replaced by QwenPaw extraction, which produces the `intelligence/` package at `plugins/orchestrator/intelligence/`.
 
-### Block Interface
+The intelligence layer is a Python package installed via `uv pip install --editable` during `install_plugin_runtime`. It exposes a CLI entry point (`orchestrator app`) that the `PluginProcessFactory` spawns as a managed process.
 
-```python
-class Block(ABC):
-    def configure(self, config: dict) -> None:
-        """Merge pack.yaml section with defaults, validate."""
-
-    def apply(self, context: dict) -> BlockResult:
-        """Produce an AgentScope primitive or policy object.
-        Receives accumulated context from previous blocks."""
-
-    def evaluate(self) -> Scorecard:
-        """Self-check: return named boolean checks + 0-1 score."""
-```
-
-### Composition Order
-
-Blocks execute in fixed canonical order. Each injects results into an accumulating context dict:
+### Package Structure
 
 ```
-state → context → tools → security → recovery → plan_mode → sentiment → multi_agent → agent_loop
+intelligence/
+├── agent/
+│   ├── __init__.py
+│   ├── react_agent.py   # ReAct agent loop
+│   └── hooks/           # Agent lifecycle hooks
+├── config/
+│   ├── __init__.py
+│   └── models.py        # Configuration models
+├── memory/
+│   ├── __init__.py
+│   ├── base.py          # Memory base class
+│   ├── postgres.py      # PostgresMemory adapter
+│   ├── agent_md.py      # Markdown-based agent memory
+│   └── remelight_manager.py
+├── mission/
+│   ├── __init__.py
+│   ├── handler.py       # Mission request handler
+│   ├── prompts.py       # Prompt construction
+│   ├── runner.py        # Mission execution
+│   └── state.py         # Mission state
+├── security/
+│   ├── __init__.py
+│   ├── file_guard.py
+│   ├── skill_scanner/
+│   └── tool_guard/
+├── src/orchestrator/
+│   ├── __init__.py
+│   ├── app.py           # Entry point: starts HTTP server
+│   └── cli.py           # CLI definition
+├── tools/
+│   ├── __init__.py
+│   ├── file_io.py
+│   ├── shell.py
+│   ├── browser.py
+│   ├── media.py
+│   └── agent_ops.py
+├── pyproject.toml       # Package definition — exposes `orchestrator` binary
+└── requirements.txt
 ```
 
-### What Each Block Produces
+### Install Flow
 
-| Block | Wraps | Output |
-|-------|-------|--------|
-| `StateBlock` | AgentScope `Memory` | `PostgresMemory` or `InMemoryMemory` instance |
-| `ContextBlock` | Context window config | Meta injection (max_tokens, retrieval config) |
-| `ToolsBlock` | AgentScope `Toolkit` | Configured `Toolkit` with registered functions |
-| `SecurityBlock` | Action gates | `SecurityPolicy` with allow/approve/block checks |
-| `RecoveryBlock` | Error handling | `RecoveryStrategy` with retry/fallback logic |
-| `PlanModeBlock` | Planning threshold | `PlanPolicy` with should_plan(complexity) |
-| `SentimentBlock` | Tone adaptation | `SentimentPolicy` (modifies sys_prompt in context) |
-| `MultiAgentBlock` | Sub-agent specs | `MultiAgentTopology` with lazy agent instantiation |
-| `AgentLoopBlock` | AgentScope `ReActAgent` | Final configured agent (consumes all upstream) |
-
-### Usage in app.py
-
-```python
-from blocks import BlockPipeline
-
-pipeline = BlockPipeline.from_pack("../pack/pack.yaml")
-agent = pipeline.build()
-# AgentScope does the rest — ReAct loop, tool execution, streaming
 ```
+1. install_system_plugin("snapfzz.orchestrator")
+   → dev: symlink plugins/orchestrator → ~/.snapfzz/plugins/snapfzz.orchestrator
+   → prod: copy bundled artifacts
 
-### Block Swapping
+2. install_plugin_runtime(declaration)
+   → uv pip install --editable ~/.snapfzz/plugins/snapfzz.orchestrator/intelligence/
+   → copies venv/bin/orchestrator → ~/.snapfzz/plugins/snapfzz.orchestrator/runtime/bin/orchestrator
 
-```python
-pipeline = BlockPipeline.from_pack("../pack/pack.yaml")
-pipeline.replace_block("state", CustomStateBlock())
-agent = pipeline.build()
-```
+3. register_plugin_runtime(declaration)
+   → creates PluginProcessFactory from manifest declaration
+   → registers in ProcessFactoryRegistry
 
-### Evaluation / Scorecard
-
-```python
-for card in pipeline.evaluate():
-    print(f"{card.block_name}: {card.score:.0%} — {card.checks}")
-# state: 100% — {configured: True, backend_valid: True, ttl_reasonable: True}
-# tools: 75% — {has_tools: True, dangerous_tools_gated: False}
+4. spawn_plugin_runtime("chat.orchestrator")
+   → PluginProcessFactory.can_start() checks runtime/bin/orchestrator exists
+   → builds Command: runtime/bin/orchestrator app --host 127.0.0.1 --port {dynamic}
+   → BudgetedProcess created, health check loop begins at /health
 ```
 
 ---
@@ -284,34 +339,35 @@ export interface PluginManifest {
 }
 ```
 
-### Chat Plugin Manifest — With Runtime Declaration
+### Orchestrator Plugin Manifest — With Runtime Declaration
 
-```typescript
-export default definePlugin({
-  id: 'snapfzz.chat',
-  name: 'Chat',
-  version: '0.2.0',
-  surface: ['project'],
-  activationEvents: ['onStartupFinished'],
+The plugin uses `manifest.json` (not `definePlugin`) for the runtime declaration. The actual runtime registration is driven from this manifest by the plugin host.
 
-  runtimes: {
-    python: [{
-      id: 'chat.agentscope',
-      module: 'app',
-      entrypoint: 'runtime/app.py',
-      workingDir: 'runtime',
-      healthPath: '/health',
-      healthIntervalMs: 2000,
-      dependencies: 'runtime/requirements.txt',
-      resources: { maxMemoryMb: 512, maxRestarts: 10 },
-      requiresDatabase: true,
-    }],
+```json
+{
+  "id": "snapfzz.orchestrator",
+  "name": "Orchestrator",
+  "version": "0.1.0",
+  "description": "Text conversation channel for AgentScope agents",
+  "surface": ["project"],
+  "activationEvents": ["onStartupFinished"],
+  "runtimes": {
+    "python": [
+      {
+        "id": "chat.orchestrator",
+        "packageDir": "intelligence",
+        "command": "orchestrator app",
+        "healthCheck": "/health",
+        "healthIntervalMs": 2000,
+        "resources": { "maxMemoryMb": 512, "maxRestarts": 10 },
+        "requiresDatabase": true,
+        "hostFlag": "--host",
+        "portFlag": "--port"
+      }
+    ]
   },
-
-  budget: { /* ... */ },
-  contributes: { /* ... */ },
-  async activate(ctx) { /* ... */ },
-});
+  "main": "dist/index.js"
+}
 ```
 
 ### Discovery Flow
@@ -320,30 +376,35 @@ export default definePlugin({
 T=0    App launch → main.rs
        ├── Register SYSTEM factories (LiteLLM — hardcoded, compiled)
        ├── Phase 1: Python install ─── ✓
-       ├── Phase 2: PostgreSQL start, create litellm + memory DBs ─── ✓
+       ├── Phase 2: PostgreSQL start, create litellm DB ─── ✓
        └── Phase 3: spawn system services (LiteLLM)
 
 T=200ms  Frontend boots
-       ├── PluginHost discovers manifests
-       ├── Finds runtimes.python[] declarations
+       ├── PluginHost calls install_system_plugin("snapfzz.orchestrator")
+       │   → dev: symlinks plugins/orchestrator → ~/.snapfzz/plugins/snapfzz.orchestrator
+       │   → prod: copies bundled artifacts
+       ├── PluginHost reads manifest.json, finds runtimes.python[] declarations
+       ├── Calls install_plugin_runtime(declaration)
+       │   → uv pip install --editable intelligence/
+       │   → copies orchestrator binary to runtime/bin/
        └── activateByEvent('onStartupFinished')
 
 T=200ms+ Plugin activation (per plugin)
-       ├── host.activate('snapfzz.chat')
+       ├── host.activate('snapfzz.orchestrator')
        │   ├── ensurePluginRuntimes(plugin)
-       │   │   ├── rust.invoke('register_plugin_runtimes', declarations)
+       │   │   ├── rust.invoke('register_plugin_runtime', declaration)
        │   │   │   → Rust creates PluginProcessFactory
        │   │   │   → Registers in ProcessFactoryRegistry
-       │   │   └── rust.invoke('spawn_plugin_runtime', { name: 'chat.agentscope' })
+       │   │   └── rust.invoke('spawn_plugin_runtime', { runtimeId: 'chat.orchestrator' })
        │   │       → BudgetedProcess created, child process started
-       │   │       → Health check loop begins
+       │   │       → Health check loop begins at /health (2s interval)
        │   ├── createPluginContext()
        │   └── plugin.activate(ctx)
 
 T=steady  All zones wired
        ├── Zone 3: ChatPanel renders
        ├── Zone 1 (Rust): send_message handles IPC
-       └── Zone 1 (Python): chat.agentscope running, health-checked
+       └── Zone 1 (Python): chat.orchestrator running, health-checked
 ```
 
 ### Why Activation-Time, Not Boot-Time
@@ -353,65 +414,29 @@ T=steady  All zones wired
 - **Graceful degradation** — runtime spawn failure → plugin error state, not boot crash
 - **Hot reload** — deactivate kills runtime, reactivate respawns it
 
-### Generic PluginProcessFactory
+### Generic PluginProcessFactory (DONE)
 
-Replaces the hardcoded `AgentScopeFactory`. Created from manifest declarations at runtime:
+Replaces the removed `AgentScopeFactory`. Implemented at `src-tauri/src/factories/plugin_runtime.rs`:
 
-```rust
-// src-tauri/src/factories/plugin_runtime.rs
+- Created from manifest `PluginRuntimeDeclaration` at activation time
+- `can_start()` checks `runtime/bin/{binary}` exists (set by `install_plugin_runtime`)
+- `build_command()` resolves binary from `plugins_dir/{plugin_id}/runtime/bin/`, injects host/port as CLI flags and env vars, injects `DATABASE_URL` if `requiresDatabase: true`
+- Working dir: `plugins_dir/{plugin_id}/data/` (auto-created)
+- Port settings keys derived from runtime ID: `{runtimeId}Host`, `{runtimeId}Port`
 
-pub struct PluginProcessFactory {
-    runtime_id: String,
-    plugin_id: String,
-    module: Option<String>,
-    working_dir_relative: String,
-    health_path: String,
-    max_memory_mb: u64,
-    max_restarts: u32,
-    requires_database: bool,
-    env: HashMap<String, String>,
-}
+### Tauri Commands (DONE)
 
-impl ProcessFactory for PluginProcessFactory {
-    fn build_command(&self, config: &SpawnConfig, runtime: &PythonRuntime)
-        -> Result<Command, ServiceError>
-    {
-        let mut cmd = Command::new(runtime.venv_python());
-        if let Some(ref module) = self.module {
-            cmd.arg("-m").arg(module);
-        }
-        cmd.current_dir(resolve_plugin_dir(&self.plugin_id)
-            .join(&self.working_dir_relative));
-        cmd.env("SNAPFZZ_HOST", &config.host)
-           .env("SNAPFZZ_PORT", config.port.to_string());
-        if self.requires_database {
-            if let Some(ref url) = config.database_url {
-                cmd.env("MEMORY_DATABASE_URL", url);
-            }
-        }
-        for (k, v) in &self.env { cmd.env(k, v); }
-        Ok(cmd)
-    }
-}
-```
+All commands implemented in `src-tauri/src/commands/plugin_runtime.rs`:
 
-### New Tauri Commands
-
-```rust
-// src-tauri/src/commands/plugins.rs
-
-#[tauri::command]
-pub async fn register_plugin_runtimes(
-    declarations: Vec<PluginRuntimeDeclaration>,
-    registry: State<'_, Arc<Mutex<ProcessFactoryRegistry>>>,
-) -> Result<Vec<String>, String>
-
-#[tauri::command]
-pub async fn spawn_plugin_runtime(
-    name: String,
-    registry: State<'_, Arc<Mutex<ProcessFactoryRegistry>>>,
-) -> Result<(), String>
-```
+| Command | What It Does |
+|---------|-------------|
+| `install_system_plugin` | Symlinks (dev) or copies (prod) plugin into `~/.snapfzz/plugins/` |
+| `install_plugin_runtime` | `uv pip install --editable {packageDir}`, copies binary to `runtime/bin/` |
+| `register_plugin_runtime` | Creates `PluginProcessFactory`, registers in `ProcessFactoryRegistry` |
+| `spawn_plugin_runtime` | Calls `registry.spawn(runtime_id)` |
+| `unregister_plugin_runtime` | Removes factory from registry on deactivation |
+| `list_installed_plugins` | Scans `~/.snapfzz/plugins/` for manifests |
+| `get_plugin_info` | Returns install status (has_dist, has_manifest, has_runtime) for a plugin |
 
 ---
 
@@ -572,40 +597,39 @@ src-tauri/crates/snapfzz-memory/    (domain logic — two-layer rule)
 
 ## Implementation Phases
 
-### Phase 1: Plugin Artifact Discovery
-- Extend `PluginManifest` with `runtimes?: PluginRuntimes` in plugin-sdk
-- Create `PluginProcessFactory` (generic, manifest-driven) in Rust
-- Add `register_plugin_runtimes`, `spawn_plugin_runtime` Tauri commands
-- Add `ensurePluginRuntimes()` to plugin-host activation flow
-- Retire hardcoded `AgentScopeFactory` / `AgentScopeService`
+### Phase 1: Plugin Artifact Discovery — DONE
 
-### Phase 2: Memory Database Foundation
+- [x] Plugin renamed `plugins/chat/` → `plugins/orchestrator/`, ID `snapfzz.orchestrator`
+- [x] `AgentScopeFactory` / `AgentScopeService` removed
+- [x] `PluginProcessFactory` implemented (`src-tauri/src/factories/plugin_runtime.rs`)
+- [x] All plugin runtime Tauri commands implemented (`src-tauri/src/commands/plugin_runtime.rs`)
+- [x] System plugins use same install flow as user plugins (whitelisted in `SYSTEM_PLUGINS`)
+- [x] Orchestrator binary installed by `install_plugin_runtime`, not a build hook
+- [x] Intelligence layer delivered via QwenPaw extraction into `intelligence/` package
+- [x] `manifest.json` with `runtimes.python[]` declaration
+
+### Phase 2: Memory Database Foundation — PLANNED
 - Add `pg.create_database("memory")` to boot Phase 2
 - Create `snapfzz-memory` Rust crate (MemoryManager, schema, migrations)
 - Add `memory_store`, `memory_query` Tauri commands
-- Wire `MEMORY_DATABASE_URL` through boot → plugin runtimes
+- Wire `DATABASE_URL` through boot → plugin runtimes for memory DB
 
-### Phase 3: 9-Block Scaffolding + Pack
-- Create `plugins/chat/runtime/blocks/` (~995 lines Python)
-- Create `plugins/chat/pack/pack.yaml` + `prompts/system.md`
-- Refactor `runtime/app.py` to use `BlockPipeline.from_pack().build()`
-- Create `plugins/chat/runtime/memory.py` (PostgresMemory adapter)
-- Create `plugins/chat/runtime/tools/` (file ops, shell, web, project)
-- Move `intelligence/app.py` → `plugins/chat/runtime/app.py`
-- Remove `intelligence/` directory
+### Phase 3: Intelligence Integration — PLANNED
+- Wire `pack/pack.yaml` into intelligence runtime startup
+- Integrate `prompts/system.md` into mission handler
+- End-to-end: frontend send → orchestrator runtime → LiteLLM → SSE response
 
-### Phase 4: Chat Plugin — Intelligence Contributions
-- Add `runtimes.python[]` to chat plugin manifest
-- Add `agentTools[]` and `agentSkills[]` contributions
+### Phase 4: Orchestrator UI — Intelligence Contributions — PLANNED
+- Add `agentTools[]` and `agentSkills[]` contributions to plugin manifest
 - Add `chat.uploadFile`, `chat.switchSession` commands
 
-### Phase 5: Chat UI — Rich Input
+### Phase 5: Chat UI — Rich Input — PLANNED
 - File upload (drag-drop + button)
 - Session switcher (conversation history)
 - Memory indicator (RAG status)
 - Clean up dead code
 
-### Phase 6: RAG Pipeline
+### Phase 6: RAG Pipeline — PLANNED
 - PostgresMemory embedding generation via LiteLLM
 - pgvector similarity search
 - Async fact extraction post-response

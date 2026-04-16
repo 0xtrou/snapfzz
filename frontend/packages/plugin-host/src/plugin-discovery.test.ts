@@ -1,16 +1,35 @@
 // Spec: A006-core-runtime.md
 // Section: Boot Sequence, Plugin Discovery
-// Verifies: discoverPlugins returns manifests per surface, registerDiscoveredPlugins calls host.register
+// Verifies: discoverPlugins returns manifests per surface, registerDiscoveredPlugins calls host.registerWithLoader
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ContributionStore } from './contribution-store';
 import { discoverPlugins, registerDiscoveredPlugins } from './plugin-discovery';
 import { PluginHost } from './plugin-host';
 import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
+import type { InstalledPluginInfo } from './plugin-discovery';
 
-vi.mock('@snapfzz/orchestrator-plugin', () => ({
-  default: fakeManifest('orchestrator.plugin'),
+// --- Tauri bridge mock ---
+const invokeMock = vi.fn();
+vi.mock('@snapfzz/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@snapfzz/shared')>();
+  return {
+    ...actual,
+    createTauriBridge: () => ({
+      isAvailable: true,
+      invoke: invokeMock,
+    }),
+  };
+});
+
+// --- convertFileSrc mock ---
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: (path: string) => `asset://localhost/${path}`,
 }));
+
+// --- fetch mock for manifest.json ---
+const fetchMock = vi.fn();
+globalThis.fetch = fetchMock;
 
 vi.mock('@snapfzz/settings-general', () => ({
   default: fakeManifest('settings.general'),
@@ -49,24 +68,48 @@ vi.mock('@snapfzz/settings-advanced', () => {
 });
 
 function fakeManifest(id: string): PluginDefinition {
-  return { id, activationEvents: [], contributes: {} } as unknown as PluginDefinition;
+  return { id, activationEvents: [], contributes: {}, surface: ['preferences'] } as unknown as PluginDefinition;
 }
 
+function fakeInstalledManifest(id: string, surface: string[]): PluginDefinition {
+  return { id, activationEvents: [], contributes: {}, surface } as unknown as PluginDefinition;
+}
+
+beforeEach(() => {
+  invokeMock.mockReset();
+  fetchMock.mockReset();
+  // Default: no installed plugins
+  invokeMock.mockResolvedValue([]);
+});
+
 describe('A006/boot: discoverPlugins', () => {
-  it('A006/boot: discoverPlugins returns array for launcher surface', async () => {
+  it('A006/boot: discoverPlugins returns empty array for launcher surface with no installed plugins', async () => {
     const result = await discoverPlugins('launcher');
     expect(Array.isArray(result)).toBe(true);
     expect(result).toEqual([]);
   });
 
-  it('A006/boot: discoverPlugins returns array for project surface', async () => {
+  it('A006/boot: discoverPlugins returns only installed plugins for project surface', async () => {
+    const orchestratorManifest = fakeInstalledManifest('snapfzz.orchestrator', ['project']);
+    const installedPlugins: InstalledPluginInfo[] = [{
+      pluginId: 'snapfzz.orchestrator',
+      manifestPath: '/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json',
+      distPath: '/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js',
+    }];
+
+    invokeMock.mockResolvedValue(installedPlugins);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => orchestratorManifest,
+    });
+
     const result = await discoverPlugins('project');
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
-    expect(result[0]?.manifest.id).toBe('orchestrator.plugin');
+    expect(result[0]?.manifest.id).toBe('snapfzz.orchestrator');
   });
 
-  it('A006/boot: discoverPlugins returns array for preferences surface', async () => {
+  it('A006/boot: discoverPlugins returns settings plugins for preferences surface', async () => {
     const result = await discoverPlugins('preferences');
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(8);
@@ -83,11 +126,23 @@ describe('A006/boot: discoverPlugins', () => {
   });
 
   it('A006/boot: discoverPlugins result items have manifest and loader', async () => {
+    const orchestratorManifest = fakeInstalledManifest('snapfzz.orchestrator', ['project']);
+    const installedPlugins: InstalledPluginInfo[] = [{
+      pluginId: 'snapfzz.orchestrator',
+      manifestPath: '/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json',
+      distPath: '/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js',
+    }];
+
+    invokeMock.mockResolvedValue(installedPlugins);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => orchestratorManifest,
+    });
+
     const result = await discoverPlugins('project');
     for (const item of result) {
       expect(item).toHaveProperty('manifest');
       expect(typeof item.loader).toBe('function');
-      await expect(item.loader()).resolves.toEqual(item.manifest);
     }
   });
 
@@ -99,31 +154,113 @@ describe('A006/boot: discoverPlugins', () => {
     expect(result).toHaveLength(8);
     expect(errorSpy).toHaveBeenCalled();
   });
+
+  it('A006/boot: discoverPlugins filters installed plugins by surface', async () => {
+    const wrongSurfaceManifest = fakeInstalledManifest('some.plugin', ['launcher']);
+    const installedPlugins: InstalledPluginInfo[] = [{
+      pluginId: 'some.plugin',
+      manifestPath: '/path/manifest.json',
+      distPath: '/path/dist/index.js',
+    }];
+
+    invokeMock.mockResolvedValue(installedPlugins);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => wrongSurfaceManifest,
+    });
+
+    const result = await discoverPlugins('project');
+    expect(result).toHaveLength(0);
+  });
+
+  it('A006/boot: discoverPlugins gracefully handles manifest fetch failure', async () => {
+    const errorSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const installedPlugins: InstalledPluginInfo[] = [{
+      pluginId: 'broken.plugin',
+      manifestPath: '/path/manifest.json',
+      distPath: '/path/dist/index.js',
+    }];
+
+    invokeMock.mockResolvedValue(installedPlugins);
+    fetchMock.mockResolvedValue({ ok: false, status: 404 });
+
+    const result = await discoverPlugins('project');
+    expect(result).toHaveLength(0);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('A006/boot: discoverPlugins gracefully handles list_installed_plugins failure', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    invokeMock.mockRejectedValue(new Error('tauri command failed'));
+
+    const result = await discoverPlugins('project');
+    expect(result).toHaveLength(0);
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[PluginDiscovery] Failed to list installed plugins:',
+      expect.any(Error),
+    );
+  });
+
+  it('A006/boot: discoverPlugins combines settings and installed plugins for preferences', async () => {
+    const installedManifest = fakeInstalledManifest('user.custom-settings', ['preferences']);
+    const installedPlugins: InstalledPluginInfo[] = [{
+      pluginId: 'user.custom-settings',
+      manifestPath: '/path/manifest.json',
+      distPath: '/path/dist/index.js',
+    }];
+
+    invokeMock.mockResolvedValue(installedPlugins);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => installedManifest,
+    });
+
+    const result = await discoverPlugins('preferences');
+    // 8 settings plugins + 1 installed
+    expect(result).toHaveLength(9);
+    expect(result[8]?.manifest.id).toBe('user.custom-settings');
+  });
 });
 
 describe('A006/boot: registerDiscoveredPlugins', () => {
-  it('A006/boot: registerDiscoveredPlugins does not call host.register when no plugins for surface', async () => {
+  it('A006/boot: registerDiscoveredPlugins does not call host.registerWithLoader when no plugins for surface', async () => {
     const host = new PluginHost(new ContributionStore(), 'launcher');
-    const registerSpy = vi.spyOn(host, 'register');
+    const registerSpy = vi.spyOn(host, 'registerWithLoader');
 
     await registerDiscoveredPlugins(host, 'launcher');
 
     expect(registerSpy).not.toHaveBeenCalled();
   });
 
-  it('A006/boot: registerDiscoveredPlugins calls host.register for project-discovered manifests', async () => {
-    const host = new PluginHost(new ContributionStore(), 'launcher');
-    const registerSpy = vi.spyOn(host, 'register');
+  it('A006/boot: registerDiscoveredPlugins calls host.registerWithLoader for installed project plugins', async () => {
+    const orchestratorManifest = fakeInstalledManifest('snapfzz.orchestrator', ['project']);
+    const installedPlugins: InstalledPluginInfo[] = [{
+      pluginId: 'snapfzz.orchestrator',
+      manifestPath: '/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json',
+      distPath: '/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js',
+    }];
+
+    invokeMock.mockResolvedValue(installedPlugins);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => orchestratorManifest,
+    });
+
+    const host = new PluginHost(new ContributionStore(), 'project');
+    const registerSpy = vi.spyOn(host, 'registerWithLoader');
 
     await registerDiscoveredPlugins(host, 'project');
 
     expect(registerSpy).toHaveBeenCalledTimes(1);
-    expect(registerSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'orchestrator.plugin' }));
+    expect(registerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'snapfzz.orchestrator' }),
+      expect.any(Function),
+    );
   });
 
   it('A006/boot: registerDiscoveredPlugins registers all successfully loaded preferences plugins', async () => {
     const host = new PluginHost(new ContributionStore(), 'launcher');
-    const registerSpy = vi.spyOn(host, 'register');
+    const registerSpy = vi.spyOn(host, 'registerWithLoader');
 
     await registerDiscoveredPlugins(host, 'preferences');
 

@@ -14,9 +14,6 @@ importers:
       '@chenglou/pretext':
         specifier: ^0.0.4
         version: 0.0.4
-      '@snapfzz/orchestrator-plugin':
-        specifier: workspace:*
-        version: link:plugins/orchestrator
       '@tauri-apps/api':
         specifier: ^2.0.0
         version: 2.10.1
@@ -106,10 +103,6 @@ importers:
       react:
         specifier: ^19.0.0
         version: 19.2.4
-    optionalDependencies:
-      '@snapfzz/orchestrator-plugin':
-        specifier: workspace:*
-        version: link:../../../plugins/orchestrator
     devDependencies:
       '@snapfzz/settings-advanced':
         specifier: workspace:*

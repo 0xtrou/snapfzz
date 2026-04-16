@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snapfzz_kernel::process::ProcessFactoryRegistry;
 use snapfzz_packs::runtime::python::PythonRuntime;
 use tauri::{Manager, State};
@@ -41,6 +41,65 @@ pub struct PluginRuntimeDeclaration {
 fn resolve_plugins_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "cannot resolve home directory".to_string())?;
     Ok(home.join(".snapfzz").join("plugins"))
+}
+
+/// Info about an installed plugin discovered on disk.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledPluginInfo {
+    pub plugin_id: String,
+    pub manifest_path: String,
+    pub dist_path: String,
+}
+
+/// Scan `~/.snapfzz/plugins/` for installed plugins that have a manifest.json.
+/// Returns metadata for each discovered plugin so the frontend can load them.
+#[tauri::command]
+pub async fn list_installed_plugins() -> Result<Vec<InstalledPluginInfo>, String> {
+    let plugins_dir = resolve_plugins_dir()?;
+
+    if !plugins_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut results = Vec::new();
+
+    let entries = std::fs::read_dir(&plugins_dir)
+        .map_err(|e| format!("failed to read plugins dir: {e}"))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("failed to read dir entry: {e}"))?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        // Follow symlinks to resolve the actual directory
+        let resolved = std::fs::canonicalize(&path)
+            .unwrap_or_else(|_| path.clone());
+
+        let manifest_path = resolved.join("manifest.json");
+        if !manifest_path.exists() {
+            continue;
+        }
+
+        let dist_path = resolved.join("dist").join("index.js");
+
+        // Plugin ID is the directory name (e.g. "snapfzz.orchestrator")
+        let plugin_id = entry
+            .file_name()
+            .to_string_lossy()
+            .to_string();
+
+        results.push(InstalledPluginInfo {
+            plugin_id,
+            manifest_path: manifest_path.to_string_lossy().to_string(),
+            dist_path: dist_path.to_string_lossy().to_string(),
+        });
+    }
+
+    Ok(results)
 }
 
 /// Whitelisted system plugins that ship with the app.
@@ -147,10 +206,12 @@ fn install_production_copy<R: tauri::Runtime>(
         ));
     }
 
-    // If target already exists with matching content, skip
+    // If target already exists with all expected artifacts, skip
     if target.exists() && target.is_dir() {
-        // Simple check: if intelligence/ subdir exists, assume installed
-        if target.join("intelligence").exists() {
+        let has_intelligence = target.join("intelligence").exists();
+        let has_dist = target.join("dist").join("index.js").exists();
+        let has_manifest = target.join("manifest.json").exists();
+        if has_intelligence && has_dist && has_manifest {
             return Ok(format!("already installed: {}", target.display()));
         }
         remove_target(target)?;
@@ -358,6 +419,35 @@ pub async fn spawn_plugin_runtime(
         .map_err(|e| format!("failed to spawn plugin runtime '{}': {e}", runtime_id))
 }
 
+/// Installation status for a plugin, used by the plugin host to check readiness.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInstallStatus {
+    pub installed: bool,
+    pub has_dist: bool,
+    pub has_manifest: bool,
+    pub has_runtime: bool,
+    pub plugin_dir: String,
+}
+
+/// Query the installation status of a plugin by its ID.
+///
+/// Returns which artifacts are present in `~/.snapfzz/plugins/{plugin_id}/`,
+/// letting the plugin host decide whether the plugin is ready to load.
+#[tauri::command]
+pub async fn get_plugin_info(plugin_id: String) -> Result<PluginInstallStatus, String> {
+    let plugins_dir = resolve_plugins_dir()?;
+    let plugin_dir = plugins_dir.join(&plugin_id);
+
+    Ok(PluginInstallStatus {
+        installed: plugin_dir.exists(),
+        has_dist: plugin_dir.join("dist").join("index.js").exists(),
+        has_manifest: plugin_dir.join("manifest.json").exists(),
+        has_runtime: plugin_dir.join("runtime").join("bin").exists(),
+        plugin_dir: plugin_dir.to_string_lossy().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,5 +510,53 @@ mod tests {
         assert!(decl.max_restarts.is_none());
         assert!(decl.requires_database.is_none());
         assert!(decl.env.is_none());
+    }
+
+    #[test]
+    fn a020_plugin_install_status_serializes_to_camel_case() {
+        let status = PluginInstallStatus {
+            installed: true,
+            has_dist: true,
+            has_manifest: false,
+            has_runtime: true,
+            plugin_dir: "/home/test/.snapfzz/plugins/my.plugin".to_string(),
+        };
+        let json = serde_json::to_value(&status).expect("serialize");
+        assert_eq!(json["installed"], true);
+        assert_eq!(json["hasDist"], true);
+        assert_eq!(json["hasManifest"], false);
+        assert_eq!(json["hasRuntime"], true);
+        assert_eq!(json["pluginDir"], "/home/test/.snapfzz/plugins/my.plugin");
+    }
+
+    #[tokio::test]
+    async fn a020_get_plugin_info_returns_not_installed_for_missing_plugin() {
+        let result = get_plugin_info("nonexistent.plugin.id".to_string())
+            .await
+            .expect("should not error");
+        assert!(!result.installed);
+        assert!(!result.has_dist);
+        assert!(!result.has_manifest);
+        assert!(!result.has_runtime);
+    }
+
+    #[tokio::test]
+    async fn a020_list_installed_plugins_returns_ok() {
+        // Should not error even if ~/.snapfzz/plugins/ doesn't exist
+        let result = list_installed_plugins().await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn a020_installed_plugin_info_serializes_to_camel_case() {
+        let info = InstalledPluginInfo {
+            plugin_id: "snapfzz.orchestrator".to_string(),
+            manifest_path: "/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json".to_string(),
+            dist_path: "/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js".to_string(),
+        };
+        let json = serde_json::to_value(&info).expect("serialize");
+        assert_eq!(json["pluginId"], "snapfzz.orchestrator");
+        assert_eq!(json["manifestPath"], "/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json");
+        assert_eq!(json["distPath"], "/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js");
     }
 }

@@ -54,8 +54,10 @@
       "icons/icon.png"
     ],
     "resources": {
+      "../plugins/orchestrator/dist": "plugins/snapfzz.orchestrator/dist",
       "../plugins/orchestrator/intelligence": "plugins/snapfzz.orchestrator/intelligence",
-      "../plugins/orchestrator/pack": "plugins/snapfzz.orchestrator/pack"
+      "../plugins/orchestrator/pack": "plugins/snapfzz.orchestrator/pack",
+      "../plugins/orchestrator/manifest.json": "plugins/snapfzz.orchestrator/manifest.json"
     },
     "macOS": {
       "minimumSystemVersion": "12.0"

@@ -1,0 +1,24 @@
+{
+  "id": "snapfzz.orchestrator",
+  "name": "Orchestrator",
+  "version": "0.1.0",
+  "description": "Text conversation channel for AgentScope agents",
+  "surface": ["project"],
+  "activationEvents": ["onStartupFinished"],
+  "runtimes": {
+    "python": [
+      {
+        "id": "chat.orchestrator",
+        "packageDir": "intelligence",
+        "command": "orchestrator app",
+        "healthCheck": "/health",
+        "healthIntervalMs": 2000,
+        "resources": { "maxMemoryMb": 512, "maxRestarts": 10 },
+        "requiresDatabase": true,
+        "hostFlag": "--host",
+        "portFlag": "--port"
+      }
+    ]
+  },
+  "main": "dist/index.js"
+}
