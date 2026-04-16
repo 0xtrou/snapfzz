@@ -28,7 +28,7 @@ pub fn spawn_boot_phases(
     // None = not yet ready, Some(None) = PG failed, Some(Some(url)) = PG ready with URL.
     let (pg_url_tx, pg_url_rx) = tokio::sync::watch::channel(None::<Option<String>>);
 
-    // Phase 1: Python runtime (independent, no locks)
+    // Phase 1: Python runtime — uv-only (independent, no locks)
     {
         let rt = python_runtime.clone();
         let cr = component_registry.clone();
@@ -39,6 +39,7 @@ pub fn spawn_boot_phases(
             } else {
                 eprintln!("[boot/python] runtime not ready — installing...");
 
+                // Step 1: download uv binary (keep existing UvDownloader)
                 if !rt.is_uv_ready() {
                     if let Some(uv) = cr.get("uv") {
                         eprintln!("[boot/python] downloading uv...");
@@ -53,20 +54,29 @@ pub fn spawn_boot_phases(
                     }
                 }
 
+                // Step 2: install Python via uv (replaces PythonDownloader)
                 if !rt.is_python_installed() {
-                    if let Some(py) = cr.get("python") {
-                        eprintln!("[boot/python] downloading Python...");
-                        match py.download().await {
-                            Ok(_) => {
-                                if let Err(e) = py.extract().await {
-                                    eprintln!("[boot/python] python extract failed: {e}");
-                                }
-                            }
-                            Err(e) => eprintln!("[boot/python] python download failed: {e}"),
-                        }
+                    eprintln!("[boot/python] installing Python via uv...");
+                    let rt2 = rt.clone();
+                    match tokio::task::spawn_blocking(move || rt2.install_python()).await {
+                        Ok(Ok(_)) => eprintln!("[boot/python] Python installed"),
+                        Ok(Err(e)) => eprintln!("[boot/python] Python install failed: {e}"),
+                        Err(e) => eprintln!("[boot/python] Python install task panicked: {e}"),
                     }
                 }
 
+                // Step 3: create venv
+                if !rt.is_venv_created() {
+                    eprintln!("[boot/python] creating venv...");
+                    let rt2 = rt.clone();
+                    match tokio::task::spawn_blocking(move || rt2.create_venv()).await {
+                        Ok(Ok(_)) => eprintln!("[boot/python] venv created"),
+                        Ok(Err(e)) => eprintln!("[boot/python] venv creation failed: {e}"),
+                        Err(e) => eprintln!("[boot/python] venv task panicked: {e}"),
+                    }
+                }
+
+                // Step 4: install packages
                 if rt.is_uv_ready() && rt.is_python_installed() {
                     eprintln!("[boot/python] installing packages...");
                     let rt2 = rt.clone();
@@ -113,7 +123,7 @@ pub fn spawn_boot_phases(
         });
     }
 
-    // Phase 3: Service spawning (waits for Phase 1 + 2, brief lock per service)
+    // Phase 3: Service spawning + plugin install (waits for Phase 1 + 2, brief lock per service)
     {
         tauri::async_runtime::spawn(async move {
             // Wait for both runtimes — does NOT hold any lock while waiting
@@ -123,7 +133,7 @@ pub fn spawn_boot_phases(
             // Read PG URL from watch channel
             let maybe_url = pg_url_rx.borrow().clone().flatten();
 
-            // Phase 1 (quick write): set database_url + prepare spawn handles
+            // Quick write: set database_url + prepare spawn handles
             let handles = {
                 let mut registry = factory_registry.write().await;
                 if let Some(url) = maybe_url {
@@ -133,10 +143,27 @@ pub fn spawn_boot_phases(
                 // write lock released here — UI reads can proceed
             };
 
-            // Phase 2 (no lock): await all spawns concurrently
-            let spawn_results = snapfzz_kernel::process::ProcessFactoryRegistry::run_spawn_handles(handles).await;
+            // A020/ParallelBoot: Run service spawns and system plugin installs concurrently.
+            // Services start health checks in background while plugins install in parallel.
+            let plugin_app_handle = app_handle.clone();
+            let plugin_install = tokio::spawn(async move {
+                for (plugin_id, _) in crate::commands::plugin_runtime::SYSTEM_PLUGINS {
+                    match crate::commands::plugin_runtime::install_system_plugin_sync(
+                        &plugin_app_handle,
+                        plugin_id,
+                    ) {
+                        Ok(msg) => eprintln!("{msg}"),
+                        Err(e) => eprintln!("[boot/plugins] failed to install {plugin_id}: {e}"),
+                    }
+                }
+            });
 
-            // Phase 3 (quick write): reinsert spawned processes
+            let (spawn_results, _) = tokio::join!(
+                ProcessFactoryRegistry::run_spawn_handles(handles),
+                plugin_install,
+            );
+
+            // Quick write: reinsert spawned processes
             let results = factory_registry.write().await.finalize_spawn_all(spawn_results);
 
             for (name, result) in results {
@@ -159,16 +186,6 @@ pub fn spawn_boot_phases(
                             format!("Failed to start {}: {}", name, e),
                         );
                     }
-                }
-            }
-
-            // A020/SystemPlugins: Install system plugin artifacts before frontend discovers them.
-            // This ensures ~/.snapfzz/plugins/ has the compiled UI, intelligence source,
-            // and manifest.json ready for list_installed_plugins to find.
-            for (plugin_id, _) in crate::commands::plugin_runtime::SYSTEM_PLUGINS {
-                match crate::commands::plugin_runtime::install_system_plugin_sync(&app_handle, plugin_id) {
-                    Ok(msg) => eprintln!("{msg}"),
-                    Err(e) => eprintln!("[boot/plugins] failed to install {plugin_id}: {e}"),
                 }
             }
 

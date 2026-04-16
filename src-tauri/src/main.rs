@@ -15,7 +15,7 @@ use snapfzz_kernel::boot::PreflightService;
 use snapfzz_kernel::process::{self, ProcessFactoryRegistry, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::{
-    constants as packs_constants, detect_platform, runtime::python::PythonRuntime, ComponentRegistry, PythonDownloader,
+    detect_platform, runtime::python::PythonRuntime, ComponentRegistry,
     UvDownloader,
 };
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
@@ -47,8 +47,6 @@ fn main() {
     let runtime_dir = data_dir.join("runtime");
     let python_dir = runtime_dir.join("python");
     let python_bin_dir = python_dir.join("bin");
-    let uv_bin = python_bin_dir.join(format!("uv{}", platform.exe_suffix));
-    
     // A037/SingleProcessManager: Create ONE ProcessManager shared by all
     let process_mgr = Arc::new(ProcessManager::with_parts(
         Arc::new(tokio::sync::Mutex::new(process::runtime::RuntimeState::new())),
@@ -69,12 +67,7 @@ fn main() {
         python_bin_dir.clone(),
         platform.clone(),
     )));
-    component_registry.register(Arc::new(PythonDownloader::new(
-        uv_bin.clone(),
-        python_bin_dir.join("python"),
-        platform.clone(),
-        packs_constants::versions::PYTHON.to_string(),
-    )));
+    // PythonDownloader removed — uv handles Python install via PythonRuntime::install_python()
     component_registry.register(cef_runtime_downloader);
     let component_registry = Arc::new(component_registry);
 

@@ -46,7 +46,7 @@ pub use core::status::{InstallStep, PipPackageInfo, PythonRuntimeStatus};
 pub use core::data::{DataDir, DataError};
 
 // Python toolchain
-pub use core::python::{PythonDownloader, PythonRuntime, UvDownloader};
+pub use core::python::{PythonRuntime, UvDownloader};
 
 // Service packs
 pub use litellm::LiteLLMService;
@@ -85,6 +85,5 @@ pub mod constants {
 
 pub mod downloaders {
     // A018/Packs: Shim module preserving the old `downloaders::*` import path.
-    pub use crate::core::python::downloader::PythonDownloader;
     pub use crate::core::python::uv::UvDownloader;
 }
