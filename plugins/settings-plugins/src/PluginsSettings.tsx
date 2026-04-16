@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { List, Space, Switch, Tag, Typography } from 'antd';
-import { createTauriBridge, SettingsHeader, AppButton, fetchWithToast } from '@snapfzz/shared';
+import { createTauriBridge, SettingsHeader, AppButton, ConfirmAction, fetchWithToast } from '@snapfzz/shared';
 
 const { Text } = Typography;
 
@@ -101,7 +101,7 @@ export default function PluginsSettings(): React.ReactElement {
     try {
       await fetchWithToast(
         async () => {
-          await bridge.invoke<void>('install_system_plugin', { pluginId });
+          await bridge.invoke<void>('install_system_plugin', { pluginId, force: true });
           const declaration = getPythonDeclaration(manifest);
           if (declaration !== null) {
             await bridge.invoke<void>('install_plugin_runtime', { declaration });
@@ -178,14 +178,21 @@ export default function PluginsSettings(): React.ReactElement {
             <List.Item
               key={plugin.pluginId}
               actions={[
-                <AppButton
+                <ConfirmAction
                   key="reinstall"
-                  loading={isReinstalling}
-                  onClick={() => void handleReinstall(plugin.pluginId, plugin.manifest)}
-                  aria-label={`Reinstall ${name}`}
+                  title="Reinstall plugin?"
+                  description="This will reinstall the plugin and restart its background service."
+                  okText="Reinstall"
+                  onConfirm={() => handleReinstall(plugin.pluginId, plugin.manifest)}
+                  disabled={isReinstalling}
                 >
-                  Reinstall
-                </AppButton>,
+                  <AppButton
+                    loading={isReinstalling}
+                    aria-label={`Reinstall ${name}`}
+                  >
+                    Reinstall
+                  </AppButton>
+                </ConfirmAction>,
               ]}
             >
               <List.Item.Meta

@@ -149,23 +149,24 @@ const PLUGIN_ARTIFACT_FILES: &[&str] = &["manifest.json"];
 /// Dev mode: copies from source tree. Production: copies from app bundle.
 /// No symlinks — asset:// protocol requires real files in the scoped path.
 /// Tauri command wrapper — called from frontend during plugin activation.
+/// Pass `force: true` to skip the "already installed" check (reinstall).
 #[tauri::command]
 pub async fn install_system_plugin<R: tauri::Runtime>(
     plugin_id: String,
+    force: Option<bool>,
     app: tauri::AppHandle<R>,
 ) -> Result<String, String> {
-    let (dir_name, source) = resolve_system_plugin_source(&plugin_id, Some(&app))?;
-    let _ = dir_name; // used only for dev_source_dir lookup inside resolve
-    do_install_system_plugin(&plugin_id, &source)
+    let (_dir_name, source) = resolve_system_plugin_source(&plugin_id, Some(&app))?;
+    do_install_system_plugin(&plugin_id, &source, force.unwrap_or(false))
 }
 
-/// Sync version called from boot.rs — before frontend loads.
+/// Sync version called from boot.rs — before frontend loads. Never forces.
 pub fn install_system_plugin_sync<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     plugin_id: &str,
 ) -> Result<String, String> {
     let (_dir_name, source) = resolve_system_plugin_source(plugin_id, Some(app))?;
-    do_install_system_plugin(plugin_id, &source)
+    do_install_system_plugin(plugin_id, &source, false)
 }
 
 /// Resolve source directory for a system plugin.
@@ -197,15 +198,16 @@ fn resolve_system_plugin_source<R: tauri::Runtime>(
 }
 
 /// Core install logic — copies artifacts from source to ~/.snapfzz/plugins/{id}/.
-fn do_install_system_plugin(plugin_id: &str, source: &std::path::Path) -> Result<String, String> {
+/// When `force` is true, always re-copies even if artifacts exist (reinstall).
+fn do_install_system_plugin(plugin_id: &str, source: &std::path::Path, force: bool) -> Result<String, String> {
     let plugins_dir = resolve_plugins_dir()?;
     std::fs::create_dir_all(&plugins_dir)
         .map_err(|e| format!("failed to create plugins dir: {e}"))?;
 
     let target = plugins_dir.join(plugin_id);
 
-    // Skip if all artifacts are present and up-to-date
-    if target.is_dir() {
+    // Skip if all artifacts are present and up-to-date (unless force reinstall)
+    if !force && target.is_dir() {
         let all_present = PLUGIN_ARTIFACT_DIRS.iter().all(|d| target.join(d).exists())
             && PLUGIN_ARTIFACT_FILES.iter().all(|f| target.join(f).exists());
 

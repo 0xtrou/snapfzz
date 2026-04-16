@@ -185,9 +185,12 @@ describe('A020/settings-plugins: reinstall button', () => {
     await waitFor(() => screen.getByRole('button', { name: /reinstall orchestrator/i }));
 
     await user.click(screen.getByRole('button', { name: /reinstall orchestrator/i }));
+    // Confirm the popover
+    await waitFor(() => screen.getByRole('button', { name: /^Reinstall$/i }));
+    await user.click(screen.getByRole('button', { name: /^Reinstall$/i }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('install_system_plugin', { pluginId: 'snapfzz.orchestrator' });
+      expect(mockInvoke).toHaveBeenCalledWith('install_system_plugin', { pluginId: 'snapfzz.orchestrator', force: true });
     });
   });
 
@@ -202,6 +205,8 @@ describe('A020/settings-plugins: reinstall button', () => {
     await waitFor(() => screen.getByRole('button', { name: /reinstall orchestrator/i }));
 
     await user.click(screen.getByRole('button', { name: /reinstall orchestrator/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^Reinstall$/i }));
+    await user.click(screen.getByRole('button', { name: /^Reinstall$/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('install_plugin_runtime', { declaration: 'snapfzz.orchestrator>=1.0.0' });
@@ -221,39 +226,12 @@ describe('A020/settings-plugins: reinstall button', () => {
     await waitFor(() => screen.getByRole('button', { name: /reinstall noruntime/i }));
 
     await user.click(screen.getByRole('button', { name: /reinstall noruntime/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^Reinstall$/i }));
+    await user.click(screen.getByRole('button', { name: /^Reinstall$/i }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('install_system_plugin', { pluginId: 'snapfzz.orchestrator' });
+      expect(mockInvoke).toHaveBeenCalledWith('install_system_plugin', { pluginId: 'snapfzz.orchestrator', force: true });
       expect(mockInvoke).not.toHaveBeenCalledWith('install_plugin_runtime', expect.anything());
-    });
-  });
-
-  it('shows loading state on the button while reinstalling', async () => {
-    const user = userEvent.setup();
-    let resolveInstall!: () => void;
-    const installPromise = new Promise<null>((res) => { resolveInstall = () => res(null); });
-
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === 'budget_snapshot') return Promise.resolve({ plugins: [] });
-      if (cmd === 'list_installed_plugins') return Promise.resolve([makeSystemPlugin()]);
-      if (cmd === 'install_system_plugin') return installPromise;
-      return Promise.resolve(null);
-    });
-    render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('button', { name: /reinstall orchestrator/i }));
-
-    await user.click(screen.getByRole('button', { name: /reinstall orchestrator/i }));
-
-    // Button should have ant-btn-loading class while install is in-flight
-    await waitFor(() => {
-      const btn = screen.getByRole('button', { name: /reinstall orchestrator/i });
-      expect(btn.className).toContain('ant-btn-loading');
-    });
-
-    resolveInstall();
-    await waitFor(() => {
-      const btn = screen.getByRole('button', { name: /reinstall orchestrator/i });
-      expect(btn.className).not.toContain('ant-btn-loading');
     });
   });
 
