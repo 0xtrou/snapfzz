@@ -3,8 +3,8 @@ import type { PluginContext, PluginHandle } from '@snapfzz/plugin-sdk';
 
 // Per A005/PluginArchitecture: contributions use lazy dynamic imports — code loaded only when shell renders them.
 export default definePlugin({
-  id: 'snapfzz.chat',
-  name: 'Chat',
+  id: 'snapfzz.orchestrator',
+  name: 'Orchestrator',
   version: '0.1.0',
   description: 'Text conversation channel for AgentScope agents',
   surface: ['project'],
@@ -48,24 +48,24 @@ export default definePlugin({
     ],
     statusItems: [
       {
-        id: 'chat.connection',
+        id: 'orchestrator.connection',
         position: 'left' as const,
         component: () => import('./contributions/ConnectionStatus'),
       },
       {
-        id: 'chat.tokens',
+        id: 'orchestrator.tokens',
         position: 'right' as const,
         component: () => import('./contributions/TokenCounter'),
       },
     ],
     commands: [
-      { id: 'chat.send', title: 'Send Message' },
-      { id: 'chat.stop', title: 'Stop Generation' },
-      { id: 'chat.clear', title: 'Clear Conversation' },
+      { id: 'orchestrator.send', title: 'Send Message' },
+      { id: 'orchestrator.stop', title: 'Stop Generation' },
+      { id: 'orchestrator.clear', title: 'Clear Conversation' },
     ],
     shortcuts: [
-      { command: 'chat.send', key: '⌘+Enter' },
-      { command: 'chat.stop', key: 'Escape' },
+      { command: 'orchestrator.send', key: '⌘+Enter' },
+      { command: 'orchestrator.stop', key: 'Escape' },
     ],
   },
   async activate(ctx: PluginContext): Promise<PluginHandle> {
@@ -74,18 +74,18 @@ export default definePlugin({
 
     configureChatRuntime(ctx);
 
-    const unregisterSend = ctx.commands.register('chat.send', async (args?: unknown) => {
+    const unregisterSend = ctx.commands.register('orchestrator.send', async (args?: unknown) => {
       const payload = (args ?? {}) as { text?: string };
       await sendMessage(payload.text ?? '');
       return undefined;
     });
 
-    const unregisterStop = ctx.commands.register('chat.stop', async () => {
+    const unregisterStop = ctx.commands.register('orchestrator.stop', async () => {
       await stopGeneration();
       return undefined;
     });
 
-    const unregisterClear = ctx.commands.register('chat.clear', async () => {
+    const unregisterClear = ctx.commands.register('orchestrator.clear', async () => {
       await clearConversationSession();
       return undefined;
     });

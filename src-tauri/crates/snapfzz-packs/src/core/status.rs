@@ -26,7 +26,6 @@ pub struct PythonRuntimeStatus {
     pub installed_packages: Vec<String>,
     pub agentscope: PipPackageInfo,
     pub agentscope_runtime: PipPackageInfo,
-    pub orchestrator: PipPackageInfo,
     pub litellm: PipPackageInfo,
     pub install_steps: Vec<InstallStep>,
 }
@@ -78,11 +77,6 @@ mod tests {
             agentscope_runtime: PipPackageInfo {
                 name: packages::AGENTSCOPE_RUNTIME.into(),
                 version: "1.1.0".into(),
-                is_installed: false,
-            },
-            orchestrator: PipPackageInfo {
-                name: packages::ORCHESTRATOR.into(),
-                version: "0.1.0".into(),
                 is_installed: false,
             },
             litellm: PipPackageInfo {

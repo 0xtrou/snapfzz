@@ -5,12 +5,10 @@
 //                   Python toolchain, PostgreSQL infrastructure
 //   cef/          — CEF service pack (Chromium Embedded Framework browser runtime)
 //   litellm/      — LiteLLM service pack
-//   agentscope/   — AgentScope service pack
 //
 // Adding a new service = create a directory + implement the traits.
 
 pub mod core;
-pub mod agentscope;
 pub mod cef;
 pub mod litellm;
 
@@ -51,7 +49,6 @@ pub use core::data::{DataDir, DataError};
 pub use core::python::{PythonDownloader, PythonRuntime, UvDownloader};
 
 // Service packs
-pub use agentscope::AgentScopeService;
 pub use litellm::LiteLLMService;
 
 // ── Backward-compatible module re-exports ───────────────────────────────────
@@ -68,9 +65,6 @@ pub mod runtime {
     }
     pub mod litellm {
         pub use crate::litellm::service::*;
-    }
-    pub mod agentscope {
-        pub use crate::agentscope::service::*;
     }
 }
 

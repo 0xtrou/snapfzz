@@ -148,8 +148,6 @@ pub fn cef_metadata() -> PythonPackMetadata {
 
 /// Service identifiers and display names.
 pub mod services {
-    pub const AGENTSCOPE_ID: &str = "agentscope";
-    pub const AGENTSCOPE_NAME: &str = "Orchestrator";
     pub const LITELLM_ID: &str = "litellm";
     pub const LITELLM_NAME: &str = "LiteLLM Gateway";
 }
@@ -191,17 +189,13 @@ pub mod dirs {
 
 /// Health check configuration.
 pub mod health {
-    pub const AGENTSCOPE_PATH: &str = "/health";
     pub const LITELLM_PATH: &str = "/health/liveness";
-    pub const AGENTSCOPE_INTERVAL_MS: u64 = 2000;
     pub const LITELLM_INTERVAL_MS: u64 = 5000;
     pub const DEFAULT_MAX_FAILURES: u32 = 3;
 }
 
 /// Resource limits for managed services.
 pub mod resources {
-    pub const AGENTSCOPE_MAX_MEMORY_MB: u64 = 512;
-    pub const AGENTSCOPE_MAX_RESTARTS: u32 = 10;
     pub const LITELLM_MAX_MEMORY_MB: u64 = 1024;
     pub const LITELLM_MAX_RESTARTS: u32 = 5;
 }
@@ -210,7 +204,6 @@ pub mod resources {
 pub mod dependencies {
     pub const UV: &str = "uv";
     pub const PYTHON: &str = "python";
-    pub const AGENTSCOPE_DEPS: &[&str] = &["uv", "python", "agentscope", "agentscope-runtime", "snapfzz-orchestrator"];
     pub const LITELLM_DEPS: &[&str] = &["uv", "python", "litellm"];
 }
 

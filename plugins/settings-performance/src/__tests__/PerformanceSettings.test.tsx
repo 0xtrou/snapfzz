@@ -530,11 +530,11 @@ describe('A007/settings-performance: metrics refresh', () => {
 
 describe('A007/settings-performance: disabled plugins', () => {
   it('A007/settings-performance: shows disabled plugins section when plugins are disabled', async () => {
-    setupMocks({ metrics: makeMetrics({ disabledPlugins: ['snapfzz.chat'] }) });
+    setupMocks({ metrics: makeMetrics({ disabledPlugins: ['snapfzz.orchestrator'] }) });
     render(<PerformanceSettings />);
     await waitFor(() => {
       expect(screen.getByText('Disabled Plugins')).toBeInTheDocument();
-      expect(screen.getByText('snapfzz.chat')).toBeInTheDocument();
+      expect(screen.getByText('snapfzz.orchestrator')).toBeInTheDocument();
     });
   });
 

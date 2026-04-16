@@ -11,7 +11,6 @@ use thiserror::Error;
 // A037/DataDir: Known runtime slugs — single source of truth
 pub mod slugs {
     pub const LITELLM: &str = "litellm";
-    pub const ORCHESTRATOR: &str = "orchestrator";
 }
 
 // A037/DataError: Error variants for data directory operations
@@ -96,10 +95,6 @@ mod tests {
             data.runtime_dir(slugs::LITELLM),
             temp.path().join("data").join("litellm")
         );
-        assert_eq!(
-            data.runtime_dir(slugs::ORCHESTRATOR),
-            temp.path().join("data").join("orchestrator")
-        );
     }
 
     #[test]
@@ -156,12 +151,10 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let data = DataDir::new(temp.path());
         let litellm = data.ensure_runtime_dir(slugs::LITELLM).expect("litellm");
-        let orchestrator = data
-            .ensure_runtime_dir(slugs::ORCHESTRATOR)
-            .expect("orchestrator");
-        assert_ne!(litellm, orchestrator);
+        let custom = data.ensure_runtime_dir("custom-service").expect("custom");
+        assert_ne!(litellm, custom);
         assert!(litellm.exists());
-        assert!(orchestrator.exists());
+        assert!(custom.exists());
     }
 
     #[test]

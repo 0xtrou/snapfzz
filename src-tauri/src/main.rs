@@ -86,10 +86,6 @@ fn main() {
         settings_mgr.clone(),
         python_runtime.clone(),
     );
-    factory_registry.register(Arc::new(factories::AgentScopeFactory::new(
-        python_runtime.clone(),
-        data_dir.clone(),
-    )));
     factory_registry.register(Arc::new(factories::LiteLLMFactory::new(
         python_runtime.clone(),
         vault.clone(),

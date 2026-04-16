@@ -245,10 +245,6 @@ mod tests {
             settings_mgr,
             python_runtime.clone(),
         );
-        registry.register(Arc::new(crate::factories::AgentScopeFactory::new(
-            python_runtime.clone(),
-            data_dir.to_path_buf(),
-        )));
         registry.register(Arc::new(crate::factories::LiteLLMFactory::new(
             python_runtime,
             vault,

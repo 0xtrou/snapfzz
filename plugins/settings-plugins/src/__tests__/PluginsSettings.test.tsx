@@ -37,14 +37,14 @@ describe('A007/settings-plugins: plugin list', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('Chat')).toBeInTheDocument();
+      expect(screen.getByText('Orchestrator')).toBeInTheDocument();
     });
   });
 
@@ -52,7 +52,7 @@ describe('A007/settings-plugins: plugin list', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '2.3.1', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '2.3.1', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
@@ -67,7 +67,7 @@ describe('A007/settings-plugins: plugin list', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
@@ -82,14 +82,14 @@ describe('A007/settings-plugins: plugin list', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('snapfzz.chat')).toBeInTheDocument();
+      expect(screen.getByText('snapfzz.orchestrator')).toBeInTheDocument();
     });
   });
 
@@ -97,7 +97,7 @@ describe('A007/settings-plugins: plugin list', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
           { id: 'snapfzz.preview', name: 'Preview', version: '0.9.0', zone: 'zone3', strikes: 1, enabled: true },
         ]));
       }
@@ -105,7 +105,7 @@ describe('A007/settings-plugins: plugin list', () => {
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('Chat')).toBeInTheDocument();
+      expect(screen.getByText('Orchestrator')).toBeInTheDocument();
       expect(screen.getByText('Preview')).toBeInTheDocument();
     });
   });
@@ -142,7 +142,7 @@ describe('A007/settings-plugins: strikes display', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
@@ -157,7 +157,7 @@ describe('A007/settings-plugins: strikes display', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 1, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 1, enabled: true },
         ]));
       }
       return Promise.resolve({});
@@ -172,7 +172,7 @@ describe('A007/settings-plugins: strikes display', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 2, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 2, enabled: true },
         ]));
       }
       return Promise.resolve({});
@@ -189,14 +189,14 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      const toggle = screen.getByRole('switch', { name: /toggle chat/i });
+      const toggle = screen.getByRole('switch', { name: /toggle orchestrator/i });
       expect(toggle).toBeChecked();
     });
   });
@@ -205,14 +205,14 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: false },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: false },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      const toggle = screen.getByRole('switch', { name: /toggle chat/i });
+      const toggle = screen.getByRole('switch', { name: /toggle orchestrator/i });
       expect(toggle).not.toBeChecked();
     });
   });
@@ -222,18 +222,18 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('switch', { name: /toggle chat/i }));
+    await waitFor(() => screen.getByRole('switch', { name: /toggle orchestrator/i }));
 
-    await user.click(screen.getByRole('switch', { name: /toggle chat/i }));
+    await user.click(screen.getByRole('switch', { name: /toggle orchestrator/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('switch', { name: /toggle chat/i })).not.toBeChecked();
+      expect(screen.getByRole('switch', { name: /toggle orchestrator/i })).not.toBeChecked();
     });
   });
 
@@ -242,19 +242,19 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('switch', { name: /toggle chat/i }));
+    await waitFor(() => screen.getByRole('switch', { name: /toggle orchestrator/i }));
 
-    await user.click(screen.getByRole('switch', { name: /toggle chat/i }));
+    await user.click(screen.getByRole('switch', { name: /toggle orchestrator/i }));
     await Promise.resolve();
 
     await waitFor(() => {
-      expect(screen.getByRole('switch', { name: /toggle chat/i })).not.toBeChecked();
+      expect(screen.getByRole('switch', { name: /toggle orchestrator/i })).not.toBeChecked();
     });
   });
 
@@ -263,20 +263,20 @@ describe('A007/settings-plugins: enable/disable toggle', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});
     });
     render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('switch', { name: /toggle chat/i }));
+    await waitFor(() => screen.getByRole('switch', { name: /toggle orchestrator/i }));
 
-    const toggle = screen.getByRole('switch', { name: /toggle chat/i });
+    const toggle = screen.getByRole('switch', { name: /toggle orchestrator/i });
     await user.click(toggle);
     await user.click(toggle);
 
     await waitFor(() => {
-      expect(screen.getByRole('switch', { name: /toggle chat/i })).toBeChecked();
+      expect(screen.getByRole('switch', { name: /toggle orchestrator/i })).toBeChecked();
     });
   });
 });
@@ -382,7 +382,7 @@ describe('A007/settings-plugins: strikeColor thresholds', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 3, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 3, enabled: true },
         ]));
       }
       return Promise.resolve({});
@@ -397,7 +397,7 @@ describe('A007/settings-plugins: strikeColor thresholds', () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') {
         return Promise.resolve(makeSnapshot([
-          { id: 'snapfzz.chat', name: 'Chat', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
+          { id: 'snapfzz.orchestrator', name: 'Orchestrator', version: '1.0.0', zone: 'zone3', strikes: 0, enabled: true },
         ]));
       }
       return Promise.resolve({});

@@ -286,7 +286,7 @@ ctx.rust.invoke('agent_health')
 ## File Structure
 
 ```
-plugins/chat/
+plugins/orchestrator/
 ├── SPEC.md
 ├── package.json                     # deps: @snapfzz/plugin-sdk, @snapfzz/shared
 ├── tsconfig.json

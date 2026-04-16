@@ -10,8 +10,8 @@ function makePlugin(): PluginDefinition {
   vi.resetModules();
   // Using dynamic import via factory to bypass module cache issues
   return {
-    id: 'snapfzz.chat',
-    name: 'Chat',
+    id: 'snapfzz.orchestrator',
+    name: 'Orchestrator',
     version: '0.1.0',
     description: 'Text conversation channel for AgentScope agents',
     surface: ['project'],
@@ -40,17 +40,17 @@ function makePlugin(): PluginDefinition {
         },
       ],
       statusItems: [
-        { id: 'chat.connection', position: 'left' as const, component: () => import('../contributions/ConnectionStatus') as Promise<{ default: React.ComponentType }> },
-        { id: 'chat.tokens', position: 'right' as const, component: () => import('../contributions/TokenCounter') as Promise<{ default: React.ComponentType }> },
+        { id: 'orchestrator.connection', position: 'left' as const, component: () => import('../contributions/ConnectionStatus') as Promise<{ default: React.ComponentType }> },
+        { id: 'orchestrator.tokens', position: 'right' as const, component: () => import('../contributions/TokenCounter') as Promise<{ default: React.ComponentType }> },
       ],
       commands: [
-        { id: 'chat.send', title: 'Send Message' },
-        { id: 'chat.stop', title: 'Stop Generation' },
-        { id: 'chat.clear', title: 'Clear Conversation' },
+        { id: 'orchestrator.send', title: 'Send Message' },
+        { id: 'orchestrator.stop', title: 'Stop Generation' },
+        { id: 'orchestrator.clear', title: 'Clear Conversation' },
       ],
       shortcuts: [
-        { command: 'chat.send', key: '⌘+Enter' },
-        { command: 'chat.stop', key: 'Escape' },
+        { command: 'orchestrator.send', key: '⌘+Enter' },
+        { command: 'orchestrator.stop', key: 'Escape' },
       ],
     },
   };
@@ -77,12 +77,12 @@ function makeCtx(overrides: Partial<PluginContext> = {}): PluginContext {
 describe('chat/manifest: plugin identity', () => {
   it('chat/manifest: declares correct plugin id', async () => {
     const { default: plugin } = await import('../index');
-    expect(plugin.id).toBe('snapfzz.chat');
+    expect(plugin.id).toBe('snapfzz.orchestrator');
   });
 
   it('chat/manifest: declares correct plugin name', async () => {
     const { default: plugin } = await import('../index');
-    expect(plugin.name).toBe('Chat');
+    expect(plugin.name).toBe('Orchestrator');
   });
 
   it('chat/manifest: targets project surface only', async () => {
@@ -154,32 +154,32 @@ describe('chat/manifest: contributions', () => {
     const { default: plugin } = await import('../index');
     const items = plugin.contributes?.statusItems ?? [];
     expect(items).toHaveLength(2);
-    const connection = items.find((i) => i.id === 'chat.connection');
-    const tokens = items.find((i) => i.id === 'chat.tokens');
+    const connection = items.find((i) => i.id === 'orchestrator.connection');
+    const tokens = items.find((i) => i.id === 'orchestrator.tokens');
     expect(connection?.position).toBe('left');
     expect(tokens?.position).toBe('right');
   });
 
-  it('chat/manifest: contributes chat.send, chat.stop, chat.clear commands', async () => {
+  it('chat/manifest: contributes orchestrator.send, orchestrator.stop, orchestrator.clear commands', async () => {
     const { default: plugin } = await import('../index');
     const commands = plugin.contributes?.commands ?? [];
     const ids = commands.map((c) => c.id);
-    expect(ids).toContain('chat.send');
-    expect(ids).toContain('chat.stop');
-    expect(ids).toContain('chat.clear');
+    expect(ids).toContain('orchestrator.send');
+    expect(ids).toContain('orchestrator.stop');
+    expect(ids).toContain('orchestrator.clear');
   });
 
-  it('chat/manifest: shortcut ⌘+Enter triggers chat.send', async () => {
+  it('chat/manifest: shortcut ⌘+Enter triggers orchestrator.send', async () => {
     const { default: plugin } = await import('../index');
     const shortcuts = plugin.contributes?.shortcuts ?? [];
-    const send = shortcuts.find((s) => s.command === 'chat.send');
+    const send = shortcuts.find((s) => s.command === 'orchestrator.send');
     expect(send?.key).toBe('⌘+Enter');
   });
 
-  it('chat/manifest: shortcut Escape triggers chat.stop', async () => {
+  it('chat/manifest: shortcut Escape triggers orchestrator.stop', async () => {
     const { default: plugin } = await import('../index');
     const shortcuts = plugin.contributes?.shortcuts ?? [];
-    const stop = shortcuts.find((s) => s.command === 'chat.stop');
+    const stop = shortcuts.find((s) => s.command === 'orchestrator.stop');
     expect(stop?.key).toBe('Escape');
   });
 });
@@ -206,7 +206,7 @@ describe('chat/activate: lifecycle', () => {
     expect(typeof handle.deactivate).toBe('function');
   });
 
-  it('chat/activate: registers chat.send, chat.stop, chat.clear commands', async () => {
+  it('chat/activate: registers orchestrator.send, orchestrator.stop, orchestrator.clear commands', async () => {
     vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime: vi.fn(),
@@ -222,9 +222,9 @@ describe('chat/activate: lifecycle', () => {
     await plugin.activate!(ctx);
 
     const registeredIds = registerFn.mock.calls.map(([id]) => id);
-    expect(registeredIds).toContain('chat.send');
-    expect(registeredIds).toContain('chat.stop');
-    expect(registeredIds).toContain('chat.clear');
+    expect(registeredIds).toContain('orchestrator.send');
+    expect(registeredIds).toContain('orchestrator.stop');
+    expect(registeredIds).toContain('orchestrator.clear');
   });
 
   it('chat/activate: command handlers pass payload/default text to sendMessage', async () => {
@@ -243,7 +243,7 @@ describe('chat/activate: lifecycle', () => {
     const { default: plugin } = await import('../index');
     await plugin.activate!(ctx);
 
-    const sendRegistration = registerFn.mock.calls.find(([id]) => id === 'chat.send');
+    const sendRegistration = registerFn.mock.calls.find(([id]) => id === 'orchestrator.send');
     expect(sendRegistration).toBeDefined();
     const sendHandler = sendRegistration?.[1] as (args?: unknown) => Promise<unknown>;
 
@@ -271,8 +271,8 @@ describe('chat/activate: lifecycle', () => {
     const { default: plugin } = await import('../index');
     await plugin.activate!(ctx);
 
-    const stopHandler = registerFn.mock.calls.find(([id]) => id === 'chat.stop')?.[1] as () => Promise<unknown>;
-    const clearHandler = registerFn.mock.calls.find(([id]) => id === 'chat.clear')?.[1] as () => Promise<unknown>;
+    const stopHandler = registerFn.mock.calls.find(([id]) => id === 'orchestrator.stop')?.[1] as () => Promise<unknown>;
+    const clearHandler = registerFn.mock.calls.find(([id]) => id === 'orchestrator.clear')?.[1] as () => Promise<unknown>;
 
     await stopHandler();
     await clearHandler();

@@ -591,8 +591,8 @@ mod tests {
     #[test]
     fn a014_process_cleanup_all_orphan_processes_removes_stale_pid_files() {
         let temp = tempfile::tempdir().expect("tempdir");
-        // Write a PID file for "orchestrator" with an invalid PID.
-        let pid_path = pid_file_path(temp.path(), "orchestrator");
+        // Write a PID file for "litellm" with an invalid PID.
+        let pid_path = pid_file_path(temp.path(), "litellm");
         std::fs::create_dir_all(pid_path.parent().unwrap()).expect("create runtime dir");
         std::fs::write(&pid_path, "0").expect("write zero pid");
 

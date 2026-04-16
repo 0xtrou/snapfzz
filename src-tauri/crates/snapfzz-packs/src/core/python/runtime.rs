@@ -320,13 +320,10 @@ impl PythonRuntime {
         let agentscope_version = Self::package_version_from_list(packages::AGENTSCOPE, &installed_packages);
         let agentscope_runtime_version =
             Self::package_version_from_list(packages::AGENTSCOPE_RUNTIME, &installed_packages);
-        let orchestrator_version =
-            Self::package_version_from_list(packages::ORCHESTRATOR, &installed_packages);
         let litellm_version = Self::package_version_from_list(packages::LITELLM, &installed_packages);
 
         let agentscope_is_installed = agentscope_version.is_some();
         let agentscope_runtime_is_installed = agentscope_runtime_version.is_some();
-        let orchestrator_is_installed = orchestrator_version.is_some();
         let litellm_is_installed = litellm_version.is_some();
 
         PythonRuntimeStatus {
@@ -350,11 +347,6 @@ impl PythonRuntime {
                 name: packages::AGENTSCOPE_RUNTIME.to_string(),
                 version: agentscope_runtime_version.unwrap_or_default(),
                 is_installed: agentscope_runtime_is_installed,
-            },
-            orchestrator: PipPackageInfo {
-                name: packages::ORCHESTRATOR.to_string(),
-                version: orchestrator_version.unwrap_or_default(),
-                is_installed: orchestrator_is_installed,
             },
             litellm: PipPackageInfo {
                 name: packages::LITELLM.to_string(),
@@ -386,11 +378,6 @@ impl PythonRuntime {
                     id: packages::AGENTSCOPE_RUNTIME.into(),
                     label: "AgentScope Runtime".into(),
                     is_installed: agentscope_runtime_is_installed,
-                },
-                InstallStep {
-                    id: binaries::ORCHESTRATOR.into(),
-                    label: services::AGENTSCOPE_NAME.into(),
-                    is_installed: orchestrator_is_installed,
                 },
                 InstallStep {
                     id: packages::LITELLM.into(),
@@ -603,7 +590,7 @@ mod tests {
         assert!(!status.agentscope.is_installed);
         assert!(!status.agentscope_runtime.is_installed);
         assert!(!status.litellm.is_installed);
-        assert_eq!(status.install_steps.len(), 7);
+        assert_eq!(status.install_steps.len(), 6);
     }
 
     #[test]
@@ -923,7 +910,7 @@ mod tests {
         assert!(status.uv_installed);
         assert!(status.python_installed);
         assert!(!status.venv_exists);
-        assert_eq!(status.install_steps.len(), 7);
+        assert_eq!(status.install_steps.len(), 6);
         assert!(status.install_steps.iter().any(|s| s.id == "uv" && s.is_installed));
         assert!(status.install_steps.iter().any(|s| s.id == "python" && s.is_installed));
         assert!(status.install_steps.iter().any(|s| s.id == "venv" && !s.is_installed));

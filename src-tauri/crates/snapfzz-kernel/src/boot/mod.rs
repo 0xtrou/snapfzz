@@ -302,7 +302,6 @@ impl PreflightService {
         let dirs = [
             self.data_dir.clone(),
             self.data_dir.join(paths::RUNTIME_DIR),
-            self.data_dir.join(paths::RUNTIME_DIR).join(paths::ORCHESTRATOR_DIR),
             self.data_dir.join(paths::FONTS_DIR),
             self.data_dir.join(paths::USAGE_DIR),
         ];
@@ -499,10 +498,6 @@ mod tests {
 
         assert!(tmp.path().exists(), "data_dir must exist");
         assert!(tmp.path().join("runtime").exists(), "runtime/ must exist");
-        assert!(
-            tmp.path().join("runtime").join("orchestrator").exists(),
-            "runtime/orchestrator/ must exist"
-        );
         assert!(tmp.path().join("fonts").exists(), "fonts/ must exist");
         assert!(tmp.path().join("usage").exists(), "usage/ must exist");
     }
