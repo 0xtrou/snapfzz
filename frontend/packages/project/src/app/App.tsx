@@ -167,9 +167,32 @@ export function App() {
   useEffect(() => {
     if (pluginsInitialized) return;
     pluginsInitialized = true;
-    registerDiscoveredPlugins(host, 'project').then(() => {
+
+    const initPlugins = async () => {
+      await registerDiscoveredPlugins(host, 'project');
       void host.activateByEvent('onStartupFinished');
-    });
+    };
+
+    // Run discovery immediately (may find plugins if boot already completed)
+    void initPlugins();
+
+    // Re-discover after boot-complete — system plugins are installed during boot,
+    // which may finish after the frontend's initial discovery runs.
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen('boot-complete', () => {
+          registerDiscoveredPlugins(host, 'project').then(() => {
+            void host.activateByEvent('onStartupFinished');
+          });
+        });
+      } catch {
+        // Not in Tauri (tests, web preview) — no boot event
+      }
+    })();
+
+    return () => { unlisten?.(); };
   }, []);
 
   const leftItems = useMemo(
