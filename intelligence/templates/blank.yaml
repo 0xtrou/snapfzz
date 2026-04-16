@@ -1,7 +1,0 @@
-name: "Blank Project"
-description: "Start from scratch"
-agents:
-  - name: Orchestrator
-    type: orchestrator
-    model_config_name: default
-pipeline: sequential
