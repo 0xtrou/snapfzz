@@ -111,7 +111,8 @@ pub async fn list_installed_plugins() -> Result<Vec<InstalledPluginInfo>, String
 
 /// Whitelisted system plugins that ship with the app.
 /// Maps plugin ID → (source dir name, bundle resource prefix).
-const SYSTEM_PLUGINS: &[(&str, &str)] = &[
+/// Public so boot.rs can iterate and install them before frontend discovery.
+pub const SYSTEM_PLUGINS: &[(&str, &str)] = &[
     ("snapfzz.orchestrator", "orchestrator"),
 ];
 
@@ -147,36 +148,61 @@ const PLUGIN_ARTIFACT_FILES: &[&str] = &["manifest.json"];
 ///
 /// Dev mode: copies from source tree. Production: copies from app bundle.
 /// No symlinks — asset:// protocol requires real files in the scoped path.
+/// Tauri command wrapper — called from frontend during plugin activation.
 #[tauri::command]
 pub async fn install_system_plugin<R: tauri::Runtime>(
     plugin_id: String,
     app: tauri::AppHandle<R>,
 ) -> Result<String, String> {
+    let (dir_name, source) = resolve_system_plugin_source(&plugin_id, Some(&app))?;
+    let _ = dir_name; // used only for dev_source_dir lookup inside resolve
+    do_install_system_plugin(&plugin_id, &source)
+}
+
+/// Sync version called from boot.rs — before frontend loads.
+pub fn install_system_plugin_sync<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    plugin_id: &str,
+) -> Result<String, String> {
+    let (_dir_name, source) = resolve_system_plugin_source(plugin_id, Some(app))?;
+    do_install_system_plugin(plugin_id, &source)
+}
+
+/// Resolve source directory for a system plugin.
+fn resolve_system_plugin_source<R: tauri::Runtime>(
+    plugin_id: &str,
+    app: Option<&tauri::AppHandle<R>>,
+) -> Result<(&'static str, PathBuf), String> {
     let dir_name = SYSTEM_PLUGINS
         .iter()
         .find(|(id, _)| *id == plugin_id)
         .map(|(_, dir)| *dir)
         .ok_or_else(|| format!("plugin '{}' is not a whitelisted system plugin", plugin_id))?;
 
-    let plugins_dir = resolve_plugins_dir()?;
-    std::fs::create_dir_all(&plugins_dir)
-        .map_err(|e| format!("failed to create plugins dir: {e}"))?;
-
-    let target = plugins_dir.join(&plugin_id);
-
-    // Resolve source (dev: source tree, production: app bundle)
     let source = if is_dev_mode() {
         dev_source_dir(dir_name)
     } else {
+        let app = app.ok_or("app handle required in production mode")?;
         let resource_dir = app.path()
             .resource_dir()
             .map_err(|e| format!("failed to resolve resource dir: {e}"))?;
-        resource_dir.join("plugins").join(&plugin_id)
+        resource_dir.join("plugins").join(plugin_id)
     };
 
     if !source.exists() {
         return Err(format!("plugin source not found at {}", source.display()));
     }
+
+    Ok((dir_name, source))
+}
+
+/// Core install logic — copies artifacts from source to ~/.snapfzz/plugins/{id}/.
+fn do_install_system_plugin(plugin_id: &str, source: &std::path::Path) -> Result<String, String> {
+    let plugins_dir = resolve_plugins_dir()?;
+    std::fs::create_dir_all(&plugins_dir)
+        .map_err(|e| format!("failed to create plugins dir: {e}"))?;
+
+    let target = plugins_dir.join(plugin_id);
 
     // Skip if all artifacts are present and up-to-date
     if target.is_dir() {
@@ -184,7 +210,6 @@ pub async fn install_system_plugin<R: tauri::Runtime>(
             && PLUGIN_ARTIFACT_FILES.iter().all(|f| target.join(f).exists());
 
         if all_present {
-            // In dev mode, check if dist was rebuilt (source newer than target)
             let needs_update = is_dev_mode() && {
                 let src_mtime = std::fs::metadata(source.join("dist").join("index.js"))
                     .and_then(|m| m.modified()).ok();
@@ -194,7 +219,7 @@ pub async fn install_system_plugin<R: tauri::Runtime>(
             };
 
             if !needs_update {
-                return Ok(format!("already installed: {}", target.display()));
+                return Ok(format!("[plugin] already installed: {}", target.display()));
             }
         }
     }
@@ -206,7 +231,6 @@ pub async fn install_system_plugin<R: tauri::Runtime>(
     std::fs::create_dir_all(&target)
         .map_err(|e| format!("failed to create {}: {e}", target.display()))?;
 
-    // Copy artifact directories
     for dir in PLUGIN_ARTIFACT_DIRS {
         let src = source.join(dir);
         if src.exists() {
@@ -215,7 +239,6 @@ pub async fn install_system_plugin<R: tauri::Runtime>(
         }
     }
 
-    // Copy artifact files
     for file in PLUGIN_ARTIFACT_FILES {
         let src = source.join(file);
         if src.exists() {
@@ -225,9 +248,7 @@ pub async fn install_system_plugin<R: tauri::Runtime>(
     }
 
     let mode = if is_dev_mode() { "dev" } else { "production" };
-    let msg = format!("[plugin] {mode}: installed {} artifacts to {}", plugin_id, target.display());
-    eprintln!("{msg}");
-    Ok(msg)
+    Ok(format!("[plugin] {mode}: installed {plugin_id} artifacts to {}", target.display()))
 }
 
 fn remove_target(target: &std::path::Path) -> Result<(), String> {

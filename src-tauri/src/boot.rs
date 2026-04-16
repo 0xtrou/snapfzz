@@ -162,6 +162,16 @@ pub fn spawn_boot_phases(
                 }
             }
 
+            // A020/SystemPlugins: Install system plugin artifacts before frontend discovers them.
+            // This ensures ~/.snapfzz/plugins/ has the compiled UI, intelligence source,
+            // and manifest.json ready for list_installed_plugins to find.
+            for (plugin_id, _) in crate::commands::plugin_runtime::SYSTEM_PLUGINS {
+                match crate::commands::plugin_runtime::install_system_plugin_sync(&app_handle, plugin_id) {
+                    Ok(msg) => eprintln!("{msg}"),
+                    Err(e) => eprintln!("[boot/plugins] failed to install {plugin_id}: {e}"),
+                }
+            }
+
             // Per A003/BootComplete: emit after all Phase 3 results are processed so the
             // frontend skeleton stays visible until the full boot sequence is done.
             app_handle.emit("boot-complete", serde_json::json!({
