@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::budget::supervised::ProcessBudget;
 use crate::budget::BudgetRegistry;
-use crate::constants::{logging, paths, process as process_names};
+use crate::constants::{logging, paths};
 use crate::process::health::{apply_health_check, wait_until_healthy};
 use crate::process::logs::ProcessLogs;
 use crate::process::runtime::{ChildState, RuntimeState};
@@ -253,11 +253,30 @@ fn remove_pid_file(data_dir: &std::path::Path, name: &str) {
     let _ = std::fs::remove_file(pid_file_path(data_dir, name));
 }
 
-/// A008/BootCleanup: Clean up all known orphan processes at boot time.
-/// Scans PID files for agentscope and litellm, kills any orphan processes still running.
+/// A008/BootCleanup: Clean up all orphan processes at boot time.
+/// Scans `{data_dir}/runtime/` for PID files and kills any stale processes.
+/// Covers system services (litellm, postgres) and plugin runtimes (chat.orchestrator, etc.)
+/// without needing a hardcoded list.
 pub fn cleanup_all_orphan_processes(data_dir: &std::path::Path) {
-    for name in process_names::MANAGED_PROCESSES {
-        cleanup_stale_pid(data_dir, name);
+    let runtime_dir = data_dir.join(paths::RUNTIME_DIR);
+    if !runtime_dir.is_dir() {
+        return;
+    }
+
+    let entries = match std::fs::read_dir(&runtime_dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        // Extract process name from directory name
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            cleanup_stale_pid(data_dir, name);
+        }
     }
 }
 
@@ -605,7 +624,9 @@ mod tests {
     #[test]
     fn a014_process_cleanup_all_orphan_processes_removes_invalid_pid() {
         let temp = tempfile::tempdir().expect("tempdir");
-        for name in crate::constants::process::MANAGED_PROCESSES {
+        // Simulate orphan PID files for system services and plugin runtimes
+        let names = ["litellm", "postgres", "chat.orchestrator", "some-plugin.runtime"];
+        for name in &names {
             let pid_path = pid_file_path(temp.path(), name);
             std::fs::create_dir_all(pid_path.parent().unwrap()).expect("create dir");
             std::fs::write(&pid_path, "not-a-pid").expect("write bad pid");
@@ -613,7 +634,7 @@ mod tests {
 
         super::cleanup_all_orphan_processes(temp.path());
 
-        for name in crate::constants::process::MANAGED_PROCESSES {
+        for name in &names {
             assert!(!pid_file_path(temp.path(), name).exists(), "{name} pid file should be removed");
         }
     }

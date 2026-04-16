@@ -5,8 +5,6 @@ pub mod process {
     pub const AGENT_RUNTIME: &str = "agent-runtime";
     pub const LLM_GATEWAY: &str = "llm-gateway";
     pub const DATABASE: &str = "database";
-    // Used in cleanup_all_orphan_processes
-    pub const MANAGED_PROCESSES: &[&str] = &["litellm", "postgres"];
 }
 
 /// Settings keys for host/port configuration.
