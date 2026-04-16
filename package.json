@@ -19,7 +19,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.1",
     "@chenglou/pretext": "^0.0.4",
-    "@snapfzz/chat-plugin": "workspace:*",
+    "@snapfzz/orchestrator-plugin": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "zod": "^3.24.0"
   },

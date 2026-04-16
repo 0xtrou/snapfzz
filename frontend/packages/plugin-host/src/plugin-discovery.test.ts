@@ -8,8 +8,8 @@ import { discoverPlugins, registerDiscoveredPlugins } from './plugin-discovery';
 import { PluginHost } from './plugin-host';
 import type { PluginDefinition } from '@snapfzz/plugin-sdk/define-plugin';
 
-vi.mock('@snapfzz/chat-plugin', () => ({
-  default: fakeManifest('chat.plugin'),
+vi.mock('@snapfzz/orchestrator-plugin', () => ({
+  default: fakeManifest('orchestrator.plugin'),
 }));
 
 vi.mock('@snapfzz/settings-general', () => ({
@@ -63,7 +63,7 @@ describe('A006/boot: discoverPlugins', () => {
     const result = await discoverPlugins('project');
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
-    expect(result[0]?.manifest.id).toBe('chat.plugin');
+    expect(result[0]?.manifest.id).toBe('orchestrator.plugin');
   });
 
   it('A006/boot: discoverPlugins returns array for preferences surface', async () => {
@@ -118,7 +118,7 @@ describe('A006/boot: registerDiscoveredPlugins', () => {
     await registerDiscoveredPlugins(host, 'project');
 
     expect(registerSpy).toHaveBeenCalledTimes(1);
-    expect(registerSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'chat.plugin' }));
+    expect(registerSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 'orchestrator.plugin' }));
   });
 
   it('A006/boot: registerDiscoveredPlugins registers all successfully loaded preferences plugins', async () => {

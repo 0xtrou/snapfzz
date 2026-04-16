@@ -14,7 +14,7 @@
     "react": "^19.0.0"
   },
   "optionalDependencies": {
-    "@snapfzz/chat-plugin": "workspace:*"
+    "@snapfzz/orchestrator-plugin": "workspace:*"
   },
   "devDependencies": {
     "@snapfzz/settings-advanced": "workspace:*",

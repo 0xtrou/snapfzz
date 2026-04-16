@@ -14,7 +14,7 @@ importers:
       '@chenglou/pretext':
         specifier: ^0.0.4
         version: 0.0.4
-      '@snapfzz/chat-plugin':
+      '@snapfzz/orchestrator-plugin':
         specifier: workspace:*
         version: link:plugins/orchestrator
       '@tauri-apps/api':
@@ -107,7 +107,7 @@ importers:
         specifier: ^19.0.0
         version: 19.2.4
     optionalDependencies:
-      '@snapfzz/chat-plugin':
+      '@snapfzz/orchestrator-plugin':
         specifier: workspace:*
         version: link:../../../plugins/orchestrator
     devDependencies:

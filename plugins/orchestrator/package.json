@@ -1,5 +1,5 @@
 {
-  "name": "@snapfzz/chat-plugin",
+  "name": "@snapfzz/orchestrator-plugin",
   "version": "0.1.0",
   "private": true,
   "type": "module",

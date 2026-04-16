@@ -21,7 +21,7 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
 
   const loaders: Array<() => Promise<{ default: PluginDefinition }>> =
     surface === 'project'
-      ? [() => import('@snapfzz/chat-plugin')]
+      ? [() => import('@snapfzz/orchestrator-plugin')]
         : surface === 'preferences'
         ? [
             // Per A007/settingsSections: Runtime section removed — agentscope host/port config
