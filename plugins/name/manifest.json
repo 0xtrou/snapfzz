@@ -1,0 +1,21 @@
+{
+  "id": "snapfzz.name",
+  "name": "Name",
+  "version": "0.1.0",
+  "description": "Name plugin for Snapfzz",
+  "type": "system",
+  "main": "dist/index.js",
+  "umdName": "SnapfzzNamePlugin",
+  "surface": ["project"],
+  "activationEvents": ["onStartupFinished"],
+  "runtimes": {
+    "python": [{
+      "id": "name.runtime",
+      "packageDir": "intelligence",
+      "command": "name app",
+      "healthCheck": "/health",
+      "hostFlag": "--host",
+      "portFlag": "--port"
+    }]
+  }
+}

@@ -49,13 +49,14 @@ plugins/my-feature/
 ├── intelligence/              # Python backend (Zone 1)
 │   ├── pyproject.toml         # pip package definition
 │   ├── __init__.py
-│   ├── src/{module}/          # Python package
-│   │   ├── __init__.py
-│   │   ├── app.py             # FastAPI factory + /health
-│   │   └── cli.py             # CLI: {module} app --host --port
-│   └── pack/                  # Configuration (optional)
-│       ├── pack.yaml
-│       └── prompts/
+│   └── src/{module}/          # Python package
+│       ├── __init__.py
+│       ├── app.py             # FastAPI factory + /health
+│       └── cli.py             # CLI: {module} app --host --port
+│
+├── pack/                      # Configuration (optional)
+│   ├── pack.yaml
+│   └── prompts/
 │
 └── dist/                      # Built output (gitignored)
     └── index.js               # UMD bundle
@@ -297,6 +298,7 @@ For production builds, add your plugin artifacts to `src-tauri/tauri.conf.json`:
 "resources": {
   "../plugins/my-feature/dist": "plugins/snapfzz.my-feature/dist",
   "../plugins/my-feature/intelligence": "plugins/snapfzz.my-feature/intelligence",
+  "../plugins/my-feature/pack": "plugins/snapfzz.my-feature/pack",
   "../plugins/my-feature/manifest.json": "plugins/snapfzz.my-feature/manifest.json"
 }
 ```

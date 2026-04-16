@@ -99,7 +99,8 @@ create_system_plugin() {
 
   echo "Creating system plugin: plugins/$name/ ..."
   mkdir -p "$plugin_dir/src/__tests__" "$plugin_dir/src/contributions" \
-           "$plugin_dir/intelligence/src/${name//-/_}"
+           "$plugin_dir/intelligence/src/${name//-/_}" \
+           "$plugin_dir/intelligence/pack/prompts/contexts"
 
   # ── package.json
   cat > "$plugin_dir/package.json" <<PKGJSON

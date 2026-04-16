@@ -133,9 +133,9 @@ fn dev_source_dir(dir_name: &str) -> PathBuf {
 }
 
 /// Artifact directories to copy from source → ~/.snapfzz/plugins/{id}/.
-/// intelligence/ is source for pip install at runtime (produces runtime/bin/).
+/// intelligence/ contains Python source (for pip install) and pack/ (config).
 /// No node_modules, tests, or TypeScript source copied.
-const PLUGIN_ARTIFACT_DIRS: &[&str] = &["dist", "intelligence", "pack"];
+const PLUGIN_ARTIFACT_DIRS: &[&str] = &["dist", "intelligence"];
 const PLUGIN_ARTIFACT_FILES: &[&str] = &["manifest.json"];
 
 /// Install a whitelisted system plugin into `~/.snapfzz/plugins/{plugin_id}/`.
