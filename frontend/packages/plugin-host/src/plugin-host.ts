@@ -554,9 +554,14 @@ export class PluginHost {
       };
 
       try {
-        // Steps run sequentially per runtime (each depends on the previous)
-        // but multiple runtimes run in parallel via Promise.allSettled
-        await bridge.invoke('install_plugin_runtime', { declaration });
+        // Check if binary already exists — skip pip install if so (fast path)
+        const info = await bridge.invoke<{ hasRuntime: boolean }>('get_plugin_info', { pluginId: plugin.id });
+        if (!info?.hasRuntime) {
+          // First boot or binary missing — full install (slow, ~1-2s)
+          await bridge.invoke('install_plugin_runtime', { declaration });
+          console.log(`[plugin-host] installed runtime ${runtime.id}`);
+        }
+
         await bridge.invoke('register_plugin_runtime', { declaration });
         await bridge.invoke('spawn_plugin_runtime', { runtimeId: runtime.id });
         console.log(`[plugin-host] runtime ${runtime.id} started for ${plugin.id}`);
