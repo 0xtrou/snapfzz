@@ -53,6 +53,10 @@
       "icons/128x128.png",
       "icons/icon.png"
     ],
+    "resources": {
+      "../plugins/orchestrator/intelligence": "plugins/snapfzz.orchestrator/intelligence",
+      "../plugins/orchestrator/pack": "plugins/snapfzz.orchestrator/pack"
+    },
     "macOS": {
       "minimumSystemVersion": "12.0"
     }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use snapfzz_kernel::process::ProcessFactoryRegistry;
 use snapfzz_packs::runtime::python::PythonRuntime;
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::factories::plugin_runtime::PluginProcessFactory;
 
@@ -44,39 +44,43 @@ fn resolve_plugins_dir() -> Result<PathBuf, String> {
 }
 
 /// Whitelisted system plugins that ship with the app.
-/// Maps plugin ID → directory name under `plugins/` in the source tree.
+/// Maps plugin ID → (source dir name, bundle resource prefix).
 const SYSTEM_PLUGINS: &[(&str, &str)] = &[
     ("snapfzz.orchestrator", "orchestrator"),
 ];
 
-/// Resolve the project root (parent of src-tauri/) at compile time for dev mode.
-fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri has a parent")
-        .to_path_buf()
+/// Resolve the project root (parent of src-tauri/) at compile time.
+/// In dev mode this path exists; in production it doesn't.
+const PROJECT_ROOT: &str = env!("CARGO_MANIFEST_DIR");
+
+fn is_dev_mode() -> bool {
+    std::path::Path::new(PROJECT_ROOT).exists()
 }
 
-/// Install a whitelisted system plugin by symlinking its source directory
-/// into `~/.snapfzz/plugins/{plugin_id}/`.
+fn dev_source_dir(dir_name: &str) -> PathBuf {
+    PathBuf::from(PROJECT_ROOT)
+        .parent()
+        .expect("src-tauri has a parent")
+        .join("plugins")
+        .join(dir_name)
+}
+
+/// Install a whitelisted system plugin into `~/.snapfzz/plugins/{plugin_id}/`.
 ///
-/// In dev mode, this creates a symlink so changes are reflected immediately.
+/// - **Dev mode**: symlinks source directory (live reload, instant changes)
+/// - **Production**: copies bundled artifacts from app resources
+///
 /// Only whitelisted plugin IDs are allowed.
 #[tauri::command]
-pub async fn install_system_plugin(plugin_id: String) -> Result<String, String> {
+pub async fn install_system_plugin<R: tauri::Runtime>(
+    plugin_id: String,
+    app: tauri::AppHandle<R>,
+) -> Result<String, String> {
     let dir_name = SYSTEM_PLUGINS
         .iter()
         .find(|(id, _)| *id == plugin_id)
         .map(|(_, dir)| *dir)
         .ok_or_else(|| format!("plugin '{}' is not a whitelisted system plugin", plugin_id))?;
-
-    let source = project_root().join("plugins").join(dir_name);
-    if !source.exists() {
-        return Err(format!(
-            "system plugin source not found at {}",
-            source.display()
-        ));
-    }
 
     let plugins_dir = resolve_plugins_dir()?;
     std::fs::create_dir_all(&plugins_dir)
@@ -84,40 +88,113 @@ pub async fn install_system_plugin(plugin_id: String) -> Result<String, String> 
 
     let target = plugins_dir.join(&plugin_id);
 
-    // If target already exists and is correct, skip
+    if is_dev_mode() {
+        install_dev_symlink(dir_name, &target)
+    } else {
+        install_production_copy(&app, &plugin_id, &target)
+    }
+}
+
+/// Dev mode: symlink source tree → plugins dir
+fn install_dev_symlink(dir_name: &str, target: &std::path::Path) -> Result<String, String> {
+    let source = dev_source_dir(dir_name);
+    if !source.exists() {
+        return Err(format!("system plugin source not found at {}", source.display()));
+    }
+
+    // If symlink already correct, skip
     if target.exists() {
-        let meta = std::fs::symlink_metadata(&target);
-        if let Ok(meta) = meta {
+        if let Ok(meta) = std::fs::symlink_metadata(target) {
             if meta.file_type().is_symlink() {
-                let link_dest = std::fs::read_link(&target)
-                    .map_err(|e| format!("failed to read symlink: {e}"))?;
-                if link_dest == source {
-                    return Ok(format!("already installed: {} → {}", target.display(), source.display()));
+                if let Ok(link_dest) = std::fs::read_link(target) {
+                    if link_dest == source {
+                        return Ok(format!("already installed: {} → {}", target.display(), source.display()));
+                    }
                 }
             }
         }
-        // Remove stale link/dir
-        if target.is_dir() && !target.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
-            std::fs::remove_dir_all(&target)
-                .map_err(|e| format!("failed to remove stale dir: {e}"))?;
-        } else {
-            std::fs::remove_file(&target)
-                .map_err(|e| format!("failed to remove stale link: {e}"))?;
-        }
+        remove_target(target)?;
     }
 
-    // Create symlink: ~/.snapfzz/plugins/snapfzz.orchestrator → {project}/plugins/orchestrator
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&source, &target)
+    std::os::unix::fs::symlink(&source, target)
         .map_err(|e| format!("failed to symlink {} → {}: {e}", target.display(), source.display()))?;
 
     #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(&source, &target)
+    std::os::windows::fs::symlink_dir(&source, target)
         .map_err(|e| format!("failed to symlink {} → {}: {e}", target.display(), source.display()))?;
 
-    let msg = format!("installed: {} → {}", target.display(), source.display());
+    let msg = format!("dev: symlinked {} → {}", target.display(), source.display());
     eprintln!("[plugin] {msg}");
     Ok(msg)
+}
+
+/// Production mode: copy bundled artifacts from app resources → plugins dir
+fn install_production_copy<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    plugin_id: &str,
+    target: &std::path::Path,
+) -> Result<String, String> {
+    let resource_dir = app.path()
+        .resource_dir()
+        .map_err(|e| format!("failed to resolve resource dir: {e}"))?;
+
+    let bundle_source = resource_dir.join("plugins").join(plugin_id);
+    if !bundle_source.exists() {
+        return Err(format!(
+            "bundled plugin not found at {} — app bundle may be incomplete",
+            bundle_source.display()
+        ));
+    }
+
+    // If target already exists with matching content, skip
+    if target.exists() && target.is_dir() {
+        // Simple check: if intelligence/ subdir exists, assume installed
+        if target.join("intelligence").exists() {
+            return Ok(format!("already installed: {}", target.display()));
+        }
+        remove_target(target)?;
+    }
+
+    // Recursive copy from bundle to plugins dir
+    copy_dir_recursive(&bundle_source, target)
+        .map_err(|e| format!("failed to copy bundled plugin: {e}"))?;
+
+    let msg = format!("production: copied {} → {}", bundle_source.display(), target.display());
+    eprintln!("[plugin] {msg}");
+    Ok(msg)
+}
+
+fn remove_target(target: &std::path::Path) -> Result<(), String> {
+    let is_symlink = target.symlink_metadata()
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+
+    if is_symlink {
+        std::fs::remove_file(target)
+            .map_err(|e| format!("failed to remove stale link: {e}"))
+    } else if target.is_dir() {
+        std::fs::remove_dir_all(target)
+            .map_err(|e| format!("failed to remove stale dir: {e}"))
+    } else {
+        std::fs::remove_file(target)
+            .map_err(|e| format!("failed to remove stale file: {e}"))
+    }
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 /// Install a plugin's Python runtime: pip install the package, copy binary to runtime dir.
