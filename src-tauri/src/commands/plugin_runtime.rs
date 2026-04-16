@@ -132,7 +132,8 @@ fn dev_source_dir(dir_name: &str) -> PathBuf {
 }
 
 /// Artifact directories to copy from source → ~/.snapfzz/plugins/{id}/.
-/// Only runtime artifacts — no source code, node_modules, tests, etc.
+/// intelligence/ is source for pip install at runtime (produces runtime/bin/).
+/// No node_modules, tests, or TypeScript source copied.
 const PLUGIN_ARTIFACT_DIRS: &[&str] = &["dist", "intelligence", "pack"];
 const PLUGIN_ARTIFACT_FILES: &[&str] = &["manifest.json"];
 
