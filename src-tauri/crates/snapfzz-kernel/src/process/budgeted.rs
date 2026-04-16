@@ -71,7 +71,7 @@ impl BudgetedProcess {
             health_interval_ms: 2000,
             max_health_failures: 3,
             max_restarts,
-            health_timeout_secs: 120,
+            health_timeout_secs: 360,
             registry,
             logs,
             settings_mgr,

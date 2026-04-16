@@ -59,7 +59,7 @@ function statusColor(status: ProcessSnapshot['status']): string {
       return 'var(--color-warning)';
     case 'stopped':
     case 'errored':
-      return 'var(--color-error)';
+      return 'var(--color-warning)';
     default:
       return 'var(--text-muted)';
   }
@@ -73,7 +73,7 @@ function statusTagColor(status: ProcessSnapshot['status']): string {
       return 'warning';
     case 'stopped':
     case 'errored':
-      return 'error';
+      return 'warning';
     default:
       return 'default';
   }
@@ -340,10 +340,13 @@ export default function ProcessesSettings() {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (status: ProcessSnapshot['status']) => (
+      render: (status: ProcessSnapshot['status']) => {
+        const label = status === 'stopped' || status === 'errored' ? 'Not Started'
+          : status === 'online' ? 'Live'
+          : status.charAt(0).toUpperCase() + status.slice(1);
+        return (
         <Tag
           color={statusTagColor(status)}
-          style={{ textTransform: 'capitalize' }}
           data-testid={`status-tag-${status}`}
         >
           <span
@@ -357,9 +360,10 @@ export default function ProcessesSettings() {
               verticalAlign: 'middle',
             }}
           />
-          {status}
+          {label}
         </Tag>
-      ),
+        );
+      },
     },
     {
       title: 'Memory',
@@ -413,11 +417,11 @@ export default function ProcessesSettings() {
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: hasData ? 'var(--color-success)' : 'var(--color-error)',
+              background: hasData ? 'var(--color-success)' : 'var(--color-warning)',
               animation: hasData ? 'pulse 2s ease-in-out infinite' : 'none',
             }}
           />
-          {hasData ? 'Live' : 'Offline'}
+          {hasData ? 'Live' : 'Not Started'}
         </span>
       </SettingsHeader>
 

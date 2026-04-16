@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::budget::supervised::ProcessBudget;
 use crate::budget::BudgetRegistry;
-use crate::constants::{logging, paths};
+use crate::constants::paths;
 use crate::process::health::{apply_health_check, wait_until_healthy};
 use crate::process::logs::ProcessLogs;
 use crate::process::runtime::{ChildState, RuntimeState};
@@ -123,7 +123,7 @@ impl ProcessManager {
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = reader.next_line().await {
-                    logs.push(&process_name, format!("{} {line}", logging::STDERR_PREFIX));
+                    logs.push(&process_name, line);
                 }
             });
         }
@@ -937,7 +937,7 @@ mod tests {
         let logs = manager.logs.tail("log-test", 10);
         assert!(logs.iter().any(|l| l.contains("stdout line 1")));
         assert!(logs.iter().any(|l| l.contains("stdout line 3")));
-        assert!(logs.iter().any(|l| l.contains("[stderr]") && l.contains("stdout line 2")));
+        assert!(logs.iter().any(|l| l.contains("stdout line 2")));
 
         manager.shutdown("log-test").await.expect("cleanup");
     }
