@@ -1,0 +1,22 @@
+Snapfzz Intelligence Layer
+Copyright 2025-2026 Snapfzz (https://snapfzz.dev)
+
+This product includes software derived from QwenPaw,
+originally developed by The QwenPaw Authors.
+
+QwenPaw
+Copyright 2025 The QwenPaw Authors
+Licensed under the Apache License, Version 2.0
+https://github.com/agentscope-ai/QwenPaw
+
+The following components were extracted, modified, and redistributed:
+- Agent core (react_agent.py) — ReActAgent with ToolGuardMixin
+- Memory management (BaseMemoryManager, ReMeLight, AgentMd)
+- Tool registry (file I/O, shell, browser, media, agent ops)
+- Security framework (ToolGuard, FileGuard, SkillScanner)
+- Mission mode (PRD generation, phased execution)
+- Multi-agent runtime (workspace isolation, service lifecycle)
+- Configuration models (Pydantic schemas)
+- Agent hooks (bootstrap, memory compaction)
+
+Modifications are documented in THIRD_PARTY_LICENSES.md at the project root.

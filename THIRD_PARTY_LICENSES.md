@@ -130,10 +130,34 @@ The Snapfzz source code itself is licensed under the [Snapfzz Community License 
 - **PyPI:** https://pypi.org/project/prisma/
 - **Used for:** Database schema management and ORM for LiteLLM's PostgreSQL backend (`prisma generate`, `prisma db push`)
 
+### QwenPaw (Extracted and Modified)
+- **License:** Apache 2.0
+- **Copyright:** Copyright 2025 The QwenPaw Authors
+- **URL:** https://github.com/agentscope-ai/QwenPaw
+- **Used for:** Intelligence layer of the Orchestrator plugin
+- **Modification notice:** The Snapfzz intelligence layer (`plugins/orchestrator/intelligence/`) is a derivative work of QwenPaw. We extracted, modified, and redistribute the following components as part of our internal distribution:
+  - **Agent core** (`agents/react_agent.py`) → `intelligence/agent/react_agent.py` — QwenPawAgent with ToolGuardMixin, auto-continuation, media normalization
+  - **Memory** (`agents/memory/`) → `intelligence/memory/` — BaseMemoryManager, ReMeLightMemoryManager, AgentMdManager
+  - **Tools** (`agents/tools/`) → `intelligence/tools/` — file I/O, shell exec, browser automation, media, agent ops (16 tools)
+  - **Security** (`security/`) → `intelligence/security/` — ToolGuardEngine, FileGuard, SkillScanner with severity-based findings
+  - **Mission mode** (`agents/mission/`) → `intelligence/mission/` — PRD generation, phased execution, master/worker/verifier separation
+  - **Runtime** (`app/`) → `intelligence/runtime/` — MultiAgentManager, Workspace isolation, DynamicMultiAgentRunner, ServiceManager
+  - **Config** (`config/`) → `intelligence/config/` — Pydantic models for all subsystems
+  - **Hooks** (`agents/hooks/`) → `intelligence/agent/hooks/` — BootstrapHook, MemoryCompactionHook
+- **Removed components:** Channel adapters (Discord, Telegram, etc.), CLI, provider configs, local model support, console UI, tokenizer — replaced by Snapfzz equivalents (LiteLLM gateway, PluginProcessFactory, Zone 3 frontend)
+- **Added components:** `src/orchestrator/cli.py` (Snapfzz CLI entry point), `src/orchestrator/app.py` (FastAPI factory with /health), `memory/postgres.py` (pgvector adapter, planned)
+
 ### AgentScope
 - **License:** Apache 2.0
-- **URL:** https://github.com/modelscope/agentscope
-- **Used for:** Agent runtime, tool execution, session management
+- **Copyright:** Copyright 2024 The AgentScope Authors
+- **URL:** https://github.com/agentscope-ai/agentscope
+- **Used for:** Agent framework engine — ReActAgent, Toolkit, Memory, pipeline coordination. Consumed as pip dependency (`agentscope>=1.0.18`), not modified.
+
+### AgentScope Runtime
+- **License:** Apache 2.0
+- **Copyright:** Copyright 2024 The AgentScope Authors
+- **URL:** https://github.com/agentscope-ai/agentscope-runtime
+- **Used for:** Multi-agent distributed coordination, SSE streaming, health endpoints. Consumed as pip dependency (`agentscope-runtime>=1.1.3`), not modified.
 
 ### uvicorn
 - **License:** BSD 3-Clause
