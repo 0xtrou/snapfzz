@@ -44,3 +44,6 @@ src-tauri/*.json
 !src-tauri/tauri.conf.json
 !src-tauri/model-catalog.json
 .gitnexus
+
+# Plugin runtime binaries (compiled by install_plugin_runtime)
+**/runtime/bin/
