@@ -304,11 +304,10 @@ impl BudgetedProcess {
             setting_keys::AGENTSCOPE_PORT => settings.agentscope_port = value,
             setting_keys::LITELLM_HOST => settings.litellm_host = value,
             setting_keys::LITELLM_PORT => settings.litellm_port = value,
-            _ => {
-                return Err(ProcessError::SpawnFailed(format!(
-                    "unsupported settings key '{key}'"
-                )))
-            }
+            // Plugin runtimes use dynamic keys (e.g. "chat.orchestratorHost") —
+            // these don't have fixed settings fields, so skip persistence silently.
+            // Plugin processes get fresh random ports on each boot anyway.
+            _ => {}
         }
         Ok(())
     }
