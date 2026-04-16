@@ -1,0 +1,1 @@
+- [A020 Phase 1 docs update](project_a020_phase1_docs.md) — what changed in plugin arch (chat→orchestrator, PluginProcessFactory, install flow), and which docs were updated

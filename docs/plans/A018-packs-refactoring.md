@@ -35,11 +35,10 @@ snapfzz-kernel (foundation)
 snapfzz-packs (runtime readiness)
 ├── runtime/
 │   ├── python.rs        — PythonRuntime (readiness checks, venv, pip)
-│   ├── agentscope.rs    — AgentScopeRuntime (readiness, status)
 │   ├── litellm.rs       — LiteLLMRuntime (readiness, status)
 │   └── mod.rs
 ├── status.rs            — PythonRuntimeStatus, PipPackageInfo, InstallStep
-├── factory.rs           — make_agentscope, make_litellm, make_python_runtime
+├── factory.rs           — make_litellm, make_python_runtime
 ├── platform.rs          — PlatformInfo (keep)
 ├── constants.rs         — version constants
 └── lib.rs
@@ -59,7 +58,7 @@ snapfzz-packs (runtime readiness)
 - **Owns**: Virtual environment management
 - **Owns**: Status reporting (`PythonRuntimeStatus`)
 - **Does NOT own**: Downloading binaries (delegates to kernel downloaders)
-- **Exports**: `PythonRuntime`, `AgentScopeRuntime`, `LiteLLMRuntime`
+- **Exports**: `PythonRuntime`, `LiteLLMRuntime` (AgentScope runtime removed — replaced by generic `PluginProcessFactory` in `src-tauri/src/factories/plugin_runtime.rs`, A020 Phase 1)
 
 ### snapfzz-kernel/constants.rs
 - **Owns**: All hardcoded values (URLs, paths, version defaults)
@@ -127,7 +126,7 @@ snapfzz-packs (runtime readiness)
 - `src-tauri/crates/snapfzz-packs/src/uv.rs` (moved to kernel)
 - `src-tauri/crates/snapfzz-packs/src/python.rs` (moved to kernel)
 - `src-tauri/crates/snapfzz-packs/src/cef.rs` (moved to kernel)
-- `src-tauri/crates/snapfzz-packs/src/agentscope.rs` (becomes factory function)
+- `src-tauri/crates/snapfzz-packs/src/agentscope.rs` — ALREADY DELETED (A020 Phase 1; replaced by `src-tauri/src/factories/plugin_runtime.rs`)
 - `src-tauri/crates/snapfzz-packs/src/litellm.rs` (becomes factory function)
 
 ## Progress Model Simplification
@@ -159,7 +158,7 @@ PackProgress {
 1. `uv` — Download uv binary
 2. `python` — Install Python via uv
 3. `venv` — Create virtual environment
-4. `packages` — Install pip packages (agentscope, litellm)
+4. `packages` — Install pip packages (litellm; plugin intelligence packages installed per-plugin via install_plugin_runtime)
 
 ### Steps for CEF
 1. `download` — Download CEF archive

@@ -2,8 +2,11 @@
 title: "Snapfzz Is a Desktop Environment for AgentScope"
 type: learning
 date: 2026-04-04
+updated: 2026-04-16
 tags: [architecture, agentscope, domain-model, identity]
 ---
+
+> **Updated 2026-04-16 (A020 Phase 1):** The `intelligence/` directory no longer exists at repo root — it moved inside the plugin as `plugins/orchestrator/intelligence/`. The `plugins/chat/` plugin was renamed to `plugins/orchestrator/` (ID `snapfzz.orchestrator`). The "four layers" model below still holds conceptually, but the Intelligence layer is now self-contained inside the plugin rather than a separate top-level directory.
 
 # Snapfzz Is a Desktop Environment for AgentScope + Templates
 
@@ -69,7 +72,7 @@ Switching purpose = switching config file. Same intelligence layer, different be
 
 ### Chat is one channel among many
 
-`plugins/chat/` renders the text conversation channel. Future channels plug in the same way:
+`plugins/orchestrator/` (formerly `plugins/chat/`, renamed A020 Phase 1) renders the text conversation channel. Future channels plug in the same way:
 
 - `plugins/voice/` — voice channel (AgentScope has RealtimeAgent)
 - `plugins/video/` — video channel

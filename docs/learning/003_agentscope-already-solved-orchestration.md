@@ -43,6 +43,8 @@ When you DO need to scale beyond one machine, `agent.to_dist()` moves any agent 
 - All agent logic (orchestration, MsgHub, pipelines, eval, tools, memory) stays in Python/AgentScope
 - Updated A005, A006, MILESTONES.md, Cargo workspace
 
+> **Updated 2026-04-16 (A020 Phase 1):** `snapfzz-agent-supervisor` was subsequently removed. Plugin process management is now handled by the generic `PluginProcessFactory` (`src-tauri/src/factories/plugin_runtime.rs`) created from manifest declarations. The intelligence layer (QwenPaw extraction) is a custom Python package, not a bare AgentScope setup. The crate codebase no longer contains an agentscope-specific supervisor crate.
+
 ## Rule
 
 Before building an orchestration layer, audit your runtime framework's built-in capabilities. Re-implementing what your framework already provides is the most expensive form of waste — you build it worse, maintain it forever, and it fights the framework at every upgrade.

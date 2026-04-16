@@ -2,8 +2,11 @@
 title: "AgentScope Runtime Replaces Our Infrastructure"
 type: learning
 date: 2026-04-05
+updated: 2026-04-16
 tags: [agentscope, runtime, architecture, infrastructure]
 ---
+
+> **Updated 2026-04-16 (A020 Phase 1):** We did not adopt AgentScope Runtime (agentscope-runtime) as described here. Instead, the intelligence layer was delivered via QwenPaw extraction into `plugins/orchestrator/intelligence/` — a custom Python package with its own CLI entry point (`orchestrator app`), not an AgentApp server. `snapfzz-agent-supervisor` was removed; process management now goes through the generic `PluginProcessFactory` in `src-tauri/src/factories/plugin_runtime.rs`. The core insight (don't rebuild what frameworks provide) still applies.
 
 # AgentScope Runtime Replaces Our Infrastructure
 

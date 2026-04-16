@@ -148,7 +148,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![...])
         .setup(move |app| {
             setup_menus(app)?;
-            process_mgr.spawn_agentscope(&app.handle(), &result.registry);
+            // Plugin runtimes spawn at plugin activation, not boot — see A020
+            boot::spawn_boot_phases(&app.handle(), result.registry.clone());
             start_metrics_loop(app.handle(), result.registry.clone());
             Ok(())
         })

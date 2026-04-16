@@ -357,7 +357,9 @@ All plugin ports bound to `127.0.0.1` only — never exposed to network.
 
 ## Plugin Directory Structure
 
-### System Plugins (in-app)
+<!-- Updated 2026-04-16: system plugins now follow the same install flow as user plugins (A020 Phase 1) -->
+
+### Source tree (development)
 
 ```
 plugins/
@@ -367,25 +369,41 @@ plugins/
 └── ...
 ```
 
-### User Plugins (installed)
+### Installed layout — both system and user plugins
+
+All plugins land in `~/.snapfzz/plugins/{plugin_id}/` at activation time:
+
+- System plugins: symlinked (dev) or copied (production) by `install_system_plugin`
+- User plugins: downloaded to this directory on install
 
 ```
-~/.snapfzz/plugins/
-├── community.supabase/
-│   ├── manifest.json        validated on install (Zod)
-│   ├── dist/                plugin code (read-only after install)
-│   │   ├── server.py        HTTP server entrypoint
-│   │   ├── tools/           tool handlers
-│   │   └── miniapps/        mini app HTML files
-│   ├── data/                plugin's namespaced storage
-│   ├── cache/               temp files, expendable
-│   └── permissions.json     granted capabilities
-├── community.stripe/
+~/.snapfzz/plugins/{plugin_id}/
+├── manifest.json        Plugin metadata — id, version, runtimes, capabilities (Zod validated)
+├── dist/index.js        Compiled UI bundle (ES module, loaded via asset:// URL)
+├── intelligence/        Python backend package (if plugin declares runtimes.python)
+├── pack/                Declarative config (YAML, prompts)
+├── runtime/bin/         Compiled binary (populated by install_plugin_runtime)
+├── data/                Plugin's namespaced storage (CWD for plugin process)
+├── cache/               Temp files, expendable
+└── permissions.json     User-approved capabilities (user plugins only)
+```
+
+**Examples:**
+
+```
+~/.snapfzz/plugins/snapfzz.orchestrator/   ← system plugin (symlinked from plugins/orchestrator/)
 │   ├── manifest.json
-│   ├── dist/
-│   │   ├── main.go          Go plugin
-│   │   └── ...
-│   └── ...
+│   ├── dist/index.js
+│   ├── intelligence/    Python package (QwenPaw)
+│   ├── pack/            pack.yaml, prompts/
+│   └── runtime/bin/orchestrator  ← installed by install_plugin_runtime
+
+~/.snapfzz/plugins/community.supabase/     ← user plugin (downloaded)
+│   ├── manifest.json
+│   ├── dist/server.py
+│   ├── data/
+│   ├── cache/
+│   └── permissions.json
 ```
 
 ### Sandbox Rules
@@ -657,12 +675,7 @@ On install: verify against Snapfzz registry public key + author public key.
 
 ```
 snapfzz-kernel/        Boot, budget, process, settings, components trait
-snapfzz-packs/         Runtime lifecycle (LiteLLM, CEF — plugin runtimes managed via PluginProcessFactory)
-snapfzz-kernel/        Boot, budget, process, settings
-snapfzz-stream/        SSE consumer, token batching
-snapfzz-vault/         AES-256-GCM secret vault
-snapfzz-llm/           LiteLLM config + key/spend proxy
-snapfzz-plugin-bridge/ Plugin→kernel validation, capability checking
+snapfzz-packs/         Runtime lifecycle (LiteLLM, CEF; plugin runtimes via PluginProcessFactory)
 snapfzz-stream/        SSE consumer, token batching
 snapfzz-vault/         AES-256-GCM secret vault
 snapfzz-llm/           LiteLLM config + key/spend proxy
@@ -684,7 +697,7 @@ snapfzz-plugin-bridge/ Plugin→kernel validation, capability checking
 
 ```
 plugins/
-├── chat/               Orchestrator conversation
+├── orchestrator/       Orchestrator conversation + AI runtime (snapfzz.orchestrator)
 ├── knowledge-base/     Docs, versioning
 ├── code/               Monaco + file explorer + git
 ├── preview/            Live dev server + viewport
@@ -716,7 +729,7 @@ plugins/
 2. **Webhooks over loopback.** User plugins communicate via HTTP on 127.0.0.1. Process isolation, language agnostic, auditable, HMAC signed.
 3. **System plugins keep EventBus.** In-process communication for system plugins — fast, type-safe, zero overhead.
 4. **Intelligence is a contribution type.** Skills, tools, benchmarks are first-class in both tiers.
-5. **User plugins are processes.** Managed by snapfzz-runtime like AgentScope and LiteLLM. Health checks, restart, auto-disable.
+5. **User plugins are processes.** Managed by `PluginProcessFactory` like LiteLLM — same health checks, restart, auto-disable. System plugin runtimes (e.g., orchestrator) also follow this path via `install_plugin_runtime` + `spawn_plugin_runtime`.
 6. **Manifest-driven.** Both tiers declare what they provide. Core reads manifests and builds the routing table.
 7. **Mini apps for user plugin UI.** User plugins render via sandboxed iframes, not direct React.
 8. **Capabilities gate access.** User plugins must declare what they need. Users approve once.

@@ -27,6 +27,7 @@ Single source of truth for the system architecture. All specs, guides, and docs 
 │    ├── components.rs  system pack CRUD, download, uninstall          │
 │    ├── llm.rs         LiteLLM config, key mgmt, spend tracking      │
 │    ├── pip.rs         python pack install/uninstall, runtime status  │
+│    ├── plugin_runtime.rs  install/register/spawn/unregister plugins  │
 │    └── system.rs      health, open_path, pick_folder, preferences   │
 │                                                                      │
 │  factories/         ← ProcessFactory impls for managed services      │
@@ -345,15 +346,54 @@ Rust → Frontend:  app.emit("event-name", payload) → bridge.listen('event-nam
 
 ---
 
+## Plugin Discovery (A020 Phase 1)
+
+Two-tier discovery. Updated 2026-04-16.
+
+```
+Tier 1: Settings plugins — hardcoded imports in @snapfzz/plugin-host (not yet migrated)
+Tier 2: Installed plugins — dynamic, via list_installed_plugins Tauri IPC
+         → scans ~/.snapfzz/plugins/*/manifest.json
+         → returns [{ id, name, version, has_dist, has_runtime }]
+```
+
+**Plugin activation flow:**
+```
+activate() →
+  install_system_plugin  (symlink dev / copy prod)
+  ensurePluginRuntimes() →
+    install_plugin_runtime  (pip install + copy binary)
+    register_plugin_runtime (create PluginProcessFactory)
+    spawn_plugin_runtime    (start process, health check)
+  plugin.activate(ctx)
+```
+
+**Plugin deactivation flow:**
+```
+deactivate() →
+  handle.deactivate()
+  cleanupPluginRuntimes() →
+    kill_process
+    unregister_plugin_runtime
+```
+
+---
+
 ## Plugin Sandbox (A005)
 
 ```
 ~/.snapfzz/plugins/{id}/
-  ├── manifest.json        validated on install (Zod)
-  ├── dist/                read-only JS bundle
-  ├── data/                plugin's namespaced storage
+  ├── manifest.json        plugin metadata, runtimes[], capabilities (Zod validated)
+  ├── dist/index.js        compiled UI bundle (ES module, loaded via asset:// URL)
+  ├── intelligence/        Python backend package (if runtimes.python declared)
+  ├── pack/                declarative config (YAML, prompts)
+  ├── runtime/bin/         compiled binary (populated by install_plugin_runtime)
+  ├── data/                plugin's namespaced storage (process CWD)
   ├── cache/               expendable temp files
-  └── permissions.json     user-approved capabilities (approve once)
+  └── permissions.json     user-approved capabilities (user plugins only)
+
+System plugins: symlinked (dev) or copied (prod) by install_system_plugin.
+User plugins: downloaded to this dir on install.
 
 Rules:
   CWD locked to plugin dir — no ../escape
@@ -418,6 +458,7 @@ All specs live in `docs/plans/` and `docs/ui-specs/`. They reference this file f
 | A016 | Runtime Architecture | Runtime trait, RuntimeManager, is_runtime_ready |
 | A017 | MicroVM Sandbox | SandboxBackend trait, FirecrackerPack, MicrovmRuntime lifecycle |
 | A018 | Packs Refactoring | Vertical domain slices, core/ + service packs |
+| A020 | Composable Intelligence | PluginProcessFactory, plugin runtime lifecycle, orchestrator plugin (Phase 1 DONE) |
 | *(A039)* | Phased Boot | Merged into A012 — see Boot Sequence section above |
 | U001-U010 | UI Specs | Navigation, responsive, design system, etc. |
 | U011 | Vault Settings | Vault management UI |

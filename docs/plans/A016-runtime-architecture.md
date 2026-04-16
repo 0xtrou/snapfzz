@@ -1,6 +1,8 @@
 # A016 — Runtime Architecture
 
-Manages all runtime services: AgentScope, LiteLLM gateway, CEF browser engine. Each runtime has binary readiness checks, health monitoring, and graceful lifecycle management.
+> **Updated 2026-04-16 (A020 Phase 1):** The `snapfzz-runtime` crate described in this spec was not created. AgentScope runtime management was replaced by the generic `PluginProcessFactory` (`src-tauri/src/factories/plugin_runtime.rs`), which is data-driven from manifest declarations rather than hardcoded per-service. The `agentscope.rs` entry in this spec refers to a file that no longer exists. LiteLLM and CEF lifecycle remain managed via `snapfzz-packs`. The conceptual separation (kernel vs. runtime management) still holds — it's implemented via `PluginProcessFactory` + `ProcessFactoryRegistry` rather than a dedicated crate.
+
+Manages all runtime services: LiteLLM gateway, CEF browser engine, and plugin-declared runtimes (e.g., orchestrator). Each runtime has binary readiness checks, health monitoring, and graceful lifecycle management.
 
 ## Decision
 
@@ -30,7 +32,7 @@ src-tauri/crates/snapfzz-runtime/
 │   ├── lib.rs
 │   ├── manager.rs       (RuntimeManager — orchestrates all runtimes)
 │   ├── runtime.rs        (Runtime trait + RuntimeStatus + ReadinessCheck)
-│   ├── agentscope.rs     (AgentScope runtime lifecycle)
+│   ├── agentscope.rs     (REMOVED — replaced by PluginProcessFactory, A020 Phase 1)
 │   ├── litellm.rs        (LiteLLM gateway lifecycle)
 │   └── cef.rs            (CEF browser runtime lifecycle)
 ```
@@ -510,9 +512,9 @@ runtime/
 |---|---|---|
 | `snapfzz-cef/download.rs` (SystemComponent impl) | `snapfzz-packs/cef.rs` | CEF download to `processes/cef/` |
 | `snapfzz-cef/runtime.rs, window.rs, cdp.rs` | `snapfzz-runtime/cef.rs` | CEF runtime from `processes/cef/` |
-| `helpers.rs` (spawn_agentscope) | `snapfzz-runtime/agentscope.rs` | CWD = `processes/agentscope/` |
+| `helpers.rs` (spawn_agentscope) | REMOVED — plugin runtimes use `PluginProcessFactory` (A020 Phase 1) | N/A |
 | `commands/process.rs` (restart/kill) | `commands/runtime.rs` | Runtime commands |
 | `helpers.rs` (runtime_command_binary) | `helpers.rs` (configure_runtime_env) | PATH = `bin/` dir |
 | NEW | `snapfzz-runtime/litellm.rs` | CWD = `processes/litellm/` |
 | NEW | `snapfzz-runtime/manager.rs` | RuntimeManager |
-| `intelligence/` | `runtime/processes/agentscope/` | AgentScope source moves into runtime |
+| `intelligence/` (repo root) | REMOVED — now at `plugins/orchestrator/intelligence/` (A020 Phase 1) | N/A |
