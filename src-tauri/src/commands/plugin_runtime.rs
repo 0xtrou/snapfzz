@@ -131,12 +131,21 @@ fn dev_source_dir(dir_name: &str) -> PathBuf {
         .join(dir_name)
 }
 
+/// Artifact directories to copy from source → ~/.snapfzz/plugins/{id}/.
+/// Only runtime artifacts — no source code, node_modules, tests, etc.
+const PLUGIN_ARTIFACT_DIRS: &[&str] = &["dist", "intelligence", "pack"];
+const PLUGIN_ARTIFACT_FILES: &[&str] = &["manifest.json"];
+
 /// Install a whitelisted system plugin into `~/.snapfzz/plugins/{plugin_id}/`.
 ///
-/// - **Dev mode**: symlinks source directory (live reload, instant changes)
-/// - **Production**: copies bundled artifacts from app resources
+/// Copies only artifacts needed to run (no source code, no symlinks):
+///   dist/          — compiled UI (JS)
+///   intelligence/  — Python backend package
+///   pack/          — configuration (YAML, prompts)
+///   manifest.json  — plugin metadata
 ///
-/// Only whitelisted plugin IDs are allowed.
+/// Dev mode: copies from source tree. Production: copies from app bundle.
+/// No symlinks — asset:// protocol requires real files in the scoped path.
 #[tauri::command]
 pub async fn install_system_plugin<R: tauri::Runtime>(
     plugin_id: String,
@@ -154,82 +163,69 @@ pub async fn install_system_plugin<R: tauri::Runtime>(
 
     let target = plugins_dir.join(&plugin_id);
 
-    if is_dev_mode() {
-        install_dev_symlink(dir_name, &target)
+    // Resolve source (dev: source tree, production: app bundle)
+    let source = if is_dev_mode() {
+        dev_source_dir(dir_name)
     } else {
-        install_production_copy(&app, &plugin_id, &target)
-    }
-}
+        let resource_dir = app.path()
+            .resource_dir()
+            .map_err(|e| format!("failed to resolve resource dir: {e}"))?;
+        resource_dir.join("plugins").join(&plugin_id)
+    };
 
-/// Dev mode: symlink source tree → plugins dir
-fn install_dev_symlink(dir_name: &str, target: &std::path::Path) -> Result<String, String> {
-    let source = dev_source_dir(dir_name);
     if !source.exists() {
-        return Err(format!("system plugin source not found at {}", source.display()));
+        return Err(format!("plugin source not found at {}", source.display()));
     }
 
-    // If symlink already correct, skip
-    if target.exists() {
-        if let Ok(meta) = std::fs::symlink_metadata(target) {
-            if meta.file_type().is_symlink() {
-                if let Ok(link_dest) = std::fs::read_link(target) {
-                    if link_dest == source {
-                        return Ok(format!("already installed: {} → {}", target.display(), source.display()));
-                    }
-                }
+    // Skip if all artifacts are present and up-to-date
+    if target.is_dir() {
+        let all_present = PLUGIN_ARTIFACT_DIRS.iter().all(|d| target.join(d).exists())
+            && PLUGIN_ARTIFACT_FILES.iter().all(|f| target.join(f).exists());
+
+        if all_present {
+            // In dev mode, check if dist was rebuilt (source newer than target)
+            let needs_update = is_dev_mode() && {
+                let src_mtime = std::fs::metadata(source.join("dist").join("index.js"))
+                    .and_then(|m| m.modified()).ok();
+                let dst_mtime = std::fs::metadata(target.join("dist").join("index.js"))
+                    .and_then(|m| m.modified()).ok();
+                src_mtime > dst_mtime
+            };
+
+            if !needs_update {
+                return Ok(format!("already installed: {}", target.display()));
             }
         }
-        remove_target(target)?;
     }
 
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&source, target)
-        .map_err(|e| format!("failed to symlink {} → {}: {e}", target.display(), source.display()))?;
-
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_dir(&source, target)
-        .map_err(|e| format!("failed to symlink {} → {}: {e}", target.display(), source.display()))?;
-
-    let msg = format!("dev: symlinked {} → {}", target.display(), source.display());
-    eprintln!("[plugin] {msg}");
-    Ok(msg)
-}
-
-/// Production mode: copy bundled artifacts from app resources → plugins dir
-fn install_production_copy<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    plugin_id: &str,
-    target: &std::path::Path,
-) -> Result<String, String> {
-    let resource_dir = app.path()
-        .resource_dir()
-        .map_err(|e| format!("failed to resolve resource dir: {e}"))?;
-
-    let bundle_source = resource_dir.join("plugins").join(plugin_id);
-    if !bundle_source.exists() {
-        return Err(format!(
-            "bundled plugin not found at {} — app bundle may be incomplete",
-            bundle_source.display()
-        ));
+    // Clean and recreate target
+    if target.exists() {
+        remove_target(&target)?;
     }
+    std::fs::create_dir_all(&target)
+        .map_err(|e| format!("failed to create {}: {e}", target.display()))?;
 
-    // If target already exists with all expected artifacts, skip
-    if target.exists() && target.is_dir() {
-        let has_intelligence = target.join("intelligence").exists();
-        let has_dist = target.join("dist").join("index.js").exists();
-        let has_manifest = target.join("manifest.json").exists();
-        if has_intelligence && has_dist && has_manifest {
-            return Ok(format!("already installed: {}", target.display()));
+    // Copy artifact directories
+    for dir in PLUGIN_ARTIFACT_DIRS {
+        let src = source.join(dir);
+        if src.exists() {
+            copy_dir_recursive(&src, &target.join(dir))
+                .map_err(|e| format!("failed to copy {dir}/: {e}"))?;
         }
-        remove_target(target)?;
     }
 
-    // Recursive copy from bundle to plugins dir
-    copy_dir_recursive(&bundle_source, target)
-        .map_err(|e| format!("failed to copy bundled plugin: {e}"))?;
+    // Copy artifact files
+    for file in PLUGIN_ARTIFACT_FILES {
+        let src = source.join(file);
+        if src.exists() {
+            std::fs::copy(&src, target.join(file))
+                .map_err(|e| format!("failed to copy {file}: {e}"))?;
+        }
+    }
 
-    let msg = format!("production: copied {} → {}", bundle_source.display(), target.display());
-    eprintln!("[plugin] {msg}");
+    let mode = if is_dev_mode() { "dev" } else { "production" };
+    let msg = format!("[plugin] {mode}: installed {} artifacts to {}", plugin_id, target.display());
+    eprintln!("{msg}");
     Ok(msg)
 }
 
