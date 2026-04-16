@@ -42,12 +42,12 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' asset: https://asset.localhost; script-src 'self' asset: https://asset.localhost 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:",
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost data:",
       "assetProtocol": {
         "enable": true,
-        "scope": {
-          "allow": ["$HOME/.snapfzz/plugins/**", "$RESOURCE/**"]
-        }
+        "scope": [
+          "$HOME/.snapfzz/plugins/**"
+        ]
       }
     }
   },
