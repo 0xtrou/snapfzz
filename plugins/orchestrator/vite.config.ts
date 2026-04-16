@@ -9,19 +9,21 @@ export default defineConfig({
   build: {
     lib: {
       entry: 'src/index.ts',
-      formats: ['es'],
+      name: 'SnapfzzOrchestratorPlugin',
+      formats: ['umd'],
       fileName: () => 'index.js',
     },
     outDir: 'dist',
     emptyOutDir: true,
-    // Single file output — asset:// can't resolve relative chunk imports
     cssCodeSplit: false,
     rollupOptions: {
-      // No externals — plugin dist is fully self-contained.
-      // Loaded via asset:// protocol which has no module resolution.
-      external: [],
+      external: ['react', 'react-dom', 'react/jsx-runtime'],
       output: {
-        inlineDynamicImports: true,
+        globals: {
+          'react': 'window.__snapfzz_shared.React',
+          'react-dom': 'window.__snapfzz_shared.ReactDOM',
+          'react/jsx-runtime': 'window.__snapfzz_shared.jsxRuntime',
+        },
       },
     },
   },

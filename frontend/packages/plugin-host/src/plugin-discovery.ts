@@ -33,6 +33,29 @@ async function toAssetUrl(filePath: string): Promise<string | null> {
 }
 
 /**
+ * Load a UMD plugin by injecting a script tag.
+ * The UMD module exposes itself on `window[umdName]`.
+ * React is provided via `window.__snapfzz_shared` globals.
+ */
+function loadUmdPlugin(url: string, umdName: string): Promise<PluginDefinition> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => {
+      const mod = (window as any)[umdName];
+      if (!mod) {
+        reject(new Error(`UMD plugin '${umdName}' not found on window after loading ${url}`));
+        return;
+      }
+      // UMD default export is either mod.default or mod itself
+      resolve((mod.default ?? mod) as PluginDefinition);
+    };
+    script.onerror = () => reject(new Error(`Failed to load plugin script: ${url}`));
+    document.head.appendChild(script);
+  });
+}
+
+/**
  * Per A006/BootSequence: discovers plugin manifests available for the given surface.
  *
  * Two-tier discovery:
@@ -90,15 +113,17 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
 
         if (!manifest.surface?.includes(surface)) continue;
 
-        // Create lazy loader that imports the compiled plugin via asset:// URL
+        // Create lazy loader that loads UMD plugin via script tag + asset:// URL.
+        // UMD exposes the plugin on a global variable (e.g. window.SnapfzzOrchestratorPlugin).
+        // React is mapped to window.__snapfzz_shared via UMD globals config.
         const distUrl = await toAssetUrl(info.distPath);
         if (!distUrl) continue;
 
+        const umdName = manifest.umdName ?? `Snapfzz${info.pluginId.replace(/\W/g, '_')}Plugin`;
         registry.push({
           manifest,
           loader: async () => {
-            const mod = await import(/* @vite-ignore */ distUrl);
-            return mod.default as PluginDefinition;
+            return loadUmdPlugin(distUrl, umdName);
           },
         });
 
