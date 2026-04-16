@@ -14,11 +14,9 @@ export default defineConfig({
     // Single file output — asset:// can't resolve relative chunk imports
     cssCodeSplit: false,
     rollupOptions: {
-      external: [
-        'react',
-        'react-dom',
-        'react/jsx-runtime',
-      ],
+      // No externals — plugin dist is fully self-contained.
+      // Loaded via asset:// protocol which has no module resolution.
+      external: [],
       output: {
         inlineDynamicImports: true,
       },
