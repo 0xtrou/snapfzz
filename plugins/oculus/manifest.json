@@ -1,0 +1,21 @@
+{
+  "id": "snapfzz.oculus",
+  "name": "Oculus",
+  "version": "0.1.0",
+  "description": "Oculus plugin for Snapfzz",
+  "type": "system",
+  "main": "dist/index.js",
+  "umdName": "SnapfzzOculusPlugin",
+  "surface": ["project"],
+  "activationEvents": ["onStartupFinished"],
+  "runtimes": {
+    "python": [{
+      "id": "oculus.runtime",
+      "packageDir": "intelligence",
+      "command": "oculus app",
+      "healthCheck": "/health",
+      "hostFlag": "--host",
+      "portFlag": "--port"
+    }]
+  }
+}

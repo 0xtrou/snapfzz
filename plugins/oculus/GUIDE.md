@@ -289,14 +289,9 @@ Python runtimes are managed by the Snapfzz process supervisor:
 
 ---
 
-## Shipping a New System Plugin (Production)
+## Adding to Tauri Resources (Production)
 
-> This section applies to **system plugins only** — plugins that ship with the app.
-> User plugins are installed at runtime and don't need Tauri resources.
-
-Two steps to add a new system plugin to the production build:
-
-**1. Bundle artifacts in `src-tauri/tauri.conf.json`:**
+For production builds, add your plugin artifacts to `src-tauri/tauri.conf.json`:
 
 ```json
 "resources": {
@@ -306,20 +301,13 @@ Two steps to add a new system plugin to the production build:
 }
 ```
 
-**2. Register in the whitelist (`src-tauri/src/commands/plugin_runtime.rs`):**
+And register it in the whitelist (`src-tauri/src/commands/plugin_runtime.rs`):
 
 ```rust
 const SYSTEM_PLUGINS: &[(&str, &str)] = &[
     ("snapfzz.orchestrator", "orchestrator"),
     ("snapfzz.my-feature", "my-feature"),  // ← add here
 ];
-```
-
-**3. Build the plugin before dev/build (`src-tauri/tauri.conf.json`):**
-
-```json
-"beforeDevCommand": "pnpm --filter @snapfzz/my-feature-plugin build && ...",
-"beforeBuildCommand": "pnpm --filter @snapfzz/my-feature-plugin build && ..."
 ```
 
 ---
