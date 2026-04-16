@@ -13,7 +13,9 @@ export interface DiscoveredManifest {
 /** Shape returned by the `list_installed_plugins` Tauri command. */
 export interface InstalledPluginInfo {
   pluginId: string;
-  manifestPath: string;
+  /** Parsed manifest.json content (returned inline by Rust, no fetch needed). */
+  manifest: Record<string, unknown>;
+  /** Absolute path to dist/index.js for dynamic import. */
   distPath: string;
 }
 
@@ -83,17 +85,8 @@ export async function discoverPlugins(surface: HostSurface): Promise<DiscoveredM
 
     for (const info of installed) {
       try {
-        // Read manifest.json to check surface match
-        const manifestUrl = await toAssetUrl(info.manifestPath);
-        if (!manifestUrl) continue;
-
-        const manifestResponse = await fetch(manifestUrl);
-        if (!manifestResponse.ok) {
-          console.warn(`[PluginDiscovery] Failed to fetch manifest for ${info.pluginId}: ${manifestResponse.status}`);
-          continue;
-        }
-
-        const manifest = await manifestResponse.json() as PluginDefinition;
+        // Manifest is returned inline by Rust — no fetch needed
+        const manifest = info.manifest as unknown as PluginDefinition;
 
         if (!manifest.surface?.includes(surface)) continue;
 

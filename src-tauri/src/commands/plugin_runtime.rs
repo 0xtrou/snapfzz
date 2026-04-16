@@ -44,16 +44,19 @@ fn resolve_plugins_dir() -> Result<PathBuf, String> {
 }
 
 /// Info about an installed plugin discovered on disk.
+/// Manifest content is returned inline to avoid asset:// CSP issues.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledPluginInfo {
     pub plugin_id: String,
-    pub manifest_path: String,
+    /// The parsed manifest.json content (inline, no fetch needed).
+    pub manifest: serde_json::Value,
+    /// Absolute path to dist/index.js for dynamic import via convertFileSrc.
     pub dist_path: String,
 }
 
 /// Scan `~/.snapfzz/plugins/` for installed plugins that have a manifest.json.
-/// Returns metadata for each discovered plugin so the frontend can load them.
+/// Returns manifest content inline so the frontend doesn't need to fetch via asset://.
 #[tauri::command]
 pub async fn list_installed_plugins() -> Result<Vec<InstalledPluginInfo>, String> {
     let plugins_dir = resolve_plugins_dir()?;
@@ -75,18 +78,22 @@ pub async fn list_installed_plugins() -> Result<Vec<InstalledPluginInfo>, String
             continue;
         }
 
-        // Follow symlinks to resolve the actual directory
-        let resolved = std::fs::canonicalize(&path)
-            .unwrap_or_else(|_| path.clone());
-
-        let manifest_path = resolved.join("manifest.json");
+        // Use the symlink path (not canonicalized) so asset:// URLs
+        // stay within the scoped $HOME/.snapfzz/plugins/** path.
+        let manifest_path = path.join("manifest.json");
         if !manifest_path.exists() {
             continue;
         }
 
-        let dist_path = resolved.join("dist").join("index.js");
+        // Read and parse manifest inline (follows symlinks transparently)
+        let manifest_content = std::fs::read_to_string(&manifest_path)
+            .map_err(|e| format!("failed to read {}: {e}", manifest_path.display()))?;
+        let manifest: serde_json::Value = serde_json::from_str(&manifest_content)
+            .map_err(|e| format!("invalid manifest.json in {}: {e}", manifest_path.display()))?;
 
-        // Plugin ID is the directory name (e.g. "snapfzz.orchestrator")
+        // dist_path uses the symlink path so asset:// scope matches
+        let dist_path = path.join("dist").join("index.js");
+
         let plugin_id = entry
             .file_name()
             .to_string_lossy()
@@ -94,7 +101,7 @@ pub async fn list_installed_plugins() -> Result<Vec<InstalledPluginInfo>, String
 
         results.push(InstalledPluginInfo {
             plugin_id,
-            manifest_path: manifest_path.to_string_lossy().to_string(),
+            manifest,
             dist_path: dist_path.to_string_lossy().to_string(),
         });
     }
@@ -551,12 +558,12 @@ mod tests {
     fn a020_installed_plugin_info_serializes_to_camel_case() {
         let info = InstalledPluginInfo {
             plugin_id: "snapfzz.orchestrator".to_string(),
-            manifest_path: "/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json".to_string(),
+            manifest: serde_json::json!({"id": "snapfzz.orchestrator", "name": "Orchestrator"}),
             dist_path: "/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js".to_string(),
         };
         let json = serde_json::to_value(&info).expect("serialize");
         assert_eq!(json["pluginId"], "snapfzz.orchestrator");
-        assert_eq!(json["manifestPath"], "/home/test/.snapfzz/plugins/snapfzz.orchestrator/manifest.json");
+        assert_eq!(json["manifest"]["id"], "snapfzz.orchestrator");
         assert_eq!(json["distPath"], "/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js");
     }
 }

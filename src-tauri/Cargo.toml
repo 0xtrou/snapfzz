@@ -30,7 +30,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["unstable", "test"] }
+tauri = { version = "2", features = ["protocol-asset", "unstable", "test"] }
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
