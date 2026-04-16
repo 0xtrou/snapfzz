@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../frontend/dist/launcher",
     "devUrl": "http://localhost:5174",
-    "beforeDevCommand": "pnpm dev:project & pnpm dev:preferences",
-    "beforeBuildCommand": "pnpm build:project"
+    "beforeDevCommand": "pnpm --filter @snapfzz/orchestrator-plugin build && pnpm dev:project & pnpm dev:preferences",
+    "beforeBuildCommand": "pnpm --filter @snapfzz/orchestrator-plugin build && pnpm build:project"
   },
   "app": {
     "withGlobalTauri": true,
