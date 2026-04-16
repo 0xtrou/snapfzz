@@ -175,28 +175,38 @@ export default defineConfig({
 });
 VITEST
 
-  # ── vite.config.ts (matches orchestrator)
-  cat > "$plugin_dir/vite.config.ts" <<'VITECONF'
+  # ── vite.config.ts (UMD build with shared React globals)
+  local umd_name
+  umd_name="Snapfzz$(echo "$display_name" | sed 's/ //g')Plugin"
+
+  cat > "$plugin_dir/vite.config.ts" <<VITECONF
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   build: {
     lib: {
       entry: 'src/index.ts',
-      formats: ['es'],
+      name: '${umd_name}',
+      formats: ['umd'],
       fileName: () => 'index.js',
     },
     outDir: 'dist',
     emptyOutDir: true,
+    cssCodeSplit: false,
     rollupOptions: {
-      external: [
-        'react',
-        'react-dom',
-        'react/jsx-runtime',
-        /^@snapfzz\//,
-      ],
+      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      output: {
+        globals: {
+          'react': 'window.__snapfzz_shared.React',
+          'react-dom': 'window.__snapfzz_shared.ReactDOM',
+          'react/jsx-runtime': 'window.__snapfzz_shared.jsxRuntime',
+        },
+      },
     },
   },
 });
@@ -391,6 +401,7 @@ CLIPY
   "description": "${display_name} plugin for Snapfzz",
   "type": "system",
   "main": "dist/index.js",
+  "umdName": "${umd_name}",
   "surface": ["project"],
   "activationEvents": ["onStartupFinished"],
   "runtimes": {
@@ -398,7 +409,9 @@ CLIPY
       "id": "${name}.runtime",
       "packageDir": "intelligence",
       "command": "${py_module} app",
-      "healthCheck": "/health"
+      "healthCheck": "/health",
+      "hostFlag": "--host",
+      "portFlag": "--port"
     }]
   }
 }
