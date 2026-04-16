@@ -535,7 +535,8 @@ export class PluginHost {
 
     const bridge = createTauriBridge();
 
-    for (const runtime of runtimes.python) {
+    // Each runtime installs independently in parallel
+    await Promise.allSettled(runtimes.python.map(async (runtime) => {
       const declaration = {
         runtimeId: runtime.id,
         pluginId: plugin.id,
@@ -553,24 +554,16 @@ export class PluginHost {
       };
 
       try {
-        // Step 0: Ensure system plugin is symlinked to ~/.snapfzz/plugins/
-        await bridge.invoke('install_system_plugin', { pluginId: plugin.id });
-
-        // Step 1: Install Python package + copy binary to plugin runtime dir
+        // Steps run sequentially per runtime (each depends on the previous)
+        // but multiple runtimes run in parallel via Promise.allSettled
         await bridge.invoke('install_plugin_runtime', { declaration });
-
-        // Step 2: Register as managed process factory
         await bridge.invoke('register_plugin_runtime', { declaration });
-
-        // Step 3: Spawn the process
         await bridge.invoke('spawn_plugin_runtime', { runtimeId: runtime.id });
-
         console.log(`[plugin-host] runtime ${runtime.id} started for ${plugin.id}`);
       } catch (err) {
-        // Per A020/PluginArtifacts: runtime failure must not block plugin activation.
         console.error(`[plugin-host] failed to start runtime ${runtime.id}:`, err);
       }
-    }
+    }));
   }
 
   /**
