@@ -1,3 +1,4 @@
+use crate::constants::{litellm as litellm_cfg, paths};
 use serde::Serialize;
 use snapfzz_kernel::boot::{OnPreflightReady, PreflightContext, PreflightError};
 use snapfzz_kernel::settings::SettingsManager;
@@ -6,7 +7,7 @@ use std::path::PathBuf;
 use tauri::Emitter;
 
 fn snapfzz_home() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".snapfzz")
+    dirs::home_dir().unwrap_or_default().join(paths::SNAPFZZ_HOME_DIR)
 }
 
 pub(crate) fn resolve_data_dir_from(home: PathBuf) -> PathBuf {
@@ -36,7 +37,7 @@ pub fn resolve_data_dir() -> PathBuf {
 pub fn agentscope_base_url(settings_mgr: &SettingsManager) -> String {
     let settings = settings_mgr.load().unwrap_or_default();
     let host = if settings.agentscope_host.is_empty() {
-        "127.0.0.1".to_string()
+        litellm_cfg::DEFAULT_HOST.to_string()
     } else {
         settings.agentscope_host
     };

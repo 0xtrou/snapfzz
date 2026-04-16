@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::constants::status;
+
 /// A008/metrics: snapshot of a single supervised process at a point in time.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +42,7 @@ impl ProcessSnapshot {
             restart_count: 0,
             consecutive_failures: 0,
             uptime_secs: 0,
-            location: "local".to_string(),
+            location: status::LOCATION_LOCAL.to_string(),
             health_url: String::new(),
             owner: owner.to_string(),
         }

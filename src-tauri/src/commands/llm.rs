@@ -1,11 +1,6 @@
 // A013/Commands: Tauri commands for LLM Gateway operations
 
-const DEFAULT_LITELLM_HOST: &str = "127.0.0.1";
-const DEFAULT_LITELLM_PORT: &str = "4000";
-
-/// LiteLLM internal table name — coupled to LiteLLM schema version.
-const LITELLM_SPEND_LOGS_TABLE: &str = "LiteLLM_SpendLogs";
-
+use crate::constants::{databases, litellm as litellm_cfg};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_llm::{
     config, vault,
@@ -23,12 +18,12 @@ pub async fn llm_get_base_url(
 ) -> Result<String, String> {
     let settings = settings_mgr.load().unwrap_or_default();
     let host = if settings.litellm_host.is_empty() {
-        DEFAULT_LITELLM_HOST.to_string()
+        litellm_cfg::DEFAULT_HOST.to_string()
     } else {
         settings.litellm_host
     };
     let port: u16 = if settings.litellm_port.is_empty() {
-        DEFAULT_LITELLM_PORT.parse().unwrap_or(4000)
+        litellm_cfg::DEFAULT_PORT.parse().unwrap_or(4000)
     } else {
         settings.litellm_port.parse().unwrap_or(4000)
     };
@@ -96,7 +91,7 @@ pub async fn llm_cleanup_spend_logs(
 
     let sql = format!(
         r#"DELETE FROM "{}" WHERE "startTime" < NOW() - INTERVAL '{keep_days} days'"#,
-        LITELLM_SPEND_LOGS_TABLE,
+        databases::LITELLM_SPEND_LOGS_TABLE,
     );
 
     let output = tokio::process::Command::new(&psql)

@@ -1,10 +1,12 @@
-// A033/AgentScopeService: AgentScope runtime as a managed service
+// A020/AgentScopeService: Orchestrator runtime as a managed service.
+// Runs the `orchestrator` binary (installed via pip as snapfzz-orchestrator)
+// which provides multi-agent intelligence with tool guard, memory, and mission mode.
+use crate::core::constants::{binaries, dependencies, dirs, env_vars, health, resources, services};
 use crate::core::data::DataDir;
 use crate::core::python::runtime::PythonRuntime;
 use crate::core::service::{HealthConfig, ManagedService, ResourceLimits, ServiceConfig, ServiceError};
 use std::sync::Arc;
 
-// A033/AgentScopeService: Wraps PythonRuntime to provide spawnable AgentScope service
 pub struct AgentScopeService {
     runtime: Arc<PythonRuntime>,
     data_dir: DataDir,
@@ -14,37 +16,47 @@ impl AgentScopeService {
     pub fn new(runtime: Arc<PythonRuntime>, data_dir: DataDir) -> Self {
         Self { runtime, data_dir }
     }
+
+    /// Path to the `orchestrator` binary inside the managed venv.
+    fn orchestrator_binary(&self) -> std::path::PathBuf {
+        self.runtime.venv_dir().join(dirs::BIN).join(binaries::ORCHESTRATOR)
+    }
 }
 
 #[async_trait::async_trait]
 impl ManagedService for AgentScopeService {
     fn id(&self) -> &str {
-        "agentscope"
+        services::AGENTSCOPE_ID
     }
 
     fn name(&self) -> &str {
-        "AgentScope Runtime"
+        services::AGENTSCOPE_NAME
     }
 
     fn dependencies(&self) -> Vec<&str> {
-        vec!["uv", "python", "agentscope", "agentscope-runtime"]
+        dependencies::AGENTSCOPE_DEPS.to_vec()
     }
 
     fn spawn_command(
         &self,
         config: &ServiceConfig,
     ) -> Result<tokio::process::Command, ServiceError> {
-        let python = self.runtime.venv_python();
-        if !python.exists() {
-            return Err(ServiceError::DependencyNotInstalled("Python venv".into()));
+        let bin = self.orchestrator_binary();
+        if !bin.exists() {
+            return Err(ServiceError::DependencyNotInstalled(
+                "orchestrator binary (pip install snapfzz-orchestrator)".into(),
+            ));
         }
 
-        let mut cmd = tokio::process::Command::new(python);
-        cmd.arg("-m")
-            .arg("app")
+        let mut cmd = tokio::process::Command::new(bin);
+        cmd.arg("app")
+            .arg("--host")
+            .arg(&config.host)
+            .arg("--port")
+            .arg(config.port.to_string())
             .current_dir(&config.working_dir)
-            .env("SNAPFZZ_HOST", &config.host)
-            .env("SNAPFZZ_PORT", config.port.to_string())
+            .env(env_vars::SNAPFZZ_HOST, &config.host)
+            .env(env_vars::SNAPFZZ_PORT, config.port.to_string())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
@@ -59,16 +71,16 @@ impl ManagedService for AgentScopeService {
 
     fn health_config(&self, config: &ServiceConfig) -> HealthConfig {
         HealthConfig {
-            url: format!("http://{}:{}/health", config.host, config.port),
-            interval_ms: 2000,
-            max_failures: 3,
+            url: format!("http://{}:{}{}", config.host, config.port, health::AGENTSCOPE_PATH),
+            interval_ms: health::AGENTSCOPE_INTERVAL_MS,
+            max_failures: health::DEFAULT_MAX_FAILURES,
         }
     }
 
     fn resource_limits(&self) -> ResourceLimits {
         ResourceLimits {
-            max_memory_mb: 512,
-            max_restarts: 10,
+            max_memory_mb: resources::AGENTSCOPE_MAX_MEMORY_MB,
+            max_restarts: resources::AGENTSCOPE_MAX_RESTARTS,
         }
     }
 
@@ -76,12 +88,8 @@ impl ManagedService for AgentScopeService {
         &self.data_dir
     }
 
-    // A033/AgentScopeService: Disabled until agent source file strategy is resolved.
-    // `agentscope run` requires a SOURCE argument (agent .py file), which is not yet
-    // bundled into the runtime data directory. The factory stays registered so the
-    // generic spawn flow remains intact, but can_start() returns false to skip gracefully.
     fn can_start(&self) -> bool {
-        false
+        self.orchestrator_binary().exists()
     }
 }
 
@@ -102,12 +110,29 @@ mod tests {
         AgentScopeService::new(make_runtime(), DataDir::new(base_dir))
     }
 
+    /// Create a service with a real orchestrator binary stub in the venv.
+    fn make_service_with_binary(base_dir: &Path) -> (AgentScopeService, tempfile::TempDir) {
+        let runtime_temp = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let runtime = Arc::new(PythonRuntime::new(
+            runtime_temp.path().to_path_buf(),
+            platform,
+        ));
+
+        let venv_bin = runtime.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(venv_bin.join("orchestrator"), b"#!/bin/sh\n").expect("create binary");
+
+        let service = AgentScopeService::new(runtime, DataDir::new(base_dir));
+        (service, runtime_temp)
+    }
+
     #[test]
     fn t33_agentscope_service_id_and_name() {
         let temp = tempfile::tempdir().expect("tempdir");
         let service = make_service(temp.path());
         assert_eq!(service.id(), "agentscope");
-        assert_eq!(service.name(), "AgentScope Runtime");
+        assert_eq!(service.name(), "Orchestrator");
     }
 
     #[test]
@@ -119,6 +144,7 @@ mod tests {
         assert!(deps.contains(&"python"));
         assert!(deps.contains(&"agentscope"));
         assert!(deps.contains(&"agentscope-runtime"));
+        assert!(deps.contains(&"snapfzz-orchestrator"));
     }
 
     #[test]
@@ -155,14 +181,21 @@ mod tests {
     }
 
     #[test]
-    fn t33_agentscope_service_can_start_disabled_pending_source_strategy() {
+    fn t33_agentscope_service_can_start_false_when_binary_missing() {
         let temp = tempfile::tempdir().expect("tempdir");
         let service = make_service(temp.path());
         assert!(!service.can_start());
     }
 
     #[test]
-    fn t33_agentscope_service_spawn_command_fails_without_venv() {
+    fn t33_agentscope_service_can_start_true_when_binary_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let (service, _rt) = make_service_with_binary(temp.path());
+        assert!(service.can_start());
+    }
+
+    #[test]
+    fn t33_agentscope_service_spawn_command_fails_without_binary() {
         let temp = tempfile::tempdir().expect("tempdir");
         let service = make_service(temp.path());
         let config = ServiceConfig {
@@ -175,32 +208,20 @@ mod tests {
     }
 
     #[test]
-    fn t33_agentscope_service_spawn_command_succeeds_when_venv_python_exists() {
+    fn t33_agentscope_service_spawn_command_succeeds_when_binary_exists() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let runtime_temp = tempfile::tempdir().expect("tempdir");
-        let platform = detect_platform().expect("platform");
-        let runtime = Arc::new(crate::core::python::runtime::PythonRuntime::new(
-            runtime_temp.path().to_path_buf(),
-            platform,
-        ));
-
-        // Create the venv python binary so spawn_command succeeds
-        let venv_bin = runtime.venv_dir().join("bin");
-        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
-        std::fs::write(runtime.venv_python(), b"#!/bin/sh\n").expect("create venv python");
-
-        let service = AgentScopeService::new(runtime, DataDir::new(temp.path()));
+        let (service, _rt) = make_service_with_binary(temp.path());
         let config = ServiceConfig {
             host: "127.0.0.1".to_string(),
             port: 8090,
             working_dir: temp.path().to_path_buf(),
         };
         let result = service.spawn_command(&config);
-        assert!(result.is_ok(), "spawn_command should succeed when venv python exists");
+        assert!(result.is_ok(), "spawn_command should succeed when orchestrator binary exists");
     }
 
     #[test]
-    fn t33_agentscope_service_spawn_command_returns_dependency_error_when_venv_missing() {
+    fn t33_agentscope_service_spawn_command_returns_dependency_error_when_binary_missing() {
         let temp = tempfile::tempdir().expect("tempdir");
         let service = make_service(temp.path());
         let config = ServiceConfig {
@@ -210,6 +231,15 @@ mod tests {
         };
         let err = service.spawn_command(&config).expect_err("should fail");
         assert!(matches!(err, ServiceError::DependencyNotInstalled(_)));
-        assert!(err.to_string().contains("venv") || err.to_string().contains("Python"));
+        assert!(err.to_string().contains("orchestrator"));
+    }
+
+    #[test]
+    fn t33_agentscope_service_orchestrator_binary_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let service = make_service(temp.path());
+        let bin = service.orchestrator_binary();
+        assert!(bin.to_string_lossy().contains("orchestrator"));
+        assert!(bin.to_string_lossy().contains("venv"));
     }
 }

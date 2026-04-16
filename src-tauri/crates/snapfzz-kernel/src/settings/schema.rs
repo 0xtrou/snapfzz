@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const AGENTSCOPE_PORT: u16 = 8090;
+use crate::constants::defaults;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -49,15 +49,15 @@ pub struct Settings {
 }
 
 fn default_model() -> String {
-    "gpt-4o".to_string()
+    defaults::MODEL.to_string()
 }
 
 fn default_api_url() -> String {
-    "https://api.openai.com/v1".to_string()
+    defaults::API_URL.to_string()
 }
 
 fn default_theme() -> String {
-    "system".to_string()
+    defaults::THEME.to_string()
 }
 
 fn default_true() -> bool {
@@ -65,39 +65,39 @@ fn default_true() -> bool {
 }
 
 fn default_font_family() -> String {
-    "Inter".to_string()
+    defaults::FONT_FAMILY.to_string()
 }
 
 fn default_font_size() -> String {
-    "13".to_string()
+    defaults::FONT_SIZE.to_string()
 }
 
 fn default_language() -> String {
-    "en".to_string()
+    defaults::LANGUAGE.to_string()
 }
 
 fn default_log_level() -> String {
-    "info".to_string()
+    defaults::LOG_LEVEL.to_string()
 }
 
 fn default_preset() -> String {
-    "auto".to_string()
+    defaults::PRESET.to_string()
 }
 
 fn default_agentscope_host() -> String {
-    "127.0.0.1".to_string()
+    defaults::HOST.to_string()
 }
 
 fn default_agentscope_port() -> String {
-    AGENTSCOPE_PORT.to_string()
+    defaults::AGENTSCOPE_PORT.to_string()
 }
 
 fn default_litellm_host() -> String {
-    "127.0.0.1".to_string()
+    defaults::HOST.to_string()
 }
 
 fn default_litellm_port() -> String {
-    "4000".to_string()
+    defaults::LITELLM_PORT.to_string()
 }
 
 fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -150,25 +150,26 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::Settings;
+    use crate::constants::defaults;
 
     // --- Default values ---
 
     #[test]
     fn a014_settings_schema_default_model_is_gpt4o() {
         let s = Settings::default();
-        assert_eq!(s.model, "gpt-4o");
+        assert_eq!(s.model, defaults::MODEL);
     }
 
     #[test]
     fn a014_settings_schema_default_api_url_is_openai() {
         let s = Settings::default();
-        assert_eq!(s.api_url, "https://api.openai.com/v1");
+        assert_eq!(s.api_url, defaults::API_URL);
     }
 
     #[test]
     fn a014_settings_schema_default_theme_is_system() {
         let s = Settings::default();
-        assert_eq!(s.theme, "system");
+        assert_eq!(s.theme, defaults::THEME);
     }
 
     #[test]
@@ -180,19 +181,19 @@ mod tests {
     #[test]
     fn a014_settings_schema_default_language_is_en() {
         let s = Settings::default();
-        assert_eq!(s.language, "en");
+        assert_eq!(s.language, defaults::LANGUAGE);
     }
 
     #[test]
     fn a014_settings_schema_default_font_family_is_inter() {
         let s = Settings::default();
-        assert_eq!(s.font_family, "Inter");
+        assert_eq!(s.font_family, defaults::FONT_FAMILY);
     }
 
     #[test]
     fn a014_settings_schema_default_font_size_is_13() {
         let s = Settings::default();
-        assert_eq!(s.font_size, "13");
+        assert_eq!(s.font_size, defaults::FONT_SIZE);
     }
 
     #[test]
@@ -204,37 +205,37 @@ mod tests {
     #[test]
     fn a014_settings_schema_default_log_level_is_info() {
         let s = Settings::default();
-        assert_eq!(s.log_level, "info");
+        assert_eq!(s.log_level, defaults::LOG_LEVEL);
     }
 
     #[test]
     fn a014_settings_schema_default_preset_is_auto() {
         let s = Settings::default();
-        assert_eq!(s.preset, "auto");
+        assert_eq!(s.preset, defaults::PRESET);
     }
 
     #[test]
     fn a014_settings_schema_default_agentscope_host_is_loopback() {
         let s = Settings::default();
-        assert_eq!(s.agentscope_host, "127.0.0.1");
+        assert_eq!(s.agentscope_host, defaults::HOST);
     }
 
     #[test]
     fn a014_settings_schema_default_agentscope_port_is_8090() {
         let s = Settings::default();
-        assert_eq!(s.agentscope_port, "8090");
+        assert_eq!(s.agentscope_port, defaults::AGENTSCOPE_PORT.to_string());
     }
 
     #[test]
     fn a014_settings_schema_default_litellm_host_is_loopback() {
         let s = Settings::default();
-        assert_eq!(s.litellm_host, "127.0.0.1");
+        assert_eq!(s.litellm_host, defaults::HOST);
     }
 
     #[test]
     fn a014_settings_schema_default_litellm_port_is_4000() {
         let s = Settings::default();
-        assert_eq!(s.litellm_port, "4000");
+        assert_eq!(s.litellm_port, defaults::LITELLM_PORT);
     }
 
     #[test]

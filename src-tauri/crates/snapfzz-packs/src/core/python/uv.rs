@@ -11,7 +11,7 @@ use crate::core::component::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
 use crate::core::download::{download_file, extract_tar_gz};
-use crate::core::constants;
+use crate::core::constants::{self, dependencies};
 use crate::core::platform::PlatformInfo;
 
 const USER_AGENT: &str = "snapfzz-packs/0.1.0";
@@ -136,7 +136,7 @@ struct GithubAsset {
 #[async_trait::async_trait]
 impl SystemComponent for UvDownloader {
     fn id(&self) -> &str {
-        "uv"
+        dependencies::UV
     }
 
     fn name(&self) -> &str {
@@ -153,7 +153,7 @@ impl SystemComponent for UvDownloader {
 
     async fn resolve(&self) -> Result<ComponentInfo, ComponentError> {
         let is_installed = self.is_installed();
-        let meta = constants::pack_metadata("uv")
+        let meta = constants::pack_metadata(dependencies::UV)
             .expect("uv metadata must exist in constants");
 
         // Fast path: if installed, return local info without hitting GitHub API.

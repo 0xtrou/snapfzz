@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::constants::{logging, paths};
+
 const PROCESS_LOG_MAX_LINES: usize = 1000;
 
 pub struct ProcessLogs {
@@ -14,7 +16,7 @@ impl ProcessLogs {
     pub fn new() -> Self {
         let data_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".snapfzz");
+            .join(paths::SNAPFZZ_HOME);
         Self::with_max_lines(data_dir, PROCESS_LOG_MAX_LINES)
     }
 
@@ -31,19 +33,19 @@ impl ProcessLogs {
     }
 
     fn runtime_dir(&self, name: &str) -> PathBuf {
-        self.data_dir.join("runtime").join(name)
+        self.data_dir.join(paths::RUNTIME_DIR).join(name)
     }
 
     fn log_path(&self, name: &str) -> PathBuf {
-        self.runtime_dir(name).join(format!("{name}.log"))
+        self.runtime_dir(name).join(format!("{name}{}", paths::LOG_SUFFIX))
     }
 
     fn error_log_path(&self, name: &str) -> PathBuf {
-        self.runtime_dir(name).join(format!("{name}_error.log"))
+        self.runtime_dir(name).join(format!("{name}{}", paths::ERROR_LOG_SUFFIX))
     }
 
     pub fn pid_path(&self, name: &str) -> PathBuf {
-        self.runtime_dir(name).join(format!("{name}.pid"))
+        self.runtime_dir(name).join(format!("{name}{}", paths::PID_SUFFIX))
     }
 
     fn ensure_dir(&self, name: &str) {
@@ -59,7 +61,7 @@ impl ProcessLogs {
         }
 
         self.ensure_dir(name);
-        let log_file = if line.starts_with("[stderr]") {
+        let log_file = if line.starts_with(logging::STDERR_PREFIX) {
             self.error_log_path(name)
         } else {
             self.log_path(name)

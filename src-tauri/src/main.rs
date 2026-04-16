@@ -2,6 +2,7 @@
 
 mod boot;
 mod commands;
+mod constants;
 mod factories;
 mod fonts;
 mod helpers;
@@ -14,7 +15,7 @@ use snapfzz_kernel::boot::PreflightService;
 use snapfzz_kernel::process::{self, ProcessFactoryRegistry, ProcessManager};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_packs::{
-    constants, detect_platform, runtime::python::PythonRuntime, ComponentRegistry, PythonDownloader,
+    constants as packs_constants, detect_platform, runtime::python::PythonRuntime, ComponentRegistry, PythonDownloader,
     UvDownloader,
 };
 use snapfzz_vault::{load_or_generate_master_key, SecretVault};
@@ -72,7 +73,7 @@ fn main() {
         uv_bin.clone(),
         python_bin_dir.join("python"),
         platform.clone(),
-        constants::versions::PYTHON.to_string(),
+        packs_constants::versions::PYTHON.to_string(),
     )));
     component_registry.register(cef_runtime_downloader);
     let component_registry = Arc::new(component_registry);
@@ -213,8 +214,8 @@ fn main() {
                     let registry = factory_registry.read().await;
                     let process_mgr = registry.process_manager();
                     drop(registry);
-                    let _ = process_mgr.shutdown("agent-runtime").await;
-                    let _ = process_mgr.shutdown("llm-gateway").await;
+                    let _ = process_mgr.shutdown(constants::processes::AGENT_RUNTIME).await;
+                    let _ = process_mgr.shutdown(constants::processes::LLM_GATEWAY).await;
 
                     if let Some(pg) = postgres_runtime.lock().await.as_mut() {
                         if let Err(e) = pg.stop().await {

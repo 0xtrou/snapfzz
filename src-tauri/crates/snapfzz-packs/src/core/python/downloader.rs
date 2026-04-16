@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use crate::core::component::{
     ComponentError, ComponentInfo, DownloadProgress, DownloadStatus, SystemComponent,
 };
-use crate::core::constants;
+use crate::core::constants::{self, binaries, dirs};
 use crate::core::platform::PlatformInfo;
 
 #[derive(Debug, Clone)]
@@ -62,18 +62,18 @@ impl PythonDownloader {
                 if name_str.starts_with("cpython-") {
                     let preferred = entry
                         .path()
-                        .join("bin")
+                        .join(dirs::BIN)
                         .join(format!("python{}", major_version));
                     if preferred.exists() {
                         return Some(preferred);
                     }
 
-                    let py3 = entry.path().join("bin").join("python3");
+                    let py3 = entry.path().join(dirs::BIN).join(binaries::PYTHON3);
                     if py3.exists() {
                         return Some(py3);
                     }
 
-                    let py = entry.path().join("bin").join("python");
+                    let py = entry.path().join(dirs::BIN).join(dirs::PYTHON);
                     if py.exists() {
                         return Some(py);
                     }
@@ -87,7 +87,7 @@ impl PythonDownloader {
 #[async_trait::async_trait]
 impl SystemComponent for PythonDownloader {
     fn id(&self) -> &str {
-        "python"
+        dirs::PYTHON
     }
 
     fn name(&self) -> &str {
@@ -115,7 +115,7 @@ impl SystemComponent for PythonDownloader {
             }
         }
 
-        let meta = constants::pack_metadata("python")
+        let meta = constants::pack_metadata(dirs::PYTHON)
             .expect("python metadata must exist in constants");
         let info = meta.to_component_info(
             self.version.clone(),

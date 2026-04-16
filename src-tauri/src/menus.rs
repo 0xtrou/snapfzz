@@ -1,14 +1,15 @@
 use crate::commands::system::open_preferences;
+use crate::constants::menus as menu_ids;
 use tauri::Manager;
 
 pub fn setup_menus(app: &mut tauri::App) -> Result<(), tauri::Error> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
     use tauri::{WebviewUrl, WebviewWindowBuilder};
 
-    let preferences_item = MenuItemBuilder::with_id("preferences", "Preferences…")
+    let preferences_item = MenuItemBuilder::with_id(menu_ids::PREFERENCES, "Preferences…")
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
-    let about_item = MenuItemBuilder::with_id("about", "About Snapfzz").build(app)?;
+    let about_item = MenuItemBuilder::with_id(menu_ids::ABOUT, "About Snapfzz").build(app)?;
 
     let app_menu = SubmenuBuilder::new(app, "Snapfzz")
         .item(&about_item)
@@ -48,16 +49,16 @@ pub fn setup_menus(app: &mut tauri::App) -> Result<(), tauri::Error> {
     )?;
 
     let menu_handle = app.handle().clone();
-    app.on_menu_event(move |_app, event| match event.id().as_ref() {
-        "preferences" => {
+    app.on_menu_event(move |_app, event| {
+        let id = event.id().as_ref();
+        if id == menu_ids::PREFERENCES {
             let handle = menu_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let _ = open_preferences(handle).await;
             });
-        }
-        "about" => {
+        } else if id == menu_ids::ABOUT {
             let handle = menu_handle.clone();
-            if let Some(about_window) = handle.get_webview_window("about") {
+            if let Some(about_window) = handle.get_webview_window(menu_ids::ABOUT) {
                 let _ = about_window.set_focus();
                 return;
             }
@@ -66,7 +67,7 @@ pub fn setup_menus(app: &mut tauri::App) -> Result<(), tauri::Error> {
             } else {
                 WebviewUrl::App("about.html".into())
             };
-            let _ = WebviewWindowBuilder::new(&handle, "about", url)
+            let _ = WebviewWindowBuilder::new(&handle, menu_ids::ABOUT, url)
                 .title("About")
                 .inner_size(420.0, 520.0)
                 .resizable(false)
@@ -75,7 +76,6 @@ pub fn setup_menus(app: &mut tauri::App) -> Result<(), tauri::Error> {
                 .center()
                 .build();
         }
-        _ => {}
     });
 
     Ok(())

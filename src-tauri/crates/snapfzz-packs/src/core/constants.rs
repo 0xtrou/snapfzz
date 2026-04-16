@@ -10,6 +10,7 @@ pub mod versions {
     pub const PYTHON: &str = "3.12";
     pub const AGENTSCOPE: &str = "1.0.18";
     pub const AGENTSCOPE_RUNTIME: &str = "1.1.3";
+    pub const ORCHESTRATOR: &str = "0.1.0";
     pub const LITELLM: &str = "1.83.4";
 }
 
@@ -104,6 +105,15 @@ pub fn python_packs() -> Vec<PythonPackMetadata> {
             website_url: "https://runtime.agentscope.io/".into(),
         },
         PythonPackMetadata {
+            id: "orchestrator".into(),
+            name: "Orchestrator".into(),
+            description: "Snapfzz intelligence orchestrator. Multi-agent runtime with tool guard, memory, and mission mode.".into(),
+            license: "Apache-2.0".into(),
+            platform_display: "Cross-platform".into(),
+            repository_url: "https://github.com/nicepkg/snapfzz".into(),
+            website_url: "https://snapfzz.dev/".into(),
+        },
+        PythonPackMetadata {
             id: "litellm".into(),
             name: "LiteLLM".into(),
             description: "LLM proxy and model router. Requires Python runtime.".into(),
@@ -136,6 +146,73 @@ pub fn cef_metadata() -> PythonPackMetadata {
     }
 }
 
+/// Service identifiers and display names.
+pub mod services {
+    pub const AGENTSCOPE_ID: &str = "agentscope";
+    pub const AGENTSCOPE_NAME: &str = "Orchestrator";
+    pub const LITELLM_ID: &str = "litellm";
+    pub const LITELLM_NAME: &str = "LiteLLM Gateway";
+}
+
+/// Package names for pip install.
+pub mod packages {
+    pub const AGENTSCOPE: &str = "agentscope";
+    pub const AGENTSCOPE_RUNTIME: &str = "agentscope-runtime";
+    pub const ORCHESTRATOR: &str = "snapfzz-orchestrator";
+    pub const LITELLM_PROXY: &str = "litellm[proxy]";
+    pub const LITELLM: &str = "litellm";
+    pub const DISKCACHE: &str = "diskcache";
+    pub const PRISMA: &str = "prisma";
+    pub const GREENLET: &str = "greenlet";
+}
+
+/// Binary names installed in the venv.
+pub mod binaries {
+    pub const ORCHESTRATOR: &str = "orchestrator";
+    pub const LITELLM: &str = "litellm";
+    pub const PYTHON3: &str = "python3";
+}
+
+/// Environment variable names injected into spawned processes.
+pub mod env_vars {
+    pub const SNAPFZZ_HOST: &str = "SNAPFZZ_HOST";
+    pub const SNAPFZZ_PORT: &str = "SNAPFZZ_PORT";
+}
+
+/// Directory and file naming.
+pub mod dirs {
+    pub const BIN: &str = "bin";
+    pub const VENV: &str = "venv";
+    pub const PYTHON: &str = "python";
+    pub const DATA: &str = "data";
+    pub const CONFIG_YAML: &str = "config.yaml";
+}
+
+/// Health check configuration.
+pub mod health {
+    pub const AGENTSCOPE_PATH: &str = "/health";
+    pub const LITELLM_PATH: &str = "/health/liveness";
+    pub const AGENTSCOPE_INTERVAL_MS: u64 = 2000;
+    pub const LITELLM_INTERVAL_MS: u64 = 5000;
+    pub const DEFAULT_MAX_FAILURES: u32 = 3;
+}
+
+/// Resource limits for managed services.
+pub mod resources {
+    pub const AGENTSCOPE_MAX_MEMORY_MB: u64 = 512;
+    pub const AGENTSCOPE_MAX_RESTARTS: u32 = 10;
+    pub const LITELLM_MAX_MEMORY_MB: u64 = 1024;
+    pub const LITELLM_MAX_RESTARTS: u32 = 5;
+}
+
+/// Service dependencies for can_start() checks.
+pub mod dependencies {
+    pub const UV: &str = "uv";
+    pub const PYTHON: &str = "python";
+    pub const AGENTSCOPE_DEPS: &[&str] = &["uv", "python", "agentscope", "agentscope-runtime", "snapfzz-orchestrator"];
+    pub const LITELLM_DEPS: &[&str] = &["uv", "python", "litellm"];
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,15 +233,16 @@ mod tests {
     }
 
     #[test]
-    fn t32_constants_python_packs_returns_five_entries() {
+    fn t32_constants_python_packs_returns_six_entries() {
         let packs = python_packs();
-        assert_eq!(packs.len(), 5);
+        assert_eq!(packs.len(), 6);
 
         let ids: Vec<&str> = packs.iter().map(|p| p.id.as_str()).collect();
         assert!(ids.contains(&"uv"));
         assert!(ids.contains(&"python"));
         assert!(ids.contains(&"agentscope"));
         assert!(ids.contains(&"agentscope-runtime"));
+        assert!(ids.contains(&"orchestrator"));
         assert!(ids.contains(&"litellm"));
     }
 

@@ -6,9 +6,8 @@ use std::sync::Arc;
 // NOTE: Config is generated dynamically in pre_run_setup to include the
 // disk_cache_dir path. DEFAULT_CONFIG_TEMPLATE is no longer used.
 
-const ENV_LITELLM_MASTER_KEY: &str = "LITELLM_MASTER_KEY";
-const ENV_LITELLM_SALT_KEY: &str = "LITELLM_SALT_KEY";
-const ENV_DATABASE_URL: &str = "DATABASE_URL";
+use crate::constants::env_vars;
+use crate::constants::litellm as litellm_cfg;
 
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig, SpawnSecrets};
 use snapfzz_kernel::settings::Settings;
@@ -44,7 +43,7 @@ impl LiteLLMFactory {
         let mut env = HashMap::new();
 
         if let Ok(master_key) = snapfzz_llm::vault::get_or_create_master_key(&mut guard) {
-            env.insert(ENV_LITELLM_MASTER_KEY.to_string(), master_key);
+            env.insert(env_vars::LITELLM_MASTER_KEY.to_string(), master_key);
         }
 
         // A013/SaltKey: Stable encryption key for DB model persistence.
@@ -68,7 +67,7 @@ impl LiteLLMFactory {
             }
         };
         if !salt_key.is_empty() {
-            env.insert(ENV_LITELLM_SALT_KEY.to_string(), salt_key);
+            env.insert(env_vars::LITELLM_SALT_KEY.to_string(), salt_key);
         }
 
         SpawnSecrets { env }
@@ -116,7 +115,7 @@ impl ProcessFactory for LiteLLMFactory {
         let cache_dir = config_path
             .parent()
             .unwrap_or(config_path.as_path())
-            .join(".litellm_cache");
+            .join(litellm_cfg::CACHE_DIR);
         let _ = std::fs::create_dir_all(&cache_dir);
         let config_content = format!(
             "general_settings:\n\
@@ -131,8 +130,8 @@ impl ProcessFactory for LiteLLMFactory {
              \x20 cache_params:\n\
              \x20   type: \"disk\"\n\
              \x20   disk_cache_dir: \"{}\"\n",
-            ENV_LITELLM_MASTER_KEY,
-            ENV_DATABASE_URL,
+            env_vars::LITELLM_MASTER_KEY,
+            env_vars::DATABASE_URL,
             cache_dir.to_string_lossy(),
         );
         let _ = std::fs::write(&config_path, &config_content);
@@ -192,7 +191,7 @@ impl ProcessFactory for LiteLLMFactory {
 
         let output = std::process::Command::new(&prisma_bin)
             .args(["generate", schema_arg.as_str()])
-            .env(ENV_DATABASE_URL, database_url)
+            .env(env_vars::DATABASE_URL, database_url)
             .env("PATH", &path_with_venv)
             .current_dir(&working_dir)
             .output()
@@ -206,7 +205,7 @@ impl ProcessFactory for LiteLLMFactory {
 
         let output = std::process::Command::new(&prisma_bin)
             .args(["db", "push", "--skip-generate", schema_arg.as_str()])
-            .env(ENV_DATABASE_URL, database_url)
+            .env(env_vars::DATABASE_URL, database_url)
             .env("PATH", &path_with_venv)
             .current_dir(&working_dir)
             .output()
@@ -255,8 +254,8 @@ impl ProcessFactory for LiteLLMFactory {
         }
 
         if let Some(ref db_url) = config.database_url {
-            cmd.env(ENV_DATABASE_URL, db_url);
-            cmd.env("STORE_MODEL_IN_DB", "True");
+            cmd.env(env_vars::DATABASE_URL, db_url);
+            cmd.env(env_vars::STORE_MODEL_IN_DB, "True");
         }
 
         for (key, value) in secrets.env {

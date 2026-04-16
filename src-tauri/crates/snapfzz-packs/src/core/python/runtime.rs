@@ -1,5 +1,5 @@
 use crate::core::component::ComponentError;
-use crate::core::constants::versions;
+use crate::core::constants::{binaries, dirs, packages, services, versions};
 use crate::core::platform::PlatformInfo;
 use crate::core::status::{InstallStep, PipPackageInfo, PythonRuntimeStatus};
 use std::path::{Path, PathBuf};
@@ -22,12 +22,13 @@ fn package_spec(name: &str, version: &str) -> String {
 
 fn python_pack_specs() -> Vec<String> {
     vec![
-        package_spec("agentscope", versions::AGENTSCOPE),
-        package_spec("agentscope-runtime", versions::AGENTSCOPE_RUNTIME),
-        format!("litellm[proxy]=={}", versions::LITELLM),
-        "diskcache".to_string(),
-        "prisma".to_string(),
-        "greenlet".to_string(),
+        package_spec(packages::AGENTSCOPE, versions::AGENTSCOPE),
+        package_spec(packages::AGENTSCOPE_RUNTIME, versions::AGENTSCOPE_RUNTIME),
+        package_spec(packages::ORCHESTRATOR, versions::ORCHESTRATOR),
+        format!("{}=={}", packages::LITELLM_PROXY, versions::LITELLM),
+        packages::DISKCACHE.to_string(),
+        packages::PRISMA.to_string(),
+        packages::GREENLET.to_string(),
     ]
 }
 
@@ -50,7 +51,7 @@ impl PythonRuntime {
     }
 
     pub fn bin_dir(&self) -> PathBuf {
-        self.runtime_dir.join("python").join("bin")
+        self.runtime_dir.join(dirs::PYTHON).join(dirs::BIN)
     }
 
     pub fn uv_binary(&self) -> PathBuf {
@@ -59,15 +60,15 @@ impl PythonRuntime {
     }
 
     pub fn python_install_dir(&self) -> PathBuf {
-        self.bin_dir().join("python")
+        self.bin_dir().join(dirs::PYTHON)
     }
 
     pub fn venv_dir(&self) -> PathBuf {
-        self.runtime_dir.join("python").join("venv")
+        self.runtime_dir.join(dirs::PYTHON).join(dirs::VENV)
     }
 
     pub fn venv_python(&self) -> PathBuf {
-        self.venv_dir().join("bin").join("python3")
+        self.venv_dir().join(dirs::BIN).join(binaries::PYTHON3)
     }
 
     pub fn find_python_binary(install_dir: &Path) -> Option<PathBuf> {
@@ -84,12 +85,12 @@ impl PythonRuntime {
                         return Some(preferred);
                     }
 
-                    let py3 = entry.path().join("bin").join("python3");
+                    let py3 = entry.path().join(dirs::BIN).join(binaries::PYTHON3);
                     if py3.exists() {
                         return Some(py3);
                     }
 
-                    let py = entry.path().join("bin").join("python");
+                    let py = entry.path().join(dirs::BIN).join(dirs::PYTHON);
                     if py.exists() {
                         return Some(py);
                     }
@@ -317,13 +318,16 @@ impl PythonRuntime {
             vec![]
         };
 
-        let agentscope_version = Self::package_version_from_list("agentscope", &installed_packages);
+        let agentscope_version = Self::package_version_from_list(packages::AGENTSCOPE, &installed_packages);
         let agentscope_runtime_version =
-            Self::package_version_from_list("agentscope-runtime", &installed_packages);
-        let litellm_version = Self::package_version_from_list("litellm", &installed_packages);
+            Self::package_version_from_list(packages::AGENTSCOPE_RUNTIME, &installed_packages);
+        let orchestrator_version =
+            Self::package_version_from_list(packages::ORCHESTRATOR, &installed_packages);
+        let litellm_version = Self::package_version_from_list(packages::LITELLM, &installed_packages);
 
         let agentscope_is_installed = agentscope_version.is_some();
         let agentscope_runtime_is_installed = agentscope_runtime_version.is_some();
+        let orchestrator_is_installed = orchestrator_version.is_some();
         let litellm_is_installed = litellm_version.is_some();
 
         PythonRuntimeStatus {
@@ -339,17 +343,22 @@ impl PythonRuntime {
                 .map(|(name, _)| name.clone())
                 .collect(),
             agentscope: PipPackageInfo {
-                name: "agentscope".to_string(),
+                name: packages::AGENTSCOPE.to_string(),
                 version: agentscope_version.unwrap_or_default(),
                 is_installed: agentscope_is_installed,
             },
             agentscope_runtime: PipPackageInfo {
-                name: "agentscope-runtime".to_string(),
+                name: packages::AGENTSCOPE_RUNTIME.to_string(),
                 version: agentscope_runtime_version.unwrap_or_default(),
                 is_installed: agentscope_runtime_is_installed,
             },
+            orchestrator: PipPackageInfo {
+                name: packages::ORCHESTRATOR.to_string(),
+                version: orchestrator_version.unwrap_or_default(),
+                is_installed: orchestrator_is_installed,
+            },
             litellm: PipPackageInfo {
-                name: "litellm".to_string(),
+                name: packages::LITELLM.to_string(),
                 version: litellm_version.unwrap_or_default(),
                 is_installed: litellm_is_installed,
             },
@@ -360,28 +369,33 @@ impl PythonRuntime {
                     is_installed: uv_installed,
                 },
                 InstallStep {
-                    id: "python".into(),
+                    id: dirs::PYTHON.into(),
                     label: format!("Python {}", versions::PYTHON),
                     is_installed: python_installed,
                 },
                 InstallStep {
-                    id: "venv".into(),
+                    id: dirs::VENV.into(),
                     label: "Virtual Environment".into(),
                     is_installed: venv_exists,
                 },
                 InstallStep {
-                    id: "agentscope".into(),
+                    id: packages::AGENTSCOPE.into(),
                     label: "AgentScope".into(),
                     is_installed: agentscope_is_installed,
                 },
                 InstallStep {
-                    id: "agentscope-runtime".into(),
+                    id: packages::AGENTSCOPE_RUNTIME.into(),
                     label: "AgentScope Runtime".into(),
                     is_installed: agentscope_runtime_is_installed,
                 },
                 InstallStep {
-                    id: "litellm".into(),
-                    label: "LiteLLM Gateway".into(),
+                    id: binaries::ORCHESTRATOR.into(),
+                    label: services::AGENTSCOPE_NAME.into(),
+                    is_installed: orchestrator_is_installed,
+                },
+                InstallStep {
+                    id: packages::LITELLM.into(),
+                    label: services::LITELLM_NAME.into(),
                     is_installed: litellm_is_installed,
                 },
             ],
@@ -429,12 +443,13 @@ mod tests {
     #[test]
     fn t32_python_pack_specs_returns_all_required_packages() {
         let specs = python_pack_specs();
-        assert_eq!(specs.len(), 6);
+        assert_eq!(specs.len(), 7);
         assert!(specs[0].starts_with("agentscope=="));
         assert!(specs[1].starts_with("agentscope-runtime=="));
-        assert!(specs[2].starts_with("litellm[proxy]=="));
-        assert_eq!(specs[3], "diskcache");
-        assert_eq!(specs[4], "prisma");
+        assert!(specs[2].starts_with("snapfzz-orchestrator=="));
+        assert!(specs[3].starts_with("litellm[proxy]=="));
+        assert_eq!(specs[4], "diskcache");
+        assert_eq!(specs[5], "prisma");
     }
 
     #[test]
@@ -589,7 +604,7 @@ mod tests {
         assert!(!status.agentscope.is_installed);
         assert!(!status.agentscope_runtime.is_installed);
         assert!(!status.litellm.is_installed);
-        assert_eq!(status.install_steps.len(), 6);
+        assert_eq!(status.install_steps.len(), 7);
     }
 
     #[test]
@@ -909,7 +924,7 @@ mod tests {
         assert!(status.uv_installed);
         assert!(status.python_installed);
         assert!(!status.venv_exists);
-        assert_eq!(status.install_steps.len(), 6);
+        assert_eq!(status.install_steps.len(), 7);
         assert!(status.install_steps.iter().any(|s| s.id == "uv" && s.is_installed));
         assert!(status.install_steps.iter().any(|s| s.id == "python" && s.is_installed));
         assert!(status.install_steps.iter().any(|s| s.id == "venv" && !s.is_installed));

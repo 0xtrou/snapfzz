@@ -1,0 +1,121 @@
+# Snapfzz Intelligence Pack — maps to QwenPaw AgentProfileConfig
+#
+# This file is the declarative configuration for the chat intelligence.
+# At runtime, it's translated to QwenPaw's config.json format.
+
+id: snapfzz.orchestrator
+name: Project Orchestrator
+version: 0.1.0
+domain: general
+language: en
+
+# --- Block 1: AgentLoop ---
+agent:
+  type: ReActAgent
+  model:
+    provider: litellm          # Routes through LiteLLM gateway
+    # model resolved at runtime from LiteLLM active combo
+  max_iterations: 10
+  system_prompt: prompts/system.md
+
+# --- Block 2: State (Memory) ---
+state:
+  backend: remelight            # Default: ReMeLight (local)
+  # backend: postgresql         # Phase 6: pgvector RAG
+  persist:
+    - conversations
+    - extracted_facts
+    - agent_state
+  ttl_days: 90
+  auto_extract: true
+  dream_cron: "0 23 * * *"     # Nightly memory optimization
+
+# --- Block 3: Context ---
+context:
+  max_input_length: 131072      # 128K tokens
+  memory_compact_ratio: 0.75    # Compact at 75% of window
+  memory_reserve_ratio: 0.1     # Keep 10% after compact
+  memory_summary_enabled: true
+  tool_result_compact:
+    old_max_bytes: 3000
+    recent_max_bytes: 50000
+    retention_days: 5
+
+# --- Block 4: Tools ---
+tools:
+  builtin:
+    - files.read
+    - files.write
+    - files.edit
+    - files.append
+    - files.glob_search
+    - files.grep_search
+    - shell.exec
+    - browser.use
+    - media.screenshot
+    - media.view_image
+    - agent.list
+    - agent.chat
+    - agent.token_usage
+    - agent.memory_search
+    - time.current
+    - time.set_timezone
+  mcp_clients: {}               # MCP servers added via UI
+
+# --- Block 5: Security ---
+security:
+  tool_guard:
+    enabled: true
+    guarded_tools: null          # null = default set (all dangerous tools)
+    denied_tools: []
+    custom_rules: []
+  file_guard:
+    enabled: true
+    sensitive_files:
+      - "**/.env*"
+      - "**/credentials*"
+      - "**/secrets*"
+      - "**/*.pem"
+      - "**/*.key"
+  skill_scanner:
+    mode: warn                   # block | warn | off
+    timeout: 30
+
+# --- Block 6: Recovery ---
+recovery:
+  llm_max_retries: 3
+  llm_backoff_base: 1.0
+  llm_backoff_cap: 30.0
+  llm_max_concurrent: 2
+  llm_max_qpm: 0                # 0 = no rate limit
+  on_context_overflow: summarize
+
+# --- Block 7: PlanMode (Mission) ---
+plan_mode:
+  enabled: true
+  max_iterations: 50
+  # Mission mode activated via /mission command
+
+# --- Block 8: MultiAgent ---
+multi_agent:
+  topology: delegation
+  max_concurrent: 3
+  agents:
+    - id: clarify
+      role: "Interviewer — extracts requirements"
+      model_tier: fast
+      tools: [agent.memory_search]
+    - id: build
+      role: "Engineer — writes code, runs tests"
+      model_tier: capable
+      tools: [files.read, files.write, files.edit, shell.exec, agent.memory_search]
+    - id: ship
+      role: "Deployer — deploys, monitors"
+      model_tier: fast
+      tools: [shell.exec, agent.memory_search]
+
+# --- Block 9: Sentiment (net-new) ---
+sentiment:
+  detect: false                  # Disabled until implemented
+  adapt: false
+  default: professional

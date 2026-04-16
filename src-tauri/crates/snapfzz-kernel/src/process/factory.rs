@@ -5,6 +5,7 @@ use snapfzz_packs::runtime::python::PythonRuntime;
 use snapfzz_packs::service::{ResourceLimits, ServiceError};
 use tokio::process::Command;
 
+use crate::constants::owner;
 use crate::process::SpawnConfig;
 use crate::settings::Settings;
 
@@ -19,7 +20,7 @@ pub trait ProcessFactory: Send + Sync {
     fn name(&self) -> &'static str;
 
     fn owner(&self) -> &'static str {
-        "system"
+        owner::SYSTEM
     }
 
     fn health_path(&self) -> &'static str;

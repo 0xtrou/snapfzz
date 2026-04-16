@@ -15,6 +15,7 @@ use crate::budget::device::detect_device;
 use crate::budget::metrics::{BudgetMetrics, ProcessStatus};
 use crate::budget::preset::{Preset, PresetName, build_preset};
 use crate::budget::supervised::{ProcessBudget, StorageState, SupervisedBudgets};
+use crate::constants::paths;
 
 pub struct BudgetRegistry {
     pub preset: RwLock<Preset>,
@@ -37,7 +38,7 @@ impl BudgetRegistry {
 
         let global_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".snapfzz");
+            .join(paths::SNAPFZZ_HOME);
 
         let supervised = SupervisedBudgets::new(StorageState {
             max_gb: preset.storage.max_gb,

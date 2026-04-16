@@ -5,6 +5,7 @@ use std::time::Instant;
 use crate::budget::metrics::ProcessStatus;
 use crate::budget::supervised::{ProcessBudget, ProcessLocation};
 use crate::budget::BudgetRegistry;
+use crate::constants::{defaults, settings as setting_keys, status};
 use crate::process::logs::ProcessLogs;
 use crate::process::{ProcessError, ProcessFactory, ProcessManager, SpawnConfig};
 use crate::settings::{Settings, SettingsManager};
@@ -182,7 +183,7 @@ impl BudgetedProcess {
             restart_count: self.restart_count,
             consecutive_failures: self.consecutive_failures,
             uptime_secs,
-            location: "local".to_string(),
+            location: status::LOCATION_LOCAL.to_string(),
             health_url: self.health_url.clone(),
             owner: self.owner.clone(),
         }
@@ -239,10 +240,10 @@ impl BudgetedProcess {
         let host = Self::settings_get(settings, host_key)
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| {
-                if port_key == "litellmPort" && !settings.agentscope_host.is_empty() {
+                if port_key == setting_keys::LITELLM_PORT && !settings.agentscope_host.is_empty() {
                     settings.agentscope_host.clone()
                 } else {
-                    "127.0.0.1".to_string()
+                    defaults::HOST.to_string()
                 }
             });
 
@@ -268,7 +269,7 @@ impl BudgetedProcess {
     }
 
     fn find_available_port() -> u16 {
-        TcpListener::bind("127.0.0.1:0")
+        TcpListener::bind(format!("{}:0", defaults::HOST))
             .ok()
             .and_then(|listener| listener.local_addr().ok().map(|addr| addr.port()))
             .unwrap_or(0)
@@ -289,20 +290,20 @@ impl BudgetedProcess {
 
     fn settings_get(settings: &Settings, key: &str) -> Option<String> {
         match key {
-            "agentscopeHost" => Some(settings.agentscope_host.clone()),
-            "agentscopePort" => Some(settings.agentscope_port.clone()),
-            "litellmHost" => Some(settings.litellm_host.clone()),
-            "litellmPort" => Some(settings.litellm_port.clone()),
+            setting_keys::AGENTSCOPE_HOST => Some(settings.agentscope_host.clone()),
+            setting_keys::AGENTSCOPE_PORT => Some(settings.agentscope_port.clone()),
+            setting_keys::LITELLM_HOST => Some(settings.litellm_host.clone()),
+            setting_keys::LITELLM_PORT => Some(settings.litellm_port.clone()),
             _ => None,
         }
     }
 
     fn settings_set(settings: &mut Settings, key: &str, value: String) -> Result<(), ProcessError> {
         match key {
-            "agentscopeHost" => settings.agentscope_host = value,
-            "agentscopePort" => settings.agentscope_port = value,
-            "litellmHost" => settings.litellm_host = value,
-            "litellmPort" => settings.litellm_port = value,
+            setting_keys::AGENTSCOPE_HOST => settings.agentscope_host = value,
+            setting_keys::AGENTSCOPE_PORT => settings.agentscope_port = value,
+            setting_keys::LITELLM_HOST => settings.litellm_host = value,
+            setting_keys::LITELLM_PORT => settings.litellm_port = value,
             _ => {
                 return Err(ProcessError::SpawnFailed(format!(
                     "unsupported settings key '{key}'"

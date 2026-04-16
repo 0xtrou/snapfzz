@@ -4,6 +4,7 @@
 // `<data_dir>/data/<runtime-slug>/` — one directory per service.
 // This ensures isolation and makes future data migration trivial.
 
+use crate::core::constants::dirs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -35,7 +36,7 @@ pub struct DataDir {
 impl DataDir {
     pub fn new(data_dir: &Path) -> Self {
         Self {
-            base: data_dir.join("data"),
+            base: data_dir.join(dirs::DATA),
         }
     }
 

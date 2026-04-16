@@ -1,3 +1,4 @@
+use crate::constants::processes;
 use serde::Serialize;
 use snapfzz_kernel::boot::PhaseTimingDto;
 use snapfzz_kernel::budget::BudgetRegistry;
@@ -100,7 +101,7 @@ pub async fn agent_health(
     registry: tauri::State<'_, Arc<BudgetRegistry>>,
 ) -> Result<HealthStatus, String> {
     Ok(HealthStatus {
-        status: if registry.supervised.check_health("agent-runtime").await {
+        status: if registry.supervised.check_health(processes::AGENT_RUNTIME).await {
             "connected"
         } else {
             "disconnected"

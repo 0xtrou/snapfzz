@@ -6,6 +6,7 @@
 // Phase 2 — PostgreSQL start (independent; stores handle behind Arc<Mutex> only at end)
 // Phase 3 — Service spawn (waits for Phase 1 + 2 via Notify; brief lock per service)
 
+use crate::constants::databases;
 use crate::helpers::emit_supervisor;
 #[allow(unused_imports)]
 use tauri::Emitter;
@@ -95,10 +96,10 @@ pub fn spawn_boot_phases(
             } else if let Err(e) = pg.start().await {
                 eprintln!("[boot/postgres] start failed: {e}");
             } else {
-                if let Err(e) = pg.create_database("litellm").await {
+                if let Err(e) = pg.create_database(databases::LITELLM).await {
                     eprintln!("[boot/postgres] create litellm db failed: {e}");
                 }
-                maybe_url = pg.connection_url("litellm");
+                maybe_url = pg.connection_url(databases::LITELLM);
                 if let Some(ref url) = maybe_url {
                     eprintln!("[boot/postgres] litellm URL: {url}");
                 } else {

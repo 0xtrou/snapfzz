@@ -1,4 +1,5 @@
 // A033/LiteLLMService: LiteLLM gateway as a managed service
+use crate::core::constants::{binaries, dependencies, dirs, health, resources, services};
 use crate::core::data::{slugs, DataDir};
 use crate::core::python::runtime::PythonRuntime;
 use crate::core::service::{HealthConfig, ManagedService, ResourceLimits, ServiceConfig, ServiceError};
@@ -17,22 +18,22 @@ impl LiteLLMService {
     }
 
     pub fn config_path(&self) -> PathBuf {
-        self.data_dir.config_path(slugs::LITELLM, "config.yaml")
+        self.data_dir.config_path(slugs::LITELLM, dirs::CONFIG_YAML)
     }
 }
 
 #[async_trait::async_trait]
 impl ManagedService for LiteLLMService {
     fn id(&self) -> &str {
-        "litellm"
+        services::LITELLM_ID
     }
 
     fn name(&self) -> &str {
-        "LiteLLM Gateway"
+        services::LITELLM_NAME
     }
 
     fn dependencies(&self) -> Vec<&str> {
-        vec!["uv", "python", "litellm"]
+        dependencies::LITELLM_DEPS.to_vec()
     }
 
     fn spawn_command(
@@ -40,7 +41,7 @@ impl ManagedService for LiteLLMService {
         config: &ServiceConfig,
     ) -> Result<tokio::process::Command, ServiceError> {
         // A033/LiteLLM: Use litellm CLI directly (not python -m litellm which doesn't work)
-        let litellm_bin = self.runtime.venv_dir().join("bin").join("litellm");
+        let litellm_bin = self.runtime.venv_dir().join(dirs::BIN).join(binaries::LITELLM);
         if !litellm_bin.exists() {
             return Err(ServiceError::DependencyNotInstalled("litellm CLI".into()));
         }
@@ -63,16 +64,16 @@ impl ManagedService for LiteLLMService {
 
     fn health_config(&self, config: &ServiceConfig) -> HealthConfig {
         HealthConfig {
-            url: format!("http://{}:{}/health/liveness", config.host, config.port),
-            interval_ms: 5000,
-            max_failures: 3,
+            url: format!("http://{}:{}{}", config.host, config.port, health::LITELLM_PATH),
+            interval_ms: health::LITELLM_INTERVAL_MS,
+            max_failures: health::DEFAULT_MAX_FAILURES,
         }
     }
 
     fn resource_limits(&self) -> ResourceLimits {
         ResourceLimits {
-            max_memory_mb: 1024,
-            max_restarts: 5,
+            max_memory_mb: resources::LITELLM_MAX_MEMORY_MB,
+            max_restarts: resources::LITELLM_MAX_RESTARTS,
         }
     }
 

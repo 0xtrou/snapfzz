@@ -1,3 +1,4 @@
+use crate::constants::{databases, processes};
 use serde::Serialize;
 use serde_json::Value;
 use snapfzz_kernel::budget::metrics::{ProcessSnapshot, ProcessStatus};
@@ -6,7 +7,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 
 /// Display name for the embedded PostgreSQL process (not managed by a factory).
-const POSTGRES_PROCESS_NAME: &str = "database";
+const POSTGRES_PROCESS_NAME: &str = processes::DATABASE;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,7 +145,7 @@ pub async fn restart_process<R: tauri::Runtime>(
                 eprintln!("[postgres] stop on restart (ignored): {e}");
             }
             pg.start().await.map_err(|e| e.to_string())?;
-            if let Err(e) = pg.create_database("litellm").await {
+            if let Err(e) = pg.create_database(databases::LITELLM).await {
                 eprintln!("[postgres] create litellm db on restart: {e}");
             }
             emit_supervisor(&app, "success", &name, "postgresql restarted successfully".into());

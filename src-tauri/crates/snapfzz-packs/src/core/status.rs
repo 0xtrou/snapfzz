@@ -26,6 +26,7 @@ pub struct PythonRuntimeStatus {
     pub installed_packages: Vec<String>,
     pub agentscope: PipPackageInfo,
     pub agentscope_runtime: PipPackageInfo,
+    pub orchestrator: PipPackageInfo,
     pub litellm: PipPackageInfo,
     pub install_steps: Vec<InstallStep>,
 }
@@ -33,16 +34,17 @@ pub struct PythonRuntimeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::constants::packages;
 
     #[test]
     fn t32_status_pip_package_info_serializes() {
         let info = PipPackageInfo {
-            name: "agentscope".into(),
+            name: packages::AGENTSCOPE.into(),
             version: "1.0.0".into(),
             is_installed: true,
         };
         let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("\"name\":\"agentscope\""));
+        assert!(json.contains(&format!("\"name\":\"{}\"", packages::AGENTSCOPE)));
         assert!(json.contains("\"is_installed\":true"));
     }
 
@@ -69,17 +71,22 @@ mod tests {
             venv_path: "/Users/test/.snapfzz/runtime/python/venv".into(),
             installed_packages: vec!["requests".into()],
             agentscope: PipPackageInfo {
-                name: "agentscope".into(),
+                name: packages::AGENTSCOPE.into(),
                 version: "1.0.0".into(),
                 is_installed: true,
             },
             agentscope_runtime: PipPackageInfo {
-                name: "agentscope-runtime".into(),
+                name: packages::AGENTSCOPE_RUNTIME.into(),
                 version: "1.1.0".into(),
                 is_installed: false,
             },
+            orchestrator: PipPackageInfo {
+                name: packages::ORCHESTRATOR.into(),
+                version: "0.1.0".into(),
+                is_installed: false,
+            },
             litellm: PipPackageInfo {
-                name: "litellm".into(),
+                name: packages::LITELLM.into(),
                 version: "1.0.0".into(),
                 is_installed: false,
             },

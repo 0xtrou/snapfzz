@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::budget::supervised::ProcessBudget;
 use crate::budget::BudgetRegistry;
+use crate::constants::{logging, paths, process as process_names};
 use crate::process::health::{apply_health_check, wait_until_healthy};
 use crate::process::logs::ProcessLogs;
 use crate::process::runtime::{ChildState, RuntimeState};
@@ -122,7 +123,7 @@ impl ProcessManager {
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = reader.next_line().await {
-                    logs.push(&process_name, format!("[stderr] {line}"));
+                    logs.push(&process_name, format!("{} {line}", logging::STDERR_PREFIX));
                 }
             });
         }
@@ -234,7 +235,10 @@ impl Default for ProcessManager {
 }
 
 fn pid_file_path(data_dir: &std::path::Path, name: &str) -> PathBuf {
-    data_dir.join("runtime").join(name).join(format!("{name}.pid"))
+    data_dir
+        .join(paths::RUNTIME_DIR)
+        .join(name)
+        .join(format!("{name}{}", paths::PID_SUFFIX))
 }
 
 fn write_pid_file(data_dir: &std::path::Path, name: &str, pid: u32) {
@@ -252,9 +256,7 @@ fn remove_pid_file(data_dir: &std::path::Path, name: &str) {
 /// A008/BootCleanup: Clean up all known orphan processes at boot time.
 /// Scans PID files for agentscope and litellm, kills any orphan processes still running.
 pub fn cleanup_all_orphan_processes(data_dir: &std::path::Path) {
-    const MANAGED_PROCESSES: &[&str] = &["agentscope", "litellm", "postgres"];
-
-    for name in MANAGED_PROCESSES {
+    for name in process_names::MANAGED_PROCESSES {
         cleanup_stale_pid(data_dir, name);
     }
 }

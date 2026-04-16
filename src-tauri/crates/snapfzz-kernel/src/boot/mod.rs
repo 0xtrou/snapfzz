@@ -15,6 +15,7 @@ use crate::budget::detect::{select_preset, HardwareInfo};
 use crate::budget::device::{detect_device, DeviceInfo};
 use crate::budget::preset::{build_preset, PresetName};
 use crate::budget::BudgetRegistry;
+use crate::constants::{defaults, paths};
 
 pub use context::PreflightContext;
 pub use hooks::{OnPreflightInit, OnPreflightReady, Phase};
@@ -57,37 +58,37 @@ pub struct PreflightSettings {
 }
 
 fn default_model() -> String {
-    "gpt-4o".to_string()
+    defaults::MODEL.to_string()
 }
 fn default_api_url() -> String {
-    "https://api.openai.com/v1".to_string()
+    defaults::API_URL.to_string()
 }
 fn default_theme() -> String {
-    "system".to_string()
+    defaults::THEME.to_string()
 }
 fn default_true() -> bool {
     true
 }
 fn default_font_family() -> String {
-    "Inter".to_string()
+    defaults::FONT_FAMILY.to_string()
 }
 fn default_font_size() -> String {
-    "13".to_string()
+    defaults::FONT_SIZE.to_string()
 }
 fn default_language() -> String {
-    "en".to_string()
+    defaults::LANGUAGE.to_string()
 }
 fn default_log_level() -> String {
-    "info".to_string()
+    defaults::LOG_LEVEL.to_string()
 }
 fn default_preset() -> String {
-    "auto".to_string()
+    defaults::PRESET.to_string()
 }
 fn default_agentscope_host() -> String {
-    "127.0.0.1".to_string()
+    defaults::HOST.to_string()
 }
 fn default_agentscope_port() -> String {
-    "8090".to_string()
+    defaults::AGENTSCOPE_PORT.to_string()
 }
 
 fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -300,10 +301,10 @@ impl PreflightService {
 
         let dirs = [
             self.data_dir.clone(),
-            self.data_dir.join("runtime"),
-            self.data_dir.join("runtime").join("agentscope"),
-            self.data_dir.join("fonts"),
-            self.data_dir.join("usage"),
+            self.data_dir.join(paths::RUNTIME_DIR),
+            self.data_dir.join(paths::RUNTIME_DIR).join("agentscope"),
+            self.data_dir.join(paths::FONTS_DIR),
+            self.data_dir.join(paths::USAGE_DIR),
         ];
 
         for dir in &dirs {
@@ -322,7 +323,7 @@ impl PreflightService {
 
     fn phase_settings(&self) -> (PreflightSettings, PhaseTiming) {
         let start = Instant::now();
-        let path = self.data_dir.join("settings.json");
+        let path = self.data_dir.join(paths::SETTINGS_FILE);
 
         eprintln!(
             "[preflight] Phase 3: settings — reading from: {}",

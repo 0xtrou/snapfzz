@@ -1,9 +1,10 @@
+use crate::constants::processes;
 use serde_json::{json, Value};
 use snapfzz_kernel::budget::{self, device::DeviceInfo, metrics::{ProcessSnapshot, ProcessStatus}, preset::PresetName, BudgetRegistry};
 use snapfzz_kernel::process::ProcessFactoryRegistry;
 use std::sync::Arc;
 
-const POSTGRES_PROCESS_NAME: &str = "database";
+const POSTGRES_PROCESS_NAME: &str = processes::DATABASE;
 
 pub(crate) fn preset_name_from_str(preset_name: &str) -> Result<PresetName, String> {
     match preset_name {

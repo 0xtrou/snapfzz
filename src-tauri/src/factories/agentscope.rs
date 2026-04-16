@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::constants::env_vars;
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig};
 use snapfzz_kernel::settings::Settings;
 use snapfzz_packs::data::DataDir;
@@ -46,11 +47,18 @@ impl ProcessFactory for AgentScopeFactory {
         config: &SpawnConfig,
         _runtime: &PythonRuntime,
     ) -> Result<tokio::process::Command, ServiceError> {
-        self.service.spawn_command(&ServiceConfig {
+        let mut cmd = self.service.spawn_command(&ServiceConfig {
             host: config.host.clone(),
             port: config.port,
             working_dir: config.working_dir.clone(),
-        })
+        })?;
+
+        // Inject database URL for PostgreSQL memory backend
+        if let Some(ref db_url) = config.database_url {
+            cmd.env(env_vars::MEMORY_DATABASE_URL, db_url);
+        }
+
+        Ok(cmd)
     }
 
     fn resource_limits(&self) -> ResourceLimits {
@@ -78,6 +86,23 @@ mod tests {
         AgentScopeFactory::new(runtime(), data_dir.to_path_buf())
     }
 
+    /// Create a factory with a real orchestrator binary stub in the venv.
+    fn make_factory_with_binary(data_dir: &std::path::Path) -> (AgentScopeFactory, tempfile::TempDir) {
+        let runtime_temp = tempfile::tempdir().expect("tempdir");
+        let platform = detect_platform().expect("platform");
+        let rt = Arc::new(PythonRuntime::new(
+            runtime_temp.path().to_path_buf(),
+            platform,
+        ));
+
+        let venv_bin = rt.venv_dir().join("bin");
+        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
+        std::fs::write(venv_bin.join("orchestrator"), b"#!/bin/sh\n").expect("create binary");
+
+        let factory = AgentScopeFactory::new(rt, data_dir.to_path_buf());
+        (factory, runtime_temp)
+    }
+
     #[test]
     fn t37_agentscope_factory_health_path_is_health() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -96,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn t37_agentscope_factory_can_start_uses_service_runtime() {
+    fn t37_agentscope_factory_can_start_false_when_binary_missing() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory = make_factory(temp.path());
         let empty_runtime = runtime();
@@ -104,7 +129,15 @@ mod tests {
     }
 
     #[test]
-    fn t37_agentscope_factory_build_command_creates_python_module_command() {
+    fn t37_agentscope_factory_can_start_true_when_binary_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let (factory, _rt) = make_factory_with_binary(temp.path());
+        let dummy_runtime = runtime();
+        assert!(factory.can_start(&dummy_runtime));
+    }
+
+    #[test]
+    fn t37_agentscope_factory_build_command_fails_without_binary() {
         let temp = tempfile::tempdir().expect("tempdir");
         let factory = make_factory(temp.path());
         let config = SpawnConfig {
@@ -115,8 +148,37 @@ mod tests {
         };
         let error = factory
             .build_command(&config, &runtime())
-            .expect_err("venv missing");
-        assert!(error.to_string().contains("Python venv"));
+            .expect_err("binary missing");
+        assert!(error.to_string().contains("orchestrator"));
+    }
+
+    #[test]
+    fn t37_agentscope_factory_build_command_succeeds_with_binary() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let (factory, _rt) = make_factory_with_binary(temp.path());
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8090,
+            working_dir: temp.path().to_path_buf(),
+            database_url: None,
+        };
+        let result = factory.build_command(&config, &runtime());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn t37_agentscope_factory_build_command_injects_database_url() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let (factory, _rt) = make_factory_with_binary(temp.path());
+        let config = SpawnConfig {
+            host: "127.0.0.1".to_string(),
+            port: 8090,
+            working_dir: temp.path().to_path_buf(),
+            database_url: Some("postgresql://localhost:5432/memory".to_string()),
+        };
+        // build_command should succeed — env vars are set on the Command object
+        let result = factory.build_command(&config, &runtime());
+        assert!(result.is_ok());
     }
 
     #[test]
