@@ -44,14 +44,19 @@ export interface PluginPythonRuntime {
   additionalArgs?: string[];
 }
 
-/** Worker script declared by a plugin (future — Zone 2). */
+/** Worker script declared by a plugin (reserved — not yet supported). */
 export interface PluginWorkerScript {
   id: string;
   entrypoint: string;
   type: 'dedicated' | 'shared';
 }
 
-/** Runtime declarations for multi-zone plugin artifacts. */
+/**
+ * Runtime declarations for plugin artifacts.
+ *
+ * Currently only `python` runtimes are supported. Workers are reserved
+ * for future use (Zone 2 — Web Workers for syntax highlighting, state, etc.).
+ */
 export interface PluginRuntimes {
   python?: PluginPythonRuntime[];
   workers?: PluginWorkerScript[];
