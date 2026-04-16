@@ -417,6 +417,12 @@ CLIPY
 }
 MANIFEST
 
+  # ── GUIDE.md (copy from docs/guides/plugin-development.md)
+  local guide_src="$PROJECT_ROOT/docs/guides/plugin-development.md"
+  if [[ -f "$guide_src" ]]; then
+    cp "$guide_src" "$plugin_dir/GUIDE.md"
+  fi
+
   echo ""
   ok "Created system plugin: plugins/${name}/"
   echo ""
