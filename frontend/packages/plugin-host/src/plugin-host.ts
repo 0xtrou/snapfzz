@@ -547,6 +547,9 @@ export class PluginHost {
         maxRestarts: runtime.resources?.maxRestarts ?? 10,
         requiresDatabase: runtime.requiresDatabase ?? false,
         env: runtime.env ?? {},
+        hostFlag: runtime.hostFlag ?? null,
+        portFlag: runtime.portFlag ?? null,
+        additionalArgs: runtime.additionalArgs ?? [],
       };
 
       try {
@@ -582,7 +585,8 @@ export class PluginHost {
     for (const runtime of runtimes.python) {
       try {
         await bridge.invoke('kill_process', { name: runtime.id });
-        console.log(`[plugin-host] runtime ${runtime.id} stopped`);
+        await bridge.invoke('unregister_plugin_runtime', { runtimeId: runtime.id });
+        console.log(`[plugin-host] runtime ${runtime.id} stopped and unregistered`);
       } catch (err) {
         console.error(`[plugin-host] failed to stop runtime ${runtime.id}:`, err);
       }

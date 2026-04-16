@@ -20,7 +20,7 @@ pub struct PluginRuntimeDeclaration {
     pub plugin_id: String,
     /// Relative path from plugin root to the Python package directory.
     pub package_dir: String,
-    /// Command to run (binary name + args), e.g. "orchestrator --serve".
+    /// Command to run (binary name + args), e.g. "orchestrator app".
     pub command: String,
     /// Health check endpoint path, e.g. "/health".
     pub health_check: String,
@@ -29,6 +29,12 @@ pub struct PluginRuntimeDeclaration {
     pub max_restarts: Option<u32>,
     pub requires_database: Option<bool>,
     pub env: Option<HashMap<String, String>>,
+    /// CLI flag for host binding (e.g. "--host"). If None, host is only injected via env var.
+    pub host_flag: Option<String>,
+    /// CLI flag for port binding (e.g. "--port"). If None, port is only injected via env var.
+    pub port_flag: Option<String>,
+    /// Additional CLI args appended after command and host/port flags.
+    pub additional_args: Option<Vec<String>>,
 }
 
 /// Resolve the plugins directory — always `~/.snapfzz/plugins/`.
@@ -232,6 +238,9 @@ pub async fn register_plugin_runtime(
         declaration.max_restarts.unwrap_or(5),
         declaration.requires_database.unwrap_or(false),
         declaration.env.unwrap_or_default(),
+        declaration.host_flag,
+        declaration.port_flag,
+        declaration.additional_args.unwrap_or_default(),
         plugins_dir,
     );
 
@@ -243,6 +252,19 @@ pub async fn register_plugin_runtime(
         declaration.runtime_id
     );
 
+    Ok(())
+}
+
+/// Unregister a plugin runtime factory and remove its process entry.
+/// Called during plugin deactivation to prevent duplicate registrations on reactivation.
+#[tauri::command]
+pub async fn unregister_plugin_runtime(
+    runtime_id: String,
+    factory_registry: State<'_, Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>>,
+) -> Result<(), String> {
+    let mut registry = factory_registry.write().await;
+    registry.unregister(&runtime_id);
+    eprintln!("[plugin] unregistered runtime factory '{runtime_id}'");
     Ok(())
 }
 

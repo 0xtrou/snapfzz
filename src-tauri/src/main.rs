@@ -181,6 +181,7 @@ fn main() {
             commands::plugin_runtime::install_system_plugin,
             commands::plugin_runtime::install_plugin_runtime,
             commands::plugin_runtime::register_plugin_runtime,
+            commands::plugin_runtime::unregister_plugin_runtime,
             commands::plugin_runtime::spawn_plugin_runtime,
             fonts::install_font_from_url,
             fonts::install_font_from_file,

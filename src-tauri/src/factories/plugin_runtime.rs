@@ -25,6 +25,12 @@ pub struct PluginProcessFactory {
     max_restarts: u32,
     requires_database: bool,
     env: HashMap<String, String>,
+    /// CLI flag for host binding (e.g. "--host"). None = env var only.
+    host_flag: Option<String>,
+    /// CLI flag for port binding (e.g. "--port"). None = env var only.
+    port_flag: Option<String>,
+    /// Additional CLI args appended after command and host/port flags.
+    additional_args: Vec<String>,
     plugins_dir: PathBuf,
     host_key: &'static str,
     port_key: &'static str,
@@ -41,10 +47,11 @@ impl PluginProcessFactory {
         max_restarts: u32,
         requires_database: bool,
         env: HashMap<String, String>,
+        host_flag: Option<String>,
+        port_flag: Option<String>,
+        additional_args: Vec<String>,
         plugins_dir: PathBuf,
     ) -> Self {
-        // Leak strings that must be &'static str per the ProcessFactory trait.
-        // Factories are singletons registered once and never dropped, so the leak is intentional.
         let host_key_string = format!("{}Host", runtime_id);
         let port_key_string = format!("{}Port", runtime_id);
 
@@ -58,6 +65,9 @@ impl PluginProcessFactory {
             max_restarts,
             requires_database,
             env,
+            host_flag,
+            port_flag,
+            additional_args,
             plugins_dir,
             host_key: Box::leak(host_key_string.into_boxed_str()),
             port_key: Box::leak(port_key_string.into_boxed_str()),
@@ -143,11 +153,20 @@ impl ProcessFactory for PluginProcessFactory {
             cmd.arg(arg);
         }
 
-        // Inject host/port as CLI flags so the process binds to the assigned port
-        cmd.arg("--host").arg(&config.host);
-        cmd.arg("--port").arg(config.port.to_string());
+        // Inject host/port as CLI flags if declared in manifest
+        if let Some(ref flag) = self.host_flag {
+            cmd.arg(flag).arg(&config.host);
+        }
+        if let Some(ref flag) = self.port_flag {
+            cmd.arg(flag).arg(config.port.to_string());
+        }
 
-        // Also inject as env vars for processes that prefer env-based config
+        // Append additional args from manifest
+        for arg in &self.additional_args {
+            cmd.arg(arg);
+        }
+
+        // Always inject as env vars (universal — every runtime gets these)
         cmd.env(packs_env_vars::SNAPFZZ_HOST, &config.host);
         cmd.env(packs_env_vars::SNAPFZZ_PORT, config.port.to_string());
 
@@ -201,6 +220,9 @@ mod tests {
             5,
             false,
             HashMap::from([("CUSTOM_VAR".to_string(), "custom_value".to_string())]),
+            Some("--host".to_string()),
+            Some("--port".to_string()),
+            vec![],
             plugins_dir.to_path_buf(),
         )
     }
@@ -338,6 +360,9 @@ mod tests {
             3,
             true, // requires_database
             HashMap::new(),
+            None,
+            None,
+            vec![],
             temp.path().to_path_buf(),
         );
 
@@ -384,6 +409,9 @@ mod tests {
             3,
             false,
             HashMap::new(),
+            None,
+            None,
+            vec![],
             temp.path().to_path_buf(),
         );
 

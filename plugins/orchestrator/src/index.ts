@@ -34,6 +34,8 @@ export default definePlugin({
       healthIntervalMs: 2000,
       resources: { maxMemoryMb: 512, maxRestarts: 10 },
       requiresDatabase: true,
+      hostFlag: '--host',
+      portFlag: '--port',
     }],
   },
 

@@ -34,8 +34,14 @@ export interface PluginPythonRuntime {
   };
   /** Extra environment variables to inject */
   env?: Record<string, string>;
-  /** Whether the runtime needs MEMORY_DATABASE_URL */
+  /** Whether the runtime needs DATABASE_URL */
   requiresDatabase?: boolean;
+  /** CLI flag for host binding, e.g. "--host". If omitted, host is only passed via SNAPFZZ_HOST env var. */
+  hostFlag?: string;
+  /** CLI flag for port binding, e.g. "--port". If omitted, port is only passed via SNAPFZZ_PORT env var. */
+  portFlag?: string;
+  /** Additional CLI args appended after command and host/port flags */
+  additionalArgs?: string[];
 }
 
 /** Worker script declared by a plugin (future — Zone 2). */

@@ -53,6 +53,13 @@ impl ProcessFactoryRegistry {
         self.factories.insert(factory.name().to_string(), factory);
     }
 
+    /// Remove a factory and its process entry. Used during plugin deactivation
+    /// to prevent duplicate registrations on reactivation.
+    pub fn unregister(&mut self, name: &str) {
+        self.factories.remove(name);
+        self.processes.remove(name);
+    }
+
     pub fn set_database_url(&mut self, url: String) {
         self.database_url = Some(url);
     }
