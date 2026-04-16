@@ -30,6 +30,17 @@ interface InstalledPluginInfo {
   distPath: string;
 }
 
+/** Unified row — can be either a budget-tracked plugin or a system-installed plugin. */
+interface UnifiedPlugin {
+  id: string;
+  name: string;
+  version: string;
+  type: 'system' | 'user';
+  enabled: boolean;
+  strikes: number;
+  manifest?: Record<string, unknown>;
+}
+
 const bridge = createTauriBridge();
 
 function strikeColor(strikes: number): 'success' | 'warning' | 'error' {
@@ -56,48 +67,75 @@ function getPythonDeclaration(manifest: Record<string, unknown>): string | null 
 }
 
 export default function PluginsSettings(): React.ReactElement {
-  const [plugins, setPlugins] = useState<PluginEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [budgetPlugins, setBudgetPlugins] = useState<PluginEntry[]>([]);
   const [systemPlugins, setSystemPlugins] = useState<InstalledPluginInfo[]>([]);
-  const [systemLoading, setSystemLoading] = useState(true);
-  const [reinstalling, setReinstalling] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [reloading, setReloading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    let pending = 2;
+    const done = () => { pending--; if (pending <= 0) setLoading(false); };
+
     bridge.invoke<BudgetSnapshot>('budget_snapshot')
       .then((snapshot) => {
-        const entries: PluginEntry[] = (snapshot.plugins ?? []).map((p) => ({
+        setBudgetPlugins((snapshot.plugins ?? []).map((p) => ({
           id: p.id,
           name: p.name ?? p.id,
           version: p.version ?? '—',
           zone: p.zone ?? 'zone3',
           strikes: p.strikes ?? 0,
           enabled: p.enabled ?? true,
-        }));
-        setPlugins(entries);
+        })));
       })
-      .catch(() => {
-        setPlugins([]);
-      })
-      .finally(() => setLoading(false));
+      .catch(() => setBudgetPlugins([]))
+      .finally(done);
 
     bridge.invoke<InstalledPluginInfo[]>('list_installed_plugins')
-      .then((list) => {
-        setSystemPlugins(Array.isArray(list) ? list : []);
-      })
-      .catch(() => {
-        setSystemPlugins([]);
-      })
-      .finally(() => setSystemLoading(false));
+      .then((list) => setSystemPlugins(Array.isArray(list) ? list : []))
+      .catch(() => setSystemPlugins([]))
+      .finally(done);
   }, []);
 
+  // Merge into unified list — system plugins first, then budget-only plugins
+  const unified: UnifiedPlugin[] = [];
+  const seenIds = new Set<string>();
+
+  for (const sp of systemPlugins) {
+    const name = getManifestString(sp.manifest, 'name') || sp.pluginId;
+    const version = getManifestString(sp.manifest, 'version') || '—';
+    const budget = budgetPlugins.find((bp) => bp.id === sp.pluginId);
+    seenIds.add(sp.pluginId);
+    unified.push({
+      id: sp.pluginId,
+      name,
+      version,
+      type: 'system',
+      enabled: budget?.enabled ?? true,
+      strikes: budget?.strikes ?? 0,
+      manifest: sp.manifest,
+    });
+  }
+
+  for (const bp of budgetPlugins) {
+    if (seenIds.has(bp.id)) continue;
+    unified.push({
+      id: bp.id,
+      name: bp.name,
+      version: bp.version,
+      type: 'user',
+      enabled: bp.enabled,
+      strikes: bp.strikes,
+    });
+  }
+
   function handleToggle(id: string, enabled: boolean): void {
-    setPlugins((prev) =>
+    setBudgetPlugins((prev) =>
       prev.map((p) => (p.id === id ? { ...p, enabled } : p)),
     );
   }
 
-  async function handleReinstall(pluginId: string, manifest: Record<string, unknown>): Promise<void> {
-    setReinstalling((prev) => ({ ...prev, [pluginId]: true }));
+  async function handleReload(pluginId: string, manifest: Record<string, unknown>): Promise<void> {
+    setReloading((prev) => ({ ...prev, [pluginId]: true }));
     try {
       await fetchWithToast(
         async () => {
@@ -108,12 +146,12 @@ export default function PluginsSettings(): React.ReactElement {
           }
         },
         {
-          successMessage: `Plugin ${pluginId} reinstalled successfully`,
-          errorMessage: `Failed to reinstall plugin ${pluginId}`,
+          successMessage: `${pluginId} reloaded`,
+          errorMessage: `Failed to reload ${pluginId}`,
         },
       );
     } finally {
-      setReinstalling((prev) => ({ ...prev, [pluginId]: false }));
+      setReloading((prev) => ({ ...prev, [pluginId]: false }));
     }
   }
 
@@ -121,91 +159,62 @@ export default function PluginsSettings(): React.ReactElement {
     <div>
       <SettingsHeader
         title="Plugins"
-        subtitle="Manage installed plugins and monitor their reliability status. Disabled plugins are quarantined after repeated failures."
+        subtitle="Manage installed plugins and monitor their reliability status."
       />
-      <div style={{ padding: '24px 32px', background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, margin: '16px 16px 24px' }}>
-      <List<PluginEntry>
+      <div style={{ padding: '16px 32px', background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, margin: '16px 16px 24px' }}>
+      <List<UnifiedPlugin>
         loading={loading}
-        dataSource={plugins}
+        dataSource={unified}
         locale={{ emptyText: 'No plugins installed.' }}
-        renderItem={(plugin) => (
-          <List.Item
-            key={plugin.id}
-            actions={[
-              <Switch
-                key="toggle"
-                checked={plugin.enabled}
-                onChange={(checked) => handleToggle(plugin.id, checked)}
-                aria-label={`Toggle ${plugin.name}`}
-              />,
-            ]}
-          >
-            <List.Item.Meta
-              title={
-                <Space size={8}>
-                  <Text strong>{plugin.name}</Text>
-                  <Tag>{plugin.version}</Tag>
-                  <Tag color="blue">{plugin.zone}</Tag>
-                  <Tag color={strikeColor(plugin.strikes)}>
-                    {plugin.strikes} strike{plugin.strikes !== 1 ? 's' : ''}
-                  </Tag>
-                </Space>
-              }
-              description={<Text type="secondary" style={{ fontSize: 12 }}>{plugin.id}</Text>}
-            />
-          </List.Item>
-        )}
-      />
-      </div>
-
-      <div style={{ padding: '0 16px 8px' }}>
-        <Text strong style={{ fontSize: 14 }}>System Plugins</Text>
-      </div>
-      <div style={{ padding: '24px 32px', background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8, margin: '0 16px 24px' }}>
-      <List<InstalledPluginInfo>
-        loading={systemLoading}
-        dataSource={systemPlugins}
-        locale={{ emptyText: 'No system plugins found.' }}
+        size="small"
         renderItem={(plugin) => {
-          const name = getManifestString(plugin.manifest, 'name') || plugin.pluginId;
-          const version = getManifestString(plugin.manifest, 'version') || '—';
-          const hasDist = Boolean(plugin.distPath);
-          const hasManifest = Object.keys(plugin.manifest).length > 0;
-          const hasRuntime = getPythonDeclaration(plugin.manifest) !== null;
-          const isReinstalling = reinstalling[plugin.pluginId] ?? false;
+          const isSystem = plugin.type === 'system';
+          const isReloading = reloading[plugin.id] ?? false;
 
           return (
             <List.Item
-              key={plugin.pluginId}
-              actions={[
+              key={plugin.id}
+              actions={isSystem && plugin.manifest ? [
                 <ConfirmAction
-                  key="reinstall"
-                  title="Reinstall plugin?"
+                  key="reload"
+                  title="Reload plugin?"
                   description="This will reinstall the plugin and restart its background service."
-                  okText="Reinstall"
-                  onConfirm={() => handleReinstall(plugin.pluginId, plugin.manifest)}
-                  disabled={isReinstalling}
+                  okText="Reload"
+                  onConfirm={() => handleReload(plugin.id, plugin.manifest!)}
+                  disabled={isReloading}
                 >
                   <AppButton
-                    loading={isReinstalling}
-                    aria-label={`Reinstall ${name}`}
+                    size="small"
+                    loading={isReloading}
+                    aria-label={`Reload ${plugin.name}`}
                   >
-                    Reinstall
+                    Reload
                   </AppButton>
                 </ConfirmAction>,
+              ] : [
+                <Switch
+                  key="toggle"
+                  size="small"
+                  checked={plugin.enabled}
+                  onChange={(checked) => handleToggle(plugin.id, checked)}
+                  aria-label={`Toggle ${plugin.name}`}
+                />,
               ]}
             >
               <List.Item.Meta
                 title={
-                  <Space size={8}>
-                    <Text strong>{name}</Text>
-                    <Tag>{version}</Tag>
-                    <Tag color={hasDist ? 'success' : 'error'}>dist</Tag>
-                    <Tag color={hasManifest ? 'success' : 'error'}>manifest</Tag>
-                    <Tag color={hasRuntime ? 'success' : 'default'}>runtime</Tag>
+                  <Space size={4}>
+                    <Text strong style={{ fontSize: 13 }}>{plugin.name}</Text>
+                    <Tag style={{ fontSize: 11 }}>{plugin.version}</Tag>
+                    <Tag color={isSystem ? 'blue' : 'default'} style={{ fontSize: 11 }}>{isSystem ? 'system' : 'user'}</Tag>
+                    {plugin.strikes > 0 && (
+                      <Tag color={strikeColor(plugin.strikes)} style={{ fontSize: 11 }}>
+                        {plugin.strikes} strike{plugin.strikes !== 1 ? 's' : ''}
+                      </Tag>
+                    )}
                   </Space>
                 }
-                description={<Text type="secondary" style={{ fontSize: 12 }}>{plugin.pluginId}</Text>}
+                description={<Text type="secondary" style={{ fontSize: 11 }}>{plugin.id}</Text>}
               />
             </List.Item>
           );

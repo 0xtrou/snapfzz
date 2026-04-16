@@ -99,35 +99,11 @@ describe('A020/settings-plugins: system plugins section', () => {
     });
   });
 
-  it('shows dist tag as success when distPath is non-empty', async () => {
+  it('shows Reload button for each system plugin', async () => {
     setupMocks([makeSystemPlugin()]);
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('dist')).toBeInTheDocument();
-    });
-  });
-
-  it('shows manifest tag', async () => {
-    setupMocks([makeSystemPlugin()]);
-    render(<PluginsSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('manifest')).toBeInTheDocument();
-    });
-  });
-
-  it('shows runtime tag when python runtime is declared', async () => {
-    setupMocks([makeSystemPlugin()]);
-    render(<PluginsSettings />);
-    await waitFor(() => {
-      expect(screen.getByText('runtime')).toBeInTheDocument();
-    });
-  });
-
-  it('shows Reinstall button for each system plugin', async () => {
-    setupMocks([makeSystemPlugin()]);
-    render(<PluginsSettings />);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /reinstall orchestrator/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reload orchestrator/i })).toBeInTheDocument();
     });
   });
 
@@ -147,7 +123,7 @@ describe('A020/settings-plugins: system plugins section', () => {
     setupMocks([]);
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('No system plugins found.')).toBeInTheDocument();
+      expect(screen.getByText('No plugins installed.')).toBeInTheDocument();
     });
   });
 
@@ -159,42 +135,41 @@ describe('A020/settings-plugins: system plugins section', () => {
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('No system plugins found.')).toBeInTheDocument();
+      expect(screen.getByText('No plugins installed.')).toBeInTheDocument();
     });
   });
 
-  it('shows System Plugins section heading', async () => {
-    setupMocks([]);
+  it('shows system type tag for system plugins', async () => {
+    setupMocks([makeSystemPlugin()]);
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByText('System Plugins')).toBeInTheDocument();
+      expect(screen.getByText('system')).toBeInTheDocument();
     });
   });
 });
 
-describe('A020/settings-plugins: reinstall button', () => {
-  it('calls install_system_plugin on reinstall', async () => {
+describe('A020/settings-plugins: reload button', () => {
+  it('calls install_system_plugin on reload', async () => {
     const user = userEvent.setup();
-    setupMocks([makeSystemPlugin()]);
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') return Promise.resolve({ plugins: [] });
       if (cmd === 'list_installed_plugins') return Promise.resolve([makeSystemPlugin()]);
       return Promise.resolve(null);
     });
     render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('button', { name: /reinstall orchestrator/i }));
+    await waitFor(() => screen.getByRole('button', { name: /reload orchestrator/i }));
 
-    await user.click(screen.getByRole('button', { name: /reinstall orchestrator/i }));
+    await user.click(screen.getByRole('button', { name: /reload orchestrator/i }));
     // Confirm the popover
-    await waitFor(() => screen.getByRole('button', { name: /^Reinstall$/i }));
-    await user.click(screen.getByRole('button', { name: /^Reinstall$/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^Reload$/i }));
+    await user.click(screen.getByRole('button', { name: /^Reload$/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('install_system_plugin', { pluginId: 'snapfzz.orchestrator', force: true });
     });
   });
 
-  it('calls install_plugin_runtime with python declaration on reinstall', async () => {
+  it('calls install_plugin_runtime with python declaration on reload', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') return Promise.resolve({ plugins: [] });
@@ -202,11 +177,11 @@ describe('A020/settings-plugins: reinstall button', () => {
       return Promise.resolve(null);
     });
     render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('button', { name: /reinstall orchestrator/i }));
+    await waitFor(() => screen.getByRole('button', { name: /reload orchestrator/i }));
 
-    await user.click(screen.getByRole('button', { name: /reinstall orchestrator/i }));
-    await waitFor(() => screen.getByRole('button', { name: /^Reinstall$/i }));
-    await user.click(screen.getByRole('button', { name: /^Reinstall$/i }));
+    await user.click(screen.getByRole('button', { name: /reload orchestrator/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^Reload$/i }));
+    await user.click(screen.getByRole('button', { name: /^Reload$/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('install_plugin_runtime', { declaration: 'snapfzz.orchestrator>=1.0.0' });
@@ -223,11 +198,11 @@ describe('A020/settings-plugins: reinstall button', () => {
       return Promise.resolve(null);
     });
     render(<PluginsSettings />);
-    await waitFor(() => screen.getByRole('button', { name: /reinstall noruntime/i }));
+    await waitFor(() => screen.getByRole('button', { name: /reload noruntime/i }));
 
-    await user.click(screen.getByRole('button', { name: /reinstall noruntime/i }));
-    await waitFor(() => screen.getByRole('button', { name: /^Reinstall$/i }));
-    await user.click(screen.getByRole('button', { name: /^Reinstall$/i }));
+    await user.click(screen.getByRole('button', { name: /reload noruntime/i }));
+    await waitFor(() => screen.getByRole('button', { name: /^Reload$/i }));
+    await user.click(screen.getByRole('button', { name: /^Reload$/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('install_system_plugin', { pluginId: 'snapfzz.orchestrator', force: true });
@@ -235,7 +210,7 @@ describe('A020/settings-plugins: reinstall button', () => {
     });
   });
 
-  it('independent reinstall loading state per plugin', async () => {
+  it('independent reload loading state per plugin', async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'budget_snapshot') return Promise.resolve({ plugins: [] });
@@ -247,14 +222,14 @@ describe('A020/settings-plugins: reinstall button', () => {
     });
     render(<PluginsSettings />);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /reinstall orchestrator/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /reinstall preview/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reload orchestrator/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reload preview/i })).toBeInTheDocument();
     });
 
-    // Click orchestrator reinstall — preview button should remain enabled
-    await user.click(screen.getByRole('button', { name: /reinstall orchestrator/i }));
+    // Click orchestrator reload — preview button should remain enabled
+    await user.click(screen.getByRole('button', { name: /reload orchestrator/i }));
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /reinstall preview/i })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: /reload preview/i })).not.toBeDisabled();
     });
   });
 });
