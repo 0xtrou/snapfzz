@@ -3,6 +3,7 @@ pub mod cef;
 pub mod components;
 pub mod llm;
 pub mod pip;
+pub mod plugin_runtime;
 pub mod process;
 pub mod settings;
 pub mod stream;

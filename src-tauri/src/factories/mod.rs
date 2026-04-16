@@ -2,6 +2,7 @@
 
 mod agentscope;
 mod litellm;
+pub mod plugin_runtime;
 
 pub use agentscope::AgentScopeFactory;
 pub use litellm::LiteLLMFactory;

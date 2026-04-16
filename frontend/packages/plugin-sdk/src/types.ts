@@ -13,6 +13,44 @@ export interface Disposable {
   (): void;
 }
 
+/** Python runtime declared by a plugin — spawned as a managed child process. */
+export interface PluginPythonRuntime {
+  /** Unique runtime identifier, e.g. "chat.orchestrator" */
+  id: string;
+  /** Path to the Python package directory, relative to plugin root */
+  packageDir: string;
+  /** CLI command to run after install, e.g. "orchestrator app" */
+  command: string;
+  /** Health check endpoint path, e.g. "/health" */
+  healthCheck: string;
+  /** Health check interval in ms (default 2000) */
+  healthIntervalMs?: number;
+  /** Python dependencies file relative to packageDir */
+  requirements?: string;
+  /** Resource limits */
+  resources?: {
+    maxMemoryMb?: number;
+    maxRestarts?: number;
+  };
+  /** Extra environment variables to inject */
+  env?: Record<string, string>;
+  /** Whether the runtime needs MEMORY_DATABASE_URL */
+  requiresDatabase?: boolean;
+}
+
+/** Worker script declared by a plugin (future — Zone 2). */
+export interface PluginWorkerScript {
+  id: string;
+  entrypoint: string;
+  type: 'dedicated' | 'shared';
+}
+
+/** Runtime declarations for multi-zone plugin artifacts. */
+export interface PluginRuntimes {
+  python?: PluginPythonRuntime[];
+  workers?: PluginWorkerScript[];
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -25,6 +63,8 @@ export interface PluginManifest {
   requiredCapabilities?: string[];
   contributes?: PluginContributions;
   budget?: PluginBudget;
+  /** Runtime declarations for managed processes (Python, Workers). */
+  runtimes?: PluginRuntimes;
 }
 
 export type PluginCapability =

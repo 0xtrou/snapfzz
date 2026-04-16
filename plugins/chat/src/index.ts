@@ -25,6 +25,18 @@ export default definePlugin({
     ],
   },
 
+  runtimes: {
+    python: [{
+      id: 'chat.orchestrator',
+      packageDir: 'intelligence',
+      command: 'orchestrator app',
+      healthCheck: '/health',
+      healthIntervalMs: 2000,
+      resources: { maxMemoryMb: 512, maxRestarts: 10 },
+      requiresDatabase: true,
+    }],
+  },
+
   contributes: {
     leftPanelTabs: [
       {

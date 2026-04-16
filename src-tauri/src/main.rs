@@ -96,6 +96,7 @@ fn main() {
         data_dir.clone(),
     )));
     let factory_registry = Arc::new(tokio::sync::RwLock::new(factory_registry));
+    let python_runtime_state = python_runtime.clone();
 
     let postgres_runtime = Arc::new(tokio::sync::Mutex::new(None::<
         snapfzz_packs::runtime::postgres::PostgresRuntime,
@@ -118,6 +119,7 @@ fn main() {
         .manage(device)
         .manage(result.phase_timings_dto())
         .manage(factory_registry.clone())
+        .manage(python_runtime_state)
         .manage(postgres_runtime.clone())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
@@ -180,6 +182,9 @@ fn main() {
             commands::llm::llm_get_base_url,
             commands::llm::llm_get_master_key,
             commands::llm::llm_cleanup_spend_logs,
+            commands::plugin_runtime::install_plugin_runtime,
+            commands::plugin_runtime::register_plugin_runtime,
+            commands::plugin_runtime::spawn_plugin_runtime,
             fonts::install_font_from_url,
             fonts::install_font_from_file,
             fonts::list_installed_fonts,

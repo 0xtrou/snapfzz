@@ -236,6 +236,10 @@ export class PluginHost {
     const activationTimeoutMs = this.startupBudget?.activationTimeoutMs ?? ACTIVATION_TIMEOUT_MS_DEFAULT;
 
     try {
+      // Per A020/PluginArtifacts: ensure runtimes are running before plugin.activate()
+      // so the plugin can communicate with its runtimes during activation.
+      await this.ensurePluginRuntimes(plugin);
+
       const activationPromise = plugin.activate ? plugin.activate(context) : Promise.resolve({});
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(
@@ -273,6 +277,12 @@ export class PluginHost {
 
     if (activated.handle.deactivate) {
       await activated.handle.deactivate();
+    }
+
+    // Per A020/PluginArtifacts: kill managed runtimes on deactivation.
+    const plugin = this.plugins.get(pluginId);
+    if (plugin) {
+      await this.cleanupPluginRuntimes(plugin);
     }
 
     disposePluginContext(activated.context);
@@ -512,6 +522,68 @@ export class PluginHost {
       startupBudgetMs: STARTUP_BUDGET_MS_DEFAULT,
       activationTimeoutMs: ACTIVATION_TIMEOUT_MS_DEFAULT,
     };
+  }
+
+  /**
+   * Install, register, and spawn plugin Python runtimes.
+   * Called during plugin activation for plugins that declare runtimes.
+   * Runtime failures are non-fatal — the plugin activates in degraded mode.
+   */
+  private async ensurePluginRuntimes(plugin: PluginDefinition): Promise<void> {
+    const runtimes = plugin.runtimes;
+    if (!runtimes?.python?.length) return;
+
+    const bridge = createTauriBridge();
+
+    for (const runtime of runtimes.python) {
+      const declaration = {
+        runtimeId: runtime.id,
+        pluginId: plugin.id,
+        packageDir: runtime.packageDir,
+        command: runtime.command,
+        healthCheck: runtime.healthCheck,
+        healthIntervalMs: runtime.healthIntervalMs ?? 2000,
+        maxMemoryMb: runtime.resources?.maxMemoryMb ?? 512,
+        maxRestarts: runtime.resources?.maxRestarts ?? 10,
+        requiresDatabase: runtime.requiresDatabase ?? false,
+        env: runtime.env ?? {},
+      };
+
+      try {
+        // Step 1: Install Python package + copy binary to plugin runtime dir
+        await bridge.invoke('install_plugin_runtime', { declaration });
+
+        // Step 2: Register as managed process factory
+        await bridge.invoke('register_plugin_runtime', { declaration });
+
+        // Step 3: Spawn the process
+        await bridge.invoke('spawn_plugin_runtime', { runtimeId: runtime.id });
+
+        console.log(`[plugin-host] runtime ${runtime.id} started for ${plugin.id}`);
+      } catch (err) {
+        // Per A020/PluginArtifacts: runtime failure must not block plugin activation.
+        console.error(`[plugin-host] failed to start runtime ${runtime.id}:`, err);
+      }
+    }
+  }
+
+  /**
+   * Kill all managed runtimes for a plugin during deactivation.
+   */
+  private async cleanupPluginRuntimes(plugin: PluginDefinition): Promise<void> {
+    const runtimes = plugin.runtimes;
+    if (!runtimes?.python?.length) return;
+
+    const bridge = createTauriBridge();
+
+    for (const runtime of runtimes.python) {
+      try {
+        await bridge.invoke('kill_process', { name: runtime.id });
+        console.log(`[plugin-host] runtime ${runtime.id} stopped`);
+      } catch (err) {
+        console.error(`[plugin-host] failed to stop runtime ${runtime.id}:`, err);
+      }
+    }
   }
 
   private readDisabledPlugins(): Set<string> {
