@@ -178,6 +178,7 @@ fn main() {
             commands::llm::llm_get_base_url,
             commands::llm::llm_get_master_key,
             commands::llm::llm_cleanup_spend_logs,
+            commands::plugin_runtime::install_system_plugin,
             commands::plugin_runtime::install_plugin_runtime,
             commands::plugin_runtime::register_plugin_runtime,
             commands::plugin_runtime::spawn_plugin_runtime,

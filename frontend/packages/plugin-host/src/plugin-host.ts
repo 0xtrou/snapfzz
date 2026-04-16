@@ -550,6 +550,9 @@ export class PluginHost {
       };
 
       try {
+        // Step 0: Ensure system plugin is symlinked to ~/.snapfzz/plugins/
+        await bridge.invoke('install_system_plugin', { pluginId: plugin.id });
+
         // Step 1: Install Python package + copy binary to plugin runtime dir
         await bridge.invoke('install_plugin_runtime', { declaration });
 

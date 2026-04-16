@@ -37,6 +37,83 @@ fn resolve_plugins_dir() -> Result<PathBuf, String> {
     Ok(home.join(".snapfzz").join("plugins"))
 }
 
+/// Whitelisted system plugins that ship with the app.
+/// Maps plugin ID → directory name under `plugins/` in the source tree.
+const SYSTEM_PLUGINS: &[(&str, &str)] = &[
+    ("snapfzz.orchestrator", "orchestrator"),
+];
+
+/// Resolve the project root (parent of src-tauri/) at compile time for dev mode.
+fn project_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("src-tauri has a parent")
+        .to_path_buf()
+}
+
+/// Install a whitelisted system plugin by symlinking its source directory
+/// into `~/.snapfzz/plugins/{plugin_id}/`.
+///
+/// In dev mode, this creates a symlink so changes are reflected immediately.
+/// Only whitelisted plugin IDs are allowed.
+#[tauri::command]
+pub async fn install_system_plugin(plugin_id: String) -> Result<String, String> {
+    let dir_name = SYSTEM_PLUGINS
+        .iter()
+        .find(|(id, _)| *id == plugin_id)
+        .map(|(_, dir)| *dir)
+        .ok_or_else(|| format!("plugin '{}' is not a whitelisted system plugin", plugin_id))?;
+
+    let source = project_root().join("plugins").join(dir_name);
+    if !source.exists() {
+        return Err(format!(
+            "system plugin source not found at {}",
+            source.display()
+        ));
+    }
+
+    let plugins_dir = resolve_plugins_dir()?;
+    std::fs::create_dir_all(&plugins_dir)
+        .map_err(|e| format!("failed to create plugins dir: {e}"))?;
+
+    let target = plugins_dir.join(&plugin_id);
+
+    // If target already exists and is correct, skip
+    if target.exists() {
+        let meta = std::fs::symlink_metadata(&target);
+        if let Ok(meta) = meta {
+            if meta.file_type().is_symlink() {
+                let link_dest = std::fs::read_link(&target)
+                    .map_err(|e| format!("failed to read symlink: {e}"))?;
+                if link_dest == source {
+                    return Ok(format!("already installed: {} → {}", target.display(), source.display()));
+                }
+            }
+        }
+        // Remove stale link/dir
+        if target.is_dir() && !target.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            std::fs::remove_dir_all(&target)
+                .map_err(|e| format!("failed to remove stale dir: {e}"))?;
+        } else {
+            std::fs::remove_file(&target)
+                .map_err(|e| format!("failed to remove stale link: {e}"))?;
+        }
+    }
+
+    // Create symlink: ~/.snapfzz/plugins/snapfzz.orchestrator → {project}/plugins/orchestrator
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&source, &target)
+        .map_err(|e| format!("failed to symlink {} → {}: {e}", target.display(), source.display()))?;
+
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(&source, &target)
+        .map_err(|e| format!("failed to symlink {} → {}: {e}", target.display(), source.display()))?;
+
+    let msg = format!("installed: {} → {}", target.display(), source.display());
+    eprintln!("[plugin] {msg}");
+    Ok(msg)
+}
+
 /// Install a plugin's Python runtime: pip install the package, copy binary to runtime dir.
 ///
 /// Steps:
