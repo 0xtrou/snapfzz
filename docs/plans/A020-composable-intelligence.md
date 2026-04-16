@@ -637,26 +637,29 @@ src-tauri/crates/snapfzz-memory/    (domain logic — two-layer rule)
 
 ---
 
-## Critical Files
+## Key Files
 
-| Area | File | Action |
+### Phase 1 — Implemented
+
+| Area | File | Status |
 |------|------|--------|
-| Plugin SDK | `frontend/packages/plugin-sdk/src/types.ts` | Modify — add PluginRuntimes types |
-| Plugin Host | `frontend/packages/plugin-host/src/plugin-host.ts` | Modify — ensurePluginRuntimes() |
-| Plugin commands | `src-tauri/src/commands/plugins.rs` | New — register/spawn runtime |
-| Plugin factory | `src-tauri/src/factories/plugin_runtime.rs` | New — PluginProcessFactory |
-| Main | `src-tauri/src/main.rs` | Modify — register new commands |
-| Boot | `src-tauri/src/boot.rs` | Modify — add memory DB |
-| Memory crate | `src-tauri/crates/snapfzz-memory/` | New |
-| Memory commands | `src-tauri/src/commands/memory.rs` | New |
-| Block scaffolding | `plugins/chat/runtime/blocks/` | New — 9 blocks |
-| Plugin runtime | `plugins/chat/runtime/app.py` | New (from intelligence/) |
-| Plugin memory | `plugins/chat/runtime/memory.py` | New |
-| Plugin tools | `plugins/chat/runtime/tools/` | New |
-| Pack config | `plugins/chat/pack/pack.yaml` | New |
-| Pack prompt | `plugins/chat/pack/prompts/system.md` | New |
-| Plugin manifest | `plugins/chat/src/index.ts` | Modify — runtimes + intelligence |
-| Chat UI | `plugins/chat/src/contributions/ChatPanel.tsx` | Modify — file upload, sessions |
-| Old intelligence | `intelligence/` | Remove |
-| Old AS factory | `src-tauri/src/factories/agentscope.rs` | Remove (replaced by generic) |
-| Old AS service | `src-tauri/crates/snapfzz-packs/src/agentscope/` | Remove |
+| Plugin commands | `src-tauri/src/commands/plugin_runtime.rs` | DONE |
+| Plugin factory | `src-tauri/src/factories/plugin_runtime.rs` | DONE |
+| Plugin manifest | `plugins/orchestrator/manifest.json` | DONE |
+| Intelligence package | `plugins/orchestrator/intelligence/` | DONE (QwenPaw) |
+| Compiled runtime | `plugins/orchestrator/runtime/bin/orchestrator` | Set by install_plugin_runtime |
+| Pack config | `plugins/orchestrator/pack/pack.yaml` | DONE |
+| Pack prompt | `plugins/orchestrator/pack/prompts/system.md` | DONE |
+| TypeScript UI | `plugins/orchestrator/src/` | DONE |
+| Built bundle | `plugins/orchestrator/dist/index.js` | DONE |
+| Old AS factory | `src-tauri/src/factories/agentscope.rs` | REMOVED |
+| Old AS service | `src-tauri/crates/snapfzz-packs/src/agentscope/` | REMOVED |
+| Root intelligence | `intelligence/` (repo root) | REMOVED — now in plugin |
+
+### Phase 2+ — Planned
+
+| Area | File | Status |
+|------|------|--------|
+| Memory crate | `src-tauri/crates/snapfzz-memory/` | PLANNED |
+| Memory commands | `src-tauri/src/commands/memory.rs` | PLANNED |
+| Boot — memory DB | `src-tauri/src/boot.rs` (add memory DB) | PLANNED |

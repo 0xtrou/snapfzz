@@ -1,13 +1,16 @@
 ---
-title: "Chat Plugin — Text Conversation Channel for AgentScope"
+title: "Orchestrator Plugin — Text Conversation Channel with Intelligence Runtime"
 type: spec
 date: 2026-04-05
-traces: [A001, A002, A003, A005, A006, A007, A008, U009, MILESTONES/Alpha]
+updated: 2026-04-15
+traces: [A001, A002, A003, A005, A006, A007, A008, A020, U009, MILESTONES/Alpha]
 ---
 
-# Chat Plugin
+# Orchestrator Plugin
 
-The text conversation channel. Renders AgentScope Runtime's `Msg` and `ContentBlock` types as a ChatGPT-quality chat interface. The first plugin — proves the entire budgeted architecture works.
+Plugin ID: `snapfzz.orchestrator`
+
+The text conversation channel. Renders the agent conversation as a ChatGPT-quality chat interface. Ships both the TypeScript UI (Zone 3) and the Python intelligence runtime (Zone 1) as a self-contained unit. The first system plugin — proves the entire budgeted plugin architecture including runtime lifecycle management.
 
 ---
 
@@ -148,60 +151,33 @@ User types message, hits ⌘+Enter
 
 ## Plugin Manifest
 
-```typescript
-import { definePlugin } from '@snapfzz/plugin-sdk';
+The plugin uses a `manifest.json` file (not TypeScript `definePlugin`) to declare the intelligence runtime. The TypeScript entry point (`src/index.ts`) handles UI contributions.
 
-export default definePlugin({
-  id: 'snapfzz.chat',
-  name: 'Chat',
-  version: '0.1.0',
-  description: 'Text conversation channel for AgentScope agents',
-  surface: ['project'],
-  activationEvents: ['onStartupFinished'],
-
-  budget: {
-    zone: 'zone3',
-    reliability: { strikes: 3, windowSecs: 300 },
-    network: { maxConcurrentInvokes: 2 },
-    capabilities: [
-      'rust.invoke', 'rust.listen', 'bus.emit',
-      'commands.register', 'settings.read', 'storage.read', 'logger',
-    ],
+```json
+{
+  "id": "snapfzz.orchestrator",
+  "name": "Orchestrator",
+  "version": "0.1.0",
+  "description": "Text conversation channel for AgentScope agents",
+  "surface": ["project"],
+  "activationEvents": ["onStartupFinished"],
+  "runtimes": {
+    "python": [
+      {
+        "id": "chat.orchestrator",
+        "packageDir": "intelligence",
+        "command": "orchestrator app",
+        "healthCheck": "/health",
+        "healthIntervalMs": 2000,
+        "resources": { "maxMemoryMb": 512, "maxRestarts": 10 },
+        "requiresDatabase": true,
+        "hostFlag": "--host",
+        "portFlag": "--port"
+      }
+    ]
   },
-
-  contributes: {
-    leftPanelTabs: [{
-      id: 'chat', label: 'Chat', icon: '💬',
-      component: () => import('./contributions/ChatPanel'),
-    }],
-    statusItems: [
-      { id: 'chat.connection', position: 'left', component: () => import('./contributions/ConnectionStatus') },
-      { id: 'chat.tokens', position: 'right', component: () => import('./contributions/TokenCounter') },
-    ],
-    commands: [
-      { id: 'chat.send', title: 'Send Message' },
-      { id: 'chat.stop', title: 'Stop Generation' },
-      { id: 'chat.clear', title: 'Clear Conversation' },
-    ],
-    shortcuts: [
-      { command: 'chat.send', key: '⌘+Enter' },
-      { command: 'chat.stop', key: 'Escape' },
-    ],
-  },
-
-  async activate(ctx) {
-    ctx.commands.register('chat.send', async (args) => {
-      await ctx.rust.invoke('send_message', { text: (args as any)?.text, sessionId: '...' });
-    });
-    ctx.commands.register('chat.stop', async () => {
-      await ctx.rust.invoke('stop_generation', { sessionId: '...' });
-    });
-    ctx.commands.register('chat.clear', async () => {
-      await ctx.rust.invoke('create_session', {});
-    });
-    return { deactivate: async () => {} };
-  },
-});
+  "main": "dist/index.js"
+}
 ```
 
 ---
