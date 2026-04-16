@@ -24,7 +24,6 @@ fn python_pack_specs() -> Vec<String> {
     vec![
         package_spec(packages::AGENTSCOPE, versions::AGENTSCOPE),
         package_spec(packages::AGENTSCOPE_RUNTIME, versions::AGENTSCOPE_RUNTIME),
-        package_spec(packages::ORCHESTRATOR, versions::ORCHESTRATOR),
         format!("{}=={}", packages::LITELLM_PROXY, versions::LITELLM),
         packages::DISKCACHE.to_string(),
         packages::PRISMA.to_string(),
@@ -443,13 +442,13 @@ mod tests {
     #[test]
     fn t32_python_pack_specs_returns_all_required_packages() {
         let specs = python_pack_specs();
-        assert_eq!(specs.len(), 7);
+        assert_eq!(specs.len(), 6);
         assert!(specs[0].starts_with("agentscope=="));
         assert!(specs[1].starts_with("agentscope-runtime=="));
-        assert!(specs[2].starts_with("snapfzz-orchestrator=="));
-        assert!(specs[3].starts_with("litellm[proxy]=="));
-        assert_eq!(specs[4], "diskcache");
-        assert_eq!(specs[5], "prisma");
+        assert!(specs[2].starts_with("litellm[proxy]=="));
+        assert_eq!(specs[3], packages::DISKCACHE);
+        assert_eq!(specs[4], packages::PRISMA);
+        assert_eq!(specs[5], packages::GREENLET);
     }
 
     #[test]

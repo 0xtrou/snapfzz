@@ -1,6 +1,6 @@
 // A020/AgentScopeService: Orchestrator runtime as a managed service.
-// Runs the `orchestrator` binary (installed via pip as snapfzz-orchestrator)
-// which provides multi-agent intelligence with tool guard, memory, and mission mode.
+// Runs the `orchestrator` binary from ~/.snapfzz/runtime/orchestrator/bin/.
+// Binary is compiled/installed by the build hook (scripts/install-orchestrator.sh).
 use crate::core::constants::{binaries, dependencies, dirs, env_vars, health, resources, services};
 use crate::core::data::DataDir;
 use crate::core::python::runtime::PythonRuntime;
@@ -17,9 +17,14 @@ impl AgentScopeService {
         Self { runtime, data_dir }
     }
 
-    /// Path to the `orchestrator` binary inside the managed venv.
+    /// Path to the `orchestrator` binary in the orchestrator runtime directory.
+    /// Layout: ~/.snapfzz/runtime/orchestrator/bin/orchestrator
     fn orchestrator_binary(&self) -> std::path::PathBuf {
-        self.runtime.venv_dir().join(dirs::BIN).join(binaries::ORCHESTRATOR)
+        self.runtime
+            .runtime_dir()
+            .join(dirs::ORCHESTRATOR)
+            .join(dirs::BIN)
+            .join(binaries::ORCHESTRATOR)
     }
 }
 
@@ -110,7 +115,7 @@ mod tests {
         AgentScopeService::new(make_runtime(), DataDir::new(base_dir))
     }
 
-    /// Create a service with a real orchestrator binary stub in the venv.
+    /// Create a service with a real orchestrator binary stub in the runtime dir.
     fn make_service_with_binary(base_dir: &Path) -> (AgentScopeService, tempfile::TempDir) {
         let runtime_temp = tempfile::tempdir().expect("tempdir");
         let platform = detect_platform().expect("platform");
@@ -119,9 +124,12 @@ mod tests {
             platform,
         ));
 
-        let venv_bin = runtime.venv_dir().join("bin");
-        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
-        std::fs::write(venv_bin.join("orchestrator"), b"#!/bin/sh\n").expect("create binary");
+        // Create binary at runtime/orchestrator/bin/orchestrator
+        let orch_bin = runtime.runtime_dir()
+            .join(dirs::ORCHESTRATOR)
+            .join(dirs::BIN);
+        std::fs::create_dir_all(&orch_bin).expect("create orchestrator bin dir");
+        std::fs::write(orch_bin.join(binaries::ORCHESTRATOR), b"#!/bin/sh\n").expect("create binary");
 
         let service = AgentScopeService::new(runtime, DataDir::new(base_dir));
         (service, runtime_temp)
@@ -239,7 +247,9 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let service = make_service(temp.path());
         let bin = service.orchestrator_binary();
-        assert!(bin.to_string_lossy().contains("orchestrator"));
-        assert!(bin.to_string_lossy().contains("venv"));
+        let path = bin.to_string_lossy();
+        assert!(path.contains("orchestrator"));
+        assert!(path.contains("bin"));
+        assert!(!path.contains("venv"), "binary should be in runtime/orchestrator/, not venv");
     }
 }

@@ -591,8 +591,8 @@ mod tests {
     #[test]
     fn a014_process_cleanup_all_orphan_processes_removes_stale_pid_files() {
         let temp = tempfile::tempdir().expect("tempdir");
-        // Write a PID file for "agentscope" with an invalid PID.
-        let pid_path = pid_file_path(temp.path(), "agentscope");
+        // Write a PID file for "orchestrator" with an invalid PID.
+        let pid_path = pid_file_path(temp.path(), "orchestrator");
         std::fs::create_dir_all(pid_path.parent().unwrap()).expect("create runtime dir");
         std::fs::write(&pid_path, "0").expect("write zero pid");
 
@@ -605,7 +605,7 @@ mod tests {
     #[test]
     fn a014_process_cleanup_all_orphan_processes_removes_invalid_pid() {
         let temp = tempfile::tempdir().expect("tempdir");
-        for name in ["agentscope", "litellm", "postgres"] {
+        for name in crate::constants::process::MANAGED_PROCESSES {
             let pid_path = pid_file_path(temp.path(), name);
             std::fs::create_dir_all(pid_path.parent().unwrap()).expect("create dir");
             std::fs::write(&pid_path, "not-a-pid").expect("write bad pid");
@@ -613,7 +613,7 @@ mod tests {
 
         super::cleanup_all_orphan_processes(temp.path());
 
-        for name in ["agentscope", "litellm", "postgres"] {
+        for name in crate::constants::process::MANAGED_PROCESSES {
             assert!(!pid_file_path(temp.path(), name).exists(), "{name} pid file should be removed");
         }
     }

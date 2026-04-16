@@ -185,6 +185,7 @@ pub mod dirs {
     pub const VENV: &str = "venv";
     pub const PYTHON: &str = "python";
     pub const DATA: &str = "data";
+    pub const ORCHESTRATOR: &str = "orchestrator";
     pub const CONFIG_YAML: &str = "config.yaml";
 }
 

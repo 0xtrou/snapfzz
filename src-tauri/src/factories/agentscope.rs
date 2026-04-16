@@ -86,7 +86,7 @@ mod tests {
         AgentScopeFactory::new(runtime(), data_dir.to_path_buf())
     }
 
-    /// Create a factory with a real orchestrator binary stub in the venv.
+    /// Create a factory with a real orchestrator binary stub in the runtime dir.
     fn make_factory_with_binary(data_dir: &std::path::Path) -> (AgentScopeFactory, tempfile::TempDir) {
         let runtime_temp = tempfile::tempdir().expect("tempdir");
         let platform = detect_platform().expect("platform");
@@ -95,9 +95,11 @@ mod tests {
             platform,
         ));
 
-        let venv_bin = rt.venv_dir().join("bin");
-        std::fs::create_dir_all(&venv_bin).expect("create venv bin");
-        std::fs::write(venv_bin.join("orchestrator"), b"#!/bin/sh\n").expect("create binary");
+        // Create binary at runtime/orchestrator/bin/orchestrator
+        use snapfzz_packs::constants::{binaries, dirs};
+        let orch_bin = rt.runtime_dir().join(dirs::ORCHESTRATOR).join(dirs::BIN);
+        std::fs::create_dir_all(&orch_bin).expect("create orchestrator bin dir");
+        std::fs::write(orch_bin.join(binaries::ORCHESTRATOR), b"#!/bin/sh\n").expect("create binary");
 
         let factory = AgentScopeFactory::new(rt, data_dir.to_path_buf());
         (factory, runtime_temp)

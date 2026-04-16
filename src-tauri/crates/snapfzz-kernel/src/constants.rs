@@ -6,7 +6,7 @@ pub mod process {
     pub const LLM_GATEWAY: &str = "llm-gateway";
     pub const DATABASE: &str = "database";
     // Used in cleanup_all_orphan_processes
-    pub const MANAGED_PROCESSES: &[&str] = &["agentscope", "litellm", "postgres"];
+    pub const MANAGED_PROCESSES: &[&str] = &["orchestrator", "litellm", "postgres"];
 }
 
 /// Settings keys for host/port configuration.
@@ -42,6 +42,7 @@ pub mod health {
 pub mod paths {
     pub const SNAPFZZ_HOME: &str = ".snapfzz";
     pub const RUNTIME_DIR: &str = "runtime";
+    pub const ORCHESTRATOR_DIR: &str = "orchestrator";
     pub const LOG_SUFFIX: &str = ".log";
     pub const ERROR_LOG_SUFFIX: &str = "_error.log";
     pub const PID_SUFFIX: &str = ".pid";

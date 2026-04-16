@@ -48,7 +48,7 @@ def _run_app(args: argparse.Namespace) -> None:
     import uvicorn
 
     uvicorn.run(
-        "intelligence.app:create_app",
+        "orchestrator.app:create_app",
         factory=True,
         host=args.host,
         port=args.port,
