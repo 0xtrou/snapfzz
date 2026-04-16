@@ -143,7 +143,11 @@ impl ProcessFactory for PluginProcessFactory {
             cmd.arg(arg);
         }
 
-        // Inject host/port via standard env vars
+        // Inject host/port as CLI flags so the process binds to the assigned port
+        cmd.arg("--host").arg(&config.host);
+        cmd.arg("--port").arg(config.port.to_string());
+
+        // Also inject as env vars for processes that prefer env-based config
         cmd.env(packs_env_vars::SNAPFZZ_HOST, &config.host);
         cmd.env(packs_env_vars::SNAPFZZ_PORT, config.port.to_string());
 
@@ -160,6 +164,14 @@ impl ProcessFactory for PluginProcessFactory {
         }
 
         cmd.current_dir(&config.working_dir);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        cmd.kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            cmd.process_group(0);
+        }
 
         Ok(cmd)
     }
