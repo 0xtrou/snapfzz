@@ -100,6 +100,14 @@ impl BudgetedProcess {
         self.pid
     }
 
+    /// Returns `http://{host}:{port}` for this process — the origin a frontend can
+    /// fetch against. Per A020/PluginRuntime: plugin UIs reach their managed runtime
+    /// directly (no Rust SSE proxy), so they need the bound origin, not the full
+    /// health URL.
+    pub fn base_url(&self) -> String {
+        format!("http://{}:{}", self.config.host, self.config.port)
+    }
+
     /// True when the process is marked Online and its PID is still alive in the OS.
     /// Used by ProcessFactoryRegistry::spawn for reload-safe idempotency — prevents a
     /// healthy child from being SIGKILLed and respawned on plugin reactivation.

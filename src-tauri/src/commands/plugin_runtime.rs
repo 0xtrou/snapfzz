@@ -446,6 +446,24 @@ pub async fn spawn_plugin_runtime(
         .map_err(|e| format!("failed to spawn plugin runtime '{}': {e}", runtime_id))
 }
 
+/// Returns the bound origin of a spawned plugin runtime (e.g. "http://127.0.0.1:9150").
+///
+/// Per A020/PluginRuntime: plugin UIs fetch their runtime directly for hot-path
+/// traffic (chat SSE, tool calls) — Rust is not in the data path. This command lets
+/// the frontend discover the runtime's URL by runtime_id.
+///
+/// Errors when the runtime is not registered or has not been spawned yet.
+#[tauri::command]
+pub async fn get_plugin_runtime_url(
+    runtime_id: String,
+    factory_registry: State<'_, Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>>,
+) -> Result<String, String> {
+    let registry = factory_registry.read().await;
+    registry
+        .runtime_base_url(&runtime_id)
+        .ok_or_else(|| format!("plugin runtime '{runtime_id}' is not spawned"))
+}
+
 /// Installation status for a plugin, used by the plugin host to check readiness.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
