@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react';
 
 const mockStorageGet = vi.fn();
 const mockStorageSet = vi.fn();
+const mockRustInvoke = vi.fn();
 
 const mockCtx = {
   ctx: {
@@ -14,6 +15,10 @@ const mockCtx = {
       get: mockStorageGet,
       set: mockStorageSet,
       delete: vi.fn(),
+    },
+    rust: {
+      invoke: mockRustInvoke,
+      listen: vi.fn(),
     },
   },
 };
@@ -43,6 +48,7 @@ function buildDeps(overrides: Partial<ModelPickerEventDeps> = {}): ModelPickerEv
 beforeEach(() => {
   vi.clearAllMocks();
   mockStorageSet.mockResolvedValue(undefined);
+  mockRustInvoke.mockResolvedValue(undefined);
 });
 
 describe('A013/ModelPicker/events: onSelect', () => {
@@ -64,6 +70,14 @@ describe('A013/ModelPicker/events: onSelect', () => {
     const { result } = renderHook(() => useModelPickerEvents(buildDeps()));
     act(() => { result.current.onSelect('anthropic/claude-3'); });
     expect(mockStorageSet).toHaveBeenCalledWith('model.selectedId', 'anthropic/claude-3');
+  });
+
+  it('A013/events: onSelect mutates the orchestrator combo via Rust', () => {
+    const { result } = renderHook(() => useModelPickerEvents(buildDeps()));
+    act(() => { result.current.onSelect('anthropic/claude-3'); });
+    expect(mockRustInvoke).toHaveBeenCalledWith('llm_update_orchestrator_combo', {
+      modelTarget: 'anthropic/claude-3',
+    });
   });
 });
 
@@ -129,6 +143,8 @@ describe('A013/ModelPicker/events: no runtime (null context)', () => {
     expect(onToggleOpenState).toHaveBeenCalledWith(false);
     // No storage call because runtime is null
     expect(mockStorageSet).not.toHaveBeenCalled();
+    // No Rust combo mutation either
+    expect(mockRustInvoke).not.toHaveBeenCalled();
   });
 
   it('A013/events: onPin does not throw and does not call storage when runtime is null', () => {

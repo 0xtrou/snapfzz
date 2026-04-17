@@ -3,7 +3,7 @@
 use crate::constants::{databases, litellm as litellm_cfg};
 use snapfzz_kernel::settings::SettingsManager;
 use snapfzz_llm::{
-    config, vault,
+    combo, config, vault,
     GatewayConfig,
 };
 use snapfzz_vault::SecretVault;
@@ -117,6 +117,40 @@ pub async fn llm_cleanup_spend_logs(
         .unwrap_or(0);
 
     Ok(count)
+}
+
+// A013/Orchestrator: mutate the system `orchestrator` combo in LiteLLM. Invoked by the
+// ModelPicker when the user picks a new model. Rust owns the master key so the frontend
+// never needs to touch it for this mutation.
+#[tauri::command]
+pub async fn llm_update_orchestrator_combo(
+    model_target: String,
+    settings_mgr: tauri::State<'_, Arc<SettingsManager>>,
+    vault: tauri::State<'_, Arc<Mutex<SecretVault>>>,
+) -> Result<(), String> {
+    let base_url = resolve_base_url(&settings_mgr);
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
+    };
+    combo::update_orchestrator_combo(&base_url, &master_key, &model_target)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn resolve_base_url(settings_mgr: &SettingsManager) -> String {
+    let settings = settings_mgr.load().unwrap_or_default();
+    let host = if settings.litellm_host.is_empty() {
+        litellm_cfg::DEFAULT_HOST.to_string()
+    } else {
+        settings.litellm_host
+    };
+    let port: u16 = if settings.litellm_port.is_empty() {
+        litellm_cfg::DEFAULT_PORT.parse().unwrap_or(4000)
+    } else {
+        settings.litellm_port.parse().unwrap_or(4000)
+    };
+    format!("http://{}:{}", host, port)
 }
 
 fn find_psql(data_dir: &std::path::Path) -> Result<PathBuf, String> {

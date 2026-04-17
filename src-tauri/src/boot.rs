@@ -6,13 +6,16 @@
 // Phase 2 — PostgreSQL start (independent; stores handle behind Arc<Mutex> only at end)
 // Phase 3 — Service spawn (waits for Phase 1 + 2 via Notify; brief lock per service)
 
-use crate::constants::databases;
+use crate::constants::{databases, litellm as litellm_cfg};
 use crate::helpers::emit_supervisor;
 #[allow(unused_imports)]
 use tauri::Emitter;
 use snapfzz_kernel::process::ProcessFactoryRegistry;
+use snapfzz_kernel::settings::SettingsManager;
+use snapfzz_llm::{combo, vault};
 use snapfzz_packs::{runtime::python::PythonRuntime, ComponentRegistry};
-use std::{path::PathBuf, sync::Arc};
+use snapfzz_vault::SecretVault;
+use std::{path::PathBuf, sync::{Arc, Mutex}};
 
 pub fn spawn_boot_phases(
     data_dir: PathBuf,
@@ -20,6 +23,8 @@ pub fn spawn_boot_phases(
     component_registry: Arc<ComponentRegistry>,
     postgres_runtime: Arc<tokio::sync::Mutex<Option<snapfzz_packs::runtime::postgres::PostgresRuntime>>>,
     factory_registry: Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>,
+    settings_mgr: Arc<SettingsManager>,
+    vault_handle: Arc<Mutex<SecretVault>>,
     app_handle: tauri::AppHandle,
 ) {
     let python_ready = Arc::new(tokio::sync::Notify::new());
@@ -166,10 +171,14 @@ pub fn spawn_boot_phases(
             // Quick write: reinsert spawned processes
             let results = factory_registry.write().await.finalize_spawn_all(spawn_results);
 
+            let mut litellm_succeeded = false;
             for (name, result) in results {
                 match result {
                     Ok(()) => {
                         eprintln!("[boot/spawn] {} started", name);
+                        if name == "litellm" {
+                            litellm_succeeded = true;
+                        }
                         emit_supervisor(
                             &app_handle,
                             "success",
@@ -189,6 +198,43 @@ pub fn spawn_boot_phases(
                 }
             }
 
+            // Per A013/Orchestrator: once LiteLLM is healthy, make sure the system
+            // `orchestrator` combo exists. Failures are non-fatal — the ModelPicker
+            // is the recovery path, and the gateway may legitimately have no models
+            // configured on first run.
+            if litellm_succeeded {
+                let base_url = litellm_base_url(&settings_mgr);
+                let master_key_result = {
+                    let mut guard = vault_handle.lock().unwrap();
+                    vault::get_or_create_master_key(&mut guard)
+                };
+                match master_key_result {
+                    Ok(master_key) => {
+                        match combo::ensure_orchestrator_combo(&base_url, &master_key).await {
+                            Ok(combo::EnsureOutcome::AlreadyPresent) => {
+                                eprintln!("[boot/combo] orchestrator combo already present");
+                            }
+                            Ok(combo::EnsureOutcome::Created { target }) => {
+                                eprintln!(
+                                    "[boot/combo] orchestrator combo created → {target}"
+                                );
+                            }
+                            Ok(combo::EnsureOutcome::NoModelsAvailable) => {
+                                eprintln!(
+                                    "[boot/combo] no models configured yet — combo will be created on first ModelPicker selection"
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!("[boot/combo] ensure failed: {e} (non-fatal)");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[boot/combo] master key unavailable: {e} (non-fatal)");
+                    }
+                }
+            }
+
             // Per A003/BootComplete: emit after all Phase 3 results are processed so the
             // frontend skeleton stays visible until the full boot sequence is done.
             app_handle.emit("boot-complete", serde_json::json!({
@@ -201,4 +247,22 @@ pub fn spawn_boot_phases(
             eprintln!("[boot] boot-complete event emitted");
         });
     }
+}
+
+/// Resolve LiteLLM's configured base URL from settings, falling back to the compile-time
+/// defaults in `constants::litellm`. Kept private to boot — the Tauri command surface has
+/// its own mirror in `commands::llm`.
+fn litellm_base_url(settings_mgr: &SettingsManager) -> String {
+    let settings = settings_mgr.load().unwrap_or_default();
+    let host = if settings.litellm_host.is_empty() {
+        litellm_cfg::DEFAULT_HOST.to_string()
+    } else {
+        settings.litellm_host
+    };
+    let port: u16 = if settings.litellm_port.is_empty() {
+        litellm_cfg::DEFAULT_PORT.parse().unwrap_or(4000)
+    } else {
+        settings.litellm_port.parse().unwrap_or(4000)
+    };
+    format!("http://{host}:{port}")
 }

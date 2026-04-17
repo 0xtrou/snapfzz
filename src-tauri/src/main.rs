@@ -91,11 +91,20 @@ fn main() {
         snapfzz_packs::runtime::postgres::PostgresRuntime,
     >));
 
-    let (setup_registry, setup_factory_registry, setup_component_registry, setup_postgres_runtime) = (
+    let (
+        setup_registry,
+        setup_factory_registry,
+        setup_component_registry,
+        setup_postgres_runtime,
+        setup_settings_mgr,
+        setup_vault,
+    ) = (
         registry.clone(),
         factory_registry.clone(),
         component_registry.clone(),
         postgres_runtime.clone(),
+        settings_mgr.clone(),
+        vault.clone(),
     );
 
     tauri::Builder::default()
@@ -166,6 +175,7 @@ fn main() {
             commands::llm::llm_get_config_path,
             commands::llm::llm_get_base_url,
             commands::llm::llm_get_master_key,
+            commands::llm::llm_update_orchestrator_combo,
             commands::llm::llm_cleanup_spend_logs,
             commands::plugin_runtime::list_installed_plugins,
             commands::plugin_runtime::install_system_plugin,
@@ -189,6 +199,8 @@ fn main() {
                 setup_component_registry,
                 setup_postgres_runtime,
                 setup_factory_registry.clone(),
+                setup_settings_mgr.clone(),
+                setup_vault.clone(),
                 app.handle().clone(),
             );
 
