@@ -10,6 +10,8 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@agentscope-ai/chat": "^1.1.61",
+    "@agentscope-ai/design": "^1.0.31",
     "@chenglou/pretext": "*",
     "antd": "^5.24.0",
     "mitt": "^3.0.1",

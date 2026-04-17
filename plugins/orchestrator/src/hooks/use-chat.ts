@@ -6,12 +6,9 @@ import type {
   ContentBlock,
   ContentBlockBatch,
   Msg,
-  RenderableContentBlock,
-  RenderableTextBlock,
-  RenderableToolResultBlock,
-  RenderableToolUseBlock,
 } from '../types';
-import { parseMarkdownToSegments } from './markdown';
+// Per project/SparkDesignFirst: no pre-parse — Spark's Markdown renders raw text at view time,
+// OperateCard/StatusCard render structured tool data directly.
 
 interface UseChatState {
   messages: ChatMessage[];
@@ -86,52 +83,10 @@ function formatTimestampLabel(timestamp: string): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function stringifyPreview(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function toRenderableBlocks(blocks: ContentBlock[]): RenderableContentBlock[] {
-  return blocks.map((block) => {
-    if (block.type === 'text') {
-      const renderable: RenderableTextBlock = {
-        ...block,
-        segments: parseMarkdownToSegments(block.text),
-      };
-      return renderable;
-    }
-
-    if (block.type === 'tool_use') {
-      const renderable: RenderableToolUseBlock = {
-        ...block,
-        inputPreview: stringifyPreview(block.input),
-      };
-      return renderable;
-    }
-
-    if (block.type === 'tool_result') {
-      const renderable: RenderableToolResultBlock = {
-        ...block,
-        outputPreview: stringifyPreview(block.output),
-      };
-      return renderable;
-    }
-
-    return block;
-  });
-}
-
 function normalizeMsg(msg: Msg, previous: ChatMessage | null): ChatMessage {
-  const blocks = Array.isArray(msg.content)
-    ? toRenderableBlocks(msg.content)
-    : toRenderableBlocks([{ type: 'text', text: msg.content }]);
+  const blocks: ContentBlock[] = Array.isArray(msg.content)
+    ? msg.content
+    : [{ type: 'text', text: msg.content }];
 
   return {
     id: msg.id,
@@ -148,7 +103,7 @@ function normalizeMsg(msg: Msg, previous: ChatMessage | null): ChatMessage {
 function appendBatch(messages: ChatMessage[], batch: ContentBlockBatch): ChatMessage[] {
   const existingIndex = messages.findIndex((message) => message.id === batch.messageId);
   const previous = existingIndex > 0 ? messages[existingIndex - 1] : messages[messages.length - 1] ?? null;
-  const incomingBlocks = toRenderableBlocks(batch.blocks);
+  const incomingBlocks: ContentBlock[] = batch.blocks;
   const timestamp = batch.timestamp ?? new Date().toISOString();
 
   if (existingIndex >= 0) {
@@ -306,6 +261,24 @@ function attachBridgeListeners(rustBridge: RustBridge): void {
   }).then((dispose) => {
     bridgeListeners.push(dispose);
   });
+}
+
+// Per A013/ModelPicker: module-level plugin context store — mirrors the bridge pattern above.
+// Allows ChatPanel's React subtree to access PluginContext via usePluginContextStore()
+// without threading ctx as a prop through every component in the tree.
+let _pluginCtx: PluginContext | null = null;
+
+export function configurePluginContext(ctx: PluginContext): void {
+  _pluginCtx = ctx;
+}
+
+export function disposePluginContext(): void {
+  _pluginCtx = null;
+}
+
+/** Returns the stored PluginContext or null when called outside activate(). */
+export function getPluginContext(): PluginContext | null {
+  return _pluginCtx;
 }
 
 export function configureChatRuntime(ctx: PluginContext): void {

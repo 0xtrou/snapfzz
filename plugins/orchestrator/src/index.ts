@@ -71,9 +71,11 @@ export default definePlugin({
     ],
   },
   async activate(ctx: PluginContext): Promise<PluginHandle> {
-    const { configureChatRuntime, disposeChatRuntime, sendMessage, stopGeneration, clearConversationSession } =
+    const { configureChatRuntime, disposeChatRuntime, sendMessage, stopGeneration, clearConversationSession, configurePluginContext, disposePluginContext } =
       await import('./hooks/use-chat');
 
+    // Per A013/ModelPicker: store ctx so ModelPicker's observation can reach plugin storage.
+    configurePluginContext(ctx);
     configureChatRuntime(ctx);
 
     const unregisterSend = ctx.commands.register('orchestrator.send', async (args?: unknown) => {
@@ -98,6 +100,7 @@ export default definePlugin({
         unregisterStop();
         unregisterClear();
         disposeChatRuntime();
+        disposePluginContext();
       },
     };
   },

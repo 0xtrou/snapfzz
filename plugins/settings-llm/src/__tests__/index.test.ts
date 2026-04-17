@@ -1,4 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Per project/SparkDesignFirst: Spark packages lack a `main` entry and have a side-effect CSS
+// import; lazily-resolved via shared's barrel when the section.component() factory runs.
+// Stub them so this test can exercise the dynamic import without Vite trying to resolve the
+// Spark package tree.
+vi.mock('@agentscope-ai/design', () => ({
+  ConfigProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock('@agentscope-ai/chat', () => ({}));
+
 import plugin from '../index';
 
 describe('A013/PluginManifest: settings-llm registration export', () => {

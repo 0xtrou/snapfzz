@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
-import { App, ConfigProvider } from 'antd';
+import { App } from 'antd';
+// Per project/SparkDesignFirst: use Spark's ConfigProvider so @agentscope-ai/chat and
+// @agentscope-ai/design components pick up the iconfont + prefix wiring. It is a superset
+// of antd's ConfigProvider, so our existing antd theme tokens flow through unchanged.
+import { ConfigProvider as SparkConfigProvider } from '@agentscope-ai/design';
 import { useAppSettings } from '../../hooks/use-app-settings';
 import { darkTheme, lightTheme } from '../../theme';
 import { setToastAPI } from '../../lib/toast';
@@ -24,7 +28,7 @@ export function WindowShell({ title, children, statusBarContent }: WindowShellPr
 
   return (
     <CustomFontsContext.Provider value={customFonts}>
-      <ConfigProvider theme={antdTheme}>
+      <SparkConfigProvider theme={antdTheme}>
         <App>
           <ToastBridge />
           <div className="flex flex-col h-screen overflow-hidden">
@@ -35,7 +39,7 @@ export function WindowShell({ title, children, statusBarContent }: WindowShellPr
             <StatusBar>{statusBarContent}</StatusBar>
           </div>
         </App>
-      </ConfigProvider>
+      </SparkConfigProvider>
     </CustomFontsContext.Provider>
   );
 }

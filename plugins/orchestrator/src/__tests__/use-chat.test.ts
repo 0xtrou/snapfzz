@@ -3,11 +3,10 @@
 // Verifies: initial state, send/stop state transitions, stream batch processing, session loading, error handling
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { RustBridge } from '@snapfzz/plugin-sdk';
-import type { ContentBlockBatch, Msg } from '../types';
+import type { Msg } from '../types';
 
-vi.mock('../hooks/markdown', () => ({
-  parseMarkdownToSegments: vi.fn((text: string) => [{ kind: 'paragraph', inlines: [{ kind: 'text', text }] }]),
-}));
+// Per project/SparkDesignFirst: markdown pre-parser was removed — Spark's Markdown renders
+// raw text at view time. No mock needed for hooks/markdown (the file no longer exists).
 
 function makeRustBridge(overrides: Partial<RustBridge> = {}): RustBridge {
   return {
@@ -19,9 +18,6 @@ function makeRustBridge(overrides: Partial<RustBridge> = {}): RustBridge {
 
 async function loadModule() {
   vi.resetModules();
-  vi.mock('../hooks/markdown', () => ({
-    parseMarkdownToSegments: vi.fn((text: string) => [{ kind: 'paragraph', inlines: [{ kind: 'text', text }] }]),
-  }));
   return import('../hooks/use-chat');
 }
 

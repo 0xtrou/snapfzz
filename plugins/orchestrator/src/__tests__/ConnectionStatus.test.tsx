@@ -17,7 +17,40 @@ vi.mock('../hooks/use-chat', () => ({
     stop: vi.fn(),
     clearConversation: vi.fn(),
   })),
+  // Per A013/ModelPicker: getPluginContext is imported by ConnectionStatus to read selected model.
+  // Return null in tests so the useSelectedModel hook is a no-op.
+  getPluginContext: vi.fn(() => null),
 }));
+
+// Per A013/ModelPicker: test that selected model label appears when storage has a value.
+// Tested separately from color/label tests to control the getPluginContext mock.
+describe('chat/ConnectionStatus: selected model label', () => {
+  it('A013/ConnectionStatus: shows selected model id from storage when available', async () => {
+    const { useChat } = await import('../hooks/use-chat');
+    vi.mocked(useChat).mockReturnValue({
+      connectionStatus: 'connected',
+      messages: [],
+      isStreaming: false,
+      pendingMessageId: null,
+      tokenCount: 0,
+      sessionId: 'mock',
+      send: vi.fn(),
+      stop: vi.fn(),
+      clearConversation: vi.fn(),
+    });
+
+    const { getPluginContext } = await import('../hooks/use-chat');
+    const mockStorage = { get: vi.fn().mockResolvedValue('openai/gpt-4'), set: vi.fn(), delete: vi.fn() };
+    vi.mocked(getPluginContext).mockReturnValue({
+      storage: mockStorage,
+    } as never);
+
+    const { default: ConnectionStatus } = await import('../contributions/ConnectionStatus');
+    const { findByText } = render(<ConnectionStatus />);
+
+    await findByText('openai/gpt-4');
+  });
+});
 
 describe('chat/ConnectionStatus: status label text', () => {
   it('chat/ConnectionStatus: shows Connected when status is connected', async () => {

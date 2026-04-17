@@ -1,8 +1,24 @@
 import { createTauriBridge } from '@snapfzz/shared';
+// Per A013/LLMProviders: model-info types promoted to @snapfzz/shared — import for local use
+// and re-export so consumers of settings-llm keep working without import changes.
+import type {
+  ModelInfo,
+  ModelInfoDetails,
+  ModelInfoEntry,
+  ModelInfoResponse,
+  ModelListResponse,
+} from '@snapfzz/shared';
+export type {
+  ModelInfo,
+  ModelInfoDetails,
+  ModelInfoEntry,
+  ModelInfoResponse,
+  ModelListResponse,
+};
 
 const bridge = createTauriBridge();
 
-// A013/Types: Shared types for LLM operations
+// A013/Types: Shared types for LLM operations (settings-specific types below)
 
 export interface ModelDeployment {
   model_name: string;
@@ -143,41 +159,8 @@ export interface GlobalSpend {
   by_provider: Record<string, number>;
 }
 
-export interface ModelInfo {
-  id: string;
-}
-
-export interface ModelListResponse {
-  data: ModelInfo[];
-}
-
-// Rich model metadata returned by /v1/model/info
-export interface ModelInfoDetails {
-  max_tokens?: number;
-  max_input_tokens?: number;
-  max_output_tokens?: number;
-  input_cost_per_token?: number;
-  output_cost_per_token?: number;
-  mode?: string;
-  supports_vision?: boolean;
-  supports_function_calling?: boolean;
-  supports_reasoning?: boolean;
-  litellm_provider?: string;
-}
-
-export interface ModelInfoEntry {
-  model_name: string;
-  litellm_params?: {
-    api_base?: string;
-    model?: string;
-    api_key?: string;
-  };
-  model_info: ModelInfoDetails;
-}
-
-export interface ModelInfoResponse {
-  data: ModelInfoEntry[];
-}
+// ModelInfo, ModelInfoDetails, ModelInfoEntry, ModelInfoResponse, ModelListResponse
+// are now in @snapfzz/shared/llm — re-exported at the top of this file.
 
 // Custom provider metadata stored in vault as JSON blob
 export type CustomProviderVariant = 'openai' | 'anthropic' | 'cohere' | 'mistral' | string;

@@ -193,6 +193,8 @@ describe('chat/activate: lifecycle', () => {
     vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime: vi.fn(),
+      configurePluginContext: vi.fn(),
+      disposePluginContext: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue(undefined),
       stopGeneration: vi.fn().mockResolvedValue(undefined),
       clearConversationSession: vi.fn().mockResolvedValue(undefined),
@@ -210,6 +212,8 @@ describe('chat/activate: lifecycle', () => {
     vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime: vi.fn(),
+      configurePluginContext: vi.fn(),
+      disposePluginContext: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue(undefined),
       stopGeneration: vi.fn().mockResolvedValue(undefined),
       clearConversationSession: vi.fn().mockResolvedValue(undefined),
@@ -232,6 +236,8 @@ describe('chat/activate: lifecycle', () => {
     vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime: vi.fn(),
+      configurePluginContext: vi.fn(),
+      disposePluginContext: vi.fn(),
       sendMessage,
       stopGeneration: vi.fn().mockResolvedValue(undefined),
       clearConversationSession: vi.fn().mockResolvedValue(undefined),
@@ -260,6 +266,8 @@ describe('chat/activate: lifecycle', () => {
     vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime: vi.fn(),
+      configurePluginContext: vi.fn(),
+      disposePluginContext: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue(undefined),
       stopGeneration,
       clearConversationSession,
@@ -286,6 +294,8 @@ describe('chat/activate: lifecycle', () => {
     vi.doMock('../hooks/use-chat', () => ({
       configureChatRuntime: vi.fn(),
       disposeChatRuntime,
+      configurePluginContext: vi.fn(),
+      disposePluginContext: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue(undefined),
       stopGeneration: vi.fn().mockResolvedValue(undefined),
       clearConversationSession: vi.fn().mockResolvedValue(undefined),

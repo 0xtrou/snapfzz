@@ -1,4 +1,8 @@
-// Per chat/SPEC DomainModel: frontend mirrors AgentScope Msg + ContentBlock union without custom message format.
+// Per chat/SPEC DomainModel + project/SparkDesignFirst: frontend mirrors AgentScope Msg +
+// ContentBlock directly. Markdown parsing, status previews, and segment splitting are handled
+// by Spark (@agentscope-ai/chat) Markdown/OperateCard/StatusCard at render time — no
+// pre-processing layer lives in the types.
+
 export type MsgRole = 'user' | 'assistant' | 'system';
 
 export interface TextBlock {
@@ -24,6 +28,7 @@ export interface ToolResultBlock {
   id: string;
   output: unknown;
   name?: string;
+  isError?: boolean;
 }
 
 export interface ImageBlock {
@@ -60,67 +65,11 @@ export interface Msg {
   timestamp: string;
 }
 
-export interface MarkdownInlineToken {
-  kind: 'text' | 'bold' | 'italic' | 'code' | 'link';
-  text: string;
-  href?: string;
-}
-
-export interface MarkdownHeadingSegment {
-  kind: 'heading';
-  level: 1 | 2 | 3 | 4 | 5 | 6;
-  inlines: MarkdownInlineToken[];
-}
-
-export interface MarkdownParagraphSegment {
-  kind: 'paragraph';
-  inlines: MarkdownInlineToken[];
-}
-
-export interface MarkdownListSegment {
-  kind: 'list';
-  ordered: boolean;
-  items: MarkdownInlineToken[][];
-}
-
-export interface MarkdownCodeSegment {
-  kind: 'code';
-  language: string;
-  code: string;
-}
-
-export type MarkdownSegment =
-  | MarkdownHeadingSegment
-  | MarkdownParagraphSegment
-  | MarkdownListSegment
-  | MarkdownCodeSegment;
-
-export interface RenderableTextBlock extends TextBlock {
-  segments: MarkdownSegment[];
-}
-
-export interface RenderableToolUseBlock extends ToolUseBlock {
-  inputPreview: string;
-}
-
-export interface RenderableToolResultBlock extends ToolResultBlock {
-  outputPreview: string;
-}
-
-export type RenderableContentBlock =
-  | RenderableTextBlock
-  | ThinkingBlock
-  | RenderableToolUseBlock
-  | RenderableToolResultBlock
-  | ImageBlock
-  | AudioBlock
-  | VideoBlock;
-
 export interface ChatMessage {
   id: string;
   name: string;
   role: MsgRole;
-  content: RenderableContentBlock[];
+  content: ContentBlock[];
   metadata: Record<string, unknown>;
   timestamp: string;
   timestampLabel: string;

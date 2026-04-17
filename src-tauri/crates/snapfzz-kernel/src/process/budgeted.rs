@@ -100,6 +100,30 @@ impl BudgetedProcess {
         self.pid
     }
 
+    /// True when the process is marked Online and its PID is still alive in the OS.
+    /// Used by ProcessFactoryRegistry::spawn for reload-safe idempotency — prevents a
+    /// healthy child from being SIGKILLed and respawned on plugin reactivation.
+    /// Per A020/PluginRuntime: Rust state outlives the web-view context, so reactivation
+    /// must treat a live child as already-spawned.
+    pub fn is_online_with_live_pid(&self) -> bool {
+        if !matches!(self.status, ProcessStatus::Online) {
+            return false;
+        }
+        match self.pid {
+            Some(pid) => crate::process::pid_is_alive(pid),
+            None => false,
+        }
+    }
+
+    /// Test-only: install a synthetic Online+pid state. The real spawn() path sets these
+    /// after a successful child spawn + health probe; tests cover the idempotency guard
+    /// without running a real subprocess.
+    #[cfg(test)]
+    pub(crate) fn force_online_with_pid(&mut self, pid: u32) {
+        self.pid = Some(pid);
+        self.status = ProcessStatus::Online;
+    }
+
     pub async fn spawn(&mut self) -> Result<(), ProcessError> {
         if !self.factory.can_start(&self.python_runtime) {
             eprintln!("[process] can_start() returned false for '{}'", self.name);
@@ -562,6 +586,43 @@ mod tests {
             None as Option<String>,
         )
         .expect("make_process")
+    }
+
+    // A020/PluginRuntime: is_online_with_live_pid is the reload-safe idempotency predicate
+    // used by ProcessFactoryRegistry::spawn. Covers all three early-return states.
+
+    #[test]
+    fn a020_is_online_with_live_pid_false_when_stopped() {
+        let process = make_process("stopped");
+        // Fresh BudgetedProcess starts as Stopped with no pid.
+        assert!(!process.is_online_with_live_pid());
+    }
+
+    #[test]
+    fn a020_is_online_with_live_pid_false_when_online_but_no_pid() {
+        let mut process = make_process("online-no-pid");
+        // Force Online status without a pid — should still return false (the guard requires
+        // BOTH an Online status AND a live PID).
+        process.status = ProcessStatus::Online;
+        process.pid = None;
+        assert!(!process.is_online_with_live_pid());
+    }
+
+    #[test]
+    fn a020_is_online_with_live_pid_true_when_online_with_current_pid() {
+        let mut process = make_process("online-alive");
+        process.force_online_with_pid(std::process::id());
+        assert!(process.is_online_with_live_pid());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a020_is_online_with_live_pid_false_when_online_with_dead_pid() {
+        let mut process = make_process("online-dead");
+        // A PID outside the plausible Unix pid_t range is functionally "dead" —
+        // pid_is_alive(0x7FFF_FFFE) returns false.
+        process.force_online_with_pid(0x7FFF_FFFEu32);
+        assert!(!process.is_online_with_live_pid());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

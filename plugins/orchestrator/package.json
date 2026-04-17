@@ -13,8 +13,11 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@agentscope-ai/chat": "^1.1.61",
+    "@agentscope-ai/design": "^1.0.31",
     "@snapfzz/plugin-sdk": "workspace:*",
     "@snapfzz/shared": "workspace:*",
+    "antd": "^5.24.0",
     "react": "^19.0.0"
   },
   "devDependencies": {

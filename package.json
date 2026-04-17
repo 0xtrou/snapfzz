@@ -17,6 +17,8 @@
     "pnpm": ">=9"
   },
   "dependencies": {
+    "@agentscope-ai/chat": "^1.1.61",
+    "@agentscope-ai/design": "^1.0.31",
     "@ant-design/icons": "^6.1.1",
     "@chenglou/pretext": "^0.0.4",
     "@tauri-apps/api": "^2.0.0",
@@ -26,5 +28,10 @@
     "@testing-library/react": "^16.3.2",
     "jsdom": "^29.0.1",
     "vitest": "^4.1.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@ant-design/icons": "npm:@agentscope-ai/icons-override-antd@^6.0.0"
+    }
   }
 }
