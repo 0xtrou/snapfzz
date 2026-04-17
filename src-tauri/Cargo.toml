@@ -2,7 +2,6 @@
 members = [
   ".",
   "crates/snapfzz-plugin-bridge",
-  "crates/snapfzz-stream",
   "crates/snapfzz-kernel",
   "crates/snapfzz-vault",
   "crates/snapfzz-packs",
@@ -38,7 +37,6 @@ serde_json = "1"
 dirs = "6"
 rfd = "0.15"
 snapfzz-kernel = { path = "crates/snapfzz-kernel" }
-snapfzz-stream = { path = "crates/snapfzz-stream" }
 snapfzz-vault = { path = "crates/snapfzz-vault" }
 snapfzz-packs = { path = "crates/snapfzz-packs" }
 snapfzz-cef = { path = "crates/snapfzz-cef" }

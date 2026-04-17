@@ -1,19 +1,27 @@
 // Spec: chat/SPEC.md
-// Sections: Domain Model, Rust Bridge Commands, Architecture Resonance (A002)
-// Verifies: initial state, send/stop state transitions, stream batch processing, session loading, error handling
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { RustBridge } from '@snapfzz/plugin-sdk';
-import type { Msg } from '../types';
+// Section: Domain Model + Runtime State Machine (post Phase A — Rust chat bridge removed)
+// Verifies: initial state, mock-stream append/stop/clear transitions, plugin-context store.
 
-// Per project/SparkDesignFirst: markdown pre-parser was removed — Spark's Markdown renders
-// raw text at view time. No mock needed for hooks/markdown (the file no longer exists).
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PluginContext } from '@snapfzz/plugin-sdk';
 
-function makeRustBridge(overrides: Partial<RustBridge> = {}): RustBridge {
+function makePluginContext(): PluginContext {
   return {
-    invoke: vi.fn().mockResolvedValue({}),
-    listen: vi.fn().mockResolvedValue(vi.fn()),
-    ...overrides,
-  } as unknown as RustBridge;
+    storage: { get: vi.fn(), set: vi.fn(), delete: vi.fn() },
+    bus: { emit: vi.fn(), on: vi.fn() },
+    commands: { execute: vi.fn(), register: vi.fn() },
+    settings: { get: vi.fn(), set: vi.fn(), onChange: vi.fn() },
+    apis: { get: vi.fn(), provide: vi.fn() },
+    rust: { invoke: vi.fn(), listen: vi.fn() },
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    registry: {
+      registerTab: vi.fn(),
+      registerBottomPanel: vi.fn(),
+      registerStatusItem: vi.fn(),
+      registerComponent: vi.fn(),
+    },
+    surface: 'project',
+  } as unknown as PluginContext;
 }
 
 async function loadModule() {
@@ -21,584 +29,156 @@ async function loadModule() {
   return import('../hooks/use-chat');
 }
 
-describe('chat/state: initial state', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+describe('chat/state: initial snapshot', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('chat/state: disposeChatRuntime resets to empty messages', async () => {
-    const { disposeChatRuntime, sendMessage, useChat } = await loadModule();
-
-    const { renderHook } = await import('@testing-library/react');
-    const { act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-    expect(result.current.messages).toHaveLength(0);
-
-    await act(async () => {
-      await sendMessage('hello world');
-      vi.runAllTimers();
-    });
-
-    expect(result.current.messages.length).toBeGreaterThan(0);
-
-    act(() => {
-      disposeChatRuntime();
-    });
-
-    expect(result.current.messages).toHaveLength(0);
-  });
-
-  it('chat/state: initial connectionStatus defaults to connected before bridge is configured', async () => {
+  it('chat/state: starts with empty messages, not streaming, connected', async () => {
     const { useChat } = await loadModule();
     const { renderHook } = await import('@testing-library/react');
-
     const { result } = renderHook(() => useChat());
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.isStreaming).toBe(false);
     expect(result.current.connectionStatus).toBe('connected');
-  });
-
-  it('chat/state: initial tokenCount is 0', async () => {
-    const { useChat } = await loadModule();
-    const { renderHook } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
     expect(result.current.tokenCount).toBe(0);
   });
-
-  it('chat/state: initial isStreaming is false', async () => {
-    const { useChat } = await loadModule();
-    const { renderHook } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-    expect(result.current.isStreaming).toBe(false);
-  });
 });
 
-describe('chat/send: message sending', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+describe('chat/runtime: configure + dispose', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.resetModules();
-  });
-
-  it('chat/send: appends user message and sets isStreaming true', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
+  it('chat/runtime: configureChatRuntime is a no-op during Phase A (connection stays connected)', async () => {
+    const { configureChatRuntime, useChat } = await loadModule();
     const { renderHook, act } = await import('@testing-library/react');
-
     const { result } = renderHook(() => useChat());
 
-    await act(async () => {
-      void sendMessage('build me a landing page');
-    });
-
-    const userMessages = result.current.messages.filter((m) => m.role === 'user');
-    expect(userMessages).toHaveLength(1);
-    expect(userMessages[0].content[0].type).toBe('text');
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/send: ignores empty or whitespace-only text', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      await sendMessage('   ');
-    });
-
-    expect(result.current.messages).toHaveLength(0);
-    expect(result.current.isStreaming).toBe(false);
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/send: ignores send when already streaming', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('first message');
-    });
-
-    expect(result.current.isStreaming).toBe(true);
-
-    await act(async () => {
-      await sendMessage('second message — should be blocked');
-    });
-
-    const userMessages = result.current.messages.filter((m) => m.role === 'user');
-    expect(userMessages).toHaveLength(1);
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/send: mock stream adds assistant message with thinking block', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('hello');
-      vi.runAllTimers();
-    });
-
-    const assistantMessages = result.current.messages.filter((m) => m.role === 'assistant');
-    expect(assistantMessages.length).toBeGreaterThan(0);
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/send: user message name is User', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('test');
-    });
-
-    expect(result.current.messages[0].name).toBe('User');
-
-    act(() => { disposeChatRuntime(); });
-  });
-});
-
-describe('chat/stop: stop generation', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.resetModules();
-  });
-
-  it('chat/stop: resets isStreaming to false', async () => {
-    const { sendMessage, stopGeneration, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('go');
-    });
-    expect(result.current.isStreaming).toBe(true);
-
-    await act(async () => {
-      await stopGeneration();
-    });
-    expect(result.current.isStreaming).toBe(false);
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/stop: clears pendingMessageId', async () => {
-    const { sendMessage, stopGeneration, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('go');
-    });
-
-    await act(async () => {
-      await stopGeneration();
-    });
-
-    expect(result.current.pendingMessageId).toBeNull();
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/stop: invokes rust bridge stop_generation when bridge is configured', async () => {
-    const { configureChatRuntime, stopGeneration, disposeChatRuntime } = await loadModule();
-
-    const invoke = vi.fn().mockResolvedValue({});
-    const bridge = makeRustBridge({
-      invoke,
-      listen: vi.fn().mockResolvedValue(vi.fn()),
-    });
-    invoke
-      .mockResolvedValueOnce({ status: 'connected' })
-      .mockResolvedValueOnce({ sessionId: 'sess-1' })
-      .mockResolvedValueOnce({ messages: [] })
-      .mockResolvedValue(undefined);
-
-    configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-
-    await stopGeneration();
-
-    const stopCall = invoke.mock.calls.find(([cmd]) => cmd === 'stop_generation');
-    expect(stopCall).toBeDefined();
-
-    disposeChatRuntime();
-  });
-
-  it('chat/stop: stopGeneration is safe when rust stop_generation invoke rejects', async () => {
-    const { configureChatRuntime, stopGeneration, sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-reject' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
-      if (cmd === 'stop_generation') return Promise.reject(new Error('stop failed'));
-      return Promise.resolve(undefined);
-    });
-
-    const bridge = makeRustBridge({ invoke, listen: vi.fn().mockResolvedValue(vi.fn()) });
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-    });
-
-    await act(async () => {
-      await sendMessage('hello');
-    });
-
-    await expect(stopGeneration()).rejects.toThrow('stop failed');
-    expect(result.current.isStreaming).toBe(true);
-
-    disposeChatRuntime();
-  });
-});
-
-describe('chat/batch: stream batch processing', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.resetModules();
-  });
-
-  it('chat/batch: applyStreamBatch creates new message when messageId is new', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('trigger mock');
-      vi.advanceTimersByTime(220);
-    });
-
-    const messages = result.current.messages;
-    const assistantMsg = messages.find((m) => m.role === 'assistant');
-    expect(assistantMsg).toBeDefined();
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/batch: accumulates tokenCount as batches arrive', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('go');
-      vi.runAllTimers();
-    });
-
-    expect(result.current.tokenCount).toBeGreaterThan(0);
-
-    act(() => { disposeChatRuntime(); });
-  });
-
-  it('chat/batch: isStreaming becomes false when batch.done is true', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('go');
-      vi.runAllTimers();
-    });
-
-    expect(result.current.isStreaming).toBe(false);
-
-    act(() => { disposeChatRuntime(); });
-  });
-});
-
-describe('chat/configure: bridge configuration', () => {
-  afterEach(() => {
-    vi.resetModules();
-  });
-
-  it('chat/configure: configureChatRuntime sets connectionStatus to reconnecting during health check', async () => {
-    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    let resolveHealth!: (v: unknown) => void;
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') {
-        return new Promise((resolve) => { resolveHealth = resolve; });
-      }
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-abc' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
-      return Promise.resolve({});
-    });
-    const bridge = makeRustBridge({ invoke });
-
-    const { result } = renderHook(() => useChat());
-
-    act(() => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-    });
-
-    expect(result.current.connectionStatus).toBe('reconnecting');
-
-    await act(async () => {
-      resolveHealth({ status: 'connected' });
-    });
-
+    act(() => { configureChatRuntime(makePluginContext()); });
     expect(result.current.connectionStatus).toBe('connected');
-
-    disposeChatRuntime();
   });
 
-  it('chat/configure: configureChatRuntime sets disconnected when bridge health check fails', async () => {
-    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
+  it('chat/runtime: disposeChatRuntime resets the snapshot to initial', async () => {
+    const { sendMessage, disposeChatRuntime, useChat } = await loadModule();
     const { renderHook, act } = await import('@testing-library/react');
-
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') return Promise.reject(new Error('unreachable'));
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-fail' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
-      return Promise.resolve({});
-    });
-    const bridge = makeRustBridge({ invoke });
-
     const { result } = renderHook(() => useChat());
 
     await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
+      void sendMessage('populate the state');
     });
-
-    expect(result.current.connectionStatus).toBe('disconnected');
-
-    disposeChatRuntime();
-  });
-
-  it('chat/configure: load_session messages are normalized and added to state', async () => {
-    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const existingMsg: Msg = {
-      id: 'msg-1',
-      name: 'Orchestrator',
-      role: 'assistant',
-      content: 'Hello from history',
-      metadata: {},
-      timestamp: '2026-04-06T10:00:00Z',
-    };
-
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-loaded' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [existingMsg] });
-      return Promise.resolve({});
-    });
-    const bridge = makeRustBridge({ invoke });
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-    });
-
-    expect(result.current.messages).toHaveLength(1);
-    expect(result.current.messages[0].name).toBe('Orchestrator');
-
-    disposeChatRuntime();
-  });
-});
-
-describe('chat/clear: clear conversation', () => {
-  afterEach(() => {
-    vi.resetModules();
-  });
-
-  it('chat/clear: clearConversationSession resets messages when no bridge', async () => {
-    vi.useFakeTimers();
-    const { sendMessage, clearConversationSession, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      void sendMessage('hello');
-    });
-
     expect(result.current.messages.length).toBeGreaterThan(0);
 
-    await act(async () => {
-      await clearConversationSession();
-    });
+    act(() => { disposeChatRuntime(); });
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.isStreaming).toBe(false);
+  });
+});
+
+describe('chat/send: mock-stream behavior', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); vi.resetModules(); });
+
+  it('chat/send: appends the user message and starts streaming', async () => {
+    const { sendMessage, useChat } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => { void sendMessage('hello'); });
+
+    const userMessages = result.current.messages.filter((m) => m.role === 'user');
+    expect(userMessages).toHaveLength(1);
+    expect(result.current.isStreaming).toBe(true);
+  });
+
+  it('chat/send: ignores empty or whitespace-only input', async () => {
+    const { sendMessage, useChat } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => { await sendMessage('   '); });
 
     expect(result.current.messages).toHaveLength(0);
-
-    act(() => { disposeChatRuntime(); });
-    vi.useRealTimers();
+    expect(result.current.isStreaming).toBe(false);
   });
 
-  it('chat/clear: clearConversationSession preserves connectionStatus after clearing', async () => {
-    const { configureChatRuntime, clearConversationSession, useChat, disposeChatRuntime } = await loadModule();
+  it('chat/send: ignores a second send while the first is still streaming', async () => {
+    const { sendMessage, useChat } = await loadModule();
     const { renderHook, act } = await import('@testing-library/react');
+    const { result } = renderHook(() => useChat());
 
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'new-sess' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
-      return Promise.resolve({});
-    });
-    const bridge = makeRustBridge({ invoke });
+    await act(async () => { void sendMessage('first'); });
+    await act(async () => { await sendMessage('second — should be blocked'); });
 
+    const userMessages = result.current.messages.filter((m) => m.role === 'user');
+    expect(userMessages).toHaveLength(1);
+  });
+
+  it('chat/send: mock stream eventually adds an assistant message', async () => {
+    const { sendMessage, useChat } = await loadModule();
+    const { renderHook, act } = await import('@testing-library/react');
     const { result } = renderHook(() => useChat());
 
     await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
+      void sendMessage('ping');
+      vi.runAllTimers();
     });
 
-    const previousStatus = result.current.connectionStatus;
-
-    await act(async () => {
-      await clearConversationSession();
-    });
-
-    expect(result.current.connectionStatus).toBe(previousStatus);
-
-    disposeChatRuntime();
+    const assistants = result.current.messages.filter((m) => m.role === 'assistant');
+    expect(assistants.length).toBeGreaterThan(0);
   });
 });
 
-describe('chat/session: bridge lifecycle edges', () => {
-  it('chat/session: ensureBridgeSession falls back to mock session when create_session fails', async () => {
-    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
+describe('chat/stop: stopGeneration clears the stream', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); vi.resetModules(); });
+
+  it('chat/stop: resets isStreaming and pendingMessageId', async () => {
+    const { sendMessage, stopGeneration, useChat } = await loadModule();
     const { renderHook, act } = await import('@testing-library/react');
-
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
-      if (cmd === 'create_session') return Promise.reject(new Error('cannot create session'));
-      return Promise.resolve(undefined);
-    });
-
-    const bridge = makeRustBridge({ invoke, listen: vi.fn().mockResolvedValue(vi.fn()) });
     const { result } = renderHook(() => useChat());
 
-    await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-    });
+    await act(async () => { void sendMessage('go'); });
+    expect(result.current.isStreaming).toBe(true);
 
-    expect(result.current.sessionId).toBe('mock-session');
-    disposeChatRuntime();
-  });
-
-  it('chat/session: bridge listener updates connection status from health event', async () => {
-    const { configureChatRuntime, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const listeners = new Map<string, (payload: unknown) => void>();
-    const listen = vi.fn().mockImplementation((event: string, handler: (payload: unknown) => void) => {
-      listeners.set(event, handler);
-      return Promise.resolve(vi.fn());
-    });
-    const invoke = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-listener' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
-      return Promise.resolve(undefined);
-    });
-
-    const bridge = makeRustBridge({ invoke, listen });
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-    });
-
-    await act(async () => {
-      listeners.get('agent_health_changed')?.({ status: 'unhealthy' });
-    });
-
-    expect(result.current.connectionStatus).toBe('unhealthy');
-    disposeChatRuntime();
-  });
-
-  it('chat/session: sendMessage forwards trimmed text and sessionId to rust bridge', async () => {
-    const { configureChatRuntime, sendMessage, useChat, disposeChatRuntime } = await loadModule();
-    const { renderHook, act } = await import('@testing-library/react');
-
-    const invoke = vi.fn().mockImplementation((cmd: string, payload?: Record<string, unknown>) => {
-      if (cmd === 'agent_health') return Promise.resolve({ status: 'connected' });
-      if (cmd === 'create_session') return Promise.resolve({ sessionId: 'sess-send' });
-      if (cmd === 'load_session') return Promise.resolve({ messages: [] });
-      if (cmd === 'send_message') return Promise.resolve({ cmd, payload });
-      return Promise.resolve(undefined);
-    });
-
-    const bridge = makeRustBridge({ invoke, listen: vi.fn().mockResolvedValue(vi.fn()) });
-    const { result } = renderHook(() => useChat());
-
-    await act(async () => {
-      configureChatRuntime({ rust: bridge } as unknown as Parameters<typeof configureChatRuntime>[0]);
-    });
-
-    await act(async () => {
-      await sendMessage('  hello bridge  ');
-    });
-
-    expect(invoke).toHaveBeenCalledWith('send_message', { text: 'hello bridge', sessionId: result.current.sessionId });
-    disposeChatRuntime();
+    await act(async () => { await stopGeneration(); });
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.pendingMessageId).toBeNull();
   });
 });
 
-describe('chat/grouping: message grouping logic', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+describe('chat/clear: clearConversationSession resets everything', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); vi.resetModules(); });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.resetModules();
-  });
-
-  it('chat/grouping: messages from different senders are not grouped', async () => {
-    const { sendMessage, useChat, disposeChatRuntime } = await loadModule();
+  it('chat/clear: wipes messages and timers', async () => {
+    const { sendMessage, clearConversationSession, useChat } = await loadModule();
     const { renderHook, act } = await import('@testing-library/react');
-
     const { result } = renderHook(() => useChat());
 
-    await act(async () => {
-      void sendMessage('user message');
-      vi.advanceTimersByTime(220);
-    });
+    await act(async () => { void sendMessage('anything'); });
+    expect(result.current.messages.length).toBeGreaterThan(0);
 
-    const userMsg = result.current.messages.find((m) => m.role === 'user');
-    const assistantMsg = result.current.messages.find((m) => m.role === 'assistant');
+    await act(async () => { await clearConversationSession(); });
+    expect(result.current.messages).toHaveLength(0);
+  });
+});
 
-    expect(userMsg?.groupedWithPrevious).toBe(false);
-    expect(assistantMsg?.groupedWithPrevious).toBe(false);
+describe('chat/pluginContext: module-level ctx store', () => {
+  beforeEach(() => { vi.resetModules(); });
 
-    act(() => { disposeChatRuntime(); });
+  it('chat/pluginContext: getPluginContext returns null before configure', async () => {
+    const { getPluginContext } = await loadModule();
+    expect(getPluginContext()).toBeNull();
+  });
+
+  it('chat/pluginContext: configurePluginContext stores, dispose clears', async () => {
+    const { configurePluginContext, disposePluginContext, getPluginContext } = await loadModule();
+    const ctx = makePluginContext();
+
+    configurePluginContext(ctx);
+    expect(getPluginContext()).toBe(ctx);
+
+    disposePluginContext();
+    expect(getPluginContext()).toBeNull();
   });
 });

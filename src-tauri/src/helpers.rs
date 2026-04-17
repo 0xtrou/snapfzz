@@ -1,7 +1,6 @@
-use crate::constants::{litellm as litellm_cfg, paths};
+use crate::constants::paths;
 use serde::Serialize;
 use snapfzz_kernel::boot::{OnPreflightReady, PreflightContext, PreflightError};
-use snapfzz_kernel::settings::SettingsManager;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Emitter;
@@ -32,21 +31,6 @@ pub(crate) fn resolve_data_dir_from(home: PathBuf) -> PathBuf {
 
 pub fn resolve_data_dir() -> PathBuf {
     resolve_data_dir_from(snapfzz_home())
-}
-
-pub fn agentscope_base_url(settings_mgr: &SettingsManager) -> String {
-    let settings = settings_mgr.load().unwrap_or_default();
-    let host = if settings.agentscope_host.is_empty() {
-        litellm_cfg::DEFAULT_HOST.to_string()
-    } else {
-        settings.agentscope_host
-    };
-    let port: u16 = if settings.agentscope_port.is_empty() {
-        8090
-    } else {
-        settings.agentscope_port.parse().unwrap_or(8090)
-    };
-    format!("http://{host}:{port}")
 }
 
 #[derive(Clone, Serialize)]
@@ -103,10 +87,7 @@ impl OnPreflightReady for BootLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use snapfzz_kernel::{
-        budget::{preset::PresetName, BudgetRegistry},
-        settings::Settings,
-    };
+    use snapfzz_kernel::budget::{preset::PresetName, BudgetRegistry};
     use std::sync::{Arc, Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -171,30 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn a014_helpers_agentscope_base_url_uses_defaults_when_host_or_port_invalid() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mgr = SettingsManager::new(tmp.path().to_path_buf());
-        let mut settings = Settings::default();
-        settings.agentscope_host = String::new();
-        settings.agentscope_port = "invalid-port".to_string();
-        mgr.save(&settings).unwrap();
-
-        assert_eq!(agentscope_base_url(&mgr), "http://127.0.0.1:8090");
-    }
-
-    #[test]
-    fn a014_helpers_agentscope_base_url_honors_configured_host_and_port() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mgr = SettingsManager::new(tmp.path().to_path_buf());
-        let mut settings = Settings::default();
-        settings.agentscope_host = "0.0.0.0".to_string();
-        settings.agentscope_port = "9150".to_string();
-        mgr.save(&settings).unwrap();
-
-        assert_eq!(agentscope_base_url(&mgr), "http://0.0.0.0:9150");
-    }
-
-    #[test]
     fn a014_helpers_resolve_data_dir_uses_snapfzz_home_pointer_when_present() {
         let _guard = env_lock().lock().unwrap();
         let temp_home = tempfile::tempdir().unwrap();
@@ -255,18 +212,6 @@ mod tests {
     #[test]
     fn a014_helpers_now_ms_returns_positive_timestamp() {
         assert!(super::now_ms() > 0);
-    }
-
-    #[test]
-    fn a014_helpers_agentscope_base_url_uses_default_host_with_custom_numeric_port() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mgr = SettingsManager::new(tmp.path().to_path_buf());
-        let mut settings = Settings::default();
-        settings.agentscope_host = String::new();
-        settings.agentscope_port = "9002".to_string();
-        mgr.save(&settings).unwrap();
-
-        assert_eq!(agentscope_base_url(&mgr), "http://127.0.0.1:9002");
     }
 
     #[test]

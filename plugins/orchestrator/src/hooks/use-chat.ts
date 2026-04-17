@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { PluginContext, RustBridge } from '@snapfzz/plugin-sdk';
+import type { PluginContext } from '@snapfzz/plugin-sdk';
 import type {
   AgentHealthResponse,
   ChatMessage,
@@ -9,6 +9,11 @@ import type {
 } from '../types';
 // Per project/SparkDesignFirst: no pre-parse — Spark's Markdown renders raw text at view time,
 // OperateCard/StatusCard render structured tool data directly.
+//
+// Phase A of the AgentScope integration stripped the Rust chat bridge (send_message /
+// stop_generation / create_session / load_session) — those commands no longer exist. This
+// hook now drives a local mock stream only; Phase D rewires it to fetch the Python runtime's
+// `/process` SSE directly.
 
 interface UseChatState {
   messages: ChatMessage[];
@@ -31,15 +36,6 @@ interface ChatRuntimeSnapshot {
   sessionId: string;
 }
 
-interface SessionResponse {
-  sessionId: string;
-}
-
-interface LoadSessionResponse {
-  messages: Msg[];
-}
-
-const CHAT_STREAM_EVENT = 'chat_stream_batch';
 const EMPTY_SESSION_ID = 'mock-session';
 
 const initialSnapshot: ChatRuntimeSnapshot = {
@@ -52,8 +48,6 @@ const initialSnapshot: ChatRuntimeSnapshot = {
 };
 
 let snapshot: ChatRuntimeSnapshot = initialSnapshot;
-let bridge: RustBridge | null = null;
-let bridgeListeners: Array<() => void> = [];
 let mockTimer: number | null = null;
 const listeners = new Set<() => void>();
 
@@ -218,51 +212,6 @@ function applyStreamBatch(batch: ContentBlockBatch): void {
   }));
 }
 
-function loadSessionMessages(messages: Msg[]): void {
-  const normalized: ChatMessage[] = [];
-  for (const message of messages) {
-    const previous = normalized.length > 0 ? normalized[normalized.length - 1] : null;
-    normalized.push(normalizeMsg(message, previous));
-  }
-
-  updateSnapshot((current) => ({
-    ...current,
-    messages: normalized,
-  }));
-}
-
-async function ensureBridgeSession(rustBridge: RustBridge): Promise<void> {
-  const created = await rustBridge.invoke<SessionResponse>('create_session', {});
-  updateSnapshot((current) => ({
-    ...current,
-    sessionId: created.sessionId,
-  }));
-
-  const loaded = await rustBridge.invoke<LoadSessionResponse>('load_session', { sessionId: created.sessionId });
-  loadSessionMessages(loaded.messages);
-}
-
-function disposeBridgeListeners(): void {
-  for (const dispose of bridgeListeners) {
-    dispose();
-  }
-  bridgeListeners = [];
-}
-
-function attachBridgeListeners(rustBridge: RustBridge): void {
-  rustBridge.listen<ContentBlockBatch>(CHAT_STREAM_EVENT, (batch) => {
-    applyStreamBatch(batch);
-  }).then((dispose) => {
-    bridgeListeners.push(dispose);
-  });
-
-  rustBridge.listen<AgentHealthResponse>('agent_health_changed', (payload) => {
-    updateSnapshot((current) => ({ ...current, connectionStatus: payload.status }));
-  }).then((dispose) => {
-    bridgeListeners.push(dispose);
-  });
-}
-
 // Per A013/ModelPicker: module-level plugin context store — mirrors the bridge pattern above.
 // Allows ChatPanel's React subtree to access PluginContext via usePluginContextStore()
 // without threading ctx as a prop through every component in the tree.
@@ -281,35 +230,19 @@ export function getPluginContext(): PluginContext | null {
   return _pluginCtx;
 }
 
-export function configureChatRuntime(ctx: PluginContext): void {
-  bridge = ctx.rust;
+export function configureChatRuntime(_ctx: PluginContext): void {
+  // Phase A of the AgentScope integration removed the Rust chat bridge. Configuration is
+  // a no-op during this transition — Phase D will replace this with a direct SSE client
+  // against the Python runtime's `/process` endpoint.
   clearMockTimer();
-  disposeBridgeListeners();
-
   updateSnapshot((current) => ({
     ...current,
-    connectionStatus: 'reconnecting',
+    connectionStatus: 'connected',
   }));
-
-  void bridge.invoke<AgentHealthResponse>('agent_health')
-    .then((response) => {
-      updateSnapshot((current) => ({ ...current, connectionStatus: response.status }));
-    })
-    .catch(() => {
-      updateSnapshot((current) => ({ ...current, connectionStatus: 'disconnected' }));
-    });
-
-  void ensureBridgeSession(bridge).catch(() => {
-    updateSnapshot((current) => ({ ...current, sessionId: EMPTY_SESSION_ID }));
-  });
-
-  attachBridgeListeners(bridge);
 }
 
 export function disposeChatRuntime(): void {
   clearMockTimer();
-  disposeBridgeListeners();
-  bridge = null;
   emitSnapshot(initialSnapshot);
 }
 
@@ -344,22 +277,13 @@ export async function sendMessage(text: string): Promise<void> {
   }
 
   appendLocalUserMessage(trimmed);
-
-  if (!bridge) {
-    await runMockStream(trimmed);
-    return;
-  }
-
-  await bridge.invoke<void>('send_message', { text: trimmed, sessionId: snapshot.sessionId });
+  // Phase A: the Rust chat bridge is gone. Phase D rewires this to fetch the Python
+  // runtime's `/process` SSE directly — until then, the mock stream drives the UI.
+  await runMockStream(trimmed);
 }
 
 export async function stopGeneration(): Promise<void> {
   clearMockTimer();
-
-  if (bridge) {
-    await bridge.invoke<void>('stop_generation', { sessionId: snapshot.sessionId });
-  }
-
   updateSnapshot((current) => ({
     ...current,
     isStreaming: false,
@@ -369,19 +293,7 @@ export async function stopGeneration(): Promise<void> {
 
 export async function clearConversationSession(): Promise<void> {
   clearMockTimer();
-
-  if (!bridge) {
-    emitSnapshot(initialSnapshot);
-    return;
-  }
-
-  const currentConnectionStatus = snapshot.connectionStatus;
-  const created = await bridge.invoke<SessionResponse>('create_session', {});
-  emitSnapshot({
-    ...initialSnapshot,
-    connectionStatus: currentConnectionStatus,
-    sessionId: created.sessionId,
-  });
+  emitSnapshot(initialSnapshot);
 }
 
 export function useChat(): UseChatState {
