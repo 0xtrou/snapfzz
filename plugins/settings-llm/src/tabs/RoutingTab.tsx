@@ -15,6 +15,7 @@ import {
   type CustomProvider,
 } from '../hooks/useLlmCommands';
 import type { ComboConfig, ComposedPayloads } from '../routing/composer';
+import { isSystemCombo } from '../routing/systemCombo';
 import ComboBuilder, { type AvailableModelInfo } from './routing/ComboBuilder';
 import ComboList from './routing/ComboList';
 
@@ -205,6 +206,14 @@ export default function RoutingTab() {
   }, [loadData]);
 
   const handleComboSave = useCallback(async (payloads: ComposedPayloads) => {
+    // Per A013/Orchestrator: system combos are owned by the orchestrator plugin. Even
+    // though ComboList hides the Edit/Delete buttons, this belt-and-braces guard
+    // rejects any save path that names a reserved combo.
+    const targetName = editingCombo?.name ?? payloads.modelsToCreate[0]?.model_name;
+    if (targetName && isSystemCombo(targetName)) {
+      message.error(`"${targetName}" is a system combo and cannot be edited from here`);
+      return;
+    }
     const { error } = await fetchWithToast(
       async () => {
         // When editing an existing combo, delete each deployment by its model_id first.
@@ -261,6 +270,11 @@ export default function RoutingTab() {
   }, [baseUrl, masterKey, editingCombo, providers, loadData]);
 
   const handleComboDelete = useCallback(async (name: string) => {
+    // Per A013/Orchestrator: reject delete requests on system combos.
+    if (isSystemCombo(name)) {
+      message.error(`"${name}" is a system combo and cannot be deleted`);
+      return;
+    }
     const combo = combos.find((c) => c.name === name);
     if (!combo) return;
     const { error } = await fetchWithToast(
