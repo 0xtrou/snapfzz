@@ -233,12 +233,21 @@ def build_app() -> FastAPI:  # noqa: C901
     )
 
     # ── Agent config ───────────────────────────────────────────────────────────
-    # Per A013/Tools: enable QwenPaw's full builtin tool suite — read/write/edit
-    # file, grep/glob search, shell, browser automation, desktop screenshot,
-    # view_image/video, agent-to-agent delegation, time/timezone, token usage,
-    # send-file-to-user. `_default_builtin_tools()` already flags
-    # `delegate_external_agent` disabled; everything else is on by default.
-    _tools_config = ToolsConfig(builtin_tools=_default_builtin_tools())
+    # Per A013/Tools: enable QwenPaw's full builtin tool suite with one carve-out.
+    #
+    # `browser_use` is DISABLED — QwenPaw's implementation drives Playwright
+    # against a user-installed system Chrome, and Snapfzz is a bundled app that
+    # only ships the embedded CEF runtime (`snapfzz-cef`). Letting the agent
+    # call `browser_use` under this assumption fails with
+    #   "Open failed: 'NoneType' object has no attribute 'new_page'"
+    # because neither the managed CDP launcher nor the fallback
+    # `_action_start(private_mode=True)` can find a launchable browser binary.
+    #
+    # The CEF-backed browser tool (that calls into our Rust `cef_*` Tauri
+    # commands) will re-enable this slot; tracked as a follow-up.
+    _builtin_tools = _default_builtin_tools()
+    _builtin_tools["browser_use"].enabled = False
+    _tools_config = ToolsConfig(builtin_tools=_builtin_tools)
 
     # Per A013/C1: workspace_dir inside the plugin's isolated data dir.
     workspace_dir = str(Path(working_dir) / "workspaces" / "default")
