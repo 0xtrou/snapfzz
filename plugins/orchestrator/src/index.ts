@@ -57,6 +57,14 @@ export default definePlugin({
       // Per-turn token usage is rendered natively by Spark's Bubble Actions row
       // (`Usage` component from @agentscope-ai/chat) — no status-bar duplication needed.
     ],
+    bottomPanels: [
+      {
+        id: 'orchestrator.agents',
+        label: 'Agents',
+        icon: 'ClusterOutlined',
+        component: () => import('./contributions/OrchestrationPanel'),
+      },
+    ],
   },
   async activate(ctx: PluginContext): Promise<PluginHandle> {
     // Per A013/ChatPanel: Spark's `AgentScopeRuntimeWebUI` owns the chat hot path
