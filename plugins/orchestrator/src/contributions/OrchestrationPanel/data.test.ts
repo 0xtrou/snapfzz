@@ -6,6 +6,7 @@ import {
   formatClock,
   messagesToTurns,
   ORCHESTRATOR_AGENT_ID,
+  ORCHESTRATOR_JUNIOR_LABEL,
   pickLatestChatId,
   sortChatsNewestFirst,
   statusDotColor,
@@ -19,16 +20,17 @@ describe('A013/OrchestrationPanel/data: filterSubAgents', () => {
   const base: ApiAgent = {
     id: 'x', name: '', workspace_dir: '', enabled: true,
   };
-  it('drops the orchestrator id', () => {
+
+  it('keeps the orchestrator (it becomes Orchestrator-Junior in the row)', () => {
     const input: ApiAgent[] = [
       { ...base, id: ORCHESTRATOR_AGENT_ID, name: 'Orchestrator' },
       { ...base, id: 'glm_research', name: 'GLM Research' },
     ];
     const out = filterSubAgents(input);
-    expect(out.map((a) => a.id)).toEqual(['glm_research']);
+    expect(out.map((a) => a.id)).toEqual([ORCHESTRATOR_AGENT_ID, 'glm_research']);
   });
 
-  it('drops disabled agents even if id is not the orchestrator', () => {
+  it('drops disabled agents', () => {
     const input: ApiAgent[] = [
       { ...base, id: 'glm_research', enabled: true },
       { ...base, id: 'docs', enabled: false },
@@ -85,6 +87,18 @@ describe('A013/OrchestrationPanel/data: toSubAgentRow', () => {
   it('name falls back to id when agent.name is empty', () => {
     const row = toSubAgentRow({ ...agent, name: '' }, []);
     expect(row.name).toBe('glm_research');
+  });
+
+  it('relabels the orchestrator as "Orchestrator-Junior"', () => {
+    const row = toSubAgentRow({
+      id: ORCHESTRATOR_AGENT_ID,
+      name: 'Orchestrator',
+      description: 'outer chat',
+      workspace_dir: '/x',
+      enabled: true,
+    }, []);
+    expect(row.name).toBe(ORCHESTRATOR_JUNIOR_LABEL);
+    expect(row.description).toBe('Background tasks the orchestrator delegated to itself');
   });
 });
 

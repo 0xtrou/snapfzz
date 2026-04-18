@@ -11,26 +11,36 @@ import type {
   SubAgentStatus,
 } from './contracts';
 
-/** The orchestrator's own id — never shown in the sub-agent list. */
+/** The orchestrator's own id. When it appears as a work target (e.g. via
+ *  `submit_to_agent(to_agent='default')`) we render it as "Orchestrator-Junior"
+ *  to disambiguate from the outer chat's orchestrator conversation. */
 export const ORCHESTRATOR_AGENT_ID = 'default';
+
+/** Display label we show for the orchestrator when it's doing background work
+ *  on its own tasks (self-delegation case). */
+export const ORCHESTRATOR_JUNIOR_LABEL = 'Orchestrator-Junior';
 
 // ─── Sub-agent list ──────────────────────────────────────────────────────────
 
 /**
- * Drop the orchestrator from the list so the panel only shows spawned
- * specialists. Agents with `enabled === false` are also excluded — they
- * can't participate in delegation.
+ * Drop disabled agents so they can't participate in delegation. The
+ * orchestrator (`default`) stays in the list — it surfaces as
+ * "Orchestrator-Junior" so users see self-delegated background tasks
+ * alongside spawned specialists.
  */
 export function filterSubAgents(agents: readonly ApiAgent[]): readonly ApiAgent[] {
-  return agents.filter((a) => a.id !== ORCHESTRATOR_AGENT_ID && a.enabled !== false);
+  return agents.filter((a) => a.enabled !== false);
 }
 
 /**
- * Turn an API agent + its chat list into a UI row. `status` is derived:
- *   • any chat.status === 'running'  → 'working'
- *   • else                           → 'idle'
- * ('error' state will come from a future SSE event channel — for now `idle`
- * is the resting state.)
+ * Turn an API agent + its chat list into a UI row. Two things happen:
+ *   • `status` is derived from chat activity:
+ *       - any chat.status === 'running'  → 'working'
+ *       - else                           → 'idle'
+ *     (`error` is reserved for a future SSE event channel.)
+ *   • the orchestrator's display name is rewritten to "Orchestrator-Junior"
+ *     so self-delegated background work is visually distinct from the user-
+ *     facing chat at the top.
  */
 export function toSubAgentRow(agent: ApiAgent, chats: readonly ApiChatSpec[]): SubAgentRow {
   const status: SubAgentStatus = chats.some((c) => c.status === 'running') ? 'working' : 'idle';
@@ -39,10 +49,13 @@ export function toSubAgentRow(agent: ApiAgent, chats: readonly ApiChatSpec[]): S
     .filter((ts): ts is string => ts !== null)
     .sort()
     .reverse()[0] ?? null;
+  const isOrchestrator = agent.id === ORCHESTRATOR_AGENT_ID;
   return {
     id: agent.id,
-    name: agent.name || agent.id,
-    description: agent.description,
+    name: isOrchestrator ? ORCHESTRATOR_JUNIOR_LABEL : (agent.name || agent.id),
+    description: isOrchestrator
+      ? 'Background tasks the orchestrator delegated to itself'
+      : agent.description,
     status,
     turnCount: chats.length,
     lastActivityAt,
