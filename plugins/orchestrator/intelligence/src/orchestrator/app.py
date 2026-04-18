@@ -232,6 +232,25 @@ def build_app() -> FastAPI:  # noqa: C901
         ],
     )
 
+    # ── Agent-API discovery ────────────────────────────────────────────────────
+    # QwenPaw's `list_agents` / `chat_with_agent` / `submit_to_agent` tools resolve
+    # the target API via `resolve_agent_api_base_url`, which falls back to
+    # `http://127.0.0.1:8088` when no config is found. We ARE that API (our FastAPI
+    # mounts QwenPaw's `agents` router on the same port), but we bind to whatever
+    # host/port the CLI handed us — so pin QwenPaw's `last_api` record to ourselves
+    # at startup. Without this, the tool 61-ECONNREFUSEs against the default port.
+    try:
+        from qwenpaw.config.utils import write_last_api
+
+        write_last_api(
+            os.environ.get("SNAPFZZ_HOST", "127.0.0.1"),
+            int(os.environ.get("SNAPFZZ_PORT", "9150")),
+        )
+    except Exception as _exc:  # pragma: no cover — non-fatal best-effort
+        logging.getLogger(__name__).warning(
+            "failed to write last_api for agent tools: %s", _exc,
+        )
+
     # ── Agent config ───────────────────────────────────────────────────────────
     # Per A013/Tools: enable QwenPaw's full builtin tool suite with one carve-out.
     #

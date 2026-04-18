@@ -15,6 +15,7 @@ import {
 } from '@agentscope-ai/chat';
 import { ModelPicker } from '../ModelPicker';
 import { chatCancel, chatFetch, setActiveSessionId } from './adapter';
+import { buildCustomToolRenderers } from './MarkdownToolCall';
 import { pluginSessionApi } from './sessionStore';
 import { useSparkTheme } from './useSparkTheme';
 
@@ -75,6 +76,11 @@ export default function ChatPanel() {
         // can switch the underlying LiteLLM combo target without leaving the chat.
         prefix: <ModelPicker />,
       },
+      // Override Spark's default ToolCall for text-returning tools so their
+      // output renders via `<Markdown>` instead of a raw code block. Only
+      // applied to prose-output tools (shell, file reads, agent ops) — tools
+      // that return structured JSON (view_image, etc) keep the default Block.
+      customToolRenderConfig: buildCustomToolRenderers(),
       theme: {
         prefix: 'snapfzz-chat',
         // Feed Spark's AntD ConfigProvider from our design tokens so dark/light
