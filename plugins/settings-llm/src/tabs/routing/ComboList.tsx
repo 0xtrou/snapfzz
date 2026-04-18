@@ -6,8 +6,46 @@ import { useState } from 'react';
 import { Tag, Modal, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, LockOutlined } from '@ant-design/icons';
 import { AppButton } from '@snapfzz/shared';
-import type { ComboConfig } from '../../routing/composer';
+import type { ComboConfig, Deployment } from '../../routing/composer';
 import { SYSTEM_COMBO_LABEL, SYSTEM_COMBO_TOOLTIP, isSystemCombo } from '../../routing/systemCombo';
+
+/**
+ * User-facing deployment label. Prefers the resolved `modelName` (e.g.
+ * "solo-engineer/cx/gpt-5.4") and falls back to the raw SDK model string
+ * ("openai/cx/gpt-5.4") when the name hasn't been resolved yet.
+ */
+function deploymentLabel(dep: Deployment): string {
+  return dep.modelName ?? dep.model ?? '(unnamed)';
+}
+
+/**
+ * Compact one-line summary of what a combo routes to — shown inline under the
+ * combo name so the system `orchestrator` combo (which is non-editable) still
+ * reveals its underlying target at a glance. Uses the same label logic as the
+ * ComboBuilder so display stays consistent across read + edit views.
+ */
+function formatDeploymentTargets(deployments: readonly Deployment[]): React.ReactNode {
+  if (deployments.length === 0) return null;
+  const labels = deployments.map(deploymentLabel);
+  const MAX_INLINE = 2;
+  const shown = labels.slice(0, MAX_INLINE);
+  const remaining = labels.length - shown.length;
+  return (
+    <span
+      style={{
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--text-secondary)',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      }}
+      title={labels.join(', ')}
+    >
+      {shown.join(', ')}
+      {remaining > 0 && <span style={{ color: 'var(--text-muted)' }}> +{remaining} more</span>}
+    </span>
+  );
+}
 
 export interface ComboListProps {
   combos: ComboConfig[];
@@ -115,8 +153,15 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete, loadData
                     </Tooltip>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {combo.deployments.length} deployment{combo.deployments.length !== 1 ? 's' : ''}
+                <div
+                  data-testid={`combo-deployments-${combo.name}`}
+                  style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                >
+                  <span>
+                    {combo.deployments.length} deployment{combo.deployments.length !== 1 ? 's' : ''}
+                  </span>
+                  {combo.deployments.length > 0 && <span>·</span>}
+                  {formatDeploymentTargets(combo.deployments)}
                 </div>
               </div>
 

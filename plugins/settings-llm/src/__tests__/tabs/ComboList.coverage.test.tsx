@@ -111,6 +111,36 @@ describe('ComboList – combo cards', () => {
     expect(screen.getByText('weighted')).toBeInTheDocument();
   });
 
+  it('shows underlying model names inline so read-only (system) combos are legible', () => {
+    render(<ComboList {...DEFAULT_PROPS} combos={COMBOS} />);
+    // Single-deployment: exact model name rendered inline.
+    const solo = screen.getByTestId('combo-deployments-solo-pool');
+    expect(solo).toHaveTextContent('provider/model-a');
+    // Multi-deployment: both names rendered (no +N more fallback at 2 deployments).
+    const pool = screen.getByTestId('combo-deployments-test-pool');
+    expect(pool).toHaveTextContent('provider/model-a');
+    expect(pool).toHaveTextContent('provider/model-b');
+  });
+
+  it('collapses deployments beyond the inline cap to "+N more"', () => {
+    const many = {
+      name: 'big-pool',
+      strategy: 'round-robin' as const,
+      apiType: 'openai' as const,
+      deployments: [
+        { provider: 'p', model: 'openai/a', modelName: 'p/a', apiBase: '' },
+        { provider: 'p', model: 'openai/b', modelName: 'p/b', apiBase: '' },
+        { provider: 'p', model: 'openai/c', modelName: 'p/c', apiBase: '' },
+        { provider: 'p', model: 'openai/d', modelName: 'p/d', apiBase: '' },
+      ],
+    };
+    render(<ComboList {...DEFAULT_PROPS} combos={[many]} />);
+    const row = screen.getByTestId('combo-deployments-big-pool');
+    expect(row).toHaveTextContent('p/a');
+    expect(row).toHaveTextContent('p/b');
+    expect(row).toHaveTextContent('+2 more');
+  });
+
   it('clicking a combo card calls onEdit with that combo', async () => {
     const onEdit = vi.fn();
     const user = userEvent.setup();
