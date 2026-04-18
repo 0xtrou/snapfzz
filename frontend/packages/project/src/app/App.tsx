@@ -137,16 +137,15 @@ function BottomPanel({ panels, onCrash, maxControls }: {
   onCrash: (pluginId: string, error: Error) => void;
   maxControls?: React.ReactNode;
 }) {
-  // Always render a slim header so the maximise control is reachable even when
-  // there are zero panel contributions (the body shows a placeholder then).
+  // Slim header exists only to host the maximise control. Label was noise —
+  // users know what this panel is from the content itself.
   return (
     <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
-      <div className="flex items-center justify-between gap-1 px-3 py-1 bg-[var(--bg-default)] border-b border-[var(--border-default)]">
-        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-          Bottom panel
-        </span>
-        {maxControls && <div className="flex items-center gap-1">{maxControls}</div>}
-      </div>
+      {maxControls && (
+        <div className="flex items-center justify-end gap-1 px-3 py-1 bg-[var(--bg-default)] border-b border-[var(--border-default)]">
+          {maxControls}
+        </div>
+      )}
       <div className="flex-1 overflow-hidden">
         {panels.length === 0 ? (
           <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
