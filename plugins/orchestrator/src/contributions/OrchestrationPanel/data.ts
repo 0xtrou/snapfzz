@@ -130,6 +130,18 @@ function readTimestamp(msg: ApiMessage): string | null {
   return null;
 }
 
+// ─── Chat filtering (strip human↔orchestrator sessions) ─────────────────────
+
+/**
+ * Keep only inter-agent chats. QwenPaw's `agent_management.py:74` stamps
+ * session ids as `"<from>:to:<to>:<ts>:<uuid>"` — the `:to:` substring is
+ * the reliable marker. Plain UUID session ids (our Spark-driven human chats)
+ * don't have it, so they get dropped — which is exactly what the panel wants.
+ */
+export function filterInterAgentChats(chats: readonly ApiChatSpec[]): readonly ApiChatSpec[] {
+  return chats.filter((c) => typeof c.session_id === 'string' && c.session_id.includes(':to:'));
+}
+
 // ─── Chat picker ─────────────────────────────────────────────────────────────
 
 /** Sort chats newest-first by `created_at` (falling back to `session_id`). */

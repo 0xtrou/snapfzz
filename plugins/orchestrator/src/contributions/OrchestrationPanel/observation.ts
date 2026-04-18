@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getPluginContext } from '../runtime';
 import {
+  filterInterAgentChats,
   filterSubAgents,
   messagesToTurns,
   pickLatestChatId,
@@ -83,13 +84,15 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
       const subs = filterSubAgents(res.agents ?? []);
 
       // Fetch chat lists in parallel — latency dominated by slowest, not sum.
+      // Only keep inter-agent chats (session_id contains `:to:`) so the panel
+      // doesn't mix in the user's main human↔orchestrator chats.
       const entries = await Promise.all(
         subs.map(async (a) => {
           try {
             const chats = await fetchJson<readonly ApiChatSpec[]>(
               `${baseUrl}/api/agents/${encodeURIComponent(a.id)}/chats`, signal,
             );
-            return [a.id, sortChatsNewestFirst(chats)] as const;
+            return [a.id, sortChatsNewestFirst(filterInterAgentChats(chats))] as const;
           } catch {
             return [a.id, [] as readonly ApiChatSpec[]] as const;
           }
@@ -97,12 +100,17 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
       );
       if (!mountedRef.current) return;
 
+      // After filtering to inter-agent chats only, an agent with zero chats
+      // has no orchestration to show — drop it so the list stays focused.
       const nextChatsByAgent: Record<string, readonly ApiChatSpec[]> = {};
-      const rows = subs.map((a) => {
-        const chats = entries.find(([id]) => id === a.id)?.[1] ?? [];
-        nextChatsByAgent[a.id] = chats;
-        return toSubAgentRow(a, chats);
-      });
+      const rows = subs
+        .map((a) => {
+          const chats = entries.find(([id]) => id === a.id)?.[1] ?? [];
+          nextChatsByAgent[a.id] = chats;
+          return { agent: a, chats };
+        })
+        .filter(({ chats }) => chats.length > 0)
+        .map(({ agent, chats }) => toSubAgentRow(agent, chats));
 
       setAgents(rows);
       setChatsByAgent(nextChatsByAgent);
@@ -137,7 +145,14 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
     if (!current) setSelectedChatId(pickLatestChatId(chats));
   }, [selectedAgentId, chatsByAgent, selectedChatId]);
 
-  // ─── Fetch chat history when selection changes + re-poll while running ───
+  // ─── Fetch chat history when selection changes + always re-poll ──────────
+  //
+  // Poll unconditionally every CHAT_POLL_MS while the panel has a selected
+  // chat. Original implementation keyed off `chat_status === 'running'`, but
+  // fresh chats start `idle` with 0 messages and only flip to `running` when
+  // the task actually picks up — so we'd never catch new reasoning/tool
+  // frames. Unconditional polling at 1Hz is cheap (one JSON fetch) and gives
+  // a near-live feed of the sub-agent's work without an SSE endpoint.
   useEffect(() => {
     if (!baseUrl || !selectedAgentId || !selectedChatId) { setTurns([]); return; }
     const ctrl = new AbortController();
@@ -161,11 +176,10 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
     };
 
     void fetchOnce();
-    // While the chat is actively running, re-poll at 1s. When idle, stop.
-    const t = window.setInterval(() => { if (chatStatus === 'running') void fetchOnce(); }, CHAT_POLL_MS);
+    const t = window.setInterval(() => void fetchOnce(), CHAT_POLL_MS);
 
     return () => { alive = false; ctrl.abort(); window.clearInterval(t); };
-  }, [baseUrl, selectedAgentId, selectedChatId, chatStatus]);
+  }, [baseUrl, selectedAgentId, selectedChatId]);
 
   // ─── Derived view ─────────────────────────────────────────────────────────
   const observation = useMemo<OrchestrationObservation>(() => ({

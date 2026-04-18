@@ -2,6 +2,7 @@
 // TypeScript speed — no React, no DOM.
 import { describe, it, expect } from 'vitest';
 import {
+  filterInterAgentChats,
   filterSubAgents,
   formatClock,
   messagesToTurns,
@@ -162,6 +163,27 @@ describe('A013/OrchestrationPanel/data: messagesToTurns', () => {
     const turns = messagesToTurns(messages, 'glm_research');
     expect(turns).toHaveLength(2);
     expect(turns[1].kind).toBe('media');
+  });
+});
+
+// ─── filterInterAgentChats ──────────────────────────────────────────────────
+
+describe('A013/OrchestrationPanel/data: filterInterAgentChats', () => {
+  it('keeps chats whose session_id contains `:to:` (inter-agent marker)', () => {
+    const out = filterInterAgentChats([
+      { id: 'c1', session_id: 'default:to:glm_research:1776:abc' },
+      { id: 'c2', session_id: 'bdad1168-6516-497d-afa5-d1571b1c2376' }, // human
+      { id: 'c3', session_id: 'default:to:default:1776:xyz' },            // self-delegation
+    ]);
+    expect(out.map((c) => c.id)).toEqual(['c1', 'c3']);
+  });
+
+  it('drops chats with a missing session_id', () => {
+    const out = filterInterAgentChats([
+      { id: 'c1', session_id: undefined as unknown as string },
+      { id: 'c2', session_id: 'a:to:b:0:x' },
+    ]);
+    expect(out.map((c) => c.id)).toEqual(['c2']);
   });
 });
 
