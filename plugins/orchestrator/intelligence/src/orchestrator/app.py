@@ -233,16 +233,12 @@ def build_app() -> FastAPI:  # noqa: C901
     )
 
     # ── Agent config ───────────────────────────────────────────────────────────
-    # Per A013/C1: Two tools enabled — read_file and write_file only.
-    # No shell, no browser, no media. No tool_guard. InMemoryMemory (no ReMe).
-
-    _allowed_tools = frozenset({"read_file", "write_file"})
-    _tools_config = ToolsConfig(
-        builtin_tools={
-            name: tc.model_copy(update={"enabled": name in _allowed_tools})
-            for name, tc in _default_builtin_tools().items()
-        }
-    )
+    # Per A013/Tools: enable QwenPaw's full builtin tool suite — read/write/edit
+    # file, grep/glob search, shell, browser automation, desktop screenshot,
+    # view_image/video, agent-to-agent delegation, time/timezone, token usage,
+    # send-file-to-user. `_default_builtin_tools()` already flags
+    # `delegate_external_agent` disabled; everything else is on by default.
+    _tools_config = ToolsConfig(builtin_tools=_default_builtin_tools())
 
     # Per A013/C1: workspace_dir inside the plugin's isolated data dir.
     workspace_dir = str(Path(working_dir) / "workspaces" / "default")
