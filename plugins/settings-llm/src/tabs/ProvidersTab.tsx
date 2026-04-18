@@ -28,6 +28,7 @@ import {
   type CustomProviderVariant,
   type DiscoveredModel,
   type ModelInfoDetails,
+  customProviderVaultId,
   deleteModel,
   deleteProviderApiKey,
   discoverModels,
@@ -1388,6 +1389,7 @@ function CustomProviderDetailLoader({
   variant,
   onBack,
 }: {
+  /** The short custom-provider id (`cp.id`, no `custom-` prefix). */
   providerId: string;
   providerLabel: string;
   baseUrl: string;
@@ -1395,14 +1397,17 @@ function CustomProviderDetailLoader({
   onBack: () => void;
 }) {
   const [apiKey, setApiKey] = useState<string | null>(null);
+  // The vault key is stored under the full `custom-<short>` form so injected env
+  // vars line up with `snapfzz_provider_id` (see combo.rs).
+  const vaultId = customProviderVaultId(providerId);
 
   useEffect(() => {
     let cancelled = false;
-    readProviderApiKey(providerId).then((k) => {
+    readProviderApiKey(vaultId).then((k) => {
       if (!cancelled) setApiKey(k ?? '');
     });
     return () => { cancelled = true; };
-  }, [providerId]);
+  }, [vaultId]);
 
   if (apiKey === null) {
     return (
@@ -1424,9 +1429,9 @@ function CustomProviderDetailLoader({
       onApiKeyChange={async (key) => {
         // A013/Vault: raw key lives in the vault only; localStorage metadata never sees it.
         if (key && key.length > 0) {
-          await storeProviderApiKey(providerId, key);
+          await storeProviderApiKey(vaultId, key);
         } else {
-          await deleteProviderApiKey(providerId);
+          await deleteProviderApiKey(vaultId);
         }
       }}
     />
@@ -1464,7 +1469,7 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
         }
         for (const cp of customs) {
           const cpKey = `custom-${cp.id}`;
-          counts[cpKey] = configuredIds.has(cp.id) ? ['configured'] : [];
+          counts[cpKey] = configuredIds.has(customProviderVaultId(cp.id)) ? ['configured'] : [];
         }
         return { counts, customs };
       },
@@ -1560,9 +1565,10 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
     };
 
     const updated = [...customProviders, newProvider];
-    // A013/Vault: metadata goes to localStorage, raw api key goes to the Rust vault so
-    // LiteLLM can pick it up as `SNAPFZZ_KEY_<id>` on spawn (see combo.rs).
-    await storeProviderApiKey(id, values.apiKey);
+    // A013/Vault: metadata goes to localStorage, raw api key goes to the Rust vault
+    // under the full `custom-<id>` form so LiteLLM's injected `SNAPFZZ_KEY_custom-<id>`
+    // env var matches the `os.environ/...` ref the combo points at (see combo.rs).
+    await storeProviderApiKey(customProviderVaultId(id), values.apiKey);
     await saveCustomProviders(updated);
 
     setCustomProviders(updated);
@@ -1587,8 +1593,8 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
         await Promise.all(idsToDelete.map((id) => deleteModel(url, key, id)));
 
         // A013/Vault: drop the vault entry so LiteLLM stops injecting the stale key.
-        // The id used when adding a custom provider carries no `custom-` prefix.
-        await deleteProviderApiKey(cpId);
+        // Stored under the full `custom-<id>` form matching snapfzz_provider_id.
+        await deleteProviderApiKey(customProviderVaultId(cpId));
         await saveCustomProviders(updated);
         setCustomProviders(updated);
         await loadKeyCounts();

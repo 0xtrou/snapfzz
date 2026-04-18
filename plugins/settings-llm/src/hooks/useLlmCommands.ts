@@ -592,13 +592,25 @@ export async function deleteModel(baseUrl: string, masterKey: string, modelId: s
 //
 // Non-secret metadata (id, name, baseUrl, variant) lives in localStorage under
 // `snapfzz:custom_providers`. The raw `apiKey` lives in the Rust vault under
-// `llm_provider_key/<id>` so the Tauri host can inject it into LiteLLM's child
-// env as `SNAPFZZ_KEY_<id>` on spawn — LiteLLM never stores the raw key (its
-// /v1/model/info response masks api_keys, which used to break the orchestrator
-// combo). See `src-tauri/crates/snapfzz-llm/src/combo.rs` for the combo side.
+// `llm_provider_key/<full-provider-id>` so the Tauri host can inject it into
+// LiteLLM's child env as `SNAPFZZ_KEY_<full-provider-id>` on spawn. The combo
+// then references it via `os.environ/SNAPFZZ_KEY_<full-provider-id>`.
+//
+// `<full-provider-id>` MUST match the `snapfzz_provider_id` that settings-llm
+// stamps on imported models, which is `custom-<cp.id>`. Keeping all three of
+// them in lock-step is load-bearing — a mismatch silently resolves to an empty
+// api_key and LiteLLM 401s from the upstream provider.
 
 const CUSTOM_PROVIDERS_KEY = 'snapfzz:custom_providers';
 const PROVIDER_VAULT_PREFIX = 'llm_provider_key/';
+const CUSTOM_PROVIDER_ID_PREFIX = 'custom-';
+
+/** Vault id for a custom provider. Always the `custom-<short>` form. */
+export function customProviderVaultId(shortId: string): string {
+  return shortId.startsWith(CUSTOM_PROVIDER_ID_PREFIX)
+    ? shortId
+    : `${CUSTOM_PROVIDER_ID_PREFIX}${shortId}`;
+}
 
 function providerVaultKey(providerId: string): string {
   return `${PROVIDER_VAULT_PREFIX}${providerId}`;
@@ -650,21 +662,42 @@ export async function loadCustomProviders(): Promise<CustomProvider[]> {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as CustomProvider[];
 
-    // One-shot migration: older installs persisted `apiKey` inline in localStorage.
-    // Move each one into the vault, then rewrite localStorage without the field.
+    // Migration A — older installs persisted `apiKey` inline in localStorage.
+    // Move each one into the vault (under the full `custom-<id>` form), then
+    // rewrite localStorage without the field.
     const needsMigration = parsed.some((p) => typeof p.apiKey === 'string' && p.apiKey.length > 0);
     if (needsMigration) {
       await Promise.all(
         parsed
           .filter((p) => typeof p.apiKey === 'string' && p.apiKey.length > 0)
-          .map((p) => storeProviderApiKey(p.id, p.apiKey as string).catch(() => undefined)),
+          .map((p) =>
+            storeProviderApiKey(customProviderVaultId(p.id), p.apiKey as string).catch(
+              () => undefined,
+            ),
+          ),
       );
       const stripped = parsed.map(({ apiKey: _drop, ...rest }) => rest as CustomProvider);
       localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(stripped));
-      return stripped;
     }
 
-    return parsed;
+    // Migration B — an intermediate build stored vault entries under the short id
+    // (e.g. `llm_provider_key/solo-engineer`) instead of the full one that matches
+    // `snapfzz_provider_id` (`llm_provider_key/custom-solo-engineer`). Rewrite any
+    // stale short-form entries so LiteLLM's env injection lines up with the combo's
+    // `os.environ/SNAPFZZ_KEY_custom-<id>` reference.
+    const configuredIds = await listConfiguredProviderIds();
+    const shortIds = Array.from(configuredIds).filter(
+      (id) => !id.startsWith(CUSTOM_PROVIDER_ID_PREFIX) && parsed.some((p) => p.id === id),
+    );
+    for (const shortId of shortIds) {
+      const existing = await readProviderApiKey(shortId);
+      if (!existing) continue;
+      await storeProviderApiKey(customProviderVaultId(shortId), existing);
+      await deleteProviderApiKey(shortId);
+    }
+
+    const latest = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
+    return latest ? (JSON.parse(latest) as CustomProvider[]) : parsed;
   } catch {
     return [];
   }

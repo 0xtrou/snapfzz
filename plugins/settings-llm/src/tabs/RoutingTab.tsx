@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {  Skeleton, message } from 'antd';
 import { fetchWithToast } from '@snapfzz/shared';
 import {
+  customProviderVaultId,
   getBaseUrl,
   getMasterKey,
   getConfig,
@@ -231,7 +232,7 @@ export default function RoutingTab() {
         for (const payload of payloads.modelsToCreate) {
           const providerId = payload.model_info?.snapfzz_provider_id ?? '';
           const provider = providers.find((p) => `custom-${p.id}` === providerId);
-          const apiKey = (provider ? await readProviderApiKey(provider.id) : null) ?? '';
+          const apiKey = (provider ? await readProviderApiKey(customProviderVaultId(provider.id)) : null) ?? '';
           const providerBaseUrl = provider?.baseUrl;
           const litellmModel = payload.litellm_params.model;
           const bareModel = litellmModel.includes('/')

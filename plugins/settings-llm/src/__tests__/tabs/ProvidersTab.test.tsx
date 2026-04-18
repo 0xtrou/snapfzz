@@ -323,9 +323,12 @@ describe('A013/UI/ProvidersTab', () => {
         expect(stored[0].apiKey).toBeUndefined();
       });
 
-      // …and the raw key is persisted to the Rust vault under `llm_provider_key/<id>`.
+      // …and the raw key is persisted to the Rust vault under
+      // `llm_provider_key/custom-<id>` — the full form that matches
+      // `snapfzz_provider_id` on imported models and the env var the
+      // orchestrator combo references via `os.environ/`.
       expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
-        key: 'llm_provider_key/my-provider',
+        key: 'llm_provider_key/custom-my-provider',
         value: 'sk-custom-key',
       });
     });
