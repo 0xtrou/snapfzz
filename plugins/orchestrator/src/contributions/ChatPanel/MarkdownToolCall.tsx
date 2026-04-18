@@ -16,7 +16,10 @@
 // card chrome so the visual matches the default `ToolCall` 1:1.
 
 import { Markdown, OperateCard } from '@agentscope-ai/chat';
-import { SparkLoadingLine, SparkToolLine } from '@agentscope-ai/icons';
+// `@agentscope-ai/icons` isn't a direct dep of this plugin (only transitive
+// via Spark), and `pnpm.overrides` remaps `@ant-design/icons` to Spark's
+// variant anyway — so the AntD icon set *is* Spark's icon set at runtime.
+import { LoadingOutlined, ToolOutlined } from '@ant-design/icons';
 import type React from 'react';
 
 interface ToolCallData {
@@ -128,7 +131,7 @@ const MarkdownToolCall: React.FC<MarkdownToolCallProps> = ({ data }) => {
   return (
     <OperateCard
       header={{
-        icon: loading ? <SparkLoadingLine spin /> : <SparkToolLine />,
+        icon: loading ? <LoadingOutlined spin /> : <ToolOutlined />,
         title: toolName,
       }}
       body={{
