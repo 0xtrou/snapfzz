@@ -295,13 +295,18 @@ def build_app() -> FastAPI:  # noqa: C901
     # through the runner). Inlined to avoid qwenpaw.app._app module-level effects.
     runner = _DynamicMultiAgentRunner()
 
-    # Per A013/C1: enable_stream_task=False keeps the task queue disabled;
-    # stream=True enables SSE streaming on /process.
+    # `enable_stream_task=True` registers POST `/agent/process/task` +
+    # GET `/agent/process/task/{task_id}` — the background-submission
+    # endpoints QwenPaw's `submit_to_agent` / `check_agent_task` tools hit.
+    # Without it those tools 404. See `agentscope_runtime/engine/app/
+    # agent_app.py::_add_stream_query_task_endpoint` (returns early when
+    # the flag is false).
+    # `stream=True` keeps SSE streaming on POST `/agent/process`.
     agent_app = AgentApp(
         app_name="Snapfzz Orchestrator",
         app_description="Snapfzz orchestrator — single-agent mode",
         runner=runner,
-        enable_stream_task=False,
+        enable_stream_task=True,
         stream=True,
     )
 
