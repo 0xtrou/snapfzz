@@ -12,6 +12,17 @@ use crate::LlmError;
 /// underlying target = single LiteLLM `/model/update` call — no agent reload.
 pub const ORCHESTRATOR_COMBO_NAME: &str = "orchestrator";
 
+/// Prefix used for per-provider env-var references inside `litellm_params.api_key`.
+/// The Tauri host injects each registered provider's raw key into LiteLLM's child env
+/// as `SNAPFZZ_KEY_<provider-id>=<raw>`; combo entries then reference that env var
+/// via `os.environ/SNAPFZZ_KEY_<provider-id>` so the raw key never lives in LiteLLM's
+/// DB (where it would be masked on read by `/v1/model/info`).
+pub const PROVIDER_KEY_ENV_PREFIX: &str = "SNAPFZZ_KEY_";
+
+fn env_ref_for_provider(provider_id: &str) -> String {
+    format!("os.environ/{PROVIDER_KEY_ENV_PREFIX}{provider_id}")
+}
+
 #[derive(Debug, Deserialize)]
 struct ModelInfoResponse {
     data: Vec<ModelInfoEntry>,
@@ -44,6 +55,11 @@ pub struct ModelInfoMeta {
     pub snapfzz_combo: Option<bool>,
     #[serde(default)]
     pub snapfzz_system_combo: Option<bool>,
+    /// Custom provider id stamped by settings-llm when the model was imported.
+    /// Not masked by LiteLLM's `/v1/model/info` (only `api_key`/`client_secret`/
+    /// vertex/aws fields are popped). Used to build the `os.environ/...` api_key ref.
+    #[serde(default)]
+    pub snapfzz_provider_id: Option<String>,
 }
 
 fn http_error(err: impl std::fmt::Display) -> LlmError {
@@ -87,8 +103,11 @@ fn find_first_non_combo(models: &[ModelInfoEntry]) -> Option<&ModelInfoEntry> {
     })
 }
 
-fn build_litellm_params(model: &str, api_base: Option<&str>, api_key: &str) -> serde_json::Value {
-    let mut params = serde_json::json!({ "model": model, "api_key": api_key });
+fn build_litellm_params(model: &str, api_base: Option<&str>, provider_id: &str) -> serde_json::Value {
+    let mut params = serde_json::json!({
+        "model": model,
+        "api_key": env_ref_for_provider(provider_id),
+    });
     if let Some(base) = api_base {
         params["api_base"] = serde_json::json!(base);
     }
@@ -102,12 +121,15 @@ async fn create_combo(
     name: &str,
     target_model: &str,
     api_base: Option<&str>,
-    api_key: &str,
+    provider_id: &str,
 ) -> Result<(), LlmError> {
     let body = serde_json::json!({
         "model_name": name,
-        "litellm_params": build_litellm_params(target_model, api_base, api_key),
-        "model_info": { "snapfzz_system_combo": true },
+        "litellm_params": build_litellm_params(target_model, api_base, provider_id),
+        "model_info": {
+            "snapfzz_system_combo": true,
+            "snapfzz_provider_id": provider_id,
+        },
     });
     client
         .post(format!("{base_url}/model/new"))
@@ -128,11 +150,16 @@ async fn update_combo_target(
     combo_id: &str,
     target_model: &str,
     api_base: Option<&str>,
-    api_key: &str,
+    provider_id: &str,
 ) -> Result<(), LlmError> {
     let body = serde_json::json!({
         "id": combo_id,
-        "litellm_params": build_litellm_params(target_model, api_base, api_key),
+        "litellm_params": build_litellm_params(target_model, api_base, provider_id),
+        "model_info": {
+            "id": combo_id,
+            "snapfzz_system_combo": true,
+            "snapfzz_provider_id": provider_id,
+        },
     });
     client
         .post(format!("{base_url}/model/update"))
@@ -162,6 +189,10 @@ pub enum EnsureOutcome {
 /// - If the `orchestrator` combo exists → do nothing.
 /// - If no models are configured in the gateway yet → skip; log; return `NoModelsAvailable`.
 /// - Otherwise → create the combo pointing at the first available real model.
+///
+/// The default target MUST have `model_info.snapfzz_provider_id` set (stamped by
+/// settings-llm when the model is imported). Without it we can't build a stable
+/// `os.environ/...` api_key reference.
 pub async fn ensure_orchestrator_combo(
     base_url: &str,
     master_key: &str,
@@ -182,7 +213,16 @@ pub async fn ensure_orchestrator_combo(
         .and_then(|p| p.model.clone())
         .ok_or_else(|| LlmError::Message("default model has no litellm_params.model".to_string()))?;
     let api_base = params.and_then(|p| p.api_base.clone());
-    let api_key = params.and_then(|p| p.api_key.clone()).unwrap_or_default();
+    let provider_id = default
+        .model_info
+        .as_ref()
+        .and_then(|m| m.snapfzz_provider_id.clone())
+        .ok_or_else(|| {
+            LlmError::Message(format!(
+                "default model '{}' has no model_info.snapfzz_provider_id — re-add the provider via Settings → LLM",
+                default.model_name
+            ))
+        })?;
 
     let client = Client::new();
     create_combo(
@@ -192,7 +232,7 @@ pub async fn ensure_orchestrator_combo(
         ORCHESTRATOR_COMBO_NAME,
         &target_model,
         api_base.as_deref(),
-        &api_key,
+        &provider_id,
     )
     .await?;
 
@@ -202,6 +242,10 @@ pub async fn ensure_orchestrator_combo(
 /// Called when the user picks a new model in the UI. Resolves the target by its
 /// LiteLLM `model_name`, then mutates the combo's `litellm_params` in place. If the
 /// combo doesn't exist yet, creates it first.
+///
+/// The target MUST have `model_info.snapfzz_provider_id` — without it we can't build
+/// the `os.environ/...` api_key reference. (All models imported through settings-llm
+/// have it; legacy entries won't and will error with a clear message.)
 pub async fn update_orchestrator_combo(
     base_url: &str,
     master_key: &str,
@@ -219,7 +263,15 @@ pub async fn update_orchestrator_combo(
         .and_then(|p| p.model.clone())
         .ok_or_else(|| LlmError::Message(format!("model '{new_target_model_name}' has no litellm_params.model")))?;
     let api_base = params.and_then(|p| p.api_base.clone());
-    let api_key = params.and_then(|p| p.api_key.clone()).unwrap_or_default();
+    let provider_id = target
+        .model_info
+        .as_ref()
+        .and_then(|m| m.snapfzz_provider_id.clone())
+        .ok_or_else(|| {
+            LlmError::Message(format!(
+                "model '{new_target_model_name}' has no model_info.snapfzz_provider_id — re-add the provider via Settings → LLM"
+            ))
+        })?;
 
     let client = Client::new();
 
@@ -232,7 +284,7 @@ pub async fn update_orchestrator_combo(
                 &combo_id,
                 &target_model,
                 api_base.as_deref(),
-                &api_key,
+                &provider_id,
             )
             .await
         }
@@ -244,7 +296,7 @@ pub async fn update_orchestrator_combo(
                 ORCHESTRATOR_COMBO_NAME,
                 &target_model,
                 api_base.as_deref(),
-                &api_key,
+                &provider_id,
             )
             .await
         }
@@ -262,14 +314,19 @@ mod tests {
     }
 
     fn openai_gpt4_entry() -> serde_json::Value {
+        // LiteLLM masks `api_key` in /v1/model/info responses, so tests don't include it —
+        // the combo code must resolve the provider id (which is preserved) and emit an
+        // `os.environ/SNAPFZZ_KEY_<id>` reference instead.
         serde_json::json!({
             "model_name": "acme/gpt-4",
             "litellm_params": {
                 "model": "openai/gpt-4",
-                "api_base": "https://api.openai.com/v1",
-                "api_key": "sk-real"
+                "api_base": "https://api.openai.com/v1"
             },
-            "model_info": { "id": "model-uuid-1" }
+            "model_info": {
+                "id": "model-uuid-1",
+                "snapfzz_provider_id": "custom-acme"
+            }
         })
     }
 
@@ -277,10 +334,13 @@ mod tests {
         serde_json::json!({
             "model_name": ORCHESTRATOR_COMBO_NAME,
             "litellm_params": {
-                "model": "openai/gpt-4",
-                "api_key": "sk-real"
+                "model": "openai/gpt-4"
             },
-            "model_info": { "id": "combo-uuid-xyz", "snapfzz_system_combo": true }
+            "model_info": {
+                "id": "combo-uuid-xyz",
+                "snapfzz_system_combo": true,
+                "snapfzz_provider_id": "custom-acme"
+            }
         })
     }
 
@@ -339,9 +399,12 @@ mod tests {
                 "litellm_params": {
                     "model": "openai/gpt-4",
                     "api_base": "https://api.openai.com/v1",
-                    "api_key": "sk-real"
+                    "api_key": "os.environ/SNAPFZZ_KEY_custom-acme"
                 },
-                "model_info": { "snapfzz_system_combo": true }
+                "model_info": {
+                    "snapfzz_system_combo": true,
+                    "snapfzz_provider_id": "custom-acme"
+                }
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "ok": true })))
             .expect(1)
@@ -363,10 +426,12 @@ mod tests {
             "model_name": "anthropic/claude",
             "litellm_params": {
                 "model": "anthropic/claude-opus",
-                "api_base": "https://api.anthropic.com",
-                "api_key": "sk-anthropic"
+                "api_base": "https://api.anthropic.com"
             },
-            "model_info": { "id": "model-uuid-2" }
+            "model_info": {
+                "id": "model-uuid-2",
+                "snapfzz_provider_id": "custom-anthropic"
+            }
         });
 
         Mock::given(method("GET"))
@@ -379,7 +444,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        // Combo mutation must carry the TARGET model's params (api_base+api_key), not the combo's.
+        // Combo mutation must carry the TARGET model's model + api_base, and an
+        // `os.environ/...` api_key reference scoped to the target's provider id.
         Mock::given(method("POST"))
             .and(path("/model/update"))
             .and(body_json(serde_json::json!({
@@ -387,7 +453,12 @@ mod tests {
                 "litellm_params": {
                     "model": "anthropic/claude-opus",
                     "api_base": "https://api.anthropic.com",
-                    "api_key": "sk-anthropic"
+                    "api_key": "os.environ/SNAPFZZ_KEY_custom-anthropic"
+                },
+                "model_info": {
+                    "id": "combo-uuid-xyz",
+                    "snapfzz_system_combo": true,
+                    "snapfzz_provider_id": "custom-anthropic"
                 }
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "ok": true })))

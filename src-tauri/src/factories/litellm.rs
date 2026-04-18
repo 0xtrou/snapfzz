@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::constants::env_vars;
 use crate::constants::litellm as litellm_cfg;
+use crate::constants::vault_keys;
 
 use snapfzz_kernel::process::{ProcessFactory, SpawnConfig, SpawnSecrets};
 use snapfzz_kernel::settings::Settings;
@@ -68,6 +69,32 @@ impl LiteLLMFactory {
         };
         if !salt_key.is_empty() {
             env.insert(env_vars::LITELLM_SALT_KEY.to_string(), salt_key);
+        }
+
+        // Per A013/Orchestrator: Inject every registered provider's raw api key as a
+        // SNAPFZZ_KEY_<id> env var. The "orchestrator" combo (and any other combo that
+        // wants to) references these via `os.environ/SNAPFZZ_KEY_<id>` so the raw key
+        // never lives in LiteLLM's DB — LiteLLM resolves the env at call time.
+        if let Ok(keys) = guard.list() {
+            for full_key in keys {
+                let Some(provider_id) = full_key.strip_prefix(vault_keys::PROVIDER_KEY_PREFIX) else {
+                    continue;
+                };
+                if provider_id.is_empty() {
+                    continue;
+                }
+                match guard.read(&full_key) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(raw) if !raw.is_empty() => {
+                            let env_name = format!("{}{}", env_vars::PROVIDER_KEY_PREFIX, provider_id);
+                            env.insert(env_name, raw);
+                        }
+                        Ok(_) => eprintln!("[litellm] provider key '{provider_id}' is empty — skipping"),
+                        Err(_) => eprintln!("[litellm] provider key '{provider_id}' is not utf8 — skipping"),
+                    },
+                    Err(e) => eprintln!("[litellm] failed to read provider key '{provider_id}': {e}"),
+                }
+            }
         }
 
         SpawnSecrets { env }

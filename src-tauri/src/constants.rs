@@ -7,6 +7,17 @@ pub mod env_vars {
     pub const LITELLM_MASTER_KEY: &str = "LITELLM_MASTER_KEY";
     pub const LITELLM_SALT_KEY: &str = "LITELLM_SALT_KEY";
     pub const MEMORY_DATABASE_URL: &str = "MEMORY_DATABASE_URL";
+    /// Prefix for per-provider API key env vars injected into LiteLLM's child process.
+    /// LiteLLM's `litellm_params.api_key` then uses `os.environ/SNAPFZZ_KEY_<provider-id>`
+    /// — the raw key never lives in LiteLLM's DB or any /model/info response.
+    pub const PROVIDER_KEY_PREFIX: &str = "SNAPFZZ_KEY_";
+}
+
+/// Vault key prefixes.
+pub mod vault_keys {
+    /// Raw provider API keys live here, one per custom provider id.
+    /// Format: `llm_provider_key/<provider-id>` → raw key bytes.
+    pub const PROVIDER_KEY_PREFIX: &str = "llm_provider_key/";
 }
 
 /// Database names created in PostgreSQL.

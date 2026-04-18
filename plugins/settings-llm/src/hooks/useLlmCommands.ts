@@ -588,15 +588,83 @@ export async function deleteModel(baseUrl: string, masterKey: string, modelId: s
   }
 }
 
-// Custom provider config persistence via localStorage
+// Custom provider config persistence.
+//
+// Non-secret metadata (id, name, baseUrl, variant) lives in localStorage under
+// `snapfzz:custom_providers`. The raw `apiKey` lives in the Rust vault under
+// `llm_provider_key/<id>` so the Tauri host can inject it into LiteLLM's child
+// env as `SNAPFZZ_KEY_<id>` on spawn — LiteLLM never stores the raw key (its
+// /v1/model/info response masks api_keys, which used to break the orchestrator
+// combo). See `src-tauri/crates/snapfzz-llm/src/combo.rs` for the combo side.
 
 const CUSTOM_PROVIDERS_KEY = 'snapfzz:custom_providers';
+const PROVIDER_VAULT_PREFIX = 'llm_provider_key/';
+
+function providerVaultKey(providerId: string): string {
+  return `${PROVIDER_VAULT_PREFIX}${providerId}`;
+}
+
+export async function storeProviderApiKey(providerId: string, apiKey: string): Promise<void> {
+  await bridge.invoke<void>('vault_store', {
+    key: providerVaultKey(providerId),
+    value: apiKey,
+  });
+}
+
+export async function readProviderApiKey(providerId: string): Promise<string | null> {
+  try {
+    return await bridge.invoke<string>('vault_read', {
+      key: providerVaultKey(providerId),
+    });
+  } catch {
+    // Returns null for not-found or rate-limit; caller decides what to do.
+    return null;
+  }
+}
+
+export async function deleteProviderApiKey(providerId: string): Promise<void> {
+  try {
+    await bridge.invoke<void>('vault_delete', { key: providerVaultKey(providerId) });
+  } catch {
+    // Already absent is fine.
+  }
+}
+
+/** Provider ids that currently have a key in the vault. One round-trip to vault_list. */
+export async function listConfiguredProviderIds(): Promise<Set<string>> {
+  try {
+    const keys = await bridge.invoke<string[]>('vault_list');
+    return new Set(
+      keys
+        .filter((k) => k.startsWith(PROVIDER_VAULT_PREFIX))
+        .map((k) => k.slice(PROVIDER_VAULT_PREFIX.length)),
+    );
+  } catch {
+    return new Set();
+  }
+}
 
 export async function loadCustomProviders(): Promise<CustomProvider[]> {
   try {
     const raw = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as CustomProvider[];
+    const parsed = JSON.parse(raw) as CustomProvider[];
+
+    // One-shot migration: older installs persisted `apiKey` inline in localStorage.
+    // Move each one into the vault, then rewrite localStorage without the field.
+    const needsMigration = parsed.some((p) => typeof p.apiKey === 'string' && p.apiKey.length > 0);
+    if (needsMigration) {
+      await Promise.all(
+        parsed
+          .filter((p) => typeof p.apiKey === 'string' && p.apiKey.length > 0)
+          .map((p) => storeProviderApiKey(p.id, p.apiKey as string).catch(() => undefined)),
+      );
+      const stripped = parsed.map(({ apiKey: _drop, ...rest }) => rest as CustomProvider);
+      localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(stripped));
+      return stripped;
+    }
+
+    return parsed;
   } catch {
     return [];
   }
@@ -605,7 +673,9 @@ export async function loadCustomProviders(): Promise<CustomProvider[]> {
 export async function saveCustomProviders(
   providers: CustomProvider[],
 ): Promise<void> {
-  localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(providers));
+  // Always strip `apiKey` before persisting — secret lives in vault only.
+  const sanitized = providers.map(({ apiKey: _drop, ...rest }) => rest as CustomProvider);
+  localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(sanitized));
 }
 
 // A013/Routing: Config read/write for router_settings via API

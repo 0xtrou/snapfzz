@@ -12,6 +12,7 @@ import {
   deleteModel,
   importModel,
   loadCustomProviders,
+  readProviderApiKey,
   type CustomProvider,
 } from '../hooks/useLlmCommands';
 import type { ComboConfig, ComposedPayloads } from '../routing/composer';
@@ -226,11 +227,11 @@ export default function RoutingTab() {
           );
         }
         // Create each deployment via LiteLLM /model/new directly.
-        // The API key comes from the CustomProvider config (stored in vault blob).
+        // The raw API key lives in the Rust vault — look up by provider id.
         for (const payload of payloads.modelsToCreate) {
           const providerId = payload.model_info?.snapfzz_provider_id ?? '';
           const provider = providers.find((p) => `custom-${p.id}` === providerId);
-          const apiKey = provider?.apiKey ?? '';
+          const apiKey = (provider ? await readProviderApiKey(provider.id) : null) ?? '';
           const providerBaseUrl = provider?.baseUrl;
           const litellmModel = payload.litellm_params.model;
           const bareModel = litellmModel.includes('/')

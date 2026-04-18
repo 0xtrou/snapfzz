@@ -29,13 +29,17 @@ import {
   type DiscoveredModel,
   type ModelInfoDetails,
   deleteModel,
+  deleteProviderApiKey,
   discoverModels,
   getBaseUrl,
   getMasterKey,
   getModelInfo,
   importModel,
+  listConfiguredProviderIds,
   loadCustomProviders,
+  readProviderApiKey,
   saveCustomProviders,
+  storeProviderApiKey,
 } from '../hooks/useLlmCommands';
 import {
   type CatalogModelEntry,
@@ -1370,6 +1374,65 @@ function AddCustomProviderModal({
   );
 }
 
+// ─── Custom Provider Detail Loader ─────────────────────────────────────
+//
+// Bridges the async vault read → synchronous `ProviderDetail` interface.
+// Shows a skeleton until the key is fetched so `ProviderDetail` can seed
+// its local `apiKey` state correctly (otherwise it would mount with '' and
+// think the provider is unconfigured).
+
+function CustomProviderDetailLoader({
+  providerId,
+  providerLabel,
+  baseUrl,
+  variant,
+  onBack,
+}: {
+  providerId: string;
+  providerLabel: string;
+  baseUrl: string;
+  variant: CustomProviderVariant;
+  onBack: () => void;
+}) {
+  const [apiKey, setApiKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    readProviderApiKey(providerId).then((k) => {
+      if (!cancelled) setApiKey(k ?? '');
+    });
+    return () => { cancelled = true; };
+  }, [providerId]);
+
+  if (apiKey === null) {
+    return (
+      <div style={{ padding: 20 }}>
+        <Skeleton active paragraph={{ rows: 6 }} />
+      </div>
+    );
+  }
+
+  return (
+    <ProviderDetail
+      providerId={`custom-${providerId}`}
+      providerLabel={providerLabel}
+      isCustom
+      baseUrl={baseUrl}
+      variant={variant}
+      initialApiKey={apiKey}
+      onBack={onBack}
+      onApiKeyChange={async (key) => {
+        // A013/Vault: raw key lives in the vault only; localStorage metadata never sees it.
+        if (key && key.length > 0) {
+          await storeProviderApiKey(providerId, key);
+        } else {
+          await deleteProviderApiKey(providerId);
+        }
+      }}
+    />
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────
 
 export default function ProvidersTab({ active }: { active?: boolean }) {
@@ -1387,10 +1450,13 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
     setLoading(true);
     const { data } = await fetchWithToast(
       async () => {
-        const customs = await loadCustomProviders();
-        // A013/Vault: Provider API keys are no longer stored in vault.
-        // "Configured" status is derived from the custom provider's apiKey field
-        // (for custom providers) or from localStorage flags (for built-in providers).
+        const [customs, configuredIds] = await Promise.all([
+          loadCustomProviders(),
+          listConfiguredProviderIds(),
+        ]);
+        // A013/Vault: raw provider keys live in the Rust vault (one entry per id);
+        // a provider is "configured" when its id is present in that set. Built-in
+        // providers still track config via a localStorage flag.
         const counts: ProviderKeyCounts = {};
         for (const provider of PROVIDERS) {
           const configured = localStorage.getItem(`snapfzz:provider_configured:${provider.id}`);
@@ -1398,7 +1464,7 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
         }
         for (const cp of customs) {
           const cpKey = `custom-${cp.id}`;
-          counts[cpKey] = cp.apiKey ? ['configured'] : [];
+          counts[cpKey] = configuredIds.has(cp.id) ? ['configured'] : [];
         }
         return { counts, customs };
       },
@@ -1491,11 +1557,12 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
       name,
       baseUrl: values.baseUrl,
       variant: values.variant,
-      apiKey: values.apiKey,
     };
 
     const updated = [...customProviders, newProvider];
-    // A013/Vault: API key is persisted in the custom provider config blob (not vault provider keys).
+    // A013/Vault: metadata goes to localStorage, raw api key goes to the Rust vault so
+    // LiteLLM can pick it up as `SNAPFZZ_KEY_<id>` on spawn (see combo.rs).
+    await storeProviderApiKey(id, values.apiKey);
     await saveCustomProviders(updated);
 
     setCustomProviders(updated);
@@ -1519,6 +1586,9 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
           .filter(Boolean);
         await Promise.all(idsToDelete.map((id) => deleteModel(url, key, id)));
 
+        // A013/Vault: drop the vault entry so LiteLLM stops injecting the stale key.
+        // The id used when adding a custom provider carries no `custom-` prefix.
+        await deleteProviderApiKey(cpId);
         await saveCustomProviders(updated);
         setCustomProviders(updated);
         await loadKeyCounts();
@@ -1555,22 +1625,12 @@ export default function ProvidersTab({ active }: { active?: boolean }) {
     const custom = customProviders.find((cp) => cp.id === cpId);
     if (custom) {
       return (
-        <ProviderDetail
-          providerId={`custom-${custom.id}`}
+        <CustomProviderDetailLoader
+          providerId={cpId}
           providerLabel={custom.name}
-          isCustom
           baseUrl={custom.baseUrl}
           variant={custom.variant}
-          initialApiKey={custom.apiKey}
           onBack={handleBack}
-          onApiKeyChange={async (key) => {
-            // Persist updated API key in the custom provider config blob.
-            const updated = customProviders.map((cp) =>
-              cp.id === cpId ? { ...cp, apiKey: key } : cp,
-            );
-            await saveCustomProviders(updated);
-            setCustomProviders(updated);
-          }}
         />
       );
     }

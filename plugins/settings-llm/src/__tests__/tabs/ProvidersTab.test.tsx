@@ -134,9 +134,21 @@ describe('A013/UI/ProvidersTab', () => {
     mockFetch.mockReset();
     vi.stubGlobal('fetch', mockFetch);
 
-    mockInvoke.mockImplementation(async (command: string, _args: Record<string, string>) => {
+    // In-memory vault so migration + vault-backed custom-provider keys behave like
+    // the real SecretVault for tests that don't override the mock.
+    const vaultMap = new Map<string, string>();
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, string>) => {
       if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
       if (command === 'llm_get_master_key') return 'sk-master-test';
+      if (command === 'vault_store') { vaultMap.set(args.key, args.value); return undefined; }
+      if (command === 'vault_read') {
+        const v = vaultMap.get(args.key);
+        if (v === undefined) throw new Error('secret not found');
+        return v;
+      }
+      if (command === 'vault_delete') { vaultMap.delete(args.key); return undefined; }
+      if (command === 'vault_list') return Array.from(vaultMap.keys()).sort();
+      if (command === 'vault_has') return vaultMap.has(args.key);
       return undefined;
     });
 
@@ -277,7 +289,7 @@ describe('A013/UI/ProvidersTab', () => {
       expect(await screen.findByText('Add Custom Provider')).toBeInTheDocument();
     });
 
-    it('A013/Custom: add modal stores provider config with apiKey in the config blob', async () => {
+    it('A013/Custom: add modal stores metadata in localStorage and the raw key in the vault', async () => {
       const user = userEvent.setup();
       render(<ProvidersTab />);
 
@@ -298,21 +310,24 @@ describe('A013/UI/ProvidersTab', () => {
 
       await user.click(within(modal).getByRole('button', { name: 'OK' }));
 
+      // Metadata (no apiKey) hits localStorage…
       await waitFor(() => {
         const raw = localStorage.getItem('snapfzz:custom_providers');
         expect(raw).toBeTruthy();
-        expect(raw).toContain('my-provider');
-      });
-
-      // A013/Vault: API key stored in provider config blob via localStorage
-      await waitFor(() => {
-        const raw = localStorage.getItem('snapfzz:custom_providers');
         const stored = JSON.parse(raw!);
-        expect(stored[0].apiKey).toBe('sk-custom-key');
+        expect(stored[0]).toMatchObject({
+          id: 'my-provider',
+          name: 'my-provider',
+          baseUrl: 'https://api.example.com/v1',
+        });
+        expect(stored[0].apiKey).toBeUndefined();
       });
 
-      // Ensure llm_store_provider_key was NOT called
-      expect(mockInvoke).not.toHaveBeenCalledWith('llm_store_provider_key', expect.anything());
+      // …and the raw key is persisted to the Rust vault under `llm_provider_key/<id>`.
+      expect(mockInvoke).toHaveBeenCalledWith('vault_store', {
+        key: 'llm_provider_key/my-provider',
+        value: 'sk-custom-key',
+      });
     });
 
     it('A013/Custom: clicking custom provider card navigates to detail', async () => {

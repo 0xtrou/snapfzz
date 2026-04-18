@@ -4,7 +4,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createLlmGatewayClient } from '@snapfzz/shared';
 import { usePluginRuntimeOptional } from '../runtime';
-import { sortForDisplay, toDescriptor, filterBySearch } from './data';
+import {
+  filterBySearch,
+  filterOutCombos,
+  findOrchestratorUnderlyingTarget,
+  sortForDisplay,
+  toDescriptor,
+} from './data';
 import { SELECTED_MODEL_STORAGE_KEY, PINNED_MODELS_STORAGE_KEY } from './data';
 import type { ModelDescriptor, ModelPickerObservation } from './contracts';
 
@@ -57,8 +63,19 @@ export function useModelPickerObservation(): ModelPickerObservation & {
     try {
       const infoRes = await client.getModelInfo();
       if (!mountedRef.current) return;
-      const descriptors = infoRes.data.map(toDescriptor);
+      // Per A013/Orchestrator: the `orchestrator` combo (and any other routing combo)
+      // is an internal gateway target, not a user-pickable model. Drop before display.
+      const realEntries = filterOutCombos(infoRes.data);
+      const descriptors = realEntries.map(toDescriptor);
       setAllModels(descriptors);
+
+      // On first load, if the user hasn't made an explicit pick yet, seed the selected
+      // id from whatever real model the combo is currently routing to — so the picker
+      // reflects the true active target instead of the literal "orchestrator".
+      const underlying = findOrchestratorUnderlyingTarget(infoRes.data);
+      if (underlying) {
+        setSelectedIdState((prev) => prev ?? underlying.model_name);
+      }
     } catch (err) {
       if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load models');
