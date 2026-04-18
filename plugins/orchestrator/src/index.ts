@@ -54,11 +54,8 @@ export default definePlugin({
         position: 'left' as const,
         component: () => import('./contributions/ConnectionStatus'),
       },
-      {
-        id: 'orchestrator.tokens',
-        position: 'right' as const,
-        component: () => import('./contributions/TokenCounter'),
-      },
+      // Per-turn token usage is rendered natively by Spark's Bubble Actions row
+      // (`Usage` component from @agentscope-ai/chat) — no status-bar duplication needed.
     ],
   },
   async activate(ctx: PluginContext): Promise<PluginHandle> {

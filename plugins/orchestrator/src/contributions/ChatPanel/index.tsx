@@ -15,6 +15,7 @@ import {
 } from '@agentscope-ai/chat';
 import { ModelPicker } from '../ModelPicker';
 import { chatCancel, chatFetch, setActiveSessionId } from './adapter';
+import { useSparkTheme } from './useSparkTheme';
 
 const WELCOME_PROMPTS = [
   { label: 'What can you do?', value: 'What can you do?' },
@@ -37,6 +38,8 @@ function SessionIdBridge() {
 }
 
 export default function ChatPanel() {
+  const theme = useSparkTheme();
+
   const options = useMemo<IAgentScopeRuntimeWebUIOptions>(
     () => ({
       api: {
@@ -50,10 +53,12 @@ export default function ChatPanel() {
         enableHistoryMessages: false,
       },
       session: {
-        // Multi-session sidebar; Spark's default localStorage-backed session api
-        // handles list/create/switch/delete. Our backend's AgentApp gives each
-        // session id its own memory automatically.
+        // We still need `multiple: true` so Spark generates a stable session
+        // id the bridge can read, but `hideBuiltInSessionList` suppresses the
+        // bulky left sidebar (the "Runtime WebUI" chrome). A native sessions
+        // panel can be added later — until then, one active session at a time.
         multiple: true,
+        hideBuiltInSessionList: true,
       },
       welcome: {
         greeting: 'What are we building today?',
@@ -69,10 +74,22 @@ export default function ChatPanel() {
       },
       theme: {
         prefix: 'snapfzz-chat',
+        // Feed Spark's AntD ConfigProvider from our design tokens so dark/light
+        // + the accent blue match the rest of the app. Re-reads on <html>
+        // `data-theme` flips via `useSparkTheme`'s MutationObserver.
+        darkMode: theme.darkMode,
+        colorPrimary: theme.colorPrimary,
+        colorBgBase: theme.colorBgBase,
+        colorTextBase: theme.colorTextBase,
+        background: theme.background,
+        // SessionIdBridge still needs to live inside Spark's context tree so
+        // `useChatAnywhereSessionsState` resolves — the rightHeader slot is the
+        // smallest always-mounted spot. The bridge renders `null`, so no
+        // visible chrome is added.
         rightHeader: <SessionIdBridge />,
       },
     }),
-    [],
+    [theme.darkMode, theme.colorPrimary, theme.colorBgBase, theme.colorTextBase, theme.background],
   );
 
   return (

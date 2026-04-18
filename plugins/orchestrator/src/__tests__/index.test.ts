@@ -82,14 +82,14 @@ describe('chat/manifest: contributions', () => {
     expect(tab?.icon).toBe('MessageOutlined');
   });
 
-  it('contributes two statusItems — connection on left, tokens on right', async () => {
+  it('contributes a connection statusItem on the left', async () => {
     const { default: plugin } = await import('../index');
     const items = plugin.contributes?.statusItems ?? [];
-    expect(items).toHaveLength(2);
     const conn = items.find((i) => i.id === 'orchestrator.connection');
-    const tok = items.find((i) => i.id === 'orchestrator.tokens');
     expect(conn?.position).toBe('left');
-    expect(tok?.position).toBe('right');
+    // Per-turn token usage is rendered by Spark's Bubble Actions row, not
+    // duplicated in the app status bar.
+    expect(items.find((i) => i.id === 'orchestrator.tokens')).toBeUndefined();
   });
 });
 
