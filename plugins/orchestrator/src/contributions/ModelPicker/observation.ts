@@ -2,15 +2,9 @@
 // No writes, no side effects.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createLlmGatewayClient } from '@snapfzz/shared';
+import { buildPickerListing, createLlmGatewayClient, ORCHESTRATOR_COMBO_NAME } from '@snapfzz/shared';
 import { usePluginRuntimeOptional } from '../runtime';
-import {
-  filterBySearch,
-  filterOutCombos,
-  findOrchestratorUnderlyingTarget,
-  sortForDisplay,
-  toDescriptor,
-} from './data';
+import { filterBySearch, sortForDisplay, toDescriptor } from './data';
 import { SELECTED_MODEL_STORAGE_KEY, PINNED_MODELS_STORAGE_KEY } from './data';
 import type { ModelDescriptor, ModelPickerObservation } from './contracts';
 
@@ -51,7 +45,10 @@ export function useModelPickerObservation(): ModelPickerObservation & {
         runtime.ctx.storage.get<string[]>(PINNED_MODELS_STORAGE_KEY),
       ]);
       if (!mountedRef.current) return;
-      if (storedId) setSelectedIdState(storedId);
+      // Legacy installs may have persisted the literal combo name ("orchestrator")
+      // from before we started filtering combos out of the picker. Drop it so the
+      // fetched underlying target seeds `selectedId` instead.
+      if (storedId && storedId !== ORCHESTRATOR_COMBO_NAME) setSelectedIdState(storedId);
       if (storedPins) setPinnedIdsState(storedPins);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,18 +60,18 @@ export function useModelPickerObservation(): ModelPickerObservation & {
     try {
       const infoRes = await client.getModelInfo();
       if (!mountedRef.current) return;
-      // Per A013/Orchestrator: the `orchestrator` combo (and any other routing combo)
-      // is an internal gateway target, not a user-pickable model. Drop before display.
-      const realEntries = filterOutCombos(infoRes.data);
-      const descriptors = realEntries.map(toDescriptor);
-      setAllModels(descriptors);
+      // Per A013/Orchestrator: `buildPickerListing` filters out routing combos (they're
+      // gateway-internal targets, not user-pickable models) AND resolves whichever real
+      // model the `orchestrator` combo is currently routing to. Shared helper so
+      // settings-llm and the picker agree on what counts as "selected".
+      const { models: realEntries, orchestratorTarget } = buildPickerListing(infoRes);
+      setAllModels(realEntries.map(toDescriptor));
 
-      // On first load, if the user hasn't made an explicit pick yet, seed the selected
-      // id from whatever real model the combo is currently routing to — so the picker
-      // reflects the true active target instead of the literal "orchestrator".
-      const underlying = findOrchestratorUnderlyingTarget(infoRes.data);
-      if (underlying) {
-        setSelectedIdState((prev) => prev ?? underlying.model_name);
+      // Seed `selectedId` from the combo's underlying target when the user has no
+      // stored pick yet — picker reflects the true active target, never the literal
+      // "orchestrator".
+      if (orchestratorTarget) {
+        setSelectedIdState((prev) => prev ?? orchestratorTarget.model_name);
       }
     } catch (err) {
       if (!mountedRef.current) return;

@@ -14,10 +14,6 @@ import {
   sortForDisplay,
   SELECTED_MODEL_STORAGE_KEY,
   PINNED_MODELS_STORAGE_KEY,
-  ORCHESTRATOR_COMBO_NAME,
-  isCombo,
-  filterOutCombos,
-  findOrchestratorUnderlyingTarget,
 } from './data';
 import type { ModelInfoEntry } from '@snapfzz/shared';
 import type { ModelDescriptor } from './contracts';
@@ -298,98 +294,7 @@ describe('A013/ModelPicker/data: sortForDisplay', () => {
   });
 });
 
-// ─── isCombo / filterOutCombos ───────────────────────────────────────────────
-
-function makeEntry(
-  model_name: string,
-  extras: {
-    model?: string;
-    api_base?: string;
-    model_info?: Record<string, unknown>;
-  } = {},
-): ModelInfoEntry {
-  return {
-    model_name,
-    litellm_params: extras.model || extras.api_base
-      ? { model: extras.model, api_base: extras.api_base }
-      : undefined,
-    model_info: (extras.model_info ?? {}) as never,
-  };
-}
-
-describe('A013/ModelPicker/data: combo filtering', () => {
-  it('A013/data: ORCHESTRATOR_COMBO_NAME is the stable system name', () => {
-    expect(ORCHESTRATOR_COMBO_NAME).toBe('orchestrator');
-  });
-
-  it('A013/data: isCombo is true when model_name matches the system combo name', () => {
-    expect(isCombo(makeEntry('orchestrator'))).toBe(true);
-  });
-
-  it('A013/data: isCombo is true when model_info.snapfzz_system_combo flag is set', () => {
-    expect(isCombo(makeEntry('foo', { model_info: { snapfzz_system_combo: true } }))).toBe(true);
-  });
-
-  it('A013/data: isCombo is true when model_info.snapfzz_combo flag is set (user combo)', () => {
-    expect(isCombo(makeEntry('my-combo', { model_info: { snapfzz_combo: true } }))).toBe(true);
-  });
-
-  it('A013/data: isCombo is false for a plain imported model', () => {
-    expect(isCombo(makeEntry('acme/gpt-4'))).toBe(false);
-  });
-
-  it('A013/data: filterOutCombos drops the orchestrator combo and keeps real entries', () => {
-    const entries = [
-      makeEntry('acme/gpt-4'),
-      makeEntry('orchestrator'),
-      makeEntry('anthropic/claude'),
-    ];
-    const kept = filterOutCombos(entries).map((e) => e.model_name);
-    expect(kept).toEqual(['acme/gpt-4', 'anthropic/claude']);
-  });
-
-  it('A013/data: filterOutCombos drops user-created combos too', () => {
-    const entries = [
-      makeEntry('acme/gpt-4'),
-      makeEntry('my-pool', { model_info: { snapfzz_combo: true } }),
-    ];
-    const kept = filterOutCombos(entries).map((e) => e.model_name);
-    expect(kept).toEqual(['acme/gpt-4']);
-  });
-});
-
-// ─── findOrchestratorUnderlyingTarget ────────────────────────────────────────
-
-describe('A013/ModelPicker/data: findOrchestratorUnderlyingTarget', () => {
-  it('A013/data: returns null when no orchestrator combo is present', () => {
-    const entries = [makeEntry('acme/gpt-4')];
-    expect(findOrchestratorUnderlyingTarget(entries)).toBeNull();
-  });
-
-  it('A013/data: matches target on litellm_params.model + api_base', () => {
-    const entries = [
-      makeEntry('acme/gpt-4', { model: 'openai/gpt-4', api_base: 'https://api.openai.com/v1' }),
-      makeEntry('orchestrator', { model: 'openai/gpt-4', api_base: 'https://api.openai.com/v1' }),
-    ];
-    const target = findOrchestratorUnderlyingTarget(entries);
-    expect(target?.model_name).toBe('acme/gpt-4');
-  });
-
-  it('A013/data: returns null when the combo model has no matching real entry', () => {
-    const entries = [
-      makeEntry('orchestrator', { model: 'openai/gpt-4' }),
-    ];
-    expect(findOrchestratorUnderlyingTarget(entries)).toBeNull();
-  });
-
-  it('A013/data: does not return another combo as the underlying target', () => {
-    const entries = [
-      makeEntry('my-combo', {
-        model: 'openai/gpt-4',
-        model_info: { snapfzz_combo: true },
-      }),
-      makeEntry('orchestrator', { model: 'openai/gpt-4' }),
-    ];
-    expect(findOrchestratorUnderlyingTarget(entries)).toBeNull();
-  });
-});
+// NOTE: combo-detection / target-resolution tests live in
+// `frontend/packages/shared/src/llm/orchestrator.test.ts` — the helpers moved
+// to `@snapfzz/shared/llm/orchestrator` so settings-llm and the orchestrator
+// plugin can share them, and the tests moved with them.

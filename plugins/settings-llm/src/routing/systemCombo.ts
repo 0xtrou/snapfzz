@@ -3,7 +3,10 @@
 // by the ModelPicker). These combos must be VISIBLE in the routing list so users can
 // see what's configured, but NOT editable or deletable from the UI.
 //
-// Any new system-level combo id must be added here (single source of truth).
+// The canonical combo name lives in `@snapfzz/shared/llm/orchestrator` as
+// `ORCHESTRATOR_COMBO_NAME`. We keep a literal here to avoid pulling the full
+// `@snapfzz/shared` barrel (which transitively loads Spark Design CSS that vitest
+// can't parse) into this pure-TS routing module.
 
 export const SYSTEM_COMBO_NAMES: ReadonlySet<string> = new Set([
   'orchestrator',

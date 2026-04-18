@@ -11,16 +11,22 @@ const mockGetModelInfo = vi.fn();
 const mockGetBaseUrl = vi.fn();
 const mockGetMasterKey = vi.fn();
 
-vi.mock('@snapfzz/shared', () => ({
-  createLlmGatewayClient: () => ({
-    getBaseUrl: mockGetBaseUrl,
-    getMasterKey: mockGetMasterKey,
-    listModels: vi.fn(),
-    getModelInfo: mockGetModelInfo,
-    // getModelGroups is intentionally absent — observation no longer calls it.
-    getModelGroups: vi.fn(),
-  }),
-}));
+vi.mock('@snapfzz/shared', async () => {
+  // Re-export the real combo-resolution helpers (pure TS, no side effects) so the
+  // observation hook can call `buildPickerListing`; only the gateway client is mocked.
+  const actual = await vi.importActual<typeof import('@snapfzz/shared')>('@snapfzz/shared');
+  return {
+    ...actual,
+    createLlmGatewayClient: () => ({
+      getBaseUrl: mockGetBaseUrl,
+      getMasterKey: mockGetMasterKey,
+      listModels: vi.fn(),
+      getModelInfo: mockGetModelInfo,
+      // getModelGroups is intentionally absent — observation no longer calls it.
+      getModelGroups: vi.fn(),
+    }),
+  };
+});
 
 const mockStorageGet = vi.fn();
 const mockStorageSet = vi.fn();

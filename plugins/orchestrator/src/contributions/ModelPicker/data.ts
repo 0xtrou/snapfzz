@@ -1,63 +1,23 @@
 // Per A013/ModelPicker + feedback/five-layer: pure TS data layer.
 // No React, no DOM, no effects. All functions are independently unit-testable.
 
-import type { ModelInfoDetails, ModelInfoEntry } from '@snapfzz/shared';
+import type { ModelInfoDetails } from '@snapfzz/shared';
 import type { ModelCapabilities, ModelDescriptor } from './contracts';
+
+// NOTE: The combo-resolution helpers (isComboEntry, filterOutCombos,
+// findOrchestratorUnderlyingTarget, buildPickerListing) and the
+// ORCHESTRATOR_COMBO_NAME constant live in `@snapfzz/shared/llm/orchestrator`
+// and are consumed directly from `@snapfzz/shared` by `observation.ts`. We
+// intentionally do NOT re-export them here — importing runtime values from
+// shared would pull the full `@snapfzz/shared` barrel (including UI
+// components that depend on icon mocks) into every module that only needed
+// `SELECTED_MODEL_STORAGE_KEY` (ConnectionStatus, tests, etc).
 
 /** Plugin-storage key for the selected model id. */
 export const SELECTED_MODEL_STORAGE_KEY = 'model.selectedId';
 
 /** Plugin-storage key for the pinned model ids array. */
 export const PINNED_MODELS_STORAGE_KEY = 'model.pinnedIds';
-
-/** The system combo name the orchestrator agent points at. Never user-selectable. */
-export const ORCHESTRATOR_COMBO_NAME = 'orchestrator';
-
-// ─── Combo filtering ─────────────────────────────────────────────────────────
-
-/**
- * True when an entry is a routing combo (system or user-created) — those are
- * internal routing targets, never user-pickable models. Flagged by `model_info.
- * snapfzz_combo` or `snapfzz_system_combo` when imported through settings-llm;
- * the literal `model_name === 'orchestrator'` is a belt-and-braces fallback in
- * case the flag wasn't set (older gateways).
- */
-export function isCombo(entry: ModelInfoEntry): boolean {
-  if (entry.model_name === ORCHESTRATOR_COMBO_NAME) return true;
-  const info = entry.model_info as Record<string, unknown>;
-  return info.snapfzz_system_combo === true || info.snapfzz_combo === true;
-}
-
-/** Drop combos from the raw entry list — leaves only real, user-pickable models. */
-export function filterOutCombos(entries: readonly ModelInfoEntry[]): readonly ModelInfoEntry[] {
-  return entries.filter((e) => !isCombo(e));
-}
-
-/**
- * Finds the user-facing model that the orchestrator combo currently routes to.
- * Matches on `litellm_params.model` + `api_base` since `api_key` is masked and
- * `snapfzz_provider_id` may be stamped on both sides.
- *
- * Returns the matching real entry (so the caller can use its `model_name` as the
- * UI's "selected" id) or null when there's no combo or no underlying match.
- */
-export function findOrchestratorUnderlyingTarget(
-  entries: readonly ModelInfoEntry[],
-): ModelInfoEntry | null {
-  const combo = entries.find((e) => e.model_name === ORCHESTRATOR_COMBO_NAME);
-  if (!combo) return null;
-  const comboModel = combo.litellm_params?.model;
-  const comboBase = combo.litellm_params?.api_base;
-  if (!comboModel) return null;
-  return (
-    entries.find(
-      (e) =>
-        !isCombo(e) &&
-        e.litellm_params?.model === comboModel &&
-        (e.litellm_params?.api_base ?? null) === (comboBase ?? null),
-    ) ?? null
-  );
-}
 
 // ─── Capability derivation ────────────────────────────────────────────────────
 

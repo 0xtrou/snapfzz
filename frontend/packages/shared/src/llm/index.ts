@@ -8,3 +8,11 @@ export type {
   ModelInfoResponse,
   ModelListResponse,
 } from './contracts';
+export {
+  ORCHESTRATOR_COMBO_NAME,
+  isComboEntry,
+  filterOutCombos,
+  findOrchestratorUnderlyingTarget,
+  buildPickerListing,
+} from './orchestrator';
+export type { PickerModelListing } from './orchestrator';
