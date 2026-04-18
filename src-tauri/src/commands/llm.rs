@@ -120,8 +120,10 @@ pub async fn llm_cleanup_spend_logs(
 }
 
 // A013/Orchestrator: mutate the system `orchestrator` combo in LiteLLM. Invoked by the
-// ModelPicker when the user picks a new model. Rust owns the master key so the frontend
-// never needs to touch it for this mutation.
+// ModelPicker when the user picks a new model. Rust owns the master key and the raw
+// provider api keys (stored in snapfzz-vault) so the frontend never touches either.
+// The combo stores the raw key because LiteLLM does NOT resolve `os.environ/...` for
+// deployments added via `/model/new` or `/model/update` — only for yaml-config models.
 #[tauri::command]
 pub async fn llm_update_orchestrator_combo(
     model_target: String,
@@ -133,7 +135,28 @@ pub async fn llm_update_orchestrator_combo(
         let mut guard = vault.lock().unwrap();
         vault::get_or_create_master_key(&mut guard).map_err(|e| e.to_string())?
     };
-    combo::update_orchestrator_combo(&base_url, &master_key, &model_target)
+    let vault_handle = vault.inner().clone();
+    let resolve = move |provider_id: &str| -> Result<String, snapfzz_llm::LlmError> {
+        let mut guard = vault_handle.lock().map_err(|e| {
+            snapfzz_llm::LlmError::Message(format!("vault poisoned: {e}"))
+        })?;
+        let key = format!(
+            "{}{}",
+            crate::constants::vault_keys::PROVIDER_KEY_PREFIX,
+            provider_id
+        );
+        let bytes = guard.read(&key).map_err(|e| {
+            snapfzz_llm::LlmError::Message(format!(
+                "no vault entry for provider '{provider_id}': {e} — re-save the provider key in Settings → LLM"
+            ))
+        })?;
+        String::from_utf8(bytes).map_err(|e| {
+            snapfzz_llm::LlmError::Message(format!(
+                "vault entry for '{provider_id}' is not utf8: {e}"
+            ))
+        })
+    };
+    combo::update_orchestrator_combo(&base_url, &master_key, &model_target, resolve)
         .await
         .map_err(|e| e.to_string())
 }

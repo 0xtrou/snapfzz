@@ -210,7 +210,28 @@ pub fn spawn_boot_phases(
                 };
                 match master_key_result {
                     Ok(master_key) => {
-                        match combo::ensure_orchestrator_combo(&base_url, &master_key).await {
+                        let vault_for_lookup = vault_handle.clone();
+                        let resolve = move |provider_id: &str| -> Result<String, snapfzz_llm::LlmError> {
+                            let mut guard = vault_for_lookup.lock().map_err(|e| {
+                                snapfzz_llm::LlmError::Message(format!("vault poisoned: {e}"))
+                            })?;
+                            let key = format!(
+                                "{}{}",
+                                crate::constants::vault_keys::PROVIDER_KEY_PREFIX,
+                                provider_id
+                            );
+                            let bytes = guard.read(&key).map_err(|e| {
+                                snapfzz_llm::LlmError::Message(format!(
+                                    "vault read for provider '{provider_id}' failed: {e}"
+                                ))
+                            })?;
+                            String::from_utf8(bytes).map_err(|e| {
+                                snapfzz_llm::LlmError::Message(format!(
+                                    "vault entry for '{provider_id}' is not utf8: {e}"
+                                ))
+                            })
+                        };
+                        match combo::ensure_orchestrator_combo(&base_url, &master_key, resolve).await {
                             Ok(combo::EnsureOutcome::AlreadyPresent) => {
                                 eprintln!("[boot/combo] orchestrator combo already present");
                             }

@@ -12,16 +12,20 @@ use crate::LlmError;
 /// underlying target = single LiteLLM `/model/update` call — no agent reload.
 pub const ORCHESTRATOR_COMBO_NAME: &str = "orchestrator";
 
-/// Prefix used for per-provider env-var references inside `litellm_params.api_key`.
-/// The Tauri host injects each registered provider's raw key into LiteLLM's child env
-/// as `SNAPFZZ_KEY_<provider-id>=<raw>`; combo entries then reference that env var
-/// via `os.environ/SNAPFZZ_KEY_<provider-id>` so the raw key never lives in LiteLLM's
-/// DB (where it would be masked on read by `/v1/model/info`).
-pub const PROVIDER_KEY_ENV_PREFIX: &str = "SNAPFZZ_KEY_";
-
-fn env_ref_for_provider(provider_id: &str) -> String {
-    format!("os.environ/{PROVIDER_KEY_ENV_PREFIX}{provider_id}")
-}
+// Why the combo carries a raw api_key (not an `os.environ/...` reference):
+//
+// LiteLLM resolves `os.environ/VAR` via `get_secret()` at request time only for models
+// loaded from the yaml config. Models added through `/model/new` / `/model/update` are
+// encrypted into the LiteLLM DB (using `LITELLM_SALT_KEY`), decrypted at load into the
+// router, and passed directly to the upstream SDK with **no `get_secret()` call** (see
+// `litellm/proxy/proxy_server.py` → `_add_db_models_to_router_instance` and
+// `litellm/main.py:2045` where `api_key` is consumed verbatim). Embedding an
+// `os.environ/...` string would therefore be sent as the literal Bearer token and
+// upstream would 401 with "Invalid API key".
+//
+// So the combo stores a raw api_key pulled from the snapfzz-vault on every mutation.
+// That raw key only ever lives encrypted at rest (vault + LiteLLM's DB), and in each
+// process' memory at request time.
 
 #[derive(Debug, Deserialize)]
 struct ModelInfoResponse {
@@ -103,10 +107,10 @@ fn find_first_non_combo(models: &[ModelInfoEntry]) -> Option<&ModelInfoEntry> {
     })
 }
 
-fn build_litellm_params(model: &str, api_base: Option<&str>, provider_id: &str) -> serde_json::Value {
+fn build_litellm_params(model: &str, api_base: Option<&str>, api_key: &str) -> serde_json::Value {
     let mut params = serde_json::json!({
         "model": model,
-        "api_key": env_ref_for_provider(provider_id),
+        "api_key": api_key,
     });
     if let Some(base) = api_base {
         params["api_base"] = serde_json::json!(base);
@@ -122,10 +126,11 @@ async fn create_combo(
     target_model: &str,
     api_base: Option<&str>,
     provider_id: &str,
+    api_key: &str,
 ) -> Result<(), LlmError> {
     let body = serde_json::json!({
         "model_name": name,
-        "litellm_params": build_litellm_params(target_model, api_base, provider_id),
+        "litellm_params": build_litellm_params(target_model, api_base, api_key),
         "model_info": {
             "snapfzz_system_combo": true,
             "snapfzz_provider_id": provider_id,
@@ -151,10 +156,11 @@ async fn update_combo_target(
     target_model: &str,
     api_base: Option<&str>,
     provider_id: &str,
+    api_key: &str,
 ) -> Result<(), LlmError> {
     let body = serde_json::json!({
         "id": combo_id,
-        "litellm_params": build_litellm_params(target_model, api_base, provider_id),
+        "litellm_params": build_litellm_params(target_model, api_base, api_key),
         "model_info": {
             "id": combo_id,
             "snapfzz_system_combo": true,
@@ -190,12 +196,13 @@ pub enum EnsureOutcome {
 /// - If no models are configured in the gateway yet → skip; log; return `NoModelsAvailable`.
 /// - Otherwise → create the combo pointing at the first available real model.
 ///
-/// The default target MUST have `model_info.snapfzz_provider_id` set (stamped by
-/// settings-llm when the model is imported). Without it we can't build a stable
-/// `os.environ/...` api_key reference.
+/// `resolve_raw_key` receives the target's `snapfzz_provider_id` and must return the
+/// raw provider api key (typically a snapfzz-vault read). If the vault has no entry
+/// for that id, return `Err(...)` so the caller can skip bootstrapping.
 pub async fn ensure_orchestrator_combo(
     base_url: &str,
     master_key: &str,
+    resolve_raw_key: impl Fn(&str) -> Result<String, LlmError>,
 ) -> Result<EnsureOutcome, LlmError> {
     let models = list_models(base_url, master_key).await?;
 
@@ -223,6 +230,7 @@ pub async fn ensure_orchestrator_combo(
                 default.model_name
             ))
         })?;
+    let raw_api_key = resolve_raw_key(&provider_id)?;
 
     let client = Client::new();
     create_combo(
@@ -233,6 +241,7 @@ pub async fn ensure_orchestrator_combo(
         &target_model,
         api_base.as_deref(),
         &provider_id,
+        &raw_api_key,
     )
     .await?;
 
@@ -241,15 +250,14 @@ pub async fn ensure_orchestrator_combo(
 
 /// Called when the user picks a new model in the UI. Resolves the target by its
 /// LiteLLM `model_name`, then mutates the combo's `litellm_params` in place. If the
-/// combo doesn't exist yet, creates it first.
-///
-/// The target MUST have `model_info.snapfzz_provider_id` — without it we can't build
-/// the `os.environ/...` api_key reference. (All models imported through settings-llm
-/// have it; legacy entries won't and will error with a clear message.)
+/// combo doesn't exist yet, creates it first. `resolve_raw_key` receives the target's
+/// `snapfzz_provider_id` and must return the matching raw api key (typically a
+/// snapfzz-vault read). LiteLLM will encrypt the key at rest via `LITELLM_SALT_KEY`.
 pub async fn update_orchestrator_combo(
     base_url: &str,
     master_key: &str,
     new_target_model_name: &str,
+    resolve_raw_key: impl Fn(&str) -> Result<String, LlmError>,
 ) -> Result<(), LlmError> {
     let models = list_models(base_url, master_key).await?;
 
@@ -273,6 +281,7 @@ pub async fn update_orchestrator_combo(
             ))
         })?;
 
+    let raw_api_key = resolve_raw_key(&provider_id)?;
     let client = Client::new();
 
     match find_combo_id(&models, ORCHESTRATOR_COMBO_NAME) {
@@ -285,6 +294,7 @@ pub async fn update_orchestrator_combo(
                 &target_model,
                 api_base.as_deref(),
                 &provider_id,
+                &raw_api_key,
             )
             .await
         }
@@ -297,6 +307,7 @@ pub async fn update_orchestrator_combo(
                 &target_model,
                 api_base.as_deref(),
                 &provider_id,
+                &raw_api_key,
             )
             .await
         }
@@ -358,7 +369,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let outcome = ensure_orchestrator_combo(&server.uri(), "sk-master")
+        let outcome = ensure_orchestrator_combo(&server.uri(), "sk-master", |_| Ok("sk-real".to_string()))
             .await
             .expect("ensure should succeed");
         assert_eq!(outcome, EnsureOutcome::AlreadyPresent);
@@ -374,7 +385,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let outcome = ensure_orchestrator_combo(&server.uri(), "sk-master")
+        let outcome = ensure_orchestrator_combo(&server.uri(), "sk-master", |_| Ok("sk-real".to_string()))
             .await
             .expect("ensure should succeed");
         assert_eq!(outcome, EnsureOutcome::NoModelsAvailable);
@@ -399,7 +410,7 @@ mod tests {
                 "litellm_params": {
                     "model": "openai/gpt-4",
                     "api_base": "https://api.openai.com/v1",
-                    "api_key": "os.environ/SNAPFZZ_KEY_custom-acme"
+                    "api_key": "sk-real-acme"
                 },
                 "model_info": {
                     "snapfzz_system_combo": true,
@@ -411,9 +422,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let outcome = ensure_orchestrator_combo(&server.uri(), "sk-master")
-            .await
-            .expect("ensure should succeed");
+        let outcome = ensure_orchestrator_combo(&server.uri(), "sk-master", |pid| {
+            assert_eq!(pid, "custom-acme");
+            Ok("sk-real-acme".to_string())
+        })
+        .await
+        .expect("ensure should succeed");
         assert!(matches!(outcome, EnsureOutcome::Created { ref target } if target == "openai/gpt-4"));
     }
 
@@ -444,8 +458,9 @@ mod tests {
             .mount(&server)
             .await;
 
-        // Combo mutation must carry the TARGET model's model + api_base, and an
-        // `os.environ/...` api_key reference scoped to the target's provider id.
+        // Combo mutation must carry the TARGET model's model + api_base + the raw
+        // api_key fetched via `resolve_raw_key` (LiteLLM doesn't resolve `os.environ/`
+        // for DB-stored deployments — the raw key is stored encrypted at rest).
         Mock::given(method("POST"))
             .and(path("/model/update"))
             .and(body_json(serde_json::json!({
@@ -453,7 +468,7 @@ mod tests {
                 "litellm_params": {
                     "model": "anthropic/claude-opus",
                     "api_base": "https://api.anthropic.com",
-                    "api_key": "os.environ/SNAPFZZ_KEY_custom-anthropic"
+                    "api_key": "sk-real-anthropic"
                 },
                 "model_info": {
                     "id": "combo-uuid-xyz",
@@ -466,9 +481,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        update_orchestrator_combo(&server.uri(), "sk-master", "anthropic/claude")
-            .await
-            .expect("update should succeed");
+        update_orchestrator_combo(&server.uri(), "sk-master", "anthropic/claude", |pid| {
+            assert_eq!(pid, "custom-anthropic");
+            Ok("sk-real-anthropic".to_string())
+        })
+        .await
+        .expect("update should succeed");
     }
 
     #[tokio::test]
@@ -491,9 +509,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        update_orchestrator_combo(&server.uri(), "sk-master", "acme/gpt-4")
-            .await
-            .expect("update should succeed by creating the combo");
+        update_orchestrator_combo(&server.uri(), "sk-master", "acme/gpt-4", |_| {
+            Ok("sk-real-acme".to_string())
+        })
+        .await
+        .expect("update should succeed by creating the combo");
     }
 
     #[tokio::test]
@@ -507,9 +527,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let err = update_orchestrator_combo(&server.uri(), "sk-master", "does-not-exist")
-            .await
-            .expect_err("unknown target must error");
+        let err = update_orchestrator_combo(&server.uri(), "sk-master", "does-not-exist", |_| {
+            Ok("unused".to_string())
+        })
+        .await
+        .expect_err("unknown target must error");
         assert!(err.to_string().contains("not found"));
     }
 }
