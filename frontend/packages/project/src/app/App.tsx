@@ -169,6 +169,144 @@ function StatusItemWrapper({ item, onCrash }: { item: StatusItemContribution; on
   return <LazyComponent loader={item.component} pluginId={item.id} onCrash={onCrash} />;
 }
 
+// ─── Resize handles ──────────────────────────────────────────────────────────
+//
+// Visible line is 1px; drag hitbox is 4px (react-resizable-panels uses the
+// element's full area as the pointer target). Wrap pattern: outer PanelResize-
+// Handle holds the hitbox + cursor; inner div paints the 1px line and expands
+// to 2px on hover. `group` classes let the inner span react to hover.
+
+function HorizontalHandle() {
+  return (
+    <PanelResizeHandle
+      className="group relative w-1 flex-shrink-0 cursor-col-resize"
+      style={{ transform: 'translateZ(0)' }}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-[var(--border-default)] group-hover:w-0.5 group-hover:bg-[var(--border-strong)] transition-all"
+      />
+    </PanelResizeHandle>
+  );
+}
+
+function VerticalHandle() {
+  return (
+    <PanelResizeHandle
+      className="group relative h-1 flex-shrink-0 cursor-row-resize"
+      style={{ transform: 'translateZ(0)' }}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-[var(--border-default)] group-hover:h-0.5 group-hover:bg-[var(--border-strong)] transition-all"
+      />
+    </PanelResizeHandle>
+  );
+}
+
+// ─── Shell body — nested PanelGroup with autoSaveId persistence ──────────────
+
+interface ShellBodyProps {
+  maximized: MaximizedPane;
+  toggleMax: (pane: Exclude<MaximizedPane, null>) => void;
+  leftPanelTabs: readonly TabContribution[];
+  leftPanelActiveTab: string;
+  setLeftPanelActiveTab: (id: string) => void;
+  workspaceTabs: readonly TabContribution[];
+  workspaceActiveTab: string;
+  setWorkspaceActiveTab: (id: string) => void;
+  bottomPanels: readonly PanelContribution[];
+  handleCrash: (pluginId: string, error: Error) => void;
+}
+
+function ShellBody(props: ShellBodyProps) {
+  const {
+    maximized, toggleMax,
+    leftPanelTabs, leftPanelActiveTab, setLeftPanelActiveTab,
+    workspaceTabs, workspaceActiveTab, setWorkspaceActiveTab,
+    bottomPanels, handleCrash,
+  } = props;
+
+  // Maximised shortcuts: render just the one panel full-viewport so react-
+  // resizable-panels doesn't have to juggle 0-size siblings.
+  if (maximized === 'left') {
+    return (
+      <div className="flex-1 min-h-0">
+        <LeftPanel
+          tabs={leftPanelTabs} activeTabId={leftPanelActiveTab}
+          onTabChange={setLeftPanelActiveTab} onCrash={handleCrash}
+          maxControls={<MaximizeButton isMaximized onToggle={() => toggleMax('left')} label="left panel" />}
+        />
+      </div>
+    );
+  }
+  if (maximized === 'right') {
+    return (
+      <div className="flex-1 min-h-0">
+        <RightPanel
+          tabs={workspaceTabs} activeTabId={workspaceActiveTab}
+          onTabChange={setWorkspaceActiveTab} onCrash={handleCrash}
+          maxControls={<MaximizeButton isMaximized onToggle={() => toggleMax('right')} label="workspace" />}
+        />
+      </div>
+    );
+  }
+  if (maximized === 'bottom') {
+    return (
+      <div className="flex-1 min-h-0">
+        <BottomPanel
+          panels={bottomPanels} onCrash={handleCrash}
+          maxControls={<MaximizeButton isMaximized onToggle={() => toggleMax('bottom')} label="bottom panel" />}
+        />
+      </div>
+    );
+  }
+
+  // Default three-pane layout: outer vertical PanelGroup, inner horizontal
+  // PanelGroup for left+right. Each PanelGroup's sizes persist to
+  // localStorage via `autoSaveId` — next boot restores the last widths.
+  return (
+    <PanelGroup
+      direction="vertical"
+      autoSaveId="snapfzz.shell.vertical"
+      className="flex-1"
+      style={{ contain: 'strict' }}
+    >
+      <Panel defaultSize={72} minSize={30}>
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId="snapfzz.shell.horizontal"
+          className="h-full"
+          style={{ contain: 'strict' }}
+        >
+          <Panel defaultSize={40} minSize={20}>
+            <LeftPanel
+              tabs={leftPanelTabs} activeTabId={leftPanelActiveTab}
+              onTabChange={setLeftPanelActiveTab} onCrash={handleCrash}
+              maxControls={<MaximizeButton isMaximized={false} onToggle={() => toggleMax('left')} label="left panel" />}
+            />
+          </Panel>
+          <HorizontalHandle />
+          <Panel defaultSize={60} minSize={30}>
+            <RightPanel
+              tabs={workspaceTabs} activeTabId={workspaceActiveTab}
+              onTabChange={setWorkspaceActiveTab} onCrash={handleCrash}
+              maxControls={<MaximizeButton isMaximized={false} onToggle={() => toggleMax('right')} label="workspace" />}
+            />
+          </Panel>
+        </PanelGroup>
+      </Panel>
+      <VerticalHandle />
+      <Panel defaultSize={28} minSize={10}>
+        <BottomPanel
+          panels={bottomPanels} onCrash={handleCrash}
+          maxControls={<MaximizeButton isMaximized={false} onToggle={() => toggleMax('bottom')} label="bottom panel" />}
+        />
+      </Panel>
+    </PanelGroup>
+  );
+}
+
 const store = new ContributionStore();
 const host = new PluginHost(store, 'project');
 let pluginsInitialized = false;
@@ -265,97 +403,18 @@ export function App() {
         }
       >
         <div className="flex flex-col h-full" style={{ contain: 'strict' }}>
-          {/* Horizontal PanelGroup for left+right splits; hidden when bottom is maximised.
-              When left OR right is maximised, we swap the whole PanelGroup for a single
-              full-height wrapper so react-resizable-panels doesn't trip on a 0-size Panel. */}
-          {maximized === 'bottom' ? null : maximized === 'left' ? (
-            <div className="flex-1 min-h-0">
-              <LeftPanel
-                tabs={leftPanelTabs}
-                activeTabId={leftPanelActiveTab || ''}
-                onTabChange={setLeftPanelActiveTab}
-                onCrash={handleCrash}
-                maxControls={
-                  <MaximizeButton
-                    isMaximized
-                    onToggle={() => toggleMax('left')}
-                    label="left panel"
-                  />
-                }
-              />
-            </div>
-          ) : maximized === 'right' ? (
-            <div className="flex-1 min-h-0">
-              <RightPanel
-                tabs={workspaceTabs}
-                activeTabId={workspaceActiveTab || ''}
-                onTabChange={setWorkspaceActiveTab}
-                onCrash={handleCrash}
-                maxControls={
-                  <MaximizeButton
-                    isMaximized
-                    onToggle={() => toggleMax('right')}
-                    label="workspace"
-                  />
-                }
-              />
-            </div>
-          ) : (
-            <PanelGroup direction="horizontal" className="flex-1" style={{ contain: 'strict' }}>
-              <Panel defaultSize={40} minSize={20}>
-                <LeftPanel
-                  tabs={leftPanelTabs}
-                  activeTabId={leftPanelActiveTab || ''}
-                  onTabChange={setLeftPanelActiveTab}
-                  onCrash={handleCrash}
-                  maxControls={
-                    <MaximizeButton
-                      isMaximized={false}
-                      onToggle={() => toggleMax('left')}
-                      label="left panel"
-                    />
-                  }
-                />
-              </Panel>
-              <PanelResizeHandle className="w-1 bg-[var(--border-default)] hover:bg-[var(--border-strong)] transition-colors cursor-col-resize" style={{ transform: 'translateZ(0)' }} />
-              <Panel defaultSize={60} minSize={30}>
-                <RightPanel
-                  tabs={workspaceTabs}
-                  activeTabId={workspaceActiveTab || ''}
-                  onTabChange={setWorkspaceActiveTab}
-                  onCrash={handleCrash}
-                  maxControls={
-                    <MaximizeButton
-                      isMaximized={false}
-                      onToggle={() => toggleMax('right')}
-                      label="workspace"
-                    />
-                  }
-                />
-              </Panel>
-            </PanelGroup>
-          )}
-
-          {/* Bottom panel: 192px when cohabiting, full-flex when maximised,
-              hidden when left or right is maximised. */}
-          {maximized !== 'left' && maximized !== 'right' && (
-            <div
-              className={maximized === 'bottom' ? 'flex-1 min-h-0' : 'h-48'}
-              style={{ contain: 'layout paint' }}
-            >
-              <BottomPanel
-                panels={contributions.bottomPanels}
-                onCrash={handleCrash}
-                maxControls={
-                  <MaximizeButton
-                    isMaximized={maximized === 'bottom'}
-                    onToggle={() => toggleMax('bottom')}
-                    label="bottom panel"
-                  />
-                }
-              />
-            </div>
-          )}
+          <ShellBody
+            maximized={maximized}
+            toggleMax={toggleMax}
+            leftPanelTabs={leftPanelTabs}
+            leftPanelActiveTab={leftPanelActiveTab || ''}
+            setLeftPanelActiveTab={setLeftPanelActiveTab}
+            workspaceTabs={workspaceTabs}
+            workspaceActiveTab={workspaceActiveTab || ''}
+            setWorkspaceActiveTab={setWorkspaceActiveTab}
+            bottomPanels={contributions.bottomPanels}
+            handleCrash={handleCrash}
+          />
         </div>
       </WindowShell>
     </PluginHostProvider>

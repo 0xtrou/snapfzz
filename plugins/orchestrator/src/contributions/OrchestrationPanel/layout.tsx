@@ -53,13 +53,17 @@ const leftHeader: React.CSSProperties = {
   borderBottom: '1px solid var(--border-default)',
 };
 
-const leftTitle: React.CSSProperties = {
+const headerTitle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
   color: 'var(--text-primary)',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
+  lineHeight: '1',
 };
+
+// Kept under the old export name for call-site continuity.
+const leftTitle = headerTitle;
 
 const rightStyle: React.CSSProperties = {
   display: 'flex',
@@ -76,6 +80,7 @@ const rightHeader: React.CSSProperties = {
   padding: '0 12px',
   borderBottom: '1px solid var(--border-default)',
   fontSize: 12,
+  lineHeight: '1',
   color: 'var(--text-secondary)',
 };
 
@@ -140,7 +145,7 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
         {selectedAgentId ? (
           <>
             <div style={rightHeader}>
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+              <span style={headerTitle}>
                 {selectedName || selectedAgentId}
               </span>
               {selectedAgentChats.length > 1 && (
