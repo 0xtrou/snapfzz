@@ -2,12 +2,30 @@
 // into the ChatPanel component tree so observation/events layers can reach plugin storage
 // without importing across plugin boundaries.
 //
-// Per A013/ModelPicker: uses the module-level getPluginContext() from use-chat so the
-// provider does not need ctx threaded down as a prop — ctx is already stored at activate().
+// Per A013/ModelPicker: module-level ctx is set by the plugin's `activate()` so callers
+// outside the Provider (status-bar items, adapters) can still reach storage synchronously.
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { getPluginContext } from '../hooks/use-chat';
 import type { PluginContext } from '@snapfzz/plugin-sdk';
+
+// ─── Module-scoped ctx holder ────────────────────────────────────────────────
+
+let _pluginCtx: PluginContext | null = null;
+
+/** Called from plugin.activate() — stores the live PluginContext for later getters. */
+export function configurePluginContext(ctx: PluginContext): void {
+  _pluginCtx = ctx;
+}
+
+/** Called from plugin.deactivate() — clears the ctx so stale closures no-op. */
+export function disposePluginContext(): void {
+  _pluginCtx = null;
+}
+
+/** Returns the currently-stored PluginContext, or null before activate()/after deactivate(). */
+export function getPluginContext(): PluginContext | null {
+  return _pluginCtx;
+}
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 

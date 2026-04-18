@@ -1,7 +1,7 @@
 // Per A013/ModelPicker + feedback/five-layer: pure TS data layer.
 // No React, no DOM, no effects. All functions are independently unit-testable.
 
-import type { ModelInfoDetails } from '@snapfzz/shared';
+import type { ModelInfoDetails, ModelInfoEntry } from '@snapfzz/shared';
 import type { ModelCapabilities, ModelDescriptor } from './contracts';
 
 // NOTE: The combo-resolution helpers (isComboEntry, filterOutCombos,

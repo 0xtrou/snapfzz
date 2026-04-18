@@ -1,45 +1,83 @@
-// Per A005/PluginArchitecture + feedback/five-layer: top-level composition that assembles
-// the layers and hands fully-resolved props to the pure layout.
-// Per A013/ModelPicker: wraps with PluginRuntimeProvider so ModelPicker's observation
-// can access plugin storage. ModelPicker chip is threaded as composerPrefix.
+// Per A013/ChatPanel: thin shell over Spark's `AgentScopeRuntimeWebUI`.
+//
+// Spark owns: message list rendering, markdown + code blocks, reasoning/tool-call
+// UI, Sender input, streaming cursor, session sidebar (localStorage-backed).
+// We own: the custom fetch/cancel adapter → QwenPaw (`/api/agent/process`), the
+// ModelPicker in the Sender prefix slot, and a SessionIdBridge that pushes
+// Spark's current session id into the adapter so QwenPaw's AgentApp memory is
+// keyed consistently with what the UI thinks is active.
 
-import { useChat } from '../../hooks/use-chat';
-import { SUGGESTION_PROMPTS } from './data';
-import { useChatPanelObservation } from './observation';
-import { useChatPanelEvents } from './events';
-import { ChatPanelLayout } from './layout';
-import { PluginRuntimeProvider } from '../runtime';
+import { useEffect, useMemo } from 'react';
+import {
+  AgentScopeRuntimeWebUI,
+  useChatAnywhereSessionsState,
+  type IAgentScopeRuntimeWebUIOptions,
+} from '@agentscope-ai/chat';
 import { ModelPicker } from '../ModelPicker';
-import { ComposerActions } from '../ComposerActions';
+import { chatCancel, chatFetch, setActiveSessionId } from './adapter';
 
-function ChatPanelInner() {
-  // Observation pulls read-only state from the chat runtime; events need the send/stop
-  // handles, so we read those directly rather than piping through observation.
-  const { send, stop } = useChat();
-  const observation = useChatPanelObservation();
-  const events = useChatPanelEvents({ isStreaming: observation.isStreaming, send, stop });
+const WELCOME_PROMPTS = [
+  { label: 'What can you do?', value: 'What can you do?' },
+  { label: 'Summarise a file', value: 'Read and summarise the README in the workspace.' },
+  { label: 'Plan a task', value: 'Help me plan a small coding task from scratch.' },
+];
 
-  return (
-    <ChatPanelLayout
-      observation={observation}
-      events={events}
-      suggestions={SUGGESTION_PROMPTS}
-      composerPrefix={
-        <>
-          <ComposerActions />
-          <ModelPicker />
-        </>
-      }
-    />
-  );
+/**
+ * Mounted inside the Spark context provider tree (via `theme.rightHeader`) so it
+ * can subscribe to `ChatAnywhereSessionsContext` and forward the active session
+ * id into the module-scoped adapter. Rendering `null` — this is a pure bridge.
+ */
+function SessionIdBridge() {
+  const state = useChatAnywhereSessionsState();
+  const currentSessionId = state?.currentSessionId ?? null;
+  useEffect(() => {
+    setActiveSessionId(currentSessionId);
+  }, [currentSessionId]);
+  return null;
 }
 
-export function ChatPanel() {
+export default function ChatPanel() {
+  const options = useMemo<IAgentScopeRuntimeWebUIOptions>(
+    () => ({
+      api: {
+        // `baseURL` is unused — we supply a custom `fetch` that resolves our
+        // plugin runtime URL via Rust + injects the `X-Agent-Id` header.
+        baseURL: '',
+        fetch: chatFetch,
+        cancel: chatCancel,
+        // History is keyed server-side by session_id in QwenPaw's AgentApp, so
+        // the client sends only the newest message per turn.
+        enableHistoryMessages: false,
+      },
+      session: {
+        // Multi-session sidebar; Spark's default localStorage-backed session api
+        // handles list/create/switch/delete. Our backend's AgentApp gives each
+        // session id its own memory automatically.
+        multiple: true,
+      },
+      welcome: {
+        greeting: 'What are we building today?',
+        description: 'Ask me to read files, plan work, or call tools.',
+        prompts: WELCOME_PROMPTS,
+      },
+      sender: {
+        placeholder: 'Message the orchestrator…',
+        maxLength: 10_000,
+        // ModelPicker chip lives in the Sender's bottom action bar so the user
+        // can switch the underlying LiteLLM combo target without leaving the chat.
+        prefix: <ModelPicker />,
+      },
+      theme: {
+        prefix: 'snapfzz-chat',
+        rightHeader: <SessionIdBridge />,
+      },
+    }),
+    [],
+  );
+
   return (
-    <PluginRuntimeProvider>
-      <ChatPanelInner />
-    </PluginRuntimeProvider>
+    <div style={{ height: '100%', background: 'var(--bg-default)' }}>
+      <AgentScopeRuntimeWebUI options={options} />
+    </div>
   );
 }
-
-export default ChatPanel;

@@ -3,18 +3,16 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { useContext } from 'react';
+import {
+  PluginRuntimeProvider,
+  configurePluginContext,
+  disposePluginContext,
+  usePluginRuntime,
+  usePluginRuntimeOptional,
+} from './runtime';
+import type { PluginContext } from '@snapfzz/plugin-sdk';
 
-// ─── Mock getPluginContext ─────────────────────────────────────────────────────
-
-const mockGetPluginContext = vi.hoisted(() => vi.fn());
-vi.mock('../hooks/use-chat', () => ({
-  getPluginContext: mockGetPluginContext,
-}));
-
-import { PluginRuntimeProvider, usePluginRuntime, usePluginRuntimeOptional } from './runtime';
-
-function makeCtx() {
+function makeCtx(): PluginContext {
   return {
     storage: { get: vi.fn(), set: vi.fn(), delete: vi.fn() },
     bus: { emit: vi.fn(), on: vi.fn() },
@@ -25,20 +23,22 @@ function makeCtx() {
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     registry: { registerTab: vi.fn(), registerBottomPanel: vi.fn(), registerStatusItem: vi.fn(), registerComponent: vi.fn() },
     surface: 'project' as const,
-  };
+  } as unknown as PluginContext;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  disposePluginContext();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  disposePluginContext();
 });
 
 describe('A013/ModelPicker/runtime: PluginRuntimeProvider', () => {
   it('A013/runtime: renders children when ctx is available', () => {
-    mockGetPluginContext.mockReturnValue(makeCtx());
+    configurePluginContext(makeCtx());
     render(
       <PluginRuntimeProvider>
         <div data-testid="child">hello</div>
@@ -48,7 +48,6 @@ describe('A013/ModelPicker/runtime: PluginRuntimeProvider', () => {
   });
 
   it('A013/runtime: renders children when ctx is null (no ctx yet)', () => {
-    mockGetPluginContext.mockReturnValue(null);
     render(
       <PluginRuntimeProvider>
         <div data-testid="child-null">hello</div>
@@ -61,7 +60,7 @@ describe('A013/ModelPicker/runtime: PluginRuntimeProvider', () => {
 describe('A013/ModelPicker/runtime: usePluginRuntimeOptional', () => {
   it('A013/runtime: returns context value when ctx is available', () => {
     const ctx = makeCtx();
-    mockGetPluginContext.mockReturnValue(ctx);
+    configurePluginContext(ctx);
 
     let result: ReturnType<typeof usePluginRuntimeOptional> = null;
     function Consumer() {
@@ -74,8 +73,6 @@ describe('A013/ModelPicker/runtime: usePluginRuntimeOptional', () => {
   });
 
   it('A013/runtime: returns null when ctx is null', () => {
-    mockGetPluginContext.mockReturnValue(null);
-
     let result: ReturnType<typeof usePluginRuntimeOptional> = undefined as never;
     function Consumer() {
       result = usePluginRuntimeOptional();
@@ -89,7 +86,7 @@ describe('A013/ModelPicker/runtime: usePluginRuntimeOptional', () => {
 describe('A013/ModelPicker/runtime: usePluginRuntime', () => {
   it('A013/runtime: returns context when ctx is available', () => {
     const ctx = makeCtx();
-    mockGetPluginContext.mockReturnValue(ctx);
+    configurePluginContext(ctx);
 
     let result: ReturnType<typeof usePluginRuntime> | null = null;
     function Consumer() {
@@ -101,8 +98,6 @@ describe('A013/ModelPicker/runtime: usePluginRuntime', () => {
   });
 
   it('A013/runtime: throws when ctx is unavailable', () => {
-    mockGetPluginContext.mockReturnValue(null);
-
     function Consumer() {
       usePluginRuntime();
       return null;
