@@ -15,6 +15,7 @@ import {
 } from '@agentscope-ai/chat';
 import { ModelPicker } from '../ModelPicker';
 import { chatCancel, chatFetch, setActiveSessionId } from './adapter';
+import { pluginSessionApi } from './sessionStore';
 import { useSparkTheme } from './useSparkTheme';
 
 const WELCOME_PROMPTS = [
@@ -53,12 +54,14 @@ export default function ChatPanel() {
         enableHistoryMessages: false,
       },
       session: {
-        // We still need `multiple: true` so Spark generates a stable session
-        // id the bridge can read, but `hideBuiltInSessionList` suppresses the
-        // bulky left sidebar (the "Runtime WebUI" chrome). A native sessions
-        // panel can be added later — until then, one active session at a time.
+        // Multi-session + our own plugin-storage-backed `session.api` (not
+        // Spark's shared localStorage default). Sessions live under
+        // `ctx.storage` — isolated, plugin-scoped, survive reloads. Spark's
+        // built-in sidebar is hidden; a native sessions panel can be built
+        // later using `useChatAnywhereSessions()` to drive the same store.
         multiple: true,
         hideBuiltInSessionList: true,
+        api: pluginSessionApi,
       },
       welcome: {
         greeting: 'What are we building today?',
