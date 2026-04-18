@@ -1,14 +1,14 @@
 // Per feedback/five-layer: presentational shell. Receives observation +
 // events as props, composes PretextList<SubAgentRow> on the left and a
 // conversation timeline on the right. No fetching, no state derivation.
+//
+// Per-pane maximise lives at the SHELL level now (project/src/app/App.tsx)
+// across the three global panels (left sidebar / workspace / bottom), not
+// inside this contribution — so the orchestration panel itself stays simple.
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Select } from 'antd';
-import {
-  FullscreenExitOutlined,
-  FullscreenOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
+import { ReloadOutlined } from '@ant-design/icons';
 import { AppButton, PretextList } from '@snapfzz/shared';
 import type {
   OrchestrationEventHandlers,
@@ -24,23 +24,12 @@ interface Props {
   readonly events: OrchestrationEventHandlers;
 }
 
-// Grid template flips based on which (if any) pane is maximised. Hiding a
-// pane via `display: none` keeps the PretextList / timeline virtualiser
-// from calculating heights for a zero-width column.
-type MaximizedPane = 'left' | 'right' | null;
-
-function gridColumnsFor(pane: MaximizedPane): string {
-  if (pane === 'left') return '1fr';
-  if (pane === 'right') return '1fr';
-  return '320px 1fr';
-}
-
-const rootStyle = (pane: MaximizedPane): React.CSSProperties => ({
+const rootStyle: React.CSSProperties = {
   height: '100%',
   display: 'grid',
-  gridTemplateColumns: gridColumnsFor(pane),
+  gridTemplateColumns: '320px 1fr',
   background: 'var(--bg-default)',
-});
+};
 
 const leftStyle: React.CSSProperties = {
   borderRight: '1px solid var(--border-default)',
@@ -105,16 +94,6 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
     loading,
   } = observation;
 
-  const [maximized, setMaximized] = useState<MaximizedPane>(null);
-  const toggleLeft = useCallback(
-    () => setMaximized((p) => (p === 'left' ? null : 'left')),
-    [],
-  );
-  const toggleRight = useCallback(
-    () => setMaximized((p) => (p === 'right' ? null : 'right')),
-    [],
-  );
-
   const keyOf = useCallback((row: SubAgentRow) => row.id, []);
   const renderRow = useCallback(
     (row: SubAgentRow) => (
@@ -130,26 +109,17 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
   const selectedName = subAgents.find((a) => a.id === selectedAgentId)?.name ?? '';
 
   return (
-    <div style={rootStyle(maximized)} data-testid="orchestration-panel">
-      <div style={{ ...leftStyle, display: maximized === 'right' ? 'none' : leftStyle.display }}>
+    <div style={rootStyle} data-testid="orchestration-panel">
+      <div style={leftStyle}>
         <div style={leftHeader}>
           <span style={leftTitle}>Sub-agents · {subAgents.length}</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-            <AppButton
-              variant="text"
-              icon={<ReloadOutlined />}
-              onClick={events.onRefresh}
-              aria-label="Refresh"
-              data-testid="orchestration-refresh"
-            />
-            <AppButton
-              variant="text"
-              icon={maximized === 'left' ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-              onClick={toggleLeft}
-              aria-label={maximized === 'left' ? 'Restore panes' : 'Maximise sub-agents list'}
-              data-testid="orchestration-maximize-left"
-            />
-          </span>
+          <AppButton
+            variant="text"
+            icon={<ReloadOutlined />}
+            onClick={events.onRefresh}
+            aria-label="Refresh"
+            data-testid="orchestration-refresh"
+          />
         </div>
         {subAgents.length === 0 ? (
           <EmptyState
@@ -166,7 +136,7 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
         )}
       </div>
 
-      <div style={{ ...rightStyle, display: maximized === 'left' ? 'none' : rightStyle.display }}>
+      <div style={rightStyle}>
         {selectedAgentId ? (
           <>
             <div style={rightHeader}>
@@ -186,17 +156,8 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
                   data-testid="orchestration-chat-picker"
                 />
               )}
-              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11 }}>
-                  {conversation.length} {conversation.length === 1 ? 'turn' : 'turns'}
-                </span>
-                <AppButton
-                  variant="text"
-                  icon={maximized === 'right' ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-                  onClick={toggleRight}
-                  aria-label={maximized === 'right' ? 'Restore panes' : 'Maximise conversation'}
-                  data-testid="orchestration-maximize-right"
-                />
+              <span style={{ marginLeft: 'auto', fontSize: 11 }}>
+                {conversation.length} {conversation.length === 1 ? 'turn' : 'turns'}
               </span>
             </div>
 

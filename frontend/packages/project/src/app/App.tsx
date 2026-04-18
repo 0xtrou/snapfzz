@@ -11,6 +11,9 @@ import {
 } from '@snapfzz/plugin-host';
 import type { TabContribution, PanelContribution, StatusItemContribution } from '@snapfzz/plugin-sdk';
 
+/** Which of the three global panels is currently filling the viewport. */
+type MaximizedPane = 'left' | 'right' | 'bottom' | null;
+
 function LazyComponent({ loader, pluginId, onCrash }: {
   loader: () => Promise<{ default: ComponentType }>;
   pluginId?: string;
@@ -31,42 +34,67 @@ function LazyComponent({ loader, pluginId, onCrash }: {
   );
 }
 
-function TabBar({ tabs, activeTabId, onTabClick }: {
+/** Small icon-only button that toggles a global-panel maximise state. */
+function MaximizeButton({ isMaximized, onToggle, label }: {
+  isMaximized: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={isMaximized ? `Restore ${label}` : `Maximise ${label}`}
+      title={isMaximized ? 'Restore panes' : 'Maximise this panel'}
+      className="flex items-center justify-center w-7 h-7 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+    >
+      <AntIcon name={isMaximized ? 'FullscreenExitOutlined' : 'FullscreenOutlined'} />
+    </button>
+  );
+}
+
+function TabBar({ tabs, activeTabId, onTabClick, trailing }: {
   tabs: readonly TabContribution[];
   activeTabId: string;
   onTabClick: (id: string) => void;
+  /** Optional right-aligned controls (e.g. maximise button). */
+  trailing?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1 px-2 py-1 bg-[var(--bg-default)]">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onTabClick(tab.id)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
-            activeTabId === tab.id
-              ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
-              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          <AntIcon name={tab.icon} />
-          <span>{tab.label}</span>
-        </button>
-      ))}
+      <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onTabClick(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
+              activeTabId === tab.id
+                ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <AntIcon name={tab.icon} />
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+      {trailing && <div className="flex items-center gap-1 flex-shrink-0">{trailing}</div>}
     </div>
   );
 }
 
-function LeftPanel({ tabs, activeTabId, onTabChange, onCrash }: {
+function LeftPanel({ tabs, activeTabId, onTabChange, onCrash, maxControls }: {
   tabs: readonly TabContribution[];
   activeTabId: string;
   onTabChange: (id: string) => void;
   onCrash: (pluginId: string, error: Error) => void;
+  maxControls?: React.ReactNode;
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   return (
     <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
-      <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
+      <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} trailing={maxControls} />
       <div className="flex-1 overflow-hidden">
         {activeTab ? (
           <LazyComponent loader={activeTab.component} pluginId={activeTab.id} onCrash={onCrash} />
@@ -80,16 +108,17 @@ function LeftPanel({ tabs, activeTabId, onTabChange, onCrash }: {
   );
 }
 
-function RightPanel({ tabs, activeTabId, onTabChange, onCrash }: {
+function RightPanel({ tabs, activeTabId, onTabChange, onCrash, maxControls }: {
   tabs: readonly TabContribution[];
   activeTabId: string;
   onTabChange: (id: string) => void;
   onCrash: (pluginId: string, error: Error) => void;
+  maxControls?: React.ReactNode;
 }) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   return (
     <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
-      <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} />
+      <TabBar tabs={tabs} activeTabId={activeTabId} onTabClick={onTabChange} trailing={maxControls} />
       <div className="flex-1 overflow-hidden">
         {activeTab ? (
           <LazyComponent loader={activeTab.component} pluginId={activeTab.id} onCrash={onCrash} />
@@ -103,21 +132,36 @@ function RightPanel({ tabs, activeTabId, onTabChange, onCrash }: {
   );
 }
 
-function BottomPanel({ panels, onCrash }: { panels: readonly PanelContribution[]; onCrash: (pluginId: string, error: Error) => void }) {
-  if (panels.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-[var(--text-muted)] text-sm">
-        No agent panels — plugins will provide agent network
-      </div>
-    );
-  }
+function BottomPanel({ panels, onCrash, maxControls }: {
+  panels: readonly PanelContribution[];
+  onCrash: (pluginId: string, error: Error) => void;
+  maxControls?: React.ReactNode;
+}) {
+  // Always render a slim header so the maximise control is reachable even when
+  // there are zero panel contributions (the body shows a placeholder then).
   return (
-    <div className="h-full flex">
-      {panels.map((panel) => (
-        <div key={panel.id} className="flex-1 min-w-0">
-          <LazyComponent loader={panel.component} pluginId={panel.id} onCrash={onCrash} />
-        </div>
-      ))}
+    <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
+      <div className="flex items-center justify-between gap-1 px-3 py-1 bg-[var(--bg-default)] border-b border-[var(--border-default)]">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          Bottom panel
+        </span>
+        {maxControls && <div className="flex items-center gap-1">{maxControls}</div>}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {panels.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+            No agent panels — plugins will provide agent network
+          </div>
+        ) : (
+          <div className="h-full flex">
+            {panels.map((panel) => (
+              <div key={panel.id} className="flex-1 min-w-0">
+                <LazyComponent loader={panel.component} pluginId={panel.id} onCrash={onCrash} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -138,6 +182,12 @@ export function App() {
 
   const [leftPanelActiveTab, setLeftPanelActiveTab] = useState<string | null>(null);
   const [workspaceActiveTab, setWorkspaceActiveTab] = useState<string | null>(null);
+  const [maximized, setMaximized] = useState<MaximizedPane>(null);
+
+  const toggleMax = useCallback(
+    (pane: Exclude<MaximizedPane, null>) => setMaximized((prev) => (prev === pane ? null : pane)),
+    [],
+  );
 
   const handleCrash = useCallback((pluginId: string, _error: Error) => {
     host.reportCrash(pluginId);
@@ -216,19 +266,97 @@ export function App() {
         }
       >
         <div className="flex flex-col h-full" style={{ contain: 'strict' }}>
-          <PanelGroup direction="horizontal" className="flex-1" style={{ contain: 'strict' }}>
-            <Panel defaultSize={40} minSize={20}>
-              <LeftPanel tabs={leftPanelTabs} activeTabId={leftPanelActiveTab || ''} onTabChange={setLeftPanelActiveTab} onCrash={handleCrash} />
-            </Panel>
-            <PanelResizeHandle className="w-1 bg-[var(--border-default)] hover:bg-[var(--border-strong)] transition-colors cursor-col-resize" style={{ transform: 'translateZ(0)' }} />
-            <Panel defaultSize={60} minSize={30}>
-              <RightPanel tabs={workspaceTabs} activeTabId={workspaceActiveTab || ''} onTabChange={setWorkspaceActiveTab} onCrash={handleCrash} />
-            </Panel>
-          </PanelGroup>
+          {/* Horizontal PanelGroup for left+right splits; hidden when bottom is maximised.
+              When left OR right is maximised, we swap the whole PanelGroup for a single
+              full-height wrapper so react-resizable-panels doesn't trip on a 0-size Panel. */}
+          {maximized === 'bottom' ? null : maximized === 'left' ? (
+            <div className="flex-1 min-h-0">
+              <LeftPanel
+                tabs={leftPanelTabs}
+                activeTabId={leftPanelActiveTab || ''}
+                onTabChange={setLeftPanelActiveTab}
+                onCrash={handleCrash}
+                maxControls={
+                  <MaximizeButton
+                    isMaximized
+                    onToggle={() => toggleMax('left')}
+                    label="left panel"
+                  />
+                }
+              />
+            </div>
+          ) : maximized === 'right' ? (
+            <div className="flex-1 min-h-0">
+              <RightPanel
+                tabs={workspaceTabs}
+                activeTabId={workspaceActiveTab || ''}
+                onTabChange={setWorkspaceActiveTab}
+                onCrash={handleCrash}
+                maxControls={
+                  <MaximizeButton
+                    isMaximized
+                    onToggle={() => toggleMax('right')}
+                    label="workspace"
+                  />
+                }
+              />
+            </div>
+          ) : (
+            <PanelGroup direction="horizontal" className="flex-1" style={{ contain: 'strict' }}>
+              <Panel defaultSize={40} minSize={20}>
+                <LeftPanel
+                  tabs={leftPanelTabs}
+                  activeTabId={leftPanelActiveTab || ''}
+                  onTabChange={setLeftPanelActiveTab}
+                  onCrash={handleCrash}
+                  maxControls={
+                    <MaximizeButton
+                      isMaximized={false}
+                      onToggle={() => toggleMax('left')}
+                      label="left panel"
+                    />
+                  }
+                />
+              </Panel>
+              <PanelResizeHandle className="w-1 bg-[var(--border-default)] hover:bg-[var(--border-strong)] transition-colors cursor-col-resize" style={{ transform: 'translateZ(0)' }} />
+              <Panel defaultSize={60} minSize={30}>
+                <RightPanel
+                  tabs={workspaceTabs}
+                  activeTabId={workspaceActiveTab || ''}
+                  onTabChange={setWorkspaceActiveTab}
+                  onCrash={handleCrash}
+                  maxControls={
+                    <MaximizeButton
+                      isMaximized={false}
+                      onToggle={() => toggleMax('right')}
+                      label="workspace"
+                    />
+                  }
+                />
+              </Panel>
+            </PanelGroup>
+          )}
 
-          <div className="h-48" style={{ contain: 'layout paint' }}>
-            <BottomPanel panels={contributions.bottomPanels} onCrash={handleCrash} />
-          </div>
+          {/* Bottom panel: 192px when cohabiting, full-flex when maximised,
+              hidden when left or right is maximised. */}
+          {maximized !== 'left' && maximized !== 'right' && (
+            <div
+              className={maximized === 'bottom' ? 'flex-1 min-h-0' : 'h-48'}
+              style={{ contain: 'layout paint' }}
+            >
+              <BottomPanel
+                panels={contributions.bottomPanels}
+                onCrash={handleCrash}
+                maxControls={
+                  <MaximizeButton
+                    isMaximized={maximized === 'bottom'}
+                    onToggle={() => toggleMax('bottom')}
+                    label="bottom panel"
+                  />
+                }
+              />
+            </div>
+          )}
         </div>
       </WindowShell>
     </PluginHostProvider>
