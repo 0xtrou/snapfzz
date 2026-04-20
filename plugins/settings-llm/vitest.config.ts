@@ -3,6 +3,22 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // Per project/SparkDesignFirst: Spark packages publish only a `module` field. Vitest/Vite's
+  // default resolver needs `module` pushed before `main` so it can locate the entry when
+  // shared's barrel pulls Spark packages transitively. Scoped to only Spark packages to avoid
+  // collateral on @testing-library + friends.
+  resolve: {
+    alias: [
+      {
+        find: /^@agentscope-ai\/design$/,
+        replacement: '@agentscope-ai/design/lib/index.js',
+      },
+      {
+        find: /^@agentscope-ai\/chat$/,
+        replacement: '@agentscope-ai/chat/lib/index.js',
+      },
+    ],
+  },
   test: {
     environment: 'jsdom',
     globals: true,

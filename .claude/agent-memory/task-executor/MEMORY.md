@@ -1,1 +1,4 @@
 - [A020 Phase 1 docs update](project_a020_phase1_docs.md) — what changed in plugin arch (chat→orchestrator, PluginProcessFactory, install flow), and which docs were updated
+- [W9.B Model Picker](project_model_picker_w9b.md) — shared LlmGatewayClient, five-layer ModelPicker, getPluginContext() pattern, settings-llm re-export approach
+- [Phase C1 QwenPaw boot](project_c1_qwenpaw_boot.md) — build_app() factory, DynamicMultiAgentRunner inlined, Rust env injection for LITELLM_BASE_URL/MASTER_KEY/WORKING_DIR
+- [Phase D SSE client](project_phase_d_sse_client.md) — real SSE client, stop endpoint path, MessageType translations, contracts file location

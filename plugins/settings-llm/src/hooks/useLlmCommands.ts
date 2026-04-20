@@ -1,8 +1,24 @@
 import { createTauriBridge } from '@snapfzz/shared';
+// Per A013/LLMProviders: model-info types promoted to @snapfzz/shared — import for local use
+// and re-export so consumers of settings-llm keep working without import changes.
+import type {
+  ModelInfo,
+  ModelInfoDetails,
+  ModelInfoEntry,
+  ModelInfoResponse,
+  ModelListResponse,
+} from '@snapfzz/shared';
+export type {
+  ModelInfo,
+  ModelInfoDetails,
+  ModelInfoEntry,
+  ModelInfoResponse,
+  ModelListResponse,
+};
 
 const bridge = createTauriBridge();
 
-// A013/Types: Shared types for LLM operations
+// A013/Types: Shared types for LLM operations (settings-specific types below)
 
 export interface ModelDeployment {
   model_name: string;
@@ -143,41 +159,8 @@ export interface GlobalSpend {
   by_provider: Record<string, number>;
 }
 
-export interface ModelInfo {
-  id: string;
-}
-
-export interface ModelListResponse {
-  data: ModelInfo[];
-}
-
-// Rich model metadata returned by /v1/model/info
-export interface ModelInfoDetails {
-  max_tokens?: number;
-  max_input_tokens?: number;
-  max_output_tokens?: number;
-  input_cost_per_token?: number;
-  output_cost_per_token?: number;
-  mode?: string;
-  supports_vision?: boolean;
-  supports_function_calling?: boolean;
-  supports_reasoning?: boolean;
-  litellm_provider?: string;
-}
-
-export interface ModelInfoEntry {
-  model_name: string;
-  litellm_params?: {
-    api_base?: string;
-    model?: string;
-    api_key?: string;
-  };
-  model_info: ModelInfoDetails;
-}
-
-export interface ModelInfoResponse {
-  data: ModelInfoEntry[];
-}
+// ModelInfo, ModelInfoDetails, ModelInfoEntry, ModelInfoResponse, ModelListResponse
+// are now in @snapfzz/shared/llm — re-exported at the top of this file.
 
 // Custom provider metadata stored in vault as JSON blob
 export type CustomProviderVariant = 'openai' | 'anthropic' | 'cohere' | 'mistral' | string;
@@ -605,15 +588,116 @@ export async function deleteModel(baseUrl: string, masterKey: string, modelId: s
   }
 }
 
-// Custom provider config persistence via localStorage
+// Custom provider config persistence.
+//
+// Non-secret metadata (id, name, baseUrl, variant) lives in localStorage under
+// `snapfzz:custom_providers`. The raw `apiKey` lives in the Rust vault under
+// `llm_provider_key/<full-provider-id>` so the Tauri host can inject it into
+// LiteLLM's child env as `SNAPFZZ_KEY_<full-provider-id>` on spawn. The combo
+// then references it via `os.environ/SNAPFZZ_KEY_<full-provider-id>`.
+//
+// `<full-provider-id>` MUST match the `snapfzz_provider_id` that settings-llm
+// stamps on imported models, which is `custom-<cp.id>`. Keeping all three of
+// them in lock-step is load-bearing — a mismatch silently resolves to an empty
+// api_key and LiteLLM 401s from the upstream provider.
 
 const CUSTOM_PROVIDERS_KEY = 'snapfzz:custom_providers';
+const PROVIDER_VAULT_PREFIX = 'llm_provider_key/';
+const CUSTOM_PROVIDER_ID_PREFIX = 'custom-';
+
+/** Vault id for a custom provider. Always the `custom-<short>` form. */
+export function customProviderVaultId(shortId: string): string {
+  return shortId.startsWith(CUSTOM_PROVIDER_ID_PREFIX)
+    ? shortId
+    : `${CUSTOM_PROVIDER_ID_PREFIX}${shortId}`;
+}
+
+function providerVaultKey(providerId: string): string {
+  return `${PROVIDER_VAULT_PREFIX}${providerId}`;
+}
+
+export async function storeProviderApiKey(providerId: string, apiKey: string): Promise<void> {
+  await bridge.invoke<void>('vault_store', {
+    key: providerVaultKey(providerId),
+    value: apiKey,
+  });
+}
+
+export async function readProviderApiKey(providerId: string): Promise<string | null> {
+  try {
+    return await bridge.invoke<string>('vault_read', {
+      key: providerVaultKey(providerId),
+    });
+  } catch {
+    // Returns null for not-found or rate-limit; caller decides what to do.
+    return null;
+  }
+}
+
+export async function deleteProviderApiKey(providerId: string): Promise<void> {
+  try {
+    await bridge.invoke<void>('vault_delete', { key: providerVaultKey(providerId) });
+  } catch {
+    // Already absent is fine.
+  }
+}
+
+/** Provider ids that currently have a key in the vault. One round-trip to vault_list. */
+export async function listConfiguredProviderIds(): Promise<Set<string>> {
+  try {
+    const keys = await bridge.invoke<string[]>('vault_list');
+    return new Set(
+      keys
+        .filter((k) => k.startsWith(PROVIDER_VAULT_PREFIX))
+        .map((k) => k.slice(PROVIDER_VAULT_PREFIX.length)),
+    );
+  } catch {
+    return new Set();
+  }
+}
 
 export async function loadCustomProviders(): Promise<CustomProvider[]> {
   try {
     const raw = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as CustomProvider[];
+    const parsed = JSON.parse(raw) as CustomProvider[];
+
+    // Migration A — older installs persisted `apiKey` inline in localStorage.
+    // Move each one into the vault (under the full `custom-<id>` form), then
+    // rewrite localStorage without the field.
+    const needsMigration = parsed.some((p) => typeof p.apiKey === 'string' && p.apiKey.length > 0);
+    if (needsMigration) {
+      await Promise.all(
+        parsed
+          .filter((p) => typeof p.apiKey === 'string' && p.apiKey.length > 0)
+          .map((p) =>
+            storeProviderApiKey(customProviderVaultId(p.id), p.apiKey as string).catch(
+              () => undefined,
+            ),
+          ),
+      );
+      const stripped = parsed.map(({ apiKey: _drop, ...rest }) => rest as CustomProvider);
+      localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(stripped));
+    }
+
+    // Migration B — an intermediate build stored vault entries under the short id
+    // (e.g. `llm_provider_key/solo-engineer`) instead of the full one that matches
+    // `snapfzz_provider_id` (`llm_provider_key/custom-solo-engineer`). Rewrite any
+    // stale short-form entries so LiteLLM's env injection lines up with the combo's
+    // `os.environ/SNAPFZZ_KEY_custom-<id>` reference.
+    const configuredIds = await listConfiguredProviderIds();
+    const shortIds = Array.from(configuredIds).filter(
+      (id) => !id.startsWith(CUSTOM_PROVIDER_ID_PREFIX) && parsed.some((p) => p.id === id),
+    );
+    for (const shortId of shortIds) {
+      const existing = await readProviderApiKey(shortId);
+      if (!existing) continue;
+      await storeProviderApiKey(customProviderVaultId(shortId), existing);
+      await deleteProviderApiKey(shortId);
+    }
+
+    const latest = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
+    return latest ? (JSON.parse(latest) as CustomProvider[]) : parsed;
   } catch {
     return [];
   }
@@ -622,7 +706,9 @@ export async function loadCustomProviders(): Promise<CustomProvider[]> {
 export async function saveCustomProviders(
   providers: CustomProvider[],
 ): Promise<void> {
-  localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(providers));
+  // Always strip `apiKey` before persisting — secret lives in vault only.
+  const sanitized = providers.map(({ apiKey: _drop, ...rest }) => rest as CustomProvider);
+  localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(sanitized));
 }
 
 // A013/Routing: Config read/write for router_settings via API

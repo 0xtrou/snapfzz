@@ -17,6 +17,10 @@ export default defineConfig({
     emptyOutDir: true,
     cssCodeSplit: false,
     rollupOptions: {
+      // react/react-dom/jsx-runtime are provided by window.__snapfzz_shared (UMD globals).
+      // react-router-dom, i18next, react-i18next, and zustand are NOT in __snapfzz_shared,
+      // so they are bundled into the plugin UMD. This adds ~120 kB gzipped to the bundle.
+      // TODO: if the shell ever hoists these to shared globals, add them to external + globals.
       external: ['react', 'react-dom', 'react/jsx-runtime'],
       output: {
         globals: {

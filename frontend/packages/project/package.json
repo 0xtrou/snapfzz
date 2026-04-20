@@ -10,6 +10,8 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@agentscope-ai/chat": "^1.1.61",
+    "@agentscope-ai/design": "^1.0.31",
     "@ant-design/icons": "^6.1.1",
     "@snapfzz/plugin-host": "workspace:*",
     "@snapfzz/plugin-sdk": "workspace:*",

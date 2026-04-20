@@ -53,6 +53,13 @@ impl ProcessFactoryRegistry {
         self.factories.insert(factory.name().to_string(), factory);
     }
 
+    /// Test-only: direct insertion of a BudgetedProcess entry. Used by the idempotent-spawn
+    /// test to simulate the "already running" registry state without launching a real child.
+    #[cfg(test)]
+    pub(crate) fn insert_process_for_test(&mut self, name: &str, process: BudgetedProcess) {
+        self.processes.insert(name.to_string(), process);
+    }
+
     /// Remove a factory and its process entry. Used during plugin deactivation
     /// to prevent duplicate registrations on reactivation.
     pub fn unregister(&mut self, name: &str) {
@@ -68,7 +75,26 @@ impl ProcessFactoryRegistry {
         self.database_url.as_ref()
     }
 
+    /// Returns the bound origin (`http://host:port`) of a spawned process, or None
+    /// when the entry is missing or the child hasn't been spawned yet.
+    /// Per A020/PluginRuntime: exposed so Tauri can hand plugin UIs the URL they fetch
+    /// against directly — chat SSE and similar hot-path traffic bypasses Rust.
+    pub fn runtime_base_url(&self, name: &str) -> Option<String> {
+        self.processes.get(name).map(|p| p.base_url())
+    }
+
     pub async fn spawn(&mut self, name: &str) -> Result<(), ProcessError> {
+        // Per A020/PluginRuntime: idempotent spawn — a healthy child that's already
+        // Online with a live PID must not be SIGKILLed by a duplicate spawn call. Plugin
+        // reactivation on window reload routinely re-invokes this path; without the guard
+        // BudgetedProcess::spawn would kill the port and respawn, blowing the 5 s activation
+        // timeout and crashing the UI.
+        if let Some(existing) = self.processes.get(name) {
+            if existing.is_online_with_live_pid() {
+                return Ok(());
+            }
+        }
+
         if !self.processes.contains_key(name) {
             let factory = self.factories.get(name).cloned().ok_or_else(|| {
                 ProcessError::SpawnFailed(format!("unknown process factory '{name}'"))
@@ -386,6 +412,97 @@ mod tests {
                 "unexpected error: {e}"
             );
         }
+    }
+
+    // A020/PluginRuntime: window reload re-invokes spawn() while the previous child is still
+    // Online. The idempotent guard must short-circuit — otherwise BudgetedProcess::spawn would
+    // run kill_process_on_port on the healthy child and respawn, blowing the 5 s activation
+    // timeout and crashing the project window.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a020_registry_spawn_is_idempotent_when_process_online_with_live_pid() {
+        let mut registry = make_registry();
+        registry.register(Arc::new(TestFactory { name: "orchestrator" }));
+
+        // Build a BudgetedProcess that looks "already running" from the previous boot.
+        let process = crate::process::budgeted::BudgetedProcess::new(
+            Arc::new(TestFactory { name: "orchestrator" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            Arc::new(SettingsManager::new(
+                tempfile::tempdir().expect("tempdir").path().to_path_buf(),
+            )),
+            make_runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("budgeted process");
+
+        let live_pid = std::process::id();
+        let mut process = process;
+        process.force_online_with_pid(live_pid);
+        let pid_before = process.pid();
+        registry.insert_process_for_test("orchestrator", process);
+
+        // Second spawn should be a no-op: no kill_process_on_port, no subprocess churn.
+        let result = registry.spawn("orchestrator").await;
+        assert!(result.is_ok(), "idempotent spawn must return Ok, got {result:?}");
+
+        let process_after = registry.get("orchestrator").expect("entry still present");
+        assert_eq!(
+            process_after.pid(),
+            pid_before,
+            "healthy process PID must remain untouched",
+        );
+        assert!(
+            process_after.is_online_with_live_pid(),
+            "process must remain Online after idempotent spawn",
+        );
+    }
+
+    // A020/PluginRuntime: runtime_base_url() exposes the child's bound origin so Tauri
+    // can hand the frontend a URL to fetch against directly. Returns None for unknown
+    // or unspawned names; returns http://host:port once the BudgetedProcess entry is in
+    // the map (regardless of actual subprocess state — callers combine with
+    // is_online_with_live_pid when they need liveness too).
+    #[test]
+    fn a020_registry_runtime_base_url_returns_none_for_unknown_runtime() {
+        let registry = make_registry();
+        assert!(registry.runtime_base_url("never-registered").is_none());
+    }
+
+    #[test]
+    fn a020_registry_runtime_base_url_returns_none_when_process_not_spawned() {
+        let mut registry = make_registry();
+        registry.register(Arc::new(TestFactory { name: "orchestrator" }));
+        // factory registered but no BudgetedProcess entry created yet
+        assert!(registry.runtime_base_url("orchestrator").is_none());
+    }
+
+    #[test]
+    fn a020_registry_runtime_base_url_returns_origin_after_process_entry_exists() {
+        let mut registry = make_registry();
+        registry.register(Arc::new(TestFactory { name: "orchestrator" }));
+
+        let process = crate::process::budgeted::BudgetedProcess::new(
+            Arc::new(TestFactory { name: "orchestrator" }),
+            Arc::new(BudgetRegistry::from_hardware()),
+            Arc::new(ProcessLogs::new()),
+            Arc::new(SettingsManager::new(
+                tempfile::tempdir().expect("tempdir").path().to_path_buf(),
+            )),
+            make_runtime(),
+            Arc::new(ProcessManager::new()),
+            None as Option<String>,
+        )
+        .expect("budgeted process");
+        registry.insert_process_for_test("orchestrator", process);
+
+        let url = registry
+            .runtime_base_url("orchestrator")
+            .expect("origin should be available once process entry exists");
+        assert!(url.starts_with("http://"), "expected http:// prefix, got {url}");
+        // port is resolved at construction time — any non-zero value is acceptable
+        assert!(url.contains(':'), "expected host:port format, got {url}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -15,6 +15,11 @@ vi.mock('../../theme', () => ({
   darkTheme: { token: { colorPrimary: '#3b82f6' } },
   lightTheme: { token: { colorPrimary: '#2563eb' } },
 }));
+// Spark's ConfigProvider pulls in codemirror/mermaid/etc. via @agentscope-ai/design. In jsdom we
+// only need it to render children; mock to a passthrough so tests stay lean and fast.
+vi.mock('@agentscope-ai/design', () => ({
+  ConfigProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 vi.mock('./use-window-drag', () => shellMock);
 vi.mock('./WindowHeader', () => ({
   WindowHeader: ({ title, theme }: { title?: string; theme: string }) => <div>{`header:${title ?? 'none'}:${theme}`}</div>,

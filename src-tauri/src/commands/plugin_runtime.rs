@@ -3,13 +3,17 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use snapfzz_kernel::process::ProcessFactoryRegistry;
+use snapfzz_kernel::settings::SettingsManager;
+use snapfzz_packs::constants::env_vars as packs_env_vars;
 use snapfzz_packs::runtime::python::PythonRuntime;
+use snapfzz_vault::SecretVault;
 use tauri::{Manager, State};
 
+use crate::constants::litellm as litellm_cfg;
 use crate::factories::plugin_runtime::PluginProcessFactory;
 
 /// Declaration from the plugin manifest describing a runtime process.
@@ -386,12 +390,55 @@ pub async fn install_plugin_runtime(
 }
 
 /// Register a plugin runtime as a managed process factory in the ProcessFactoryRegistry.
+///
+/// Per A013/C1: In addition to the env dict declared in the manifest, this command always
+/// injects three gateway env vars so the Python runtime can reach LiteLLM without any
+/// out-of-band configuration:
+///   - LITELLM_BASE_URL  — resolved from SettingsManager (same logic as boot.rs)
+///   - LITELLM_MASTER_KEY — read-or-created from SecretVault (never written by Python)
+///   - QWENPAW_WORKING_DIR — default data dir for the plugin, same convention as data_dir()
 #[tauri::command]
 pub async fn register_plugin_runtime(
     declaration: PluginRuntimeDeclaration,
     factory_registry: State<'_, Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>>,
+    settings_mgr: State<'_, Arc<SettingsManager>>,
+    vault: State<'_, Arc<Mutex<SecretVault>>>,
 ) -> Result<(), String> {
     let plugins_dir = resolve_plugins_dir()?;
+
+    // Per A013/C1: Build the merged env map — manifest values first, then
+    // gateway values injected by Rust (these override nothing in a well-formed manifest).
+    let mut env = declaration.env.unwrap_or_default();
+
+    // Resolve LiteLLM base URL from SettingsManager.
+    let litellm_base_url = resolve_litellm_base_url(&settings_mgr);
+    env.insert(
+        packs_env_vars::LITELLM_BASE_URL.to_string(),
+        litellm_base_url,
+    );
+
+    // Read-or-create the LiteLLM master key from SecretVault.
+    // Failures are propagated — a missing master key means the runtime cannot authenticate.
+    let master_key = {
+        let mut guard = vault.lock().unwrap();
+        snapfzz_llm::vault::get_or_create_master_key(&mut guard)
+            .map_err(|e| format!("failed to read litellm master key from vault: {e}"))?
+    };
+    env.insert(
+        packs_env_vars::LITELLM_MASTER_KEY.to_string(),
+        master_key,
+    );
+
+    // Set QWENPAW_WORKING_DIR to the plugin's data directory so QwenPaw stores
+    // agent data in the plugin's isolated data dir, not the default ~/.qwenpaw.
+    let qwenpaw_working_dir = plugins_dir
+        .join(&declaration.plugin_id)
+        .join("data")
+        .join("qwenpaw");
+    env.insert(
+        packs_env_vars::QWENPAW_WORKING_DIR.to_string(),
+        qwenpaw_working_dir.to_string_lossy().to_string(),
+    );
 
     let factory = PluginProcessFactory::new(
         declaration.runtime_id.clone(),
@@ -402,7 +449,7 @@ pub async fn register_plugin_runtime(
         declaration.max_memory_mb.unwrap_or(512),
         declaration.max_restarts.unwrap_or(5),
         declaration.requires_database.unwrap_or(false),
-        declaration.env.unwrap_or_default(),
+        env,
         declaration.host_flag,
         declaration.port_flag,
         declaration.additional_args.unwrap_or_default(),
@@ -418,6 +465,22 @@ pub async fn register_plugin_runtime(
     );
 
     Ok(())
+}
+
+/// Resolve the LiteLLM base URL from SettingsManager, matching the logic in boot.rs and llm.rs.
+fn resolve_litellm_base_url(settings_mgr: &SettingsManager) -> String {
+    let settings = settings_mgr.load().unwrap_or_default();
+    let host = if settings.litellm_host.is_empty() {
+        litellm_cfg::DEFAULT_HOST.to_string()
+    } else {
+        settings.litellm_host
+    };
+    let port: u16 = if settings.litellm_port.is_empty() {
+        litellm_cfg::DEFAULT_PORT.parse().unwrap_or(4000)
+    } else {
+        settings.litellm_port.parse().unwrap_or(4000)
+    };
+    format!("http://{}:{}", host, port)
 }
 
 /// Unregister a plugin runtime factory and remove its process entry.
@@ -444,6 +507,24 @@ pub async fn spawn_plugin_runtime(
         .spawn(&runtime_id)
         .await
         .map_err(|e| format!("failed to spawn plugin runtime '{}': {e}", runtime_id))
+}
+
+/// Returns the bound origin of a spawned plugin runtime (e.g. "http://127.0.0.1:9150").
+///
+/// Per A020/PluginRuntime: plugin UIs fetch their runtime directly for hot-path
+/// traffic (chat SSE, tool calls) — Rust is not in the data path. This command lets
+/// the frontend discover the runtime's URL by runtime_id.
+///
+/// Errors when the runtime is not registered or has not been spawned yet.
+#[tauri::command]
+pub async fn get_plugin_runtime_url(
+    runtime_id: String,
+    factory_registry: State<'_, Arc<tokio::sync::RwLock<ProcessFactoryRegistry>>>,
+) -> Result<String, String> {
+    let registry = factory_registry.read().await;
+    registry
+        .runtime_base_url(&runtime_id)
+        .ok_or_else(|| format!("plugin runtime '{runtime_id}' is not spawned"))
 }
 
 /// Installation status for a plugin, used by the plugin host to check readiness.
@@ -585,5 +666,30 @@ mod tests {
         assert_eq!(json["pluginId"], "snapfzz.orchestrator");
         assert_eq!(json["manifest"]["id"], "snapfzz.orchestrator");
         assert_eq!(json["distPath"], "/home/test/.snapfzz/plugins/snapfzz.orchestrator/dist/index.js");
+    }
+
+    // Per A013/C1: Verify the three gateway env var constant names match what QwenPaw expects.
+    #[test]
+    fn a013_c1_env_var_constants_match_qwenpaw_expected_names() {
+        assert_eq!(packs_env_vars::LITELLM_BASE_URL, "LITELLM_BASE_URL");
+        assert_eq!(packs_env_vars::LITELLM_MASTER_KEY, "LITELLM_MASTER_KEY");
+        assert_eq!(packs_env_vars::QWENPAW_WORKING_DIR, "QWENPAW_WORKING_DIR");
+    }
+
+    // Per A013/C1: Verify resolve_litellm_base_url produces a valid http URL from defaults.
+    #[test]
+    fn a013_c1_resolve_litellm_base_url_returns_default_when_settings_empty() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let settings_mgr = SettingsManager::new(temp.path().to_path_buf());
+        let url = resolve_litellm_base_url(&settings_mgr);
+        assert!(url.starts_with("http://"), "expected http:// prefix, got: {url}");
+        assert!(
+            url.contains("127.0.0.1") || url.contains("localhost"),
+            "expected loopback address in default URL, got: {url}",
+        );
+        assert!(
+            url.contains("4000"),
+            "expected default LiteLLM port 4000 in URL, got: {url}",
+        );
     }
 }

@@ -8,8 +8,9 @@ import ComboList from '../../tabs/routing/ComboList';
 import type { ComboListProps } from '../../tabs/routing/ComboList';
 
 vi.mock('@snapfzz/shared', () => ({
-  AppButton: ({ children, onClick, disabled, loading, variant: _v, icon, style: _s }: any) => (
-    <button type="button" onClick={onClick} disabled={disabled || loading}>
+  // Spread `...rest` so data-testid (used by the A013 system-combo tests) reaches the <button>.
+  AppButton: ({ children, onClick, disabled, loading, variant: _v, icon, style: _s, ...rest }: any) => (
+    <button type="button" onClick={onClick} disabled={disabled || loading} {...rest}>
       {icon}
       {children}
     </button>
@@ -108,6 +109,36 @@ describe('ComboList – combo cards', () => {
     render(<ComboList {...DEFAULT_PROPS} combos={COMBOS} />);
     expect(screen.getByText('round-robin')).toBeInTheDocument();
     expect(screen.getByText('weighted')).toBeInTheDocument();
+  });
+
+  it('shows underlying model names inline so read-only (system) combos are legible', () => {
+    render(<ComboList {...DEFAULT_PROPS} combos={COMBOS} />);
+    // Single-deployment: exact model name rendered inline.
+    const solo = screen.getByTestId('combo-deployments-solo-pool');
+    expect(solo).toHaveTextContent('provider/model-a');
+    // Multi-deployment: both names rendered (no +N more fallback at 2 deployments).
+    const pool = screen.getByTestId('combo-deployments-test-pool');
+    expect(pool).toHaveTextContent('provider/model-a');
+    expect(pool).toHaveTextContent('provider/model-b');
+  });
+
+  it('collapses deployments beyond the inline cap to "+N more"', () => {
+    const many = {
+      name: 'big-pool',
+      strategy: 'round-robin' as const,
+      apiType: 'openai' as const,
+      deployments: [
+        { provider: 'p', model: 'openai/a', modelName: 'p/a', apiBase: '' },
+        { provider: 'p', model: 'openai/b', modelName: 'p/b', apiBase: '' },
+        { provider: 'p', model: 'openai/c', modelName: 'p/c', apiBase: '' },
+        { provider: 'p', model: 'openai/d', modelName: 'p/d', apiBase: '' },
+      ],
+    };
+    render(<ComboList {...DEFAULT_PROPS} combos={[many]} />);
+    const row = screen.getByTestId('combo-deployments-big-pool');
+    expect(row).toHaveTextContent('p/a');
+    expect(row).toHaveTextContent('p/b');
+    expect(row).toHaveTextContent('+2 more');
   });
 
   it('clicking a combo card calls onEdit with that combo', async () => {
@@ -239,5 +270,75 @@ describe('ComboList – delete modal flow', () => {
     await waitFor(() => {
       expect(onDelete).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// Per A013/Orchestrator: system combos (name === "orchestrator") render with a lock badge
+// and disabled Edit/Delete — they're managed by the orchestrator plugin, not by the UI.
+describe('A013/ComboList: system combo guard', () => {
+  const SYSTEM_COMBO: ComboListProps['combos'][number] = {
+    name: 'orchestrator',
+    strategy: 'round-robin',
+    deployments: [
+      { provider: 'snapfzz-gateway', model: 'openai/placeholder', modelName: 'snapfzz-gateway/placeholder', apiBase: 'http://127.0.0.1:4000' },
+    ],
+    apiType: 'openai',
+  };
+
+  it('A013/ComboList: renders System badge next to the combo name', () => {
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} />);
+    expect(screen.getByText('orchestrator')).toBeInTheDocument();
+    expect(screen.getByText('System')).toBeInTheDocument();
+  });
+
+  it('A013/ComboList: marks the card with data-system="true"', () => {
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} />);
+    expect(screen.getByTestId('combo-row-orchestrator').getAttribute('data-system')).toBe('true');
+  });
+
+  it('A013/ComboList: Edit button is disabled for system combos', () => {
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} />);
+    const editBtn = screen.getByTestId('combo-edit-orchestrator') as HTMLButtonElement;
+    expect(editBtn).toBeDisabled();
+  });
+
+  it('A013/ComboList: Delete button is disabled for system combos', () => {
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} />);
+    const deleteBtn = screen.getByTestId('combo-delete-orchestrator') as HTMLButtonElement;
+    expect(deleteBtn).toBeDisabled();
+  });
+
+  it('A013/ComboList: clicking the card does NOT trigger onEdit for system combos', async () => {
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} onEdit={onEdit} />);
+
+    await user.click(screen.getByText('orchestrator'));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('A013/ComboList: clicking disabled Edit does NOT trigger onEdit', async () => {
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} onEdit={onEdit} />);
+
+    await user.click(screen.getByTestId('combo-edit-orchestrator'));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('A013/ComboList: clicking disabled Delete does NOT open the confirm modal', async () => {
+    const user = userEvent.setup();
+    render(<ComboList {...DEFAULT_PROPS} combos={[SYSTEM_COMBO]} />);
+
+    await user.click(screen.getByTestId('combo-delete-orchestrator'));
+    expect(getVisibleDialog()).toBeNull();
+  });
+
+  it('A013/ComboList: non-system combos still render as editable', () => {
+    const mixed = [SYSTEM_COMBO, COMBOS[0]];
+    render(<ComboList {...DEFAULT_PROPS} combos={mixed} />);
+    expect(screen.getByTestId('combo-row-test-pool').getAttribute('data-system')).toBe('false');
+    expect(screen.getByTestId('combo-edit-test-pool')).not.toBeDisabled();
+    expect(screen.getByTestId('combo-delete-test-pool')).not.toBeDisabled();
   });
 });

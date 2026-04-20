@@ -117,9 +117,21 @@ describe('A013/UI/ProvidersTab/Coverage', () => {
     mockInvoke.mockReset();
     mockFetch.mockReset();
     vi.stubGlobal('fetch', mockFetch);
-    mockInvoke.mockImplementation(async (command: string, _args: Record<string, any>) => {
+    // In-memory vault so migration + vault-backed custom-provider keys behave like
+    // the real SecretVault for tests that don't override the mock.
+    const vaultMap = new Map<string, string>();
+    mockInvoke.mockImplementation(async (command: string, args: Record<string, any>) => {
       if (command === 'llm_get_base_url') return 'http://127.0.0.1:4000';
       if (command === 'llm_get_master_key') return 'sk-master-test';
+      if (command === 'vault_store') { vaultMap.set(args.key, args.value); return undefined; }
+      if (command === 'vault_read') {
+        const v = vaultMap.get(args.key);
+        if (v === undefined) throw new Error('secret not found');
+        return v;
+      }
+      if (command === 'vault_delete') { vaultMap.delete(args.key); return undefined; }
+      if (command === 'vault_list') return Array.from(vaultMap.keys()).sort();
+      if (command === 'vault_has') return vaultMap.has(args.key);
       return undefined;
     });
     // Default: discovery returns empty, gateway endpoints return empty

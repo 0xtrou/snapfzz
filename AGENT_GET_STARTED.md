@@ -384,6 +384,15 @@ Intelligence delivered as a self-contained plugin (`plugins/orchestrator/`, ID `
 - Intelligence layer delivered via QwenPaw extraction into `plugins/orchestrator/intelligence/`
 - 9-block scaffolding design was not implemented — replaced by QwenPaw extraction
 
+### Phase 1 polish — 2026-04-20 checkpoint
+- **Spark chat wholesale port, then slimmed** — kept only qwenpaw's `sessionApi` + HTTP `api/` helpers; deleted ChatPage, ModelSelector, OptionsPanel, i18n/router/zustand wrappers (−563 KB bundle, −4 npm deps). `ChatPanel/index.tsx` mounts `AgentScopeRuntimeWebUI` directly inside `ConfigProvider` + `App`.
+- **`/api/console/chat` adapter** — swapped from `/api/agent/process` so chats register with `ChatManager` + `TaskTracker` (persistence + reconnect). Adapter also slices `data.input` to the last user message so backend memory is single-source (Spark's `enableHistoryMessages:false` only gates the native-fetch path).
+- **Session restore bridge** — `sessionApi.updateWindowVariables()` writes `snapfzz.chat.session.v1` to `localStorage`; `ChatPanel` reads it at component top into `pluginSessionApi.preferredChatId` so reload/zoom lands back on the live stream via `TaskTracker.attach_or_start`. Stale-UUID cleanup in `applyChatsToSessionList`.
+- **System prompt wiring fix** — `_seed_agents_md()` now **raises** on missing source (no silent fallback), `_seed_agent_config()` always overwrites `agent.json`, `_PACK_DIR` resolves correctly (prior off-by-one parent traversal), `system_prompt_files=["AGENTS.md"]`.
+- **`QwenPawAgent.name` monkey-patch** — upstream `react_agent.py:163` hardcodes `name="Friday"`; `app.py` wraps `__init__` to post-set `self.name = agent_config.name` so the agent introduces itself as "Snapfzz Orchestrator".
+- **OrchestrationPanel flicker + bubble rendering** — removed `[...conversation]` spread (stable array ref), pre-filter `toAdd` before `setExpandedIds` to bail on no-ops. Text turns now render as role-aligned chat bubbles (user right `--bg-tertiary`, assistant left `--bg-subtle`); reasoning/tool rows keep the compact chip+caret. Adaptive polling — 1 Hz while running/changing, 30 s heartbeat after two stable idle ticks.
+- **Shell layout** — thinner resize handles (1 px visible + 4 px hitbox), maximise/restore per pane, persisted sizes via `react-resizable-panels` autoSaveId, dropped the redundant "BOTTOM PANEL" label strip.
+
 ### What's Next (Phases 2–6)
 2. **Memory database** — `snapfzz-memory` crate, PostgreSQL `memory` DB, migrations
 3. **Intelligence integration** — wire `pack/pack.yaml` into runtime startup, end-to-end chat flow

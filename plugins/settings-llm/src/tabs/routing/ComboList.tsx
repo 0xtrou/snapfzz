@@ -1,10 +1,51 @@
 // ComboList — shows existing combos as cards with create/edit/delete actions.
+// Per A013/Orchestrator: system combos (e.g. `orchestrator`) render with a lock badge
+// and disabled Edit/Delete — they're mutated by the orchestrator plugin, not the UI.
 
 import { useState } from 'react';
-import { Tag, Modal } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Tag, Modal, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, LockOutlined } from '@ant-design/icons';
 import { AppButton } from '@snapfzz/shared';
-import type { ComboConfig } from '../../routing/composer';
+import type { ComboConfig, Deployment } from '../../routing/composer';
+import { SYSTEM_COMBO_LABEL, SYSTEM_COMBO_TOOLTIP, isSystemCombo } from '../../routing/systemCombo';
+
+/**
+ * User-facing deployment label. Prefers the resolved `modelName` (e.g.
+ * "solo-engineer/cx/gpt-5.4") and falls back to the raw SDK model string
+ * ("openai/cx/gpt-5.4") when the name hasn't been resolved yet.
+ */
+function deploymentLabel(dep: Deployment): string {
+  return dep.modelName ?? dep.model ?? '(unnamed)';
+}
+
+/**
+ * Compact one-line summary of what a combo routes to — shown inline under the
+ * combo name so the system `orchestrator` combo (which is non-editable) still
+ * reveals its underlying target at a glance. Uses the same label logic as the
+ * ComboBuilder so display stays consistent across read + edit views.
+ */
+function formatDeploymentTargets(deployments: readonly Deployment[]): React.ReactNode {
+  if (deployments.length === 0) return null;
+  const labels = deployments.map(deploymentLabel);
+  const MAX_INLINE = 2;
+  const shown = labels.slice(0, MAX_INLINE);
+  const remaining = labels.length - shown.length;
+  return (
+    <span
+      style={{
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--text-secondary)',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      }}
+      title={labels.join(', ')}
+    >
+      {shown.join(', ')}
+      {remaining > 0 && <span style={{ color: 'var(--text-muted)' }}> +{remaining} more</span>}
+    </span>
+  );
+}
 
 export interface ComboListProps {
   combos: ComboConfig[];
@@ -69,61 +110,115 @@ export default function ComboList({ combos, onEdit, onCreate, onDelete, loadData
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {combos.map((combo) => (
-          <div
-            key={combo.name}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '14px 18px',
-              background: 'var(--bg-default)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 8,
-              cursor: 'pointer',
-              transition: 'border-color 0.15s',
-            }}
-            onClick={() => onEdit(combo)}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-info)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-default)';
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>
-                {combo.name}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {combo.deployments.length} deployment{combo.deployments.length !== 1 ? 's' : ''}
-              </div>
-            </div>
+        {combos.map((combo) => {
+          const isSystem = isSystemCombo(combo.name);
 
-            <Tag color={STRATEGY_COLORS[combo.strategy] ?? 'default'} style={{ flexShrink: 0 }}>
-              {combo.strategy}
-            </Tag>
-
+          return (
             <div
-              style={{ display: 'flex', gap: 4, flexShrink: 0 }}
-              onClick={(e) => e.stopPropagation()}
+              key={combo.name}
+              data-testid={`combo-row-${combo.name}`}
+              data-system={String(isSystem)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '14px 18px',
+                background: 'var(--bg-default)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 8,
+                cursor: isSystem ? 'default' : 'pointer',
+                transition: 'border-color 0.15s',
+                opacity: isSystem ? 0.85 : 1,
+              }}
+              onClick={() => { if (!isSystem) onEdit(combo); }}
+              onMouseEnter={(e) => {
+                if (isSystem) return;
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--color-info)';
+              }}
+              onMouseLeave={(e) => {
+                if (isSystem) return;
+                (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-default)';
+              }}
             >
-              <AppButton
-                variant="text"
-                icon={<EditOutlined />}
-                onClick={() => onEdit(combo)}
-                style={{ color: 'var(--text-muted)' }}
-              />
-              <AppButton
-                variant="text"
-                icon={<DeleteOutlined />}
-                loading={deletingName === combo.name}
-                onClick={() => setConfirmTarget(combo.name)}
-                style={{ color: 'var(--text-muted)' }}
-              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* inline-flex avoids a `display: flex` substring collision with existing
+                    tests that locate the card via `.closest('[style*="display: flex"]')`. */}
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {combo.name}
+                  {isSystem && (
+                    <Tooltip title={SYSTEM_COMBO_TOOLTIP}>
+                      <Tag icon={<LockOutlined />} color="default" style={{ fontSize: 10, lineHeight: '16px', padding: '0 6px' }}>
+                        {SYSTEM_COMBO_LABEL}
+                      </Tag>
+                    </Tooltip>
+                  )}
+                </div>
+                <div
+                  data-testid={`combo-deployments-${combo.name}`}
+                  style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                >
+                  <span>
+                    {combo.deployments.length} deployment{combo.deployments.length !== 1 ? 's' : ''}
+                  </span>
+                  {combo.deployments.length > 0 && <span>·</span>}
+                  {formatDeploymentTargets(combo.deployments)}
+                </div>
+              </div>
+
+              <Tag color={STRATEGY_COLORS[combo.strategy] ?? 'default'} style={{ flexShrink: 0 }}>
+                {combo.strategy}
+              </Tag>
+
+              <div
+                style={{ display: 'flex', gap: 4, flexShrink: 0 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Only wrap disabled system buttons with a Tooltip — the tooltip span
+                    interferes with click dispatch in some test harnesses, so keep the
+                    non-system path unwrapped to preserve existing test behavior. */}
+                {isSystem ? (
+                  <Tooltip title={SYSTEM_COMBO_TOOLTIP}>
+                    <AppButton
+                      variant="text"
+                      icon={<EditOutlined />}
+                      disabled
+                      style={{ color: 'var(--text-muted)' }}
+                      data-testid={`combo-edit-${combo.name}`}
+                    />
+                  </Tooltip>
+                ) : (
+                  <AppButton
+                    variant="text"
+                    icon={<EditOutlined />}
+                    onClick={() => onEdit(combo)}
+                    style={{ color: 'var(--text-muted)' }}
+                    data-testid={`combo-edit-${combo.name}`}
+                  />
+                )}
+                {isSystem ? (
+                  <Tooltip title={SYSTEM_COMBO_TOOLTIP}>
+                    <AppButton
+                      variant="text"
+                      icon={<DeleteOutlined />}
+                      disabled
+                      style={{ color: 'var(--text-muted)' }}
+                      data-testid={`combo-delete-${combo.name}`}
+                    />
+                  </Tooltip>
+                ) : (
+                  <AppButton
+                    variant="text"
+                    icon={<DeleteOutlined />}
+                    loading={deletingName === combo.name}
+                    onClick={() => setConfirmTarget(combo.name)}
+                    style={{ color: 'var(--text-muted)' }}
+                    data-testid={`combo-delete-${combo.name}`}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Modal

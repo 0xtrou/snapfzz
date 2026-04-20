@@ -307,6 +307,25 @@ pub fn kill_process_on_port(_port: u16) {
     // Non-Unix platforms don't support this cleanup method
 }
 
+/// Returns true when a PID exists and can be signalled. Used for idempotent spawn checks
+/// on window reload — the Rust process registry outlives the web-view JS context, so a
+/// reactivation would otherwise re-kill a healthy child via kill_process_on_port and thrash.
+/// Per A020/PluginRuntime: treat an already-live child as a no-op to keep the 5 s activation
+/// budget unblown.
+#[cfg(unix)]
+pub fn pid_is_alive(pid: u32) -> bool {
+    // signal 0 does not send a signal — it only checks whether the target PID exists and
+    // the caller has permission to signal it (0 on success, -1 with errno=ESRCH otherwise).
+    unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+#[cfg(not(unix))]
+pub fn pid_is_alive(_pid: u32) -> bool {
+    // Non-Unix platforms — fall back to trusting the status flag. Reload crash only
+    // observed on macOS/Linux where the kill signal model applies.
+    true
+}
+
 fn cleanup_stale_pid(data_dir: &std::path::Path, name: &str) {
     let path = pid_file_path(data_dir, name);
     let content = match std::fs::read_to_string(&path) {
@@ -363,10 +382,28 @@ mod tests {
     use crate::process::runtime::RuntimeState;
 
     use super::{
-        cleanup_stale_pid, pid_file_path, remove_pid_file, write_pid_file, ProcessError, ProcessManager,
-        SpawnConfig,
+        cleanup_stale_pid, pid_file_path, pid_is_alive, remove_pid_file, write_pid_file, ProcessError,
+        ProcessManager, SpawnConfig,
     };
     use crate::process::runtime::piped_stdio;
+
+    // A020/PluginRuntime: idempotent-spawn guard relies on pid_is_alive to detect a
+    // still-running child after a web-view reload. Own PID is always alive in-test.
+    #[test]
+    fn a020_pid_is_alive_returns_true_for_current_process() {
+        assert!(pid_is_alive(std::process::id()));
+    }
+
+    // PID 1 on Unix is always the init/launchd process — ensures the helper doesn't
+    // hard-code any exception for our own PID. Skipped on non-unix (stub returns true).
+    #[cfg(unix)]
+    #[test]
+    fn a020_pid_is_alive_returns_false_for_clearly_dead_pid() {
+        // 0x7FFF_FFFE is outside any plausible OS PID space on 32-bit pid_t platforms
+        // and is vanishingly unlikely to be live on 64-bit platforms either.
+        let unlikely_pid = 0x7FFF_FFFEu32;
+        assert!(!pid_is_alive(unlikely_pid));
+    }
 
     fn make_registry() -> BudgetRegistry {
         BudgetRegistry::with_preset_name(PresetName::Performance)

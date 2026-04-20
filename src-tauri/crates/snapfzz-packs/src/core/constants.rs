@@ -175,6 +175,12 @@ pub mod binaries {
 pub mod env_vars {
     pub const SNAPFZZ_HOST: &str = "SNAPFZZ_HOST";
     pub const SNAPFZZ_PORT: &str = "SNAPFZZ_PORT";
+    /// Per A013/C1: LiteLLM gateway URL injected into plugin runtimes.
+    pub const LITELLM_BASE_URL: &str = "LITELLM_BASE_URL";
+    /// Per A013/C1: LiteLLM master key injected into plugin runtimes (never leaves Rust for writes).
+    pub const LITELLM_MASTER_KEY: &str = "LITELLM_MASTER_KEY";
+    /// Per A013/C1: QwenPaw working directory — tells the Python runtime where to store agent data.
+    pub const QWENPAW_WORKING_DIR: &str = "QWENPAW_WORKING_DIR";
 }
 
 /// Directory and file naming.
@@ -269,5 +275,13 @@ mod tests {
         assert!(json.contains("\"platformDisplay\""));
         assert!(json.contains("\"repositoryUrl\""));
         assert!(json.contains("\"websiteUrl\""));
+    }
+
+    // Per A013/C1: Verify gateway env var constant names are stable strings.
+    #[test]
+    fn a013_c1_gateway_env_var_constants_have_expected_string_values() {
+        assert_eq!(env_vars::LITELLM_BASE_URL, "LITELLM_BASE_URL");
+        assert_eq!(env_vars::LITELLM_MASTER_KEY, "LITELLM_MASTER_KEY");
+        assert_eq!(env_vars::QWENPAW_WORKING_DIR, "QWENPAW_WORKING_DIR");
     }
 }

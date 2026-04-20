@@ -54,50 +54,35 @@ export default definePlugin({
         position: 'left' as const,
         component: () => import('./contributions/ConnectionStatus'),
       },
+      // Per-turn token usage is rendered natively by Spark's Bubble Actions row
+      // (`Usage` component from @agentscope-ai/chat) — no status-bar duplication needed.
+    ],
+    bottomPanels: [
       {
-        id: 'orchestrator.tokens',
-        position: 'right' as const,
-        component: () => import('./contributions/TokenCounter'),
+        id: 'orchestrator.agents',
+        label: 'Agents',
+        icon: 'ClusterOutlined',
+        component: () => import('./contributions/OrchestrationPanel'),
       },
-    ],
-    commands: [
-      { id: 'orchestrator.send', title: 'Send Message' },
-      { id: 'orchestrator.stop', title: 'Stop Generation' },
-      { id: 'orchestrator.clear', title: 'Clear Conversation' },
-    ],
-    shortcuts: [
-      { command: 'orchestrator.send', key: '⌘+Enter' },
-      { command: 'orchestrator.stop', key: 'Escape' },
     ],
   },
   async activate(ctx: PluginContext): Promise<PluginHandle> {
-    const { configureChatRuntime, disposeChatRuntime, sendMessage, stopGeneration, clearConversationSession } =
-      await import('./hooks/use-chat');
-
-    configureChatRuntime(ctx);
-
-    const unregisterSend = ctx.commands.register('orchestrator.send', async (args?: unknown) => {
-      const payload = (args ?? {}) as { text?: string };
-      await sendMessage(payload.text ?? '');
-      return undefined;
-    });
-
-    const unregisterStop = ctx.commands.register('orchestrator.stop', async () => {
-      await stopGeneration();
-      return undefined;
-    });
-
-    const unregisterClear = ctx.commands.register('orchestrator.clear', async () => {
-      await clearConversationSession();
-      return undefined;
-    });
+    // Per A013/ChatPanel: Spark's `AgentScopeRuntimeWebUI` owns the chat hot path
+    // (send/stop/clear via its built-in Sender and session sidebar). Our activate
+    // hook only wires the two module-scoped holders that give the adapter + the
+    // status-bar items synchronous access to `ctx.storage` / `ctx.rust.invoke`.
+    const [{ configurePluginContext, disposePluginContext }, { configureChatAdapter, disposeChatAdapter }] =
+      await Promise.all([
+        import('./contributions/runtime'),
+        import('./contributions/ChatPanel/adapter'),
+      ]);
+    configurePluginContext(ctx);
+    configureChatAdapter(ctx);
 
     return {
       async deactivate() {
-        unregisterSend();
-        unregisterStop();
-        unregisterClear();
-        disposeChatRuntime();
+        disposeChatAdapter();
+        disposePluginContext();
       },
     };
   },

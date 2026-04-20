@@ -125,11 +125,14 @@ describe('A006/shell: Project App', () => {
     expect(screen.getByTestId('plugin-host-provider')).toBeTruthy();
   });
 
-  it('A006/shell: keeps resizable panel split with two panels', () => {
+  it('A006/shell: keeps resizable 3-pane split (left/right + bottom)', () => {
     render(createElement(App));
-    expect(screen.getByTestId('panel-group')).toBeTruthy();
-    expect(screen.getAllByTestId('panel')).toHaveLength(2);
-    expect(screen.getByTestId('panel-resize-handle')).toBeTruthy();
+    // Nested PanelGroups: outer vertical (top + bottom) + inner horizontal
+    // (left + right). Count = 2 groups; 4 Panel wrappers (2 outer holding the
+    // inner group + bottom, 2 inner for left/right); 2 resize handles.
+    expect(screen.getAllByTestId('panel-group')).toHaveLength(2);
+    expect(screen.getAllByTestId('panel')).toHaveLength(4);
+    expect(screen.getAllByTestId('panel-resize-handle')).toHaveLength(2);
   });
 
   it('A006/shell: renders contribution tabs when store has data', async () => {

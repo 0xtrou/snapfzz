@@ -33,6 +33,8 @@ Thumbs.db
 .snapfzz/
 intelligence/__pycache__/
 **/__pycache__/
+**/.pytest_cache/
+**/*.pyc
 intelligence/.venv/
 intelligence/uv.lock
 coverage/
