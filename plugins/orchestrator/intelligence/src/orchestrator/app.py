@@ -35,7 +35,7 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 # ── Prompt file resolution ─────────────────────────────────────────────────────
-_PACK_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pack"
+_PACK_DIR = Path(__file__).resolve().parent.parent.parent / "pack"
 _SYSTEM_PROMPT_FILE = _PACK_DIR / "prompts" / "system.md"
 
 _PLACEHOLDER_SYSTEM_PROMPT = (
@@ -199,6 +199,7 @@ def build_app() -> FastAPI:  # noqa: C901
     from qwenpaw.config.config import (
         AgentProfileConfig,
         AgentsRunningConfig,
+        ChannelConfig,
         ToolsConfig,
         _default_builtin_tools,
     )
@@ -208,6 +209,26 @@ def build_app() -> FastAPI:  # noqa: C901
     from qwenpaw.app.routers.voice import voice_router
     from qwenpaw.app.channels.registry import register_custom_channel_routes
     from agentscope_runtime.engine.app import AgentApp
+
+    # ── Bug-fix: Agent name override (monkey-patch) ────────────────────────────
+    # QwenPawAgent.__init__ hardcodes `super().__init__(name="Friday", ...)`.
+    # We cannot edit the installed package (fragile across reinstalls), and
+    # Option 1.A (post-init rename in lifespan) is infeasible because the agent
+    # is lazy-instantiated on first request — it isn't reachable in lifespan.
+    # Monkey-patching the __init__ here (before any agent workspace starts) is
+    # the least-invasive fix: it wraps once at import time, reads the desired
+    # name from agent_config, and is self-contained in our build_app() scope.
+    from qwenpaw.agents.react_agent import QwenPawAgent as _QwenPawAgent
+    _orig_qpaw_init = _QwenPawAgent.__init__
+
+    def _patched_qpaw_init(self, *args, **kwargs):  # noqa: ANN001
+        _orig_qpaw_init(self, *args, **kwargs)
+        self.name = agent_config.name  # "Snapfzz Orchestrator"
+        logger.info(
+            "[orchestrator] QwenPawAgent.name overridden → %r", self.name
+        )
+
+    _QwenPawAgent.__init__ = _patched_qpaw_init  # type: ignore[method-assign]
 
     # ── Provider setup ─────────────────────────────────────────────────────────
     # Per A013/C1: Single provider — id="snapfzz-gateway", OpenAI-compatible,
@@ -273,7 +294,7 @@ def build_app() -> FastAPI:  # noqa: C901
 
     agent_config = AgentProfileConfig(
         id="default",
-        name="Orchestrator",
+        name="Snapfzz Orchestrator",
         description="Snapfzz orchestrator agent — single-agent mode",
         workspace_dir=workspace_dir,
         active_model=ModelSlotConfig(
@@ -282,8 +303,17 @@ def build_app() -> FastAPI:  # noqa: C901
         ),
         running=AgentsRunningConfig(),
         tools=_tools_config,
-        # Per A013/C1: No channels, no MCP, no heartbeat, no security overrides.
-        channels=None,
+        # Per A013/Prompt: Only look for AGENTS.md — SOUL.md / PROFILE.md don't
+        # exist in our workspace, so restricting the list removes log noise from
+        # qwenpaw's file-not-found warnings on every turn.
+        system_prompt_files=["AGENTS.md"],
+        # Defaults enable ONLY the console channel (all external channels —
+        # discord, telegram, imessage, etc. — default to `enabled=False`).
+        # We need the console channel live so `POST /api/console/chat` can
+        # register chats in `ChatManager` → persist to `{workspace}/chats.json`
+        # → pick up `TaskTracker` reconnect support for SSE resume after a
+        # page reload. Without a channel_manager the route 500s.
+        channels=ChannelConfig(),
         mcp=None,
         heartbeat=None,
         security=None,
@@ -435,20 +465,63 @@ def _write_telemetry_optout(working_dir: Path) -> None:
 
 
 def _seed_agent_config(agent_config, workspace_dir: str) -> None:
-    """Write agent.json into the workspace so QwenPaw finds it on first start.
+    """Write agent.json + AGENTS.md into the workspace on every boot.
 
     Per A013/C1: MultiAgentManager reads agent.json from workspace_dir.
     If missing, it falls back to build_fallback_agent_profile_config which
     requires a populated root config.json — seeding avoids that dependency.
+
+    Per A013/Prompt: AGENTS.md is written on every boot (idempotent overwrite)
+    so edits to pack/prompts/system.md propagate on restart without manual
+    workspace cleanup. agent.json is also overwritten so config changes (e.g.
+    system_prompt_files, active_model) take effect immediately on restart.
     """
     ws = Path(workspace_dir).expanduser()
     ws.mkdir(parents=True, exist_ok=True)
+
+    # Always overwrite agent.json so config changes take effect on restart.
     agent_json = ws / "agent.json"
-    if not agent_json.exists():
-        try:
-            agent_json.write_text(
-                agent_config.model_dump_json(exclude_none=True, indent=2),
-                encoding="utf-8",
-            )
-        except OSError as exc:
-            logger.warning("[orchestrator] could not write agent.json: %s", exc)
+    try:
+        _atomic_write(
+            agent_json,
+            agent_config.model_dump_json(exclude_none=True, indent=2),
+        )
+    except OSError as exc:
+        logger.warning("[orchestrator] could not write agent.json: %s", exc)
+
+    # Write AGENTS.md from pack/prompts/system.md — this is what QwenPaw's
+    # build_system_prompt_from_working_dir reads to build the system prompt.
+    _seed_agents_md(ws)
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write *text* to *path* atomically via a sibling tmp file + rename."""
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _seed_agents_md(workspace_dir: Path) -> None:
+    """Write AGENTS.md into *workspace_dir* from pack/prompts/system.md.
+
+    Overwrites on every call so prompt edits propagate on orchestrator restart.
+    Raises RuntimeError if system.md is missing so boot fails loudly rather than
+    silently falling back to the default "You are a helpful assistant." stub.
+    """
+    if not _SYSTEM_PROMPT_FILE.exists():
+        raise RuntimeError(
+            f"[orchestrator] pack/prompts/system.md not found at "
+            f"{_SYSTEM_PROMPT_FILE} — check _PACK_DIR resolution. "
+            "AGENTS.md cannot be written; boot aborted to prevent silent prompt regression."
+        )
+    prompt_text = _read_system_prompt()
+    agents_md = workspace_dir / "AGENTS.md"
+    try:
+        _atomic_write(agents_md, prompt_text)
+        logger.info(
+            "[orchestrator] wrote AGENTS.md (%d chars) to %s",
+            len(prompt_text),
+            agents_md,
+        )
+    except OSError as exc:
+        logger.warning("[orchestrator] could not write AGENTS.md: %s", exc)

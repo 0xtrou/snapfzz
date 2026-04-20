@@ -11,10 +11,17 @@ import type { PluginContext } from '@snapfzz/plugin-sdk';
 // ─── Module-scoped ctx holder ────────────────────────────────────────────────
 
 let _pluginCtx: PluginContext | null = null;
+let _ctxReadyResolvers: Array<(ctx: PluginContext) => void> = [];
 
 /** Called from plugin.activate() — stores the live PluginContext for later getters. */
 export function configurePluginContext(ctx: PluginContext): void {
   _pluginCtx = ctx;
+  // Flush any callers that were awaiting ctx readiness (e.g. pluginSessionApi
+  // invoked by Spark's first render before activate() resolved — the webui
+  // sometimes mounts in the same microtask as plugin activation).
+  const pending = _ctxReadyResolvers;
+  _ctxReadyResolvers = [];
+  for (const resolve of pending) resolve(ctx);
 }
 
 /** Called from plugin.deactivate() — clears the ctx so stale closures no-op. */
@@ -25,6 +32,20 @@ export function disposePluginContext(): void {
 /** Returns the currently-stored PluginContext, or null before activate()/after deactivate(). */
 export function getPluginContext(): PluginContext | null {
   return _pluginCtx;
+}
+
+/** Resolves once `configurePluginContext()` has run. Bounded wait avoids
+ *  hanging Spark's session loader indefinitely if activate never fires. */
+export function awaitPluginContext(timeoutMs = 5000): Promise<PluginContext | null> {
+  if (_pluginCtx) return Promise.resolve(_pluginCtx);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      _ctxReadyResolvers = _ctxReadyResolvers.filter((r) => r !== capturedResolve);
+      resolve(null);
+    }, timeoutMs);
+    const capturedResolve = (ctx: PluginContext) => { clearTimeout(timer); resolve(ctx); };
+    _ctxReadyResolvers.push(capturedResolve);
+  });
 }
 
 // ─── Context ─────────────────────────────────────────────────────────────────

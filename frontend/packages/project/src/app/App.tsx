@@ -137,30 +137,29 @@ function BottomPanel({ panels, onCrash, maxControls }: {
   onCrash: (pluginId: string, error: Error) => void;
   maxControls?: React.ReactNode;
 }) {
-  // Slim header exists only to host the maximise control. Label was noise —
-  // users know what this panel is from the content itself.
+  // No shell-level header — plugins render their own panel headers (44px tall,
+  // see OrchestrationPanel). The maximise control overlays the top-right corner
+  // so it aligns with those headers instead of claiming its own row.
   return (
-    <div className="h-full flex flex-col" style={{ contain: 'layout paint' }}>
+    <div className="h-full relative" style={{ contain: 'layout paint' }}>
+      {panels.length === 0 ? (
+        <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+          No agent panels — plugins will provide agent network
+        </div>
+      ) : (
+        <div className="h-full flex">
+          {panels.map((panel) => (
+            <div key={panel.id} className="flex-1 min-w-0">
+              <LazyComponent loader={panel.component} pluginId={panel.id} onCrash={onCrash} />
+            </div>
+          ))}
+        </div>
+      )}
       {maxControls && (
-        <div className="flex items-center justify-end gap-1 px-3 py-1 bg-[var(--bg-default)] border-b border-[var(--border-default)]">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
           {maxControls}
         </div>
       )}
-      <div className="flex-1 overflow-hidden">
-        {panels.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-            No agent panels — plugins will provide agent network
-          </div>
-        ) : (
-          <div className="h-full flex">
-            {panels.map((panel) => (
-              <div key={panel.id} className="flex-1 min-w-0">
-                <LazyComponent loader={panel.component} pluginId={panel.id} onCrash={onCrash} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

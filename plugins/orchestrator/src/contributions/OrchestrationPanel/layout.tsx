@@ -6,11 +6,12 @@
 // across the three global panels (left sidebar / workspace / bottom), not
 // inside this contribution — so the orchestration panel itself stays simple.
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Select } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { AppButton, PretextList } from '@snapfzz/shared';
 import type {
+  ConversationTurn,
   OrchestrationEventHandlers,
   OrchestrationObservation,
   SubAgentRow,
@@ -45,6 +46,9 @@ const HEADER_HEIGHT = 44;
 
 const leftHeader: React.CSSProperties = {
   height: HEADER_HEIGHT,
+  minHeight: HEADER_HEIGHT,
+  maxHeight: HEADER_HEIGHT,
+  flexShrink: 0,
   boxSizing: 'border-box',
   display: 'flex',
   alignItems: 'center',
@@ -73,11 +77,18 @@ const rightStyle: React.CSSProperties = {
 
 const rightHeader: React.CSSProperties = {
   height: HEADER_HEIGHT,
+  minHeight: HEADER_HEIGHT,
+  maxHeight: HEADER_HEIGHT,
+  flexShrink: 0,
   boxSizing: 'border-box',
   display: 'flex',
   alignItems: 'center',
   gap: 12,
-  padding: '0 12px',
+  // Right padding reserves the top-right corner for the shell-level maximise
+  // button that overlays the bottom panel (App.tsx BottomPanel). 56px = 28px
+  // button + 8px right-gutter + 20px breathing room to avoid any visual
+  // collision with the turn counter.
+  padding: '0 56px 0 12px',
   borderBottom: '1px solid var(--border-default)',
   fontSize: 12,
   lineHeight: '1',
@@ -86,8 +97,20 @@ const rightHeader: React.CSSProperties = {
 
 const timelineStyle: React.CSSProperties = {
   flex: 1,
-  overflow: 'auto',
+  minHeight: 0,
 };
+
+/** Collapsed height = single header row. Matches ConversationTurn padding + header. */
+const COLLAPSED_ROW_HEIGHT = 36;
+
+/** Estimate height of an expanded turn from its text length. Cheap heuristic:
+ *  ~60 chars per rendered line × 22px line-height, plus 44px for header +
+ *  padding + bottom border. Clamped so virtualisation never starves the
+ *  viewport of items nor wastes memory on giant preallocated rows. */
+function estimateExpandedHeight(text: string): number {
+  const lines = Math.max(1, Math.ceil(text.length / 60));
+  return Math.min(44 + lines * 22, 640);
+}
 
 export function OrchestrationPanelLayout({ observation, events }: Props) {
   const {
@@ -112,6 +135,65 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
   );
 
   const selectedName = subAgents.find((a) => a.id === selectedAgentId)?.name ?? '';
+
+  // ─── Turn expand/collapse state ─────────────────────────────────────────────
+  // Default-expand every text/MSG turn — that's the human-readable content on
+  // both sides of the conversation (orchestrator prompts + sub-agent replies).
+  // Reasoning, tool calls/results, and media stay collapsed so the timeline
+  // leads with prose and hides machine noise. Clicking a row's header toggles
+  // expansion; PretextList re-measures via estimateHeight.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  const [userTouchedIds, setUserTouchedIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    // Short-circuit before calling setState at all when nothing needs expanding.
+    // The Set functional-update form still schedules a render; avoiding the call
+    // entirely prevents the extra re-render cycle on every poll tick when all
+    // text turns are already in the expanded set.
+    const toAdd = conversation.filter(
+      (t) => t.kind === 'text' && !expandedIds.has(t.id) && !userTouchedIds.has(t.id),
+    );
+    if (toAdd.length === 0) return;
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      for (const t of toAdd) next.add(t.id);
+      return next;
+    });
+  }, [conversation, userTouchedIds, expandedIds]);
+
+  const toggleTurn = useCallback((id: string) => {
+    setUserTouchedIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev); next.add(id); return next;
+    });
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Slice to a mutable array only when the reference actually changes — avoids
+  // creating a new array identity on every render when conversation is stable,
+  // which previously caused PretextList's items-dependent memos to re-run even
+  // when signature-diff had already blocked the setTurns call.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const turnItems = conversation as unknown as ConversationTurn[];
+  const turnKey = useCallback((t: ConversationTurn) => t.id, []);
+  const turnHeight = useCallback(
+    (t: ConversationTurn) => (expandedIds.has(t.id) ? estimateExpandedHeight(t.text) : COLLAPSED_ROW_HEIGHT),
+    [expandedIds],
+  );
+  const renderTurn = useCallback(
+    (t: ConversationTurn) => (
+      <ConversationTurnItem
+        turn={t}
+        expanded={expandedIds.has(t.id)}
+        onToggle={() => toggleTurn(t.id)}
+      />
+    ),
+    [expandedIds, toggleTurn],
+  );
 
   return (
     <div style={rootStyle} data-testid="orchestration-panel">
@@ -173,7 +255,13 @@ export function OrchestrationPanelLayout({ observation, events }: Props) {
               />
             ) : (
               <div style={timelineStyle}>
-                {conversation.map((t) => <ConversationTurnItem key={t.id} turn={t} />)}
+                <PretextList
+                  items={turnItems}
+                  renderItem={renderTurn}
+                  keyExtractor={turnKey}
+                  estimateHeight={turnHeight}
+                  followOutput
+                />
               </div>
             )}
           </>

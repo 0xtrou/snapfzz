@@ -1,65 +1,80 @@
-// Per A013/ChatPanel: thin shell over Spark's `AgentScopeRuntimeWebUI`.
-//
-// Spark owns: message list rendering, markdown + code blocks, reasoning/tool-call
-// UI, Sender input, streaming cursor, session sidebar (localStorage-backed).
-// We own: the custom fetch/cancel adapter → QwenPaw (`/api/agent/process`), the
-// ModelPicker in the Sender prefix slot, and a SessionIdBridge that pushes
-// Spark's current session id into the adapter so QwenPaw's AgentApp memory is
-// keyed consistently with what the UI thinks is active.
+// ChatPanel — minimal direct mount of AgentScopeRuntimeWebUI.
+// Throws out qwenpaw's ChatPage wrapper entirely. We own the layout.
+// Session data flows through pluginSessionApi (qwenpaw's HTTP-backed SessionApi).
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ConfigProvider, App } from 'antd';
 import {
   AgentScopeRuntimeWebUI,
-  useChatAnywhereSessionsState,
   type IAgentScopeRuntimeWebUIOptions,
 } from '@agentscope-ai/chat';
-import { ModelPicker } from '../ModelPicker';
-import { chatCancel, chatFetch, setActiveSessionId } from './adapter';
-import { buildCustomToolRenderers } from './MarkdownToolCall';
-import { pluginSessionApi } from './sessionStore';
-import { useSparkTheme } from './useSparkTheme';
+import { chatCancel, chatFetch, chatReconnect } from './adapter';
+import pluginSessionApi from './qwenpaw/pages/Chat/sessionApi';
 
-const WELCOME_PROMPTS = [
-  { label: 'What can you do?', value: 'What can you do?' },
-  { label: 'Summarise a file', value: 'Read and summarise the README in the workspace.' },
-  { label: 'Plan a task', value: 'Help me plan a small coding task from scratch.' },
-];
+// ---------------------------------------------------------------------------
+// Shell dark-mode watcher
+// ---------------------------------------------------------------------------
 
-/**
- * Mounted inside the Spark context provider tree (via `theme.rightHeader`) so it
- * can subscribe to `ChatAnywhereSessionsContext` and forward the active session
- * id into the module-scoped adapter. Rendering `null` — this is a pure bridge.
- */
-function SessionIdBridge() {
-  const state = useChatAnywhereSessionsState();
-  const currentSessionId = state?.currentSessionId ?? null;
+function useShellDark(): boolean {
+  const [dark, setDark] = useState(
+    () => document.documentElement.dataset['theme'] === 'dark',
+  );
+
   useEffect(() => {
-    setActiveSessionId(currentSessionId);
-  }, [currentSessionId]);
-  return null;
+    const obs = new MutationObserver(() => {
+      setDark(document.documentElement.dataset['theme'] === 'dark');
+    });
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    return () => obs.disconnect();
+  }, []);
+
+  return dark;
 }
 
+// ---------------------------------------------------------------------------
+// CSS custom-property resolver
+// Spark expects resolved hex/rgb, not var(--…) strings.
+// ---------------------------------------------------------------------------
+
+function resolveCssVar(name: string): string {
+  if (typeof window === 'undefined') return '';
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// ---------------------------------------------------------------------------
+// ChatPanel
+// ---------------------------------------------------------------------------
+
 export default function ChatPanel() {
-  const theme = useSparkTheme();
+  const dark = useShellDark();
+
+  // Eagerly seed preferredChatId from localStorage on every mount — sessionApi
+  // reads this on the first getSessionList() to splice the restored session to [0].
+  // Covers remounts from shell maximize/restore; sessionApi clears it after first use.
+  const stored =
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem('snapfzz.chat.session.v1')
+      : null;
+  if (stored) pluginSessionApi.preferredChatId = stored;
+
+  // Re-resolve on each render so theme changes propagate via dark toggle.
+  const colorPrimary = resolveCssVar('--color-info') || '#1677ff';
+  const colorBgBase = resolveCssVar('--bg-default') || (dark ? '#141414' : '#ffffff');
+  const colorTextBase = resolveCssVar('--text-primary') || (dark ? '#ffffff' : '#000000');
 
   const options = useMemo<IAgentScopeRuntimeWebUIOptions>(
     () => ({
       api: {
-        // `baseURL` is unused — we supply a custom `fetch` that resolves our
-        // plugin runtime URL via Rust + injects the `X-Agent-Id` header.
         baseURL: '',
         fetch: chatFetch,
         cancel: chatCancel,
-        // History is keyed server-side by session_id in QwenPaw's AgentApp, so
-        // the client sends only the newest message per turn.
+        reconnect: chatReconnect,
         enableHistoryMessages: false,
       },
       session: {
-        // Multi-session + our own plugin-storage-backed `session.api` (not
-        // Spark's shared localStorage default). Sessions live under
-        // `ctx.storage` — isolated, plugin-scoped, survive reloads. Spark's
-        // built-in sidebar is hidden; a native sessions panel can be built
-        // later using `useChatAnywhereSessions()` to drive the same store.
         multiple: true,
         hideBuiltInSessionList: true,
         api: pluginSessionApi,
@@ -67,43 +82,52 @@ export default function ChatPanel() {
       welcome: {
         greeting: 'What are we building today?',
         description: 'Ask me to read files, plan work, or call tools.',
-        prompts: WELCOME_PROMPTS,
+        prompts: [
+          { label: 'What can you do?', value: 'What can you do?' },
+          {
+            label: 'Summarise a file',
+            value: 'Read and summarise the README in the workspace.',
+          },
+          {
+            label: 'Plan a task',
+            value: 'Help me plan a small coding task from scratch.',
+          },
+        ],
       },
       sender: {
-        placeholder: 'Message the orchestrator…',
+        placeholder: 'Message the orchestrator\u2026',
         maxLength: 10_000,
-        // ModelPicker chip lives in the Sender's bottom action bar so the user
-        // can switch the underlying LiteLLM combo target without leaving the chat.
-        prefix: <ModelPicker />,
+        allowSpeech: false,
       },
-      // Override Spark's default ToolCall for text-returning tools so their
-      // output renders via `<Markdown>` instead of a raw code block. Only
-      // applied to prose-output tools (shell, file reads, agent ops) — tools
-      // that return structured JSON (view_image, etc) keep the default Block.
-      customToolRenderConfig: buildCustomToolRenderers(),
       theme: {
         prefix: 'snapfzz-chat',
-        // Feed Spark's AntD ConfigProvider from our design tokens so dark/light
-        // + the accent blue match the rest of the app. Re-reads on <html>
-        // `data-theme` flips via `useSparkTheme`'s MutationObserver.
-        darkMode: theme.darkMode,
-        colorPrimary: theme.colorPrimary,
-        colorBgBase: theme.colorBgBase,
-        colorTextBase: theme.colorTextBase,
-        background: theme.background,
-        // SessionIdBridge still needs to live inside Spark's context tree so
-        // `useChatAnywhereSessionsState` resolves — the rightHeader slot is the
-        // smallest always-mounted spot. The bridge renders `null`, so no
-        // visible chrome is added.
-        rightHeader: <SessionIdBridge />,
+        darkMode: dark,
+        colorPrimary,
+        colorBgBase,
+        colorTextBase,
+        background: colorBgBase,
       },
     }),
-    [theme.darkMode, theme.colorPrimary, theme.colorBgBase, theme.colorTextBase, theme.background],
+    // Re-memoize whenever dark-mode or resolved colors change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dark, colorPrimary, colorBgBase, colorTextBase],
   );
 
   return (
-    <div style={{ height: '100%', background: 'var(--bg-default)' }}>
-      <AgentScopeRuntimeWebUI options={options} />
-    </div>
+    <ConfigProvider theme={{ token: { colorPrimary } }}>
+      <App style={{ height: '100%' }}>
+        <div
+          style={{
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-default)',
+            overflow: 'hidden',
+          }}
+        >
+          <AgentScopeRuntimeWebUI options={options} />
+        </div>
+      </App>
+    </ConfigProvider>
   );
 }

@@ -31,6 +31,21 @@ import type {
 
 const AGENTS_POLL_MS = 2000;
 const CHAT_POLL_MS = 1000;
+const CHAT_IDLE_POLL_MS = 30000;
+
+// localStorage keys. Versioned so schema bumps don't surface stale ids.
+const LS_AGENT_KEY = 'snapfzz.orch.agent.v1';
+const LS_CHAT_KEY = 'snapfzz.orch.chat.v1';
+
+function lsGet(key: string): string | null {
+  try { return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null; } catch { return null; }
+}
+function lsSet(key: string, value: string | null): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value);
+  } catch { /* quota / privacy-mode — silent */ }
+}
 
 /** Cached once per mount — avoids a Rust round-trip per fetch. */
 function useRuntimeBaseUrl(): string | null {
@@ -64,11 +79,22 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
   const [agents, setAgents] = useState<readonly SubAgentRow[]>([]);
   const [chatsByAgent, setChatsByAgent] = useState<Readonly<Record<string, readonly ApiChatSpec[]>>>({});
   const [turns, setTurns] = useState<readonly ConversationTurn[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [chatStatus, setChatStatus] = useState<'idle' | 'running'>('idle');
+  // Hydrate last selection from localStorage so a reload lands the user back
+  // on the same sub-agent + chat, and the 1s chat-history poll can rejoin a
+  // streaming task already in flight on the backend.
+  const [selectedAgentId, setSelectedAgentIdState] = useState<string | null>(() => lsGet(LS_AGENT_KEY));
+  const [selectedChatId, setSelectedChatIdState] = useState<string | null>(() => lsGet(LS_CHAT_KEY));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const setSelectedAgentId = useCallback((id: string | null) => {
+    setSelectedAgentIdState(id);
+    lsSet(LS_AGENT_KEY, id);
+  }, []);
+  const setSelectedChatId = useCallback((id: string | null) => {
+    setSelectedChatIdState(id);
+    lsSet(LS_CHAT_KEY, id);
+  }, []);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -131,32 +157,58 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
     return () => { ctrl.abort(); window.clearInterval(t); };
   }, [baseUrl, pollAgents]);
 
-  // ─── Auto-select newest sub-agent when none picked yet ───────────────────
+  // ─── Auto-select newest sub-agent, reconciling with hydrated selection ───
+  // Runs only once agents have loaded. If the persisted agent still exists we
+  // keep it; otherwise we fall back to the newest agent so the panel is never
+  // stuck on a ghost selection.
   useEffect(() => {
-    if (selectedAgentId || agents.length === 0) return;
-    setSelectedAgentId(agents[0].id);
-  }, [agents, selectedAgentId]);
+    if (agents.length === 0) return;
+    const current = agents.find((a) => a.id === selectedAgentId);
+    if (!current) setSelectedAgentId(agents[0].id);
+  }, [agents, selectedAgentId, setSelectedAgentId]);
 
-  // ─── Auto-select newest chat for the selected agent ──────────────────────
+  // ─── Auto-select newest chat — but only once chats for this agent load ──
+  // Before the first chat-list fetch completes, `chatsByAgent[id]` is undefined.
+  // We must NOT clobber the hydrated selectedChatId during that window, or a
+  // reload would discard the persisted chat id between restore and first poll.
   useEffect(() => {
     if (!selectedAgentId) { setSelectedChatId(null); return; }
-    const chats = chatsByAgent[selectedAgentId] ?? [];
+    const chats = chatsByAgent[selectedAgentId];
+    if (chats === undefined) return; // not loaded yet — keep the hydrated id
     const current = chats.find((c) => c.id === selectedChatId);
     if (!current) setSelectedChatId(pickLatestChatId(chats));
-  }, [selectedAgentId, chatsByAgent, selectedChatId]);
+  }, [selectedAgentId, chatsByAgent, selectedChatId, setSelectedChatId]);
 
-  // ─── Fetch chat history when selection changes + always re-poll ──────────
+  // ─── Fetch chat history when selection changes + re-poll while running ──
   //
-  // Poll unconditionally every CHAT_POLL_MS while the panel has a selected
-  // chat. Original implementation keyed off `chat_status === 'running'`, but
-  // fresh chats start `idle` with 0 messages and only flip to `running` when
-  // the task actually picks up — so we'd never catch new reasoning/tool
-  // frames. Unconditional polling at 1Hz is cheap (one JSON fetch) and gives
-  // a near-live feed of the sub-agent's work without an SSE endpoint.
+  // Fast poll (1 Hz) while the backend reports `status: 'running'` or while
+  // messages are still arriving. Once status flips to idle AND the last-seen
+  // signature (count + last id) has been stable for two consecutive ticks,
+  // we slow to CHAT_IDLE_POLL_MS (30 s) so the panel only has to catch the
+  // next run starting, not stream every JSON frame forever.
+  //
+  // The signature diff also short-circuits redundant setTurns calls — re-
+  // rendering PretextList on every tick while nothing changed was the cause
+  // of the visible flicker on long timelines.
   useEffect(() => {
     if (!baseUrl || !selectedAgentId || !selectedChatId) { setTurns([]); return; }
     const ctrl = new AbortController();
     let alive = true;
+    let timer: number | null = null;
+    let lastSig = '';
+    let stableIdleTicks = 0;
+    let currentIntervalMs = CHAT_POLL_MS;
+
+    const signatureOf = (msgs: readonly { id?: string }[] | undefined): string => {
+      if (!msgs || msgs.length === 0) return '0:';
+      return `${msgs.length}:${msgs[msgs.length - 1]?.id ?? ''}`;
+    };
+
+    const scheduleNext = (ms: number) => {
+      if (!alive) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void fetchOnce(), ms);
+    };
 
     const fetchOnce = async () => {
       try {
@@ -165,20 +217,43 @@ export function useOrchestrationObservation(): OrchestrationObservation & {
           ctrl.signal,
         );
         if (!alive || !mountedRef.current) return;
-        setTurns(messagesToTurns(res.messages ?? [], selectedAgentId));
-        setChatStatus(res.status ?? 'idle');
+
+        const sig = signatureOf(res.messages);
+        const changed = sig !== lastSig;
+        lastSig = sig;
+        const status = res.status ?? 'idle';
+
+        // Only commit new turns when content actually changed. Spark-like
+        // frames arrive 10x/sec during a stream; we coalesce them here.
+        if (changed) setTurns(messagesToTurns(res.messages ?? [], selectedAgentId));
+
+        // Adaptive interval: fast while running or content is changing;
+        // slow to a heartbeat when the chat has been idle + stable for a
+        // couple of ticks so a dormant chat doesn't hammer the backend.
+        if (status === 'running' || changed) {
+          stableIdleTicks = 0;
+          currentIntervalMs = CHAT_POLL_MS;
+        } else {
+          stableIdleTicks += 1;
+          if (stableIdleTicks >= 2) currentIntervalMs = CHAT_IDLE_POLL_MS;
+        }
+        scheduleNext(currentIntervalMs);
       } catch (e) {
         if (!alive || !mountedRef.current) return;
         if ((e as DOMException)?.name !== 'AbortError') {
           setError(e instanceof Error ? e.message : String(e));
+          scheduleNext(currentIntervalMs);
         }
       }
     };
 
     void fetchOnce();
-    const t = window.setInterval(() => void fetchOnce(), CHAT_POLL_MS);
 
-    return () => { alive = false; ctrl.abort(); window.clearInterval(t); };
+    return () => {
+      alive = false;
+      ctrl.abort();
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, [baseUrl, selectedAgentId, selectedChatId]);
 
   // ─── Derived view ─────────────────────────────────────────────────────────
